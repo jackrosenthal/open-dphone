@@ -272,8 +272,16 @@ static int bcmring_keypad_probe(struct platform_device *pdev)
 	if (device_property_read_bool(dev, "autorepeat"))
 		__set_bit(EV_REP, input->evbit);
 
-	/* Make sure nothing fires before the device is opened. */
+	/*
+	 * Make sure nothing fires before the device is opened.  The block
+	 * answers only with its bus gate on (an access without it is an
+	 * external abort), and after a cold boot the gate is off.
+	 */
+	ret = clk_prepare_enable(kp->clk);
+	if (ret)
+		return dev_err_probe(dev, ret, "failed to enable clock\n");
 	bcmring_keypad_ctrl(kp, KEYC_CTRL_IRQ_ENABLE | KEYC_CTRL_ENABLE, 0);
+	clk_disable_unprepare(kp->clk);
 
 	/*
 	 * The vendor driver has no initial scan: its state starts as "all

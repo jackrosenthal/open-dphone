@@ -31,7 +31,7 @@ pub(crate) fn health() -> Box<dyn Screen> {
                     HealthStatus::Degraded(e) => format!("degraded: {e}"),
                     HealthStatus::Failed(e) => format!("failed: {e}"),
                 };
-                (format!("{s:?}"), status)
+                (s.label().to_string(), status)
             })
             .collect()
     })

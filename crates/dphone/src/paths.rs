@@ -76,7 +76,8 @@ impl Paths {
 
 /// Socket path a diagnostic client should use.
 /// Flag file carried by images that must leave stock-owned nvdata files
-/// exactly as they found them (the first-flash development image).
+/// exactly as they found them (an image for trying the firmware on a
+/// phone that also runs stock).
 pub const NO_STOCK_WRITES_FLAG: &str = "/etc/dphone/no-stock-writes";
 
 /// False when this image must not write files that stock also owns
@@ -109,7 +110,11 @@ pub fn write_atomic(path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> 
             .open(&tmp)?;
         f.write_all(data)?;
         f.sync_all()?;
-        std::fs::rename(&tmp, path)
+        std::fs::rename(&tmp, path)?;
+        // The rename itself must reach the flash: on JFFS2 the new
+        // directory entry otherwise sits in the write buffer, and a reset
+        // (e.g., the watchdog during a trial boot) loses it.
+        std::fs::File::open(dir)?.sync_all()
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);

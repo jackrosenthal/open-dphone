@@ -401,7 +401,7 @@ fn show(state: &NetState, active: &NetConfig, plain: &NetConfig, deadline: Optio
             d.saturating_duration_since(Instant::now()).as_secs()
         ));
     }
-    t.push_str(&format!("phase:     {:?}\n", state.phase));
+    t.push_str(&format!("phase:     {}\n", words(&state.phase)));
     t.push_str(&format!("hostname:  {}\n", active.hostname));
     if let Some(m) = state.mac {
         t.push_str(&format!("mac:       {}\n", m.bare_hex()));
@@ -427,11 +427,11 @@ fn show(state: &NetState, active: &NetConfig, plain: &NetConfig, deadline: Optio
     t.push_str(&format!("pc:        {}\n", port(&state.pc)));
     t.push_str(&format!("interface: {}{}\n", state.interface, if state.bridged { " (bridged)" } else { "" }));
     if let Some(v) = state.vlan_id {
-        t.push_str(&format!("vlan:      {v} ({:?})\n", state.vlan_source));
+        t.push_str(&format!("vlan:      {v} ({})\n", words(&state.vlan_source)));
     }
     match &state.ipv4 {
         Some(v) => {
-            t.push_str(&format!("ipv4:      {}/{} ({:?})\n", v.address, v.prefix_len, v.source));
+            t.push_str(&format!("ipv4:      {}/{} ({})\n", v.address, v.prefix_len, words(&v.source)));
             let gw: Vec<String> = v.gateways.iter().map(|g| g.to_string()).collect();
             t.push_str(&format!("gateway:   {}\n", gw.join(" ")));
             if let Some(s) = v.dhcp_server {
@@ -577,4 +577,30 @@ fn register_diag(ctx: &Context, tx: mpsc::Sender<Cmd>) {
             }
         },
     );
+}
+
+/// A state name for people, from an enum's variant name: "LldpDiscovery"
+/// becomes "LLDP discovery", "Dhcp" becomes "DHCP".
+fn words(value: &impl std::fmt::Debug) -> String {
+    const ACRONYMS: [&str; 6] = ["LLDP", "DHCP", "VLAN", "DNS", "NTP", "IP"];
+    let name = format!("{value:?}");
+    let mut parts: Vec<String> = Vec::new();
+    for c in name.chars() {
+        if c.is_ascii_uppercase() || parts.is_empty() {
+            parts.push(String::new());
+        }
+        parts.last_mut().unwrap().push(c);
+    }
+    let mut out = String::new();
+    for (i, part) in parts.iter().enumerate() {
+        if i > 0 {
+            out.push(' ');
+        }
+        match ACRONYMS.iter().find(|a| a.eq_ignore_ascii_case(part)) {
+            Some(a) => out.push_str(a),
+            None if i == 0 => out.push_str(part),
+            None => out.push_str(&part.to_ascii_lowercase()),
+        }
+    }
+    out
 }

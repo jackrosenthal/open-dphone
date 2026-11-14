@@ -44,8 +44,6 @@ pub struct UiConfig {
     /// Off-hook dialing: milliseconds after the last digit before the
     /// number is dialed.
     pub dial_timeout_ms: u32,
-    /// Show the diagnostics menu even outside development mode.
-    pub show_diagnostics: bool,
 }
 
 impl Default for UiConfig {
@@ -61,7 +59,6 @@ impl Default for UiConfig {
             ringtone: String::new(),
             ringtones: Vec::new(),
             dial_timeout_ms: 4000,
-            show_diagnostics: false,
         }
     }
 }

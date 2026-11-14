@@ -235,8 +235,6 @@ pub struct System {
     pub timezone: String,
     /// Text from `/nvdata/reboot_reason` for the previous boot.
     pub last_reboot_reason: String,
-    /// Development image: SSH on, `/tmp/dphone` override allowed.
-    pub dev_mode: bool,
     /// Running in the workstation simulator.
     pub simulated: bool,
     /// `digium_boot_rev=` from the command line.
@@ -256,7 +254,6 @@ impl System {
             time_synced: false,
             timezone: String::new(),
             last_reboot_reason: String::new(),
-            dev_mode: false,
             simulated: false,
             boot_rev: None,
             mem_total_kib: 0,
@@ -1370,6 +1367,29 @@ impl Subsystem {
         Subsystem::Ssh,
         Subsystem::Update,
     ];
+
+    /// The name to show a person: acronyms are written as acronyms.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Subsystem::Core => "Core",
+            Subsystem::Config => "Configuration",
+            Subsystem::Net => "Network",
+            Subsystem::Sip => "SIP",
+            Subsystem::Media => "Media",
+            Subsystem::Dpma => "DPMA",
+            Subsystem::Ui => "UI",
+            Subsystem::Apps => "Apps",
+            Subsystem::Web => "Web",
+            Subsystem::Ssh => "SSH",
+            Subsystem::Update => "Update",
+        }
+    }
+}
+
+impl std::fmt::Display for Subsystem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.label())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]

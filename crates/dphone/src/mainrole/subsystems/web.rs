@@ -73,7 +73,7 @@ pub fn start(ctx: &Context, opts: &Options, config: Option<SharedConfig>, tap: O
         return;
     };
     let access = config.lock().unwrap().config().access();
-    if !access.web_ui_enabled && !ctx.dev {
+    if !access.web_ui_enabled {
         info!("web: disabled by configuration (web_ui_enabled)");
         ctx.store.set_health(Subsystem::Web, HealthStatus::Stopped);
         return;

@@ -120,8 +120,6 @@ pub struct Context {
     /// nvdata is then a tmpfs; show the recovery screen and web page, and
     /// treat nothing as persistent.
     pub recovery: Option<String>,
-    /// Development mode (flag file, kernel command line, or baked-in key).
-    pub dev: bool,
     /// Safe mode: the init role saw the main role fail repeatedly (or
     /// `--safe` was given).  Only SSH, the network, and diagnostics start.
     pub safe: bool,
@@ -237,7 +235,6 @@ async fn run_async(opts: Options) -> i32 {
     let ctx = Context {
         safe: opts.safe || std::env::var(crate::init::SAFE_ENV).is_ok_and(|v| v == "1"),
         store: dphone_state::Store::new(state_model(model)),
-        dev: !opts.sim && crate::init::dev_mode(&paths),
         paths,
         model,
         sim: opts.sim,

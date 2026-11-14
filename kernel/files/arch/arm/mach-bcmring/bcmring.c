@@ -95,6 +95,59 @@ static void __iomem *bcmring_iomap(const char *compatible)
 	return base;
 }
 
+/*
+ * "bcmring.coldsim" on the command line: for testing a kernel that is
+ * started from a running system (RAM boot) against something closer to the
+ * state a boot loader hands over.  It pulses the soft resets and switches
+ * off the bus gates and clocks of the peripherals that have drivers here
+ * and that a boot loader has no use for, so that a driver relying on state
+ * left by another kernel shows itself.  The core blocks (timers, interrupt
+ * controllers, GPIO, UART A, NAND, memory) are left alone: pulsing every
+ * reset the vendor asserts before a chip reset hangs the kernel at once.
+ */
+static bool bcmring_coldsim __initdata;
+
+static int __init bcmring_coldsim_setup(char *arg)
+{
+	bcmring_coldsim = true;
+	return 0;
+}
+early_param("bcmring.coldsim", bcmring_coldsim_setup);
+
+static void __init bcmring_simulate_cold_state(void)
+{
+	/* SPI host, LCD, RNG, LED matrix, keypad */
+	const u32 rst1 = BIT(12) | BIT(22) | BIT(24) | BIT(26) | BIT(27);
+	/* APM (bits 32 and 45), Ethernet switch clock and core (37, 38) */
+	const u32 rst2 = BIT(0) | BIT(13) | BIT(5) | BIT(6);
+	/* DMA0, DMA1, switch, LCD, keypad, LED matrix, SPI host */
+	const u32 gates = BIT(5) | BIT(6) | BIT(8) | BIT(14) | BIT(15) |
+			  BIT(16) | BIT(22);
+	/* switch, switch 125 MHz, SPI, APM100, LCD, APM200 */
+	static const u16 clk_off[] __initconst = {
+		0x0c, 0x14, 0x24, 0x44, 0x54, 0x58,
+	};
+	unsigned int i;
+	u32 val;
+
+	pr_warn("bcmring: coldsim: pulsing peripheral resets, gating peripheral clocks\n");
+	for (i = 0; i < ARRAY_SIZE(clk_off); i++) {
+		val = readl(bcmring_chipc + clk_off[i]);
+		writel(val & ~BIT(16), bcmring_chipc + clk_off[i]);
+	}
+	val = readl(bcmring_chipc + CHIPC_SOFT_RESET1);
+	writel(val | rst1, bcmring_chipc + CHIPC_SOFT_RESET1);
+	readl(bcmring_chipc + CHIPC_SOFT_RESET1);
+	writel(val & ~rst1, bcmring_chipc + CHIPC_SOFT_RESET1);
+	val = readl(bcmring_chipc + CHIPC_SOFT_RESET2);
+	writel(val | rst2, bcmring_chipc + CHIPC_SOFT_RESET2);
+	readl(bcmring_chipc + CHIPC_SOFT_RESET2);
+	writel(val & ~rst2, bcmring_chipc + CHIPC_SOFT_RESET2);
+
+	writel(readl(bcmring_chipc + CHIPC_BUSINTF_CLK) & ~gates,
+	       bcmring_chipc + CHIPC_BUSINTF_CLK);
+}
+
 static void __init bcmring_set_unsecure(void)
 {
 	void __iomem *tzpc;
@@ -106,6 +159,9 @@ static void __init bcmring_set_unsecure(void)
 		pr_err("bcmring: cannot map chipc/tzpc; interrupts of secure peripherals will not arrive\n");
 		return;
 	}
+
+	if (bcmring_coldsim)
+		bcmring_simulate_cold_state();
 
 	/* Not under the clock driver's lock: nothing else runs yet. */
 	/*

@@ -192,7 +192,6 @@ fn start_state(ctx: &Context) {
         .unwrap_or(0);
     let last_reason = std::fs::read_to_string(ctx.paths.reboot_reason()).unwrap_or_default();
     ctx.store.update::<dphone_state::System, _>(|s| {
-        s.dev_mode = ctx.dev;
         s.simulated = ctx.sim;
         s.boot_rev = boot_rev;
         s.mem_total_kib = mem_total_kib;

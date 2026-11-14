@@ -1,3 +1,32 @@
+diff --git a/drivers/gpu/drm/pl111/pl111_display.c b/drivers/gpu/drm/pl111/pl111_display.c
+index 5d10bc5fdf1f64f55faa2dfcfa64ada8031c0154..d74d5555f310c6d1c0a3d27de9b77167968b8dbc 100644
+--- a/drivers/gpu/drm/pl111/pl111_display.c
++++ b/drivers/gpu/drm/pl111/pl111_display.c
+@@ -136,6 +136,15 @@ static void pl111_display_enable(struct drm_simple_display_pipe *pipe,
+ 	u32 cpl, tim2;
+ 	int ret;
+ 
++	/*
++	 * Enable the pixel clock before setting its rate: the rate goes
++	 * through the TIM2 divider, and on the BCMRING integration a write
++	 * to TIM2 with CLCDCLK stopped never completes and stalls the bus
++	 * (seen on a BCM11189 after a cold boot, where no boot loader has
++	 * started the clock).
++	 */
++	clk_prepare_enable(priv->clk);
++
+ 	ret = clk_set_rate(priv->clk, mode->clock * 1000);
+ 	if (ret) {
+ 		drm_err(drm,
+@@ -143,8 +152,6 @@ static void pl111_display_enable(struct drm_simple_display_pipe *pipe,
+ 			mode->clock * 1000, ret);
+ 	}
+ 
+-	clk_prepare_enable(priv->clk);
+-
+ 	ppl = (mode->hdisplay / 16) - 1;
+ 	hsw = mode->hsync_end - mode->hsync_start - 1;
+ 	hfp = mode->hsync_start - mode->hdisplay - 1;
 diff --git a/drivers/gpu/drm/tiny/Kconfig b/drivers/gpu/drm/tiny/Kconfig
 index f0e72d4b6a4709564e63c758e857bdb4a320dbe7..3caff63e8ffdc96b910e4fc19b31f5cf7a65dd2e 100644
 --- a/drivers/gpu/drm/tiny/Kconfig

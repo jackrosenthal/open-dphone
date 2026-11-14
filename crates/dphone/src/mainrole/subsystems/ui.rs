@@ -73,8 +73,8 @@ impl Display for TapDisplay {
     }
 }
 
-fn ui_config(ctx: &Context, cfg: Option<&Config>) -> UiConfig {
-    let mut out = UiConfig { show_diagnostics: ctx.dev, ..UiConfig::default() };
+fn ui_config(_ctx: &Context, cfg: Option<&Config>) -> UiConfig {
+    let mut out = UiConfig::default();
     out.ringtones = dphone_media::ring::BuiltinRing::ALL.iter().map(|r| r.name().to_string()).collect();
     out.ringtone = out.ringtones.first().cloned().unwrap_or_default();
     let Some(cfg) = cfg else { return out };

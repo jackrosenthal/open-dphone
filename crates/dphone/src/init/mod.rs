@@ -27,9 +27,9 @@
 //! - Exit or kill: restart with exponential backoff up to
 //!   [`MAX_BACKOFF_SECS`].
 //! - No beat from any main-role instance for [`UNHEALTHY_REBOOT_SECS`]: clean
-//!   reboot, since a restart did not help.  Suppressed in development mode
-//!   and while `/run/dphone/no-reboot` exists, so a serial-console user can
-//!   keep working on a crash-looping phone.
+//!   reboot, since a restart did not help.  Suppressed while
+//!   `/run/dphone/no-reboot` exists, so a serial-console user can keep
+//!   working on a crash-looping phone.
 //! - The hardware watchdog is fed from this loop only, so it covers a hung
 //!   kernel or a hung init role; a hung main role is handled by the rules
 //!   above rather than by starving the watchdog, which would skip the clean
@@ -83,13 +83,15 @@ pub const SAFE_MODE_AFTER_CRASHES: u32 = 3;
 
 /// How often the clock is saved to nvdata while running.
 pub const CLOCK_SAVE_SECS: u64 = 30 * 60;
-/// A pushed development build that fails this many times in a row, each
+/// A pushed build (`/tmp/dphone`) that fails this many times in a row, each
 /// within [`OVERRIDE_QUICK_FAIL_SECS`], is ignored until the next boot.
 pub const OVERRIDE_MAX_FAILURES: u32 = 3;
 pub const OVERRIDE_QUICK_FAIL_SECS: u64 = 30;
 
-/// Development override: this file runs as the main role when dev mode is on.
-pub const DEV_OVERRIDE: &str = "/tmp/dphone";
+/// Override: when this file exists and is executable, it runs as the main
+/// role in place of the installed binary (a build pushed over SSH; `/tmp`
+/// is a tmpfs, so it is gone after a reboot).
+pub const MAIN_OVERRIDE: &str = "/tmp/dphone";
 const SERIAL_CONSOLE: &str = "/dev/ttyAMA0";
 /// Shells for the serial console and SSH, in order of preference.
 pub const SHELLS: &[&str] = &["/bin/brush", "/bin/sh"];
@@ -114,16 +116,6 @@ pub struct TestOptions {
     pub unhealthy_reboot: u64,
 }
 
-/// Development mode: enables the `/tmp/dphone` override and disables the
-/// unhealthy reboot.  On when the kernel command line has `dphone.dev`, or
-/// either flag file exists.
-pub fn dev_mode(paths: &Paths) -> bool {
-    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
-    cmdline.split_ascii_whitespace().any(|w| w == "dphone.dev")
-        || Path::new("/etc/dphone/dev").exists()
-        || paths.open_dir().join("dev").exists()
-}
-
 /// Entry point as PID 1.  Never returns.
 pub fn run(hooks: Hooks) -> ! {
     crate::logging::init_kmsg("dphone-init", log::LevelFilter::Info);
@@ -138,9 +130,6 @@ pub fn run(hooks: Hooks) -> ! {
         Some(d) if d.cross_checked => info!("model {}", d.model),
         Some(d) => warn!("model {} (command line and devicetree do not both confirm it)", d.model),
         None => error!("model unknown: no digium_board= and no digium compatible"),
-    }
-    if let Some(d) = detected {
-        modules::load_boot_modules(d.model.family());
     }
     wd.feed();
 
@@ -160,7 +149,16 @@ pub fn run(hooks: Hooks) -> ! {
     );
     sup.model = detected.map(|d| d.model);
     sup.recovery = nv_state == NvdataState::Recovery;
+    // Count the boot against a pending trial before anything that touches
+    // more hardware: a driver that stalls the phone while its module loads
+    // (the watchdog then resets it) must still use up the trial's boots,
+    // or the phone would restart into the same image forever.
     sup.begin_trial_accounting();
+    sup.wd.feed();
+    if let Some(d) = detected {
+        modules::load_boot_modules(d.model.family());
+    }
+    sup.wd.feed();
     sup.run()
 }
 
@@ -210,7 +208,6 @@ struct Supervisor {
     model: Option<model::Model>,
     recovery: bool,
     max_uptime: Option<u64>,
-    dev: bool,
     sigfd: RawFd,
     main: Option<MainProc>,
     next_start: u64,
@@ -228,10 +225,6 @@ struct Supervisor {
 
 impl Supervisor {
     fn new(hooks: Hooks, paths: Paths, wd: Watchdog, main_command: Vec<String>, real: bool) -> Self {
-        let dev = real && dev_mode(&paths);
-        if dev {
-            info!("development mode on");
-        }
         Supervisor {
             hooks,
             paths,
@@ -243,7 +236,6 @@ impl Supervisor {
             max_uptime: std::fs::read_to_string("/proc/cmdline")
                 .ok()
                 .and_then(|c| c.split_ascii_whitespace().find_map(|w| w.strip_prefix("dphone.max_uptime=").and_then(|v| v.parse().ok()))),
-            dev,
             sigfd: -1,
             main: None,
             next_start: 0,
@@ -408,7 +400,7 @@ impl Supervisor {
         if proc_.is_override && !clean && ran < OVERRIDE_QUICK_FAIL_SECS {
             self.override_failures += 1;
             if self.override_failures == OVERRIDE_MAX_FAILURES {
-                warn!("{DEV_OVERRIDE} failed {OVERRIDE_MAX_FAILURES} times; using the built-in main role");
+                warn!("{MAIN_OVERRIDE} failed {OVERRIDE_MAX_FAILURES} times; using the built-in main role");
             }
         } else if proc_.is_override {
             self.override_failures = 0;
@@ -486,7 +478,7 @@ impl Supervisor {
             None if now >= self.next_start => self.spawn_main(now),
             None => {}
         }
-        let hold = self.dev || self.paths.run.join("no-reboot").exists();
+        let hold = self.paths.run.join("no-reboot").exists();
         if !hold && now.saturating_sub(self.last_alive) > self.unhealthy_reboot {
             error!("no heartbeat from the main role for {} s; rebooting", self.unhealthy_reboot);
             self.shutdown(Shutdown::Reboot, Some("init: main role not running"));
@@ -494,8 +486,8 @@ impl Supervisor {
     }
 
     fn main_program(&self) -> (Vec<String>, bool) {
-        if self.dev && self.override_failures < OVERRIDE_MAX_FAILURES && is_executable(Path::new(DEV_OVERRIDE)) {
-            return (vec![DEV_OVERRIDE.to_string(), "main".to_string()], true);
+        if self.real && self.override_failures < OVERRIDE_MAX_FAILURES && is_executable(Path::new(MAIN_OVERRIDE)) {
+            return (vec![MAIN_OVERRIDE.to_string(), "main".to_string()], true);
         }
         (self.main_command.clone(), false)
     }

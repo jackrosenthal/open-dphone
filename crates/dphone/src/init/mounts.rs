@@ -24,7 +24,7 @@ const EARLY: &[Mount] = &[
     Mount { source: "sysfs", target: "/sys", fstype: "sysfs", flags: NSE | libc::MS_NODEV, data: "", optional: false },
     Mount { source: "devtmpfs", target: "/dev", fstype: "devtmpfs", flags: libc::MS_NOSUID, data: "mode=0755", optional: false },
     Mount { source: "devpts", target: "/dev/pts", fstype: "devpts", flags: NSE, data: "gid=5,mode=620,ptmxmode=666", optional: false },
-    // /tmp holds pushed development builds, so it is executable and roomy.
+    // /tmp holds pushed builds (`/tmp/dphone`), so it is executable and roomy.
     Mount { source: "tmpfs", target: "/tmp", fstype: "tmpfs", flags: libc::MS_NOSUID | libc::MS_NODEV, data: "mode=1777,size=40m", optional: false },
     Mount { source: "tmpfs", target: "/run", fstype: "tmpfs", flags: NSE | libc::MS_NODEV, data: "mode=0755,size=4m", optional: false },
     Mount { source: "tmpfs", target: "/var", fstype: "tmpfs", flags: NSE | libc::MS_NODEV, data: "mode=0755,size=4m", optional: true },

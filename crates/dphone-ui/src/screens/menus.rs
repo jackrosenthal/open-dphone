@@ -27,9 +27,7 @@ pub(crate) fn main_menu() -> Box<dyn Screen> {
             Item::new(tr::SETTINGS, |_| Nav::Push(settings())).icon("settings"),
             Item::new(tr::STATUS, |_| Nav::Push(status_menu())).icon("info"),
         ];
-        if cx.st.system.dev_mode || cx.cfg.show_diagnostics {
-            v.push(Item::new(tr::DIAGNOSTICS, |_| Nav::Push(diag::menu())).icon("warning"));
-        }
+        v.push(Item::new(tr::DIAGNOSTICS, |_| Nav::Push(diag::menu())).icon("warning"));
         v
     })
 }
