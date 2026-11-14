@@ -10,30 +10,36 @@
 //!
 //! # What has run where
 //!
-//! Everything here has run on a workstation only: unit tests (RFC 3711
-//! vectors, G.711, the filter bank, tones, the jitter buffer) and the
-//! engine end to end against a fake audio device, loopback sockets, and the
-//! DSP adapter on a mock transport.  Nothing has run on a phone.
+//! On a workstation: unit tests (RFC 3711 vectors, G.711, the filter bank,
+//! tones, the jitter buffer) and the engine end to end against a fake audio
+//! device, loopback sockets, and the DSP adapter on a mock transport.  On a
+//! D60: local tones on the handset, headset, and speaker paths with the
+//! cancellers running.  No call has run on a phone.
 //!
 //! # Experiments to run on a phone
 //!
 //! The routing around the canceller and filter-bank jobs is partly read
 //! off traces and partly inferred ([`vpmdsp`] lists which is which).  Each
 //! inferred part has an experiment that settles it, using
-//! `dphone_vpm::diag` from the `dphone` diagnostics subcommands:
+//! `dphone_vpm::diag` from the `dphone` diagnostics subcommands.  Run the
+//! first three with no audio path open, so that the engine sends no jobs
+//! of its own in between:
 //!
-//! 1. **Buffer layout of the filter bank** (`diag::band_round_trip`): split
-//!    and combine a sweep and a 12 kHz tone.  Expect the tone only in the
+//! 1. **Buffer layout of the filter bank** (`dphone dsp bands 2 sweep` and
+//!    `dphone dsp bands 2 tone 12000`; `diag::band_experiment`): split and
+//!    combine a sweep and a 12 kHz tone.  Expect the tone only in the
 //!    third buffer, the combine result's third buffer equal to the input
 //!    delayed, and its second buffer the 16 kHz signal.
-//! 2. **Buffers through the cancellers** (`diag::canceller_frame`): a tone
-//!    in buffer 0 only, then in buffer 1 only, through ingress and egress
-//!    of each canceller.  Expect each buffer to come back in place.  This
-//!    settles whether buffer 1 of the ingress result is what the stream's
-//!    combine is to be given.
-//! 3. **Receive gain registers**: with a constant tone through
-//!    `canceller_frame` (egress), write HEC register 4 and SBAEC register 2
-//!    with -9, -3, and +3 dB (times 256) and measure the result's level.
+//! 2. **Buffers through the cancellers** (`dphone dsp canceller
+//!    hec0|hec1|sbaec ingress|egress BUFFER HZ`;
+//!    `diag::canceller_experiment`): a tone in buffer 0 only, then in
+//!    buffer 1 only, through ingress and egress of each canceller.  Expect
+//!    each buffer to come back in place.  This settles whether buffer 1 of
+//!    the ingress result is what the stream's combine is to be given.
+//! 3. **Receive gain registers**: with a constant tone through the same
+//!    command (egress), write HEC register 4 and SBAEC register 2 with
+//!    -9, -3, and +3 dB (times 256) using `dphone dsp job`, and measure
+//!    the result's level.
 //!    Then the same with SBAEC register 0 set to 0, 1, and a gain value, to
 //!    learn what that register does.
 //! 4. **Job order within a tick** (new family): in a speakerphone call,

@@ -240,6 +240,10 @@ pub enum Event {
     /// The DSP start-up configuration was sent; `summary` says how it went.
     DspStartup { summary: String },
     AudioError { kind: io::ErrorKind },
+    /// The audio thread asked for `SCHED_FIFO` at `priority` and the kernel
+    /// refused with this error number; the thread runs on at its ordinary
+    /// priority.
+    RealtimeRefused { priority: i32, errno: i32 },
     /// A non-repeating tone finished.
     ToneEnded,
 }
@@ -1176,15 +1180,18 @@ impl std::fmt::Display for SendError {
 
 impl std::error::Error for SendError {}
 
-fn set_realtime(priority: i32) {
+/// Asks for `SCHED_FIFO` at `priority` for the calling thread.  On a refusal
+/// (`EPERM` without the privilege) the thread stays as it was and the error
+/// number is returned.
+fn set_realtime(priority: i32) -> Result<(), i32> {
     // SAFETY: sets the calling thread's scheduling policy; the parameter
     // structure is initialized.
-    unsafe {
+    let rc = unsafe {
         let mut param: libc::sched_param = std::mem::zeroed();
         param.sched_priority = priority;
-        // Without the privilege this fails and the thread stays as it was.
-        libc::pthread_setschedparam(libc::pthread_self(), libc::SCHED_FIFO, &param);
-    }
+        libc::pthread_setschedparam(libc::pthread_self(), libc::SCHED_FIFO, &param)
+    };
+    if rc == 0 { Ok(()) } else { Err(rc) }
 }
 
 impl Engine {
@@ -1200,8 +1207,11 @@ impl Engine {
         let meters = Arc::new(Meters::default());
         let core_meters = meters.clone();
         let thread = std::thread::Builder::new().name("audio".into()).spawn(move || {
-            if let Some(p) = opts.rt_priority {
-                set_realtime(p);
+            let mut events = events;
+            if let Some(priority) = opts.rt_priority
+                && let Err(errno) = set_realtime(priority)
+            {
+                events(Event::RealtimeRefused { priority, errno });
             }
             let mut core = EngineCore::new(audio, dsp, Box::new(events));
             core.meters = core_meters;

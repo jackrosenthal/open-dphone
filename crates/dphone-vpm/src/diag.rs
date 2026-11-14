@@ -284,6 +284,276 @@ pub fn band_round_trip<T: Transport>(vpm: &mut Vpm<T>, stream: usize, pcm: &[i16
     Ok((words(&bands), words(&out[..n])))
 }
 
+/// A test signal for the routing experiments.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Signal {
+    /// A sine of this frequency in hertz.
+    Tone(u32),
+    /// A sweep from 100 Hz to just under half the sampling rate, once over
+    /// the whole run.
+    Sweep,
+}
+
+/// Peak of the test signals, of 32767.
+pub const SIGNAL_PEAK: i16 = 8000;
+/// Frames at the start of an experiment that the level figures leave out,
+/// for the filters to settle.
+pub const SETTLE_FRAMES: usize = 2;
+/// Sampling rates of the three band buffers of a 10 ms frame (80, 160, and
+/// 320 samples).
+pub const BUFFER_RATES: [u32; 3] = [8000, 16000, 32000];
+
+fn signal(sig: Signal, rate: u32, samples: usize) -> Vec<i16> {
+    let mut phase = 0.0f64;
+    (0..samples)
+        .map(|i| {
+            let hz = match sig {
+                Signal::Tone(hz) => f64::from(hz),
+                Signal::Sweep => 100.0 + (f64::from(rate) * 0.47 - 100.0) * i as f64 / samples as f64,
+            };
+            phase += std::f64::consts::TAU * hz / f64::from(rate);
+            (f64::from(SIGNAL_PEAK) * phase.sin()) as i16
+        })
+        .collect()
+}
+
+/// Level figures of one buffer over a run of frames.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Level {
+    sum_sq: u64,
+    samples: u64,
+    peak: u16,
+    crossings: u64,
+    last: i16,
+}
+
+impl Level {
+    fn add(&mut self, samples: &[i16]) {
+        for &s in samples {
+            self.sum_sq += u64::from(s.unsigned_abs()) * u64::from(s.unsigned_abs());
+            self.peak = self.peak.max(s.unsigned_abs());
+            if (s >= 0) != (self.last >= 0) {
+                self.crossings += 1;
+            }
+            self.last = s;
+        }
+        self.samples += samples.len() as u64;
+    }
+
+    /// Root mean square, of 32767.
+    pub fn rms(&self) -> u32 {
+        self.sum_sq.checked_div(self.samples).map_or(0, |mean| mean.isqrt() as u32)
+    }
+
+    pub fn peak(&self) -> u16 {
+        self.peak
+    }
+
+    /// The frequency of a single tone with this many zero crossings, for a
+    /// buffer sampled at `rate`.  Meaningless for silence and noise.
+    pub fn crossing_hz(&self, rate: u32) -> u32 {
+        (self.crossings * u64::from(rate)).checked_div(2 * self.samples).unwrap_or(0) as u32
+    }
+
+    fn describe(&self, rate: u32) -> String {
+        format!("rms {:5} peak {:5}, {:5} Hz by zero crossings", self.rms(), self.peak(), self.crossing_hz(rate))
+    }
+}
+
+fn words(bytes: &[u8]) -> Vec<i16> {
+    bytes.as_chunks::<2>().0.iter().map(|c| i16::from_le_bytes(*c)).collect()
+}
+
+/// The three band buffers of a frame of 16-bit words: 80, 160, and (when
+/// the frame has it) 320 samples.
+fn buffers(frame: &[i16]) -> Vec<&[i16]> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    for len in [80, 160, 320] {
+        if at + len <= frame.len() {
+            out.push(&frame[at..at + len]);
+            at += len;
+        }
+    }
+    out
+}
+
+/// What [`band_experiment`] measured.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BandReport {
+    pub stream: usize,
+    pub signal: Signal,
+    pub frames: usize,
+    /// Levels of the three buffers the split job returned.
+    pub split: [Level; 3],
+    /// Levels of the buffers the combine job returned (three when it
+    /// returns a whole frame).
+    pub combined: Vec<Level>,
+    /// The delay in samples (0 to 640) at which the combine result's third
+    /// buffer matches the input best, and the normalized correlation there
+    /// in percent.  A tone matches at every multiple of its period, so
+    /// only the sweep gives a delay that means something.
+    pub delay: Option<(usize, i32)>,
+}
+
+impl std::fmt::Display for BandReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let what = match self.signal {
+            Signal::Tone(hz) => format!("a {hz} Hz tone"),
+            Signal::Sweep => "a sweep from 100 Hz to 15 kHz".to_string(),
+        };
+        writeln!(
+            f,
+            "filter bank of stream {}: {} frames (10 ms each) of {what} at 32 kHz, peak {SIGNAL_PEAK}, split and combined again",
+            self.stream, self.frames
+        )?;
+        writeln!(f, "levels are of 32767, over frames {} to {}", SETTLE_FRAMES + 1, self.frames)?;
+        for (i, l) in self.split.iter().enumerate() {
+            writeln!(f, "  split result, buffer {i} ({:2} kHz):   {}", BUFFER_RATES[i] / 1000, l.describe(BUFFER_RATES[i]))?;
+        }
+        for (i, l) in self.combined.iter().enumerate() {
+            writeln!(f, "  combine result, buffer {i} ({:2} kHz): {}", BUFFER_RATES[i] / 1000, l.describe(BUFFER_RATES[i]))?;
+        }
+        match self.delay {
+            Some((d, c)) => writeln!(f, "  combine result, buffer 2 against the input: best match at a delay of {d} samples, correlation {c} %"),
+            None => writeln!(f, "  the combine job returned no third buffer to compare with the input"),
+        }
+    }
+}
+
+/// Routing experiment 1 (see `dphone-media`): send `frames` frames of a
+/// test signal through [`band_round_trip`] and measure every buffer that
+/// comes back.  New family only.
+pub fn band_experiment<T: Transport>(vpm: &mut Vpm<T>, stream: usize, sig: Signal, frames: usize) -> Result<BandReport> {
+    let input = signal(sig, BUFFER_RATES[2], frames * 320);
+    let mut report = BandReport { stream, signal: sig, frames, split: [Level::default(); 3], combined: Vec::new(), delay: None };
+    let mut full = Vec::with_capacity(input.len());
+    for (n, chunk) in input.as_chunks::<320>().0.iter().enumerate() {
+        let (bands, out) = band_round_trip(vpm, stream, chunk)?;
+        let out_bufs = buffers(&out);
+        if let Some(third) = out_bufs.get(2) {
+            full.extend_from_slice(third);
+        }
+        if n < SETTLE_FRAMES {
+            continue;
+        }
+        for (level, buf) in report.split.iter_mut().zip(buffers(&bands)) {
+            level.add(buf);
+        }
+        report.combined.resize(out_bufs.len(), Level::default());
+        for (level, buf) in report.combined.iter_mut().zip(out_bufs) {
+            level.add(buf);
+        }
+    }
+    if full.len() == input.len() && input.len() > 2 * 640 {
+        report.delay = best_delay(&input, &full, 640);
+    }
+    Ok(report)
+}
+
+/// The delay of `out` against `input` (0 to `max` samples) with the largest
+/// normalized correlation, and that correlation in percent.
+fn best_delay(input: &[i16], out: &[i16], max: usize) -> Option<(usize, i32)> {
+    let n = input.len().checked_sub(max)?;
+    let energy = |s: &[i16]| s.iter().map(|&v| f64::from(v) * f64::from(v)).sum::<f64>();
+    let e_in = energy(&input[..n]);
+    let mut best: Option<(usize, f64)> = None;
+    for d in 0..=max {
+        let o = &out[d..d + n];
+        let e_out = energy(o);
+        if e_in == 0.0 || e_out == 0.0 {
+            continue;
+        }
+        let dot: f64 = input[..n].iter().zip(o).map(|(&a, &b)| f64::from(a) * f64::from(b)).sum();
+        let c = dot / (e_in * e_out).sqrt();
+        if best.is_none_or(|(_, b)| c > b) {
+            best = Some((d, c));
+        }
+    }
+    best.map(|(d, c)| (d, (c * 100.0).round() as i32))
+}
+
+/// What [`canceller_experiment`] measured.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CancellerReport {
+    pub which: Canceller,
+    pub ingress: bool,
+    /// The buffer that carried the tone; the others were sent silent.
+    pub buffer: usize,
+    pub hz: u32,
+    pub frames: usize,
+    /// Per buffer of the frame: what was sent and what came back.
+    pub levels: Vec<(Level, Level)>,
+}
+
+impl std::fmt::Display for CancellerReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let which = match self.which {
+            Canceller::Hec(i) => format!("handset-type canceller {i}"),
+            Canceller::Sbaec => "speakerphone canceller".to_string(),
+        };
+        writeln!(
+            f,
+            "{which}, {} jobs: {} frames (10 ms each) with a {} Hz tone, peak {SIGNAL_PEAK}, in buffer {} only",
+            if self.ingress { "ingress (microphone side)" } else { "egress (receive side)" },
+            self.frames,
+            self.hz,
+            self.buffer
+        )?;
+        writeln!(f, "levels are of 32767, over frames {} to {}", SETTLE_FRAMES + 1, self.frames)?;
+        for (i, (sent, back)) in self.levels.iter().enumerate() {
+            writeln!(f, "  buffer {i} ({:2} kHz): sent     {}", BUFFER_RATES[i] / 1000, sent.describe(BUFFER_RATES[i]))?;
+            writeln!(f, "                    returned {}", back.describe(BUFFER_RATES[i]))?;
+        }
+        Ok(())
+    }
+}
+
+/// Routing experiments 2 and 3 (see `dphone-media`): send `frames` frames
+/// through [`canceller_frame`] with a tone in one band buffer and silence
+/// in the others, and measure every buffer that comes back.  The canceller
+/// is used as it stands: its registers (gain, options, the speakerphone
+/// canceller's whole-frame flags) are whatever was set before.
+pub fn canceller_experiment<T: Transport>(
+    vpm: &mut Vpm<T>,
+    which: Canceller,
+    ingress: bool,
+    buffer: usize,
+    hz: u32,
+    frames: usize,
+) -> std::result::Result<CancellerReport, String> {
+    let bytes = match which {
+        Canceller::Hec(_) => vpm.hec_frame_bytes(),
+        Canceller::Sbaec => sbaec::FRAME,
+    };
+    let lens: Vec<usize> = buffers(&vec![0i16; bytes / 2]).iter().map(|b| b.len()).collect();
+    let Some(&len) = lens.get(buffer) else {
+        return Err(format!("this canceller's frame has buffers 0 to {}", lens.len() - 1));
+    };
+    let rate = BUFFER_RATES[buffer];
+    if hz == 0 || hz >= rate / 2 {
+        return Err(format!("buffer {buffer} is sampled at {rate} Hz; the tone must be below {} Hz", rate / 2));
+    }
+    let start: usize = lens[..buffer].iter().sum();
+    let tone = signal(Signal::Tone(hz), rate, frames * len);
+    let mut report = CancellerReport { which, ingress, buffer, hz, frames, levels: vec![(Level::default(), Level::default()); lens.len()] };
+    for (n, chunk) in tone.chunks_exact(len).enumerate() {
+        let mut sent = vec![0i16; bytes / 2];
+        sent[start..start + len].copy_from_slice(chunk);
+        let mut frame: Vec<u8> = sent.iter().flat_map(|s| s.to_le_bytes()).collect();
+        canceller_frame(vpm, which, ingress, &mut frame).map_err(|e| format!("frame {}: {e}", n + 1))?;
+        if n < SETTLE_FRAMES {
+            continue;
+        }
+        let back = words(&frame);
+        for ((s, b), (sent_buf, back_buf)) in report.levels.iter_mut().zip(buffers(&sent).into_iter().zip(buffers(&back))) {
+            s.add(sent_buf);
+            b.add(back_buf);
+        }
+    }
+    Ok(report)
+}
+
 /// One job with a free choice of header fields, reporting what came back:
 /// the two result values and the result body's length.  For working out a
 /// client's behavior on a phone.
@@ -336,6 +606,70 @@ mod tests {
             assert_eq!(query_codec_list(&mut vpm).unwrap().len(), if family == Family::New { 76 } else { 60 });
             assert_eq!(query_codec(&mut vpm, 4).unwrap().len(), 268);
         }
+    }
+
+    #[test]
+    fn test_signals() {
+        let tone = signal(Signal::Tone(1000), 16000, 1600);
+        let mut l = Level::default();
+        l.add(&tone);
+        // A sine's RMS is its peak over the square root of two.
+        assert!((5600..=5700).contains(&l.rms()), "{}", l.rms());
+        assert!((7990..=8000).contains(&l.peak()));
+        assert!((990..=1010).contains(&l.crossing_hz(16000)), "{}", l.crossing_hz(16000));
+        assert_eq!(Level::default().rms(), 0);
+        // A sweep delayed by 37 samples is found at that delay.
+        let sweep = signal(Signal::Sweep, 32000, 6400);
+        let mut delayed = vec![0i16; 37];
+        delayed.extend_from_slice(&sweep[..6400 - 37]);
+        assert_eq!(best_delay(&sweep, &delayed, 640), Some((37, 100)));
+        assert_eq!(best_delay(&sweep, &vec![0; 6400], 640), None);
+    }
+
+    #[test]
+    fn canceller_experiment_levels() {
+        // The mock returns handset-type frames as sent.
+        for (family, bufs) in [(Family::New, 3), (Family::Old, 2)] {
+            let mut vpm = Vpm::new(MockTransport::new(family)).unwrap();
+            let r = canceller_experiment(&mut vpm, Canceller::Hec(0), true, 1, 1000, 20).unwrap();
+            assert_eq!(r.levels.len(), bufs);
+            let (sent, back) = r.levels[1];
+            assert_eq!(sent, back);
+            assert!((5600..=5700).contains(&back.rms()) && (990..=1010).contains(&back.crossing_hz(16000)));
+            assert_eq!((r.levels[0].0.rms(), r.levels[0].1.rms()), (0, 0));
+            let jobs = std::mem::take(&mut vpm.transport().jobs);
+            assert_eq!(jobs.len(), 20);
+            assert!(jobs.iter().all(|j| (j.client, j.opcode, j.body.len()) == (4, 2, if bufs == 3 { 1120 } else { 480 })));
+            let text = r.to_string();
+            assert!(text.contains("buffer 1 only") && text.contains("returned rms"), "{text}");
+            // The speakerphone canceller has two buffers on both families.
+            // It returns whole frames once the start-up sequence has set
+            // its flag registers; before that the job comes back short.
+            let e = canceller_experiment(&mut vpm, Canceller::Sbaec, false, 0, 500, 5).unwrap_err();
+            assert!(e.contains("short DSP result"), "{e}");
+            startup::run_startup(&mut vpm, &StartupOptions::default(), |_, _| {}).unwrap();
+            let r = canceller_experiment(&mut vpm, Canceller::Sbaec, false, 0, 500, 5).unwrap();
+            assert_eq!(r.levels.len(), 2);
+            assert!(canceller_experiment(&mut vpm, Canceller::Sbaec, false, 2, 500, 5).is_err());
+            assert!(canceller_experiment(&mut vpm, Canceller::Hec(0), true, 0, 4000, 5).is_err());
+        }
+    }
+
+    #[test]
+    fn band_experiment_runs() {
+        let mut vpm = Vpm::new(MockTransport::new(Family::New)).unwrap();
+        let r = band_experiment(&mut vpm, 2, Signal::Sweep, 10).unwrap();
+        // Split (operation 1) and combine (operation 4) on stream 2's
+        // filter bank, once per frame.
+        let jobs = &vpm.transport().jobs;
+        assert_eq!(jobs.len(), 20);
+        assert_eq!((jobs[0].client, jobs[0].channel, jobs[0].opcode, jobs[0].body.len()), (8, 10, 1, 640));
+        assert_eq!((jobs[1].client, jobs[1].channel, jobs[1].opcode, jobs[1].body.len()), (8, 11, 4, 1120));
+        assert_eq!(r.combined.len(), 3);
+        assert!(r.to_string().contains("combine result, buffer 2"));
+        // The old family's DSP has no filter bank.
+        let mut vpm = Vpm::new(MockTransport::new(Family::Old)).unwrap();
+        assert_eq!(band_experiment(&mut vpm, 2, Signal::Tone(12000), 10), Err(Error::NotOnThisFamily));
     }
 
     #[test]

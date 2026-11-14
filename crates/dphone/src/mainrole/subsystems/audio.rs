@@ -845,6 +845,10 @@ async fn events(service: AudioService, mut rx: tokio::sync::mpsc::UnboundedRecei
                 }
             }
             Ee::AudioError { kind } => warn!("audio: sound card: {kind:?}"),
+            Ee::RealtimeRefused { priority, errno } => warn!(
+                "audio: SCHED_FIFO priority {priority} was refused ({}); the audio thread runs at ordinary priority",
+                std::io::Error::from_raw_os_error(errno)
+            ),
             Ee::DspStartup { summary } => info!("audio: DSP: {summary}"),
             Ee::ToneEnded => {
                 service.inner.lock().unwrap().tone = None;
@@ -998,7 +1002,7 @@ fn register_diag(ctx: &Context, service: AudioService) {
     );
 
     let sim = ctx.sim;
-    ctx.diag.register("dsp", "dsp [status] | selftest | restart | job CLIENT CHANNEL INSTANCE OP ARG1 ARG2 BODY-BYTES [FILL-WORD]", move |args: Vec<String>, out: Output| {
+    ctx.diag.register("dsp", "dsp [status] | selftest | restart | job CLIENT CHANNEL INSTANCE OP ARG1 ARG2 BODY-BYTES [FILL-WORD] | bands STREAM tone HZ|sweep [FRAMES] | canceller hec0|hec1|sbaec ingress|egress BUFFER HZ [FRAMES]", move |args: Vec<String>, out: Output| {
         let service = service.clone();
         async move {
             let args: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -1068,6 +1072,75 @@ fn register_diag(ctx: &Context, service: AudioService) {
                         }
                     }
                 }
+                // The routing experiments of `dphone-media`: a test signal
+                // through the filter bank, or through one canceller with
+                // the signal in one band buffer.
+                ["bands", stream, rest @ ..] | ["canceller", stream, rest @ ..] => {
+                    use dphone_vpm::diag::{Canceller, Signal};
+                    enum Run {
+                        Bands(usize, Signal),
+                        Canceller(Canceller, bool, usize, u32),
+                    }
+                    let frames = |arg: Option<&&str>| match arg {
+                        None => Some(50),
+                        Some(a) => a.parse::<usize>().ok().filter(|n| (5..=1000).contains(n)),
+                    };
+                    let parsed = match (args[0], rest) {
+                        ("bands", ["sweep", n @ ..]) if n.len() <= 1 => {
+                            stream.parse().ok().filter(|s| *s < 4).zip(frames(n.first())).map(|(s, n)| (Run::Bands(s, Signal::Sweep), n))
+                        }
+                        ("bands", ["tone", hz, n @ ..]) if n.len() <= 1 => match (stream.parse(), hz.parse::<u32>(), frames(n.first())) {
+                            (Ok(s), Ok(hz), Some(n)) if s < 4 && (1..16000).contains(&hz) => Some((Run::Bands(s, Signal::Tone(hz)), n)),
+                            _ => None,
+                        },
+                        ("canceller", [dir @ ("ingress" | "egress"), buffer, hz, n @ ..]) if n.len() <= 1 => {
+                            let which = match *stream {
+                                "hec0" => Some(Canceller::Hec(0)),
+                                "hec1" => Some(Canceller::Hec(1)),
+                                "sbaec" => Some(Canceller::Sbaec),
+                                _ => None,
+                            };
+                            match (which, buffer.parse(), hz.parse(), frames(n.first())) {
+                                (Some(w), Ok(b), Ok(hz), Some(n)) => Some((Run::Canceller(w, *dir == "ingress", b, hz), n)),
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    };
+                    let Some((run, frames)) = parsed else {
+                        out.err("usage: dphone dsp bands STREAM tone HZ|sweep [FRAMES]\n       dphone dsp canceller hec0|hec1|sbaec ingress|egress BUFFER HZ [FRAMES]\n(STREAM 0 to 3; BUFFER 0, 1, or 2; FRAMES 5 to 1000, 50 if not given)\n").await;
+                        return 2;
+                    };
+                    // Like `dsp job`, this sends jobs on a handle of its own.
+                    let path = service.store.get::<Audio>().path;
+                    if path != AudioPath::None {
+                        out.out(&format!("note: the audio path is open ({path:?}); the engine's own jobs run between these\n")).await;
+                    }
+                    let r = contained("dsp-experiment", Duration::from_secs(60), move || {
+                        let dev = dphone_vpm::Device::open_default().map_err(|e| e.to_string())?;
+                        let mut vpm = dphone_vpm::Vpm::new(dev).map_err(|e| e.to_string())?;
+                        match run {
+                            Run::Bands(stream, signal) => dphone_vpm::diag::band_experiment(&mut vpm, stream, signal, frames)
+                                .map(|r| r.to_string())
+                                .map_err(|e| e.to_string()),
+                            Run::Canceller(which, ingress, buffer, hz) => {
+                                dphone_vpm::diag::canceller_experiment(&mut vpm, which, ingress, buffer, hz, frames).map(|r| r.to_string())
+                            }
+                        }
+                    })
+                    .await
+                    .and_then(|r| r);
+                    match r {
+                        Ok(text) => {
+                            out.out(&text).await;
+                            0
+                        }
+                        Err(e) => {
+                            out.err(&format!("dphone dsp: {e}\n")).await;
+                            1
+                        }
+                    }
+                }
                 ["restart"] => {
                     // The engine must not reach the DSP between its reload
                     // and the start-up sequence; give the audio thread a
@@ -1092,7 +1165,7 @@ fn register_diag(ctx: &Context, service: AudioService) {
                     }
                 }
                 _ => {
-                    out.err("usage: dphone dsp [status] | selftest | restart | job CLIENT CHANNEL INSTANCE OP ARG1 ARG2 BODY-BYTES [FILL-WORD]\n").await;
+                    out.err("usage: dphone dsp [status] | selftest | restart | job CLIENT CHANNEL INSTANCE OP ARG1 ARG2 BODY-BYTES [FILL-WORD] | bands STREAM tone HZ|sweep [FRAMES] | canceller hec0|hec1|sbaec ingress|egress BUFFER HZ [FRAMES]\n").await;
                     2
                 }
             }
