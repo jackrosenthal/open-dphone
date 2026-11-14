@@ -198,6 +198,9 @@ pub struct NetConfig {
     /// On the new family stock forces this off when `expansion_enable=1`;
     /// the integrator applies that rule.
     pub pc_vlan_id: Option<u16>,
+    /// `pc_qos`: the 802.1p priority (0 to 7) of untagged frames from the
+    /// PC jack while `pc_vlan_id` is in force.  Stock default 1.
+    pub pc_qos: u8,
     /// `8021x_passthrough`: forward EAPOL between the PC and LAN jacks.
     pub eapol_passthrough: bool,
     /// With pass-through and a bridged PC jack: when the PC jack loses
@@ -243,6 +246,7 @@ impl NetConfig {
             pc_port_mode: PortMode::Auto,
             pc_port: PcPort::Bridged,
             pc_vlan_id: None,
+            pc_qos: 1,
             eapol_passthrough: false,
             eapol_logoff: false,
             vlan: VlanDiscovery::None,

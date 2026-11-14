@@ -79,7 +79,7 @@ The kernel passes what it does not recognize to init: `bootmemheap` arrives as `
 | MTD | Device `bcm_umi-nand`; partitions from `mtdparts=`: `boot1`, `boot2`, `ctrl`, `nvdata`, `k0`, `k1`, `root0`, `root1`, `userdata` (find them by name in `/proc/mtd`).  2 KiB pages, 128 KiB blocks, 2 OOB bytes available (JFFS2 cleanmarker). |
 | Root | JFFS2 (zlib and rtime compressors only), read-only, `devtmpfs` mounted on `/dev` by the kernel. |
 | Console | `ttyAMA0` (UART A); `ttyAMA1` is UART B. |
-| Network | `eth0` is the DSA conduit (do not put addresses on it); `lan` and `pc` are the two jacks.  Bridge and 802.1Q VLAN (with bridge VLAN filtering) are built in.  All three start with a random MAC address. |
+| Network | `eth0` is the DSA conduit (do not put addresses on it); `lan` and `pc` are the two jacks.  Bridge and 802.1Q VLAN (with bridge VLAN filtering) are built in.  All three start with a random MAC address.  The 802.1p priority given to untagged frames received on `lan` or `pc` is the DCB default priority of the port (`dcb app replace dev pc default-prio 3`); it lands in bits 15:13 of the port default tag (switch page 0x34, register 0x10 + 2 × port), beside the port VLAN ID. |
 | Keys | evdev device named `bcmring-keypad` (matrix) and a `gpio-keys` device with the hook switch (`KEY_PHONE`, down while the handset is on the cradle).  Codes are the `DIGIUM_KEYS_PROPOSED` set in `files/arch/arm/boot/dts/broadcom/digium-keys.h`.  Find the devices by capability; the event numbers are not fixed. |
 | Lamps | LED class devices under `/sys/class/leds/` (e.g., `msg-green`, `line0-red`), on/off only. |
 | Backlight | `/sys/class/backlight/*`; maximum 32 (color) or 31 (gray). |

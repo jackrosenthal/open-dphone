@@ -178,6 +178,7 @@ fn configured(ctx: &Context, config: Option<&SharedConfig>, mac: Option<MacAddr>
     cfg.pc_port_mode = PortMode::parse(&n.pc_port_mode);
     cfg.pc_port = if bridged { PcPort::Bridged } else { PcPort::Disabled };
     cfg.pc_vlan_id = n.pc_vlan_id.filter(|v| (1..=4094).contains(v));
+    cfg.pc_qos = n.pc_qos.min(7);
     // Stock, new family only: an expansion module takes the PC VLAN away.
     if ctx.model.family() == crate::model::Family::New && merged.setting_bool("expansion_enable", false) {
         cfg.pc_vlan_id = None;

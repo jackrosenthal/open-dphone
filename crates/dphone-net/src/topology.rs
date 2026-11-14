@@ -46,6 +46,10 @@ pub struct Plan {
     pub remove: Vec<(String, u16)>,
     /// The voice VLAN device to create on `base_if`, if any.
     pub voice_vid: Option<u16>,
+    /// 802.1p priority the switch gives untagged frames from the PC jack:
+    /// `pc_qos` with a PC VLAN, 0 otherwise (stock sets it only together
+    /// with the PC VLAN, on a switch it has just reset).
+    pub pc_prio: u8,
 }
 
 fn valid_vid(v: u16) -> bool {
@@ -71,6 +75,7 @@ pub fn plan(cfg: &NetConfig, has_pc: bool, bridge_ok: bool, voice_vid: Option<u1
             add: Vec::new(),
             remove: Vec::new(),
             voice_vid,
+            pc_prio: 0,
         };
     }
     let pc = names.pc.clone().expect("has_pc implies a PC port name");
@@ -93,6 +98,7 @@ pub fn plan(cfg: &NetConfig, has_pc: bool, bridge_ok: bool, voice_vid: Option<u1
             add: Vec::new(),
             remove: Vec::new(),
             voice_vid: None,
+            pc_prio: 0,
         };
     }
 
@@ -163,6 +169,7 @@ pub fn plan(cfg: &NetConfig, has_pc: bool, bridge_ok: bool, voice_vid: Option<u1
         add,
         remove,
         voice_vid,
+        pc_prio: if pc_vlan.is_some() { cfg.pc_qos.min(7) } else { 0 },
     }
 }
 
@@ -233,6 +240,16 @@ pub async fn apply(
         for e in &plan.add {
             let i = index(nl, &e.ifname).await?;
             nl.bridge_vlan_add(i, e.vid, e.flags, e.on_bridge).await?;
+        }
+        if let (Some(_), Some(name)) = (pc, &names.pc) {
+            // Not every kernel or port can do this (no DCB support, or a
+            // port that is not on the switch); the VLAN arrangement stands
+            // without it.
+            match nl.set_default_prio(name, plan.pc_prio).await {
+                Ok(()) => log::debug!("net: {name}: default priority {}", plan.pc_prio),
+                Err(e) if plan.pc_prio == 0 => log::debug!("net: {name}: default priority 0: {e}"),
+                Err(e) => log::warn!("net: {name}: cannot set default priority {} (pc_qos): {e}", plan.pc_prio),
+            }
         }
         nl.set_up(br, true).await?;
     }
@@ -346,6 +363,16 @@ mod tests {
         c.pc_vlan_id = Some(20);
         c.eapol_passthrough = true;
         let p = plan(&c, true, true, Some(100));
+        // pc_qos (stock default 1) applies with the PC VLAN and only then.
+        assert_eq!(p.pc_prio, 1);
+        c.pc_qos = 5;
+        assert_eq!(plan(&c, true, true, Some(100)).pc_prio, 5);
+        c.pc_qos = 9;
+        assert_eq!(plan(&c, true, true, Some(100)).pc_prio, 7);
+        c.pc_vlan_id = None;
+        assert_eq!(plan(&c, true, true, Some(100)).pc_prio, 0);
+        assert_eq!(plan(&c, true, true, None).pc_prio, 0);
+        c.pc_vlan_id = Some(20);
         assert_eq!(p.bridge.unwrap().group_fwd_mask, GROUP_FWD_EAPOL);
         assert_eq!(p.remove, vec![("pc".to_string(), 1)]);
         assert!(p.add.contains(&VlanEntry {

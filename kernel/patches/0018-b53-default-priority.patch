@@ -1,0 +1,114 @@
+--- a/drivers/net/dsa/b53/b53_common.c
++++ b/drivers/net/dsa/b53/b53_common.c
+@@ -870,6 +870,18 @@
+ 	b53_write8(dev, B53_MGMT_PAGE, B53_GLOBAL_CONFIG, gc);
+ }
+ 
++/*
++ * The port default tag holds the VLAN ID given to untagged frames received
++ * on the port in bits 11:0 and their 802.1p priority in bits 15:13.
++ */
++#define B53_DEF_TAG_PRIO_SHIFT	13
++
++static void b53_write_def_tag(struct b53_device *dev, int port, u16 vid)
++{
++	b53_write16(dev, B53_VLAN_PAGE, B53_VLAN_PORT_DEF_TAG(port),
++		    vid | dev->ports[port].def_prio << B53_DEF_TAG_PRIO_SHIFT);
++}
++
+ static u16 b53_default_pvid(struct b53_device *dev)
+ {
+ 	return 0;
+@@ -932,8 +944,7 @@
+ 		vl.members |= BIT(i);
+ 		if (!b53_vlan_port_needs_forced_tagged(ds, i))
+ 			vl.untag = vl.members;
+-		b53_write16(dev, B53_VLAN_PAGE, B53_VLAN_PORT_DEF_TAG(i),
+-			    def_vid);
++		b53_write_def_tag(dev, i, def_vid);
+ 	}
+ 	b53_set_vlan_entry(dev, def_vid, &vl);
+ 
+@@ -953,9 +964,7 @@
+ 
+ 		b53_for_each_port(dev, i) {
+ 			if (!dsa_is_cpu_port(ds, i))
+-				b53_write16(dev, B53_VLAN_PAGE,
+-					    B53_VLAN_PORT_DEF_TAG(i),
+-					    dev->ports[i].pvid);
++				b53_write_def_tag(dev, i, dev->ports[i].pvid);
+ 		}
+ 	}
+ 
+@@ -1758,8 +1767,7 @@
+ 	b53_fast_age_vlan(dev, vlan->vid);
+ 
+ 	if (!dsa_is_cpu_port(ds, port) && new_pvid != old_pvid) {
+-		b53_write16(dev, B53_VLAN_PAGE, B53_VLAN_PORT_DEF_TAG(port),
+-			    new_pvid);
++		b53_write_def_tag(dev, port, new_pvid);
+ 		b53_fast_age_vlan(dev, old_pvid);
+ 	}
+ 
+@@ -1797,7 +1805,7 @@
+ 	b53_set_vlan_entry(dev, vlan->vid, vl);
+ 	b53_fast_age_vlan(dev, vlan->vid);
+ 
+-	b53_write16(dev, B53_VLAN_PAGE, B53_VLAN_PORT_DEF_TAG(port), pvid);
++	b53_write_def_tag(dev, port, pvid);
+ 	b53_fast_age_vlan(dev, pvid);
+ 
+ 	return 0;
+@@ -2698,6 +2706,33 @@
+ 	.mac_link_up	= b53_phylink_mac_link_up,
+ };
+ 
++/*
++ * Default 802.1p priority of untagged frames received on a port (DCB:
++ * "dcb app add dev <port> default-prio <n>").  The register also holds the
++ * port's VLAN ID, which stays as it is.
++ */
++static int b53_port_get_default_prio(struct dsa_switch *ds, int port)
++{
++	struct b53_device *dev = ds->priv;
++
++	return dev->ports[port].def_prio;
++}
++
++static int b53_port_set_default_prio(struct dsa_switch *ds, int port, u8 prio)
++{
++	struct b53_device *dev = ds->priv;
++	u16 tag;
++
++	if (prio > 7)
++		return -EINVAL;
++
++	dev->ports[port].def_prio = prio;
++	b53_read16(dev, B53_VLAN_PAGE, B53_VLAN_PORT_DEF_TAG(port), &tag);
++	b53_write_def_tag(dev, port, tag & VLAN_VID_MASK);
++
++	return 0;
++}
++
+ static const struct dsa_switch_ops b53_switch_ops = {
+ 	.get_tag_protocol	= b53_get_tag_protocol,
+ 	.setup			= b53_setup,
+@@ -2733,6 +2768,8 @@
+ 	.port_mdb_del		= b53_mdb_del,
+ 	.port_max_mtu		= b53_get_max_mtu,
+ 	.port_change_mtu	= b53_change_mtu,
++	.port_get_default_prio	= b53_port_get_default_prio,
++	.port_set_default_prio	= b53_port_set_default_prio,
+ };
+ 
+ static const struct b53_arl_ops b53_arl_ops_25 = {
+--- a/drivers/net/dsa/b53/b53_priv.h
++++ b/drivers/net/dsa/b53/b53_priv.h
+@@ -121,6 +121,7 @@
+ struct b53_port {
+ 	u16		vlan_ctl_mask;
+ 	u16		pvid;
++	u8		def_prio;
+ 	struct ethtool_keee eee;
+ };
+ 

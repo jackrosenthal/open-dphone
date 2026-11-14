@@ -105,6 +105,18 @@ const RTMGRP_IPV6_IFADDR: u32 = 0x100;
 /// `RTNLGRP_ND_USEROPT` (group 20) as a legacy bitmask.
 const RTMGRP_ND_USEROPT: u32 = 1 << 19;
 const RTM_NEWNDUSEROPT: u16 = 68;
+const RTM_SETDCB: u16 = 79;
+
+// Data Center Bridging (linux/dcbnl.h): the application priority table.
+const DCB_CMD_IEEE_SET: u8 = 20;
+const DCB_CMD_IEEE_DEL: u8 = 27;
+const DCB_ATTR_IFNAME: u16 = 1;
+const DCB_ATTR_IEEE: u16 = 13;
+const DCB_ATTR_IEEE_APP_TABLE: u16 = 3;
+const DCB_ATTR_IEEE_APP: u16 = 1;
+/// Selector "EtherType"; with protocol 0 the entry is the port's default
+/// priority.
+const IEEE_8021QAZ_APP_SEL_ETHERTYPE: u8 = 1;
 const ND_OPT_RDNSS: u8 = 25;
 
 /// `IF_OPER_*` values from RFC 2863 as the kernel reports them.
@@ -819,6 +831,36 @@ impl Netlink {
         self.ack(m).await
     }
 
+    /// One change to an interface's DCB application table: add or delete
+    /// the "default priority" entry with priority `prio`.
+    async fn dcb_default_prio_entry(&mut self, cmd: u8, ifname: &str, prio: u8) -> io::Result<()> {
+        let mut m = dcb_default_prio_msg(cmd, ifname, prio);
+        let flags = u16_at(&m.buf, 6) | NLM_F_ACK;
+        m.buf[6..8].copy_from_slice(&flags.to_ne_bytes());
+        let replies = self.request(m, RTM_SETDCB).await?;
+        match replies.first().and_then(|r| dcb_reply_status(r)) {
+            Some(0) | None => Ok(()),
+            Some(code) => Err(io::Error::from_raw_os_error(code)),
+        }
+    }
+
+    /// Set the 802.1p priority a switch port gives to untagged frames it
+    /// receives (`dcb app replace dev <ifname> default-prio <prio>`).
+    ///
+    /// The kernel keeps a table of entries and the port uses the highest
+    /// priority in it, so every other priority is removed first.  Fails
+    /// with `EOPNOTSUPP` when the kernel has no DCB support or the
+    /// interface is not a switch port that can do this.
+    pub async fn set_default_prio(&mut self, ifname: &str, prio: u8) -> io::Result<()> {
+        let prio = prio.min(7);
+        self.dcb_default_prio_entry(DCB_CMD_IEEE_SET, ifname, prio).await?;
+        for other in (0..8).filter(|p| *p != prio) {
+            // Absent entries answer "no such entry".
+            let _ = self.dcb_default_prio_entry(DCB_CMD_IEEE_DEL, ifname, other).await;
+        }
+        Ok(())
+    }
+
     /// Add `vid` to a bridge port's VLAN table, or to the bridge device's
     /// own table (the CPU side) with `on_bridge_itself`.
     pub async fn bridge_vlan_add(
@@ -1097,9 +1139,63 @@ impl Monitor {
     }
 }
 
+fn dcb_default_prio_msg(cmd: u8, ifname: &str, prio: u8) -> Msg {
+    let mut m = Msg::new(RTM_SETDCB, 0);
+    // struct dcbmsg: family (unspecified), command, padding.
+    m.buf.extend_from_slice(&[0, cmd, 0, 0]);
+    m.attr_str(DCB_ATTR_IFNAME, ifname);
+    let ieee = m.nest_start(DCB_ATTR_IEEE);
+    let table = m.nest_start(DCB_ATTR_IEEE_APP_TABLE);
+    // struct dcb_app: selector, priority, protocol.
+    m.attr(DCB_ATTR_IEEE_APP, &[IEEE_8021QAZ_APP_SEL_ETHERTYPE, prio, 0, 0]);
+    m.nest_end(table);
+    m.nest_end(ieee);
+    m
+}
+
+/// The kernel answers a DCB change with a message that carries the result
+/// in a one-byte attribute: 0, or the low byte of a negative errno.
+/// Returns the errno as a positive number.
+fn dcb_reply_status(payload: &[u8]) -> Option<i32> {
+    let (_, data) = attrs(payload.get(4..)?).find(|(ty, _)| *ty & !NLA_F_NESTED == DCB_ATTR_IEEE)?;
+    let code = *data.first()?;
+    Some(if code == 0 { 0 } else { 256 - code as i32 })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dcb_default_prio_message_layout() {
+        let b = dcb_default_prio_msg(DCB_CMD_IEEE_SET, "pc", 3).finish(9);
+        let (ty, _, seq, payload) = messages(&b).next().unwrap();
+        assert_eq!((ty, seq), (RTM_SETDCB, 9));
+        assert_eq!(&payload[..4], [0, DCB_CMD_IEEE_SET, 0, 0]);
+        let top: Vec<_> = attrs(&payload[4..]).collect();
+        assert_eq!(top[0], (DCB_ATTR_IFNAME, &b"pc\0"[..]));
+        assert_eq!(top[1].0 & !NLA_F_NESTED, DCB_ATTR_IEEE);
+        let (ty, table) = attrs(top[1].1).next().unwrap();
+        assert_eq!(ty & !NLA_F_NESTED, DCB_ATTR_IEEE_APP_TABLE);
+        // selector 1 (EtherType), priority 3, protocol 0: the default priority.
+        assert_eq!(attrs(table).next().unwrap(), (DCB_ATTR_IEEE_APP, &[1u8, 3, 0, 0][..]));
+    }
+
+    #[test]
+    fn dcb_reply_status_is_an_errno() {
+        // dcbmsg, then DCB_ATTR_IEEE as a one-byte attribute.
+        let reply = |code: u8| {
+            let mut v = vec![0, DCB_CMD_IEEE_SET, 0, 0];
+            v.extend_from_slice(&5u16.to_ne_bytes());
+            v.extend_from_slice(&DCB_ATTR_IEEE.to_ne_bytes());
+            v.extend_from_slice(&[code, 0, 0, 0]);
+            v
+        };
+        assert_eq!(dcb_reply_status(&reply(0)), Some(0));
+        assert_eq!(dcb_reply_status(&reply((-(libc::EOPNOTSUPP) as i8) as u8)), Some(libc::EOPNOTSUPP));
+        assert_eq!(dcb_reply_status(&reply((-(libc::ENOENT) as i8) as u8)), Some(libc::ENOENT));
+        assert_eq!(dcb_reply_status(&[0, 0, 0, 0]), None);
+    }
 
     #[test]
     fn builder_layout() {
