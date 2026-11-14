@@ -47,12 +47,12 @@ pub fn register(ctx: &Context, tap: Option<Arc<ScreenTap>>) {
     let store = ctx.store.clone();
     ctx.diag.register(
         "key",
-        "press keys as if on the keypad: key NAME... (e.g., key 1 2 3 soft1; names as in 'dphone key list')",
+        "press keys as if on the keypad: key NAME... (e.g., key 1 2 3 sk1; names as in 'dphone key list')",
         move |args: Vec<String>, out: Output| {
             let store = store.clone();
             async move {
                 if args.first().map(String::as_str) == Some("list") {
-                    out.out("0-9 * # up down left right select cancel soft1..soft4 line1..line6 vup vdn mute spkr hdst hold xfer\nredial msgs conf info blfleft blfright status dir apps menu\n").await;
+                    out.out("0-9 * # up down left right select cancel sk1..sk4 line1..line6 vup vdn mute spkr hdst hold xfer\nredial msgs conf info blfleft blfright status dir apps menu\n").await;
                     return 0;
                 }
                 if args.is_empty() {
