@@ -1,6 +1,29 @@
 [package]
 name = "dphone"
+description = "Open DPhone: the one userspace binary (init role, main role, diagnostics)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
+
+[lib]
+name = "dphone"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dphone"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"
+log = { version = "0.4", features = ["std"] }
+tokio = { version = "1", default-features = false, features = ["rt", "net", "io-util", "time", "sync", "process", "signal", "macros", "fs"] }
+# Pinned: the last russh release whose cryptography is RustCrypto only.  Later
+# releases require `ring` or `aws-lc-rs` (C and assembly) for their AEAD ciphers.
+russh = { version = "=0.52.1", default-features = false }
+russh-sftp = "3"
+rand_core = { version = "0.6", features = ["getrandom"] }
+
+[dev-dependencies]
+tempfile = "3"
+libc = "0.2"

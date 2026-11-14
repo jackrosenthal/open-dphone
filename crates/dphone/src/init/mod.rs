@@ -1,0 +1,728 @@
+//! The init role: PID 1.
+//!
+//! It does only what must not fail (section 4 of the plan):
+//!
+//! 1. Mount `/proc`, `/sys`, `/dev`, `/dev/pts`, and tmpfs for `/tmp`, `/run`
+//!    (and `/var` when the rootfs has it).
+//! 2. Arm `/dev/watchdog` and feed it.
+//! 3. Load the kernel modules for the detected model.
+//! 4. Mount nvdata by name.  A failed mount never erases anything; a tmpfs
+//!    stands in and the main role is told to run in recovery.
+//! 5. Restore the clock from `/nvdata/systime`.
+//! 6. Start the main role and supervise it.
+//!
+//! No async runtime, no threads, no allocation-heavy dependencies.  Errors
+//! are logged to the kernel log and survived; nothing here unwraps.
+//!
+//! ## Supervision contract with the main role
+//!
+//! The main role inherits the write end of a pipe as file descriptor
+//! [`HEARTBEAT_FD`] (also named in the environment variable
+//! [`HEARTBEAT_FD_ENV`]).  It writes [`BEAT_ALIVE`] at least every few
+//! seconds while its event loop turns, and [`BEAT_HEALTHY`] once it considers
+//! the phone healthy (network up, UI running).
+//!
+//! - No beat for [`START_GRACE_SECS`] after start, or for
+//!   [`BEAT_TIMEOUT_SECS`] later: the main role is killed and restarted.
+//! - Exit or kill: restart with exponential backoff up to
+//!   [`MAX_BACKOFF_SECS`].
+//! - No beat from any main-role instance for [`UNHEALTHY_REBOOT_SECS`]: clean
+//!   reboot, since a restart did not help.  Suppressed in development mode
+//!   and while `/run/dphone/no-reboot` exists, so a serial-console user can
+//!   keep working on a crash-looping phone.
+//! - The hardware watchdog is fed from this loop only, so it covers a hung
+//!   kernel or a hung init role; a hung main role is handled by the rules
+//!   above rather than by starving the watchdog, which would skip the clean
+//!   unmount of nvdata.
+//! - Signals to PID 1: `SIGTERM` reboot, `SIGUSR1` halt, `SIGUSR2` power off.
+
+pub mod modules;
+pub mod mounts;
+pub mod nvdata;
+pub mod trial;
+pub mod watchdog;
+
+use std::ffi::CString;
+use std::fs::File;
+use std::io::Read;
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use log::{error, info, warn};
+
+use crate::model;
+use crate::paths::Paths;
+use crate::sys::{self, Shutdown};
+
+use self::nvdata::NvdataState;
+use self::trial::{RollbackHook, TrialRecord};
+use self::watchdog::Watchdog;
+
+/// Descriptor number the main role finds its heartbeat pipe on.
+pub const HEARTBEAT_FD: RawFd = 3;
+pub const HEARTBEAT_FD_ENV: &str = "DPHONE_HEARTBEAT_FD";
+/// Set (to the reason) when the main role must run in recovery mode.
+pub const RECOVERY_ENV: &str = "DPHONE_RECOVERY";
+/// Set to the detected model name for the main role.
+pub const MODEL_ENV: &str = "DPHONE_MODEL";
+
+pub const BEAT_ALIVE: u8 = b'h';
+pub const BEAT_HEALTHY: u8 = b'H';
+
+pub const START_GRACE_SECS: u64 = 120;
+pub const BEAT_TIMEOUT_SECS: u64 = 30;
+pub const MAX_BACKOFF_SECS: u64 = 60;
+pub const UNHEALTHY_REBOOT_SECS: u64 = 600;
+/// How often the clock is saved to nvdata while running.
+pub const CLOCK_SAVE_SECS: u64 = 30 * 60;
+/// A pushed development build that fails this many times in a row, each
+/// within [`OVERRIDE_QUICK_FAIL_SECS`], is ignored until the next boot.
+pub const OVERRIDE_MAX_FAILURES: u32 = 3;
+pub const OVERRIDE_QUICK_FAIL_SECS: u64 = 30;
+
+/// Development override: this file runs as the main role when dev mode is on.
+pub const DEV_OVERRIDE: &str = "/tmp/dphone";
+const SERIAL_CONSOLE: &str = "/dev/ttyAMA0";
+/// Shells for the serial console and SSH, in order of preference.
+pub const SHELLS: &[&str] = &["/bin/brush", "/bin/sh"];
+
+/// What other crates plug into the init role.
+#[derive(Clone, Copy, Default)]
+pub struct Hooks {
+    /// Flip `ctrl` back to the previous bank (updater crate).
+    pub rollback: Option<RollbackHook>,
+}
+
+/// Options for running the supervisor outside PID 1 (host tests).
+#[derive(Clone, Debug)]
+pub struct TestOptions {
+    pub paths: Paths,
+    /// Program to run as the main role, with its arguments.
+    pub main_command: Vec<String>,
+    /// Override the timing constants (seconds): grace, beat timeout,
+    /// unhealthy reboot.
+    pub start_grace: u64,
+    pub beat_timeout: u64,
+    pub unhealthy_reboot: u64,
+}
+
+/// Development mode: enables the `/tmp/dphone` override and disables the
+/// unhealthy reboot.  On when the kernel command line has `dphone.dev`, or
+/// either flag file exists.
+pub fn dev_mode(paths: &Paths) -> bool {
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    cmdline.split_ascii_whitespace().any(|w| w == "dphone.dev")
+        || Path::new("/etc/dphone/dev").exists()
+        || paths.open_dir().join("dev").exists()
+}
+
+/// Entry point as PID 1.  Never returns.
+pub fn run(hooks: Hooks) -> ! {
+    crate::logging::init_kmsg("dphone-init", log::LevelFilter::Info);
+    info!("{} {} init role starting", crate::PRODUCT, crate::VERSION);
+
+    mounts::mount_early();
+    let mut wd = Watchdog::open();
+    wd.feed();
+
+    let detected = model::detect();
+    match detected {
+        Some(d) if d.cross_checked => info!("model {}", d.model),
+        Some(d) => warn!("model {} (command line and devicetree do not both confirm it)", d.model),
+        None => error!("model unknown: no digium_board= and no digium compatible"),
+    }
+    if let Some(d) = detected {
+        modules::load_boot_modules(d.model.family());
+    }
+    wd.feed();
+
+    let nv_state = nvdata::mount();
+    wd.feed();
+
+    let paths = Paths::default();
+    restore_clock(&paths);
+
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("/sbin/init"));
+    let mut sup = Supervisor::new(
+        hooks,
+        paths,
+        wd,
+        vec![exe.to_string_lossy().into_owned(), "main".to_string()],
+        true,
+    );
+    sup.model = detected.map(|d| d.model);
+    sup.recovery = nv_state == NvdataState::Recovery;
+    sup.begin_trial_accounting();
+    sup.run()
+}
+
+/// Run only the supervisor, as an ordinary process (host tests).  Returns
+/// the exit code instead of rebooting.
+pub fn run_supervisor_test(opts: TestOptions) -> i32 {
+    crate::logging::init_ring(log::LevelFilter::Info, true);
+    let wd = Watchdog::never();
+    let mut sup = Supervisor::new(Hooks::default(), opts.paths, wd, opts.main_command, false);
+    sup.start_grace = opts.start_grace;
+    sup.beat_timeout = opts.beat_timeout;
+    sup.unhealthy_reboot = opts.unhealthy_reboot;
+    sup.begin_trial_accounting();
+    sup.run()
+}
+
+fn restore_clock(paths: &Paths) {
+    let saved = std::fs::read_to_string(paths.systime()).ok();
+    let target = crate::clock::restore_target(saved.as_deref());
+    if sys::now_secs() >= target {
+        return;
+    }
+    match sys::set_clock(target) {
+        Ok(()) => info!("clock set to {} UTC", crate::clock::format_systime(target)),
+        Err(e) => warn!("could not set clock: {e}"),
+    }
+}
+
+struct MainProc {
+    pid: libc::pid_t,
+    beat: File,
+    started: u64,
+    last_beat: Option<u64>,
+    healthy: bool,
+    is_override: bool,
+    killed: bool,
+}
+
+struct Supervisor {
+    hooks: Hooks,
+    paths: Paths,
+    wd: Watchdog,
+    main_command: Vec<String>,
+    /// True as PID 1 on a phone; false in the host test mode, where nothing
+    /// outside our own children may be touched.
+    real: bool,
+    model: Option<model::Model>,
+    recovery: bool,
+    dev: bool,
+    sigfd: RawFd,
+    main: Option<MainProc>,
+    next_start: u64,
+    crashes: u32,
+    override_failures: u32,
+    console: Option<libc::pid_t>,
+    console_next: u64,
+    trial: Option<TrialRecord>,
+    last_alive: u64,
+    last_clock_save: u64,
+    start_grace: u64,
+    beat_timeout: u64,
+    unhealthy_reboot: u64,
+}
+
+impl Supervisor {
+    fn new(hooks: Hooks, paths: Paths, wd: Watchdog, main_command: Vec<String>, real: bool) -> Self {
+        let dev = real && dev_mode(&paths);
+        if dev {
+            info!("development mode on");
+        }
+        Supervisor {
+            hooks,
+            paths,
+            wd,
+            main_command,
+            real,
+            model: None,
+            recovery: false,
+            dev,
+            sigfd: -1,
+            main: None,
+            next_start: 0,
+            crashes: 0,
+            override_failures: 0,
+            console: None,
+            console_next: 0,
+            trial: None,
+            last_alive: sys::monotonic_secs(),
+            last_clock_save: sys::monotonic_secs(),
+            start_grace: START_GRACE_SECS,
+            beat_timeout: BEAT_TIMEOUT_SECS,
+            unhealthy_reboot: UNHEALTHY_REBOOT_SECS,
+        }
+    }
+
+    /// Count this boot against a pending trial and roll back when it has
+    /// used up its boots.
+    fn begin_trial_accounting(&mut self) {
+        if self.recovery {
+            // nvdata is a stand-in tmpfs; there is no record to read.
+            return;
+        }
+        self.trial = trial::count_boot(&self.paths.open_dir());
+        if let Some(record) = self.trial.clone() {
+            info!("trial boot {} of {} (previous bank {})", record.boots, record.max_boots, record.previous_bank);
+            if record.exhausted() {
+                self.roll_back("trial boots used up");
+            }
+        }
+    }
+
+    /// Ask the updater to restore the previous bank, then reboot.  When the
+    /// hook is missing or fails, the trial is abandoned so the phone does not
+    /// loop here, and the current bank keeps running.
+    fn roll_back(&mut self, why: &str) {
+        let Some(record) = self.trial.take() else { return };
+        let open_dir = self.paths.open_dir();
+        match self.hooks.rollback {
+            Some(hook) => match hook(&record) {
+                Ok(()) => {
+                    error!("{why}: reverted to bank {}", record.previous_bank);
+                    let _ = trial::clear(&open_dir);
+                    self.shutdown(
+                        Shutdown::Reboot,
+                        Some(&format!("init: {why}, reverted to bank {}", record.previous_bank)),
+                    );
+                }
+                Err(e) => error!("{why}: rollback to bank {} failed: {e}; staying on this bank", record.previous_bank),
+            },
+            None => error!("{why}: no rollback hook in this build; staying on this bank"),
+        }
+        let _ = trial::clear(&open_dir);
+    }
+
+    fn setup_signals(&mut self) {
+        // SAFETY: sigset operations on a local set; signalfd returns a new
+        // descriptor we own.
+        unsafe {
+            let mut set: libc::sigset_t = std::mem::zeroed();
+            libc::sigemptyset(&mut set);
+            for sig in [libc::SIGCHLD, libc::SIGTERM, libc::SIGUSR1, libc::SIGUSR2, libc::SIGINT, libc::SIGHUP] {
+                libc::sigaddset(&mut set, sig);
+            }
+            libc::sigprocmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+            self.sigfd = libc::signalfd(-1, &set, libc::SFD_CLOEXEC | libc::SFD_NONBLOCK);
+        }
+        if self.sigfd < 0 {
+            error!("signalfd: {}", std::io::Error::last_os_error());
+        }
+    }
+
+    fn run(&mut self) -> ! {
+        self.setup_signals();
+        loop {
+            self.wd.feed();
+            let now = sys::monotonic_secs();
+            self.reap();
+            self.read_beats(now);
+            self.check_main(now);
+            self.check_console(now);
+            self.periodic(now);
+            self.wait_for_events();
+            self.handle_signals();
+        }
+    }
+
+    fn wait_for_events(&self) {
+        let mut fds = [
+            libc::pollfd { fd: self.sigfd, events: libc::POLLIN, revents: 0 },
+            libc::pollfd { fd: self.main.as_ref().map_or(-1, |m| m.beat.as_raw_fd()), events: libc::POLLIN, revents: 0 },
+        ];
+        // SAFETY: fds is a valid array of two pollfd.  Negative descriptors
+        // are ignored by poll.
+        unsafe { libc::poll(fds.as_mut_ptr(), 2, 1000) };
+        if self.sigfd < 0 {
+            // Without a signalfd, poll returns at once when the beat pipe is
+            // at end of file; do not spin.
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+    }
+
+    fn handle_signals(&mut self) {
+        if self.sigfd < 0 {
+            return;
+        }
+        loop {
+            let mut info = [0u8; 128];
+            // SAFETY: info is writable for 128 bytes, the size of
+            // signalfd_siginfo.
+            let n = unsafe { libc::read(self.sigfd, info.as_mut_ptr() as *mut libc::c_void, info.len()) };
+            if n != info.len() as isize {
+                return;
+            }
+            let signo = u32::from_ne_bytes([info[0], info[1], info[2], info[3]]) as libc::c_int;
+            match signo {
+                libc::SIGCHLD => self.reap(),
+                libc::SIGTERM | libc::SIGINT => self.shutdown(Shutdown::Reboot, None),
+                libc::SIGUSR1 => self.shutdown(Shutdown::Halt, None),
+                libc::SIGUSR2 => self.shutdown(Shutdown::PowerOff, None),
+                _ => {}
+            }
+        }
+    }
+
+    /// Collect every exited child, ours or adopted.
+    fn reap(&mut self) {
+        loop {
+            let mut status: libc::c_int = 0;
+            // In test mode only our own children exist, so -1 is still right.
+            // SAFETY: status is a valid out pointer.
+            let pid = unsafe { libc::waitpid(-1, &mut status, libc::WNOHANG) };
+            if pid <= 0 {
+                return;
+            }
+            if self.main.as_ref().is_some_and(|m| m.pid == pid) {
+                self.main_exited(status);
+            } else if self.console == Some(pid) {
+                self.console = None;
+                self.console_next = sys::monotonic_secs() + 2;
+            }
+        }
+    }
+
+    fn main_exited(&mut self, status: libc::c_int) {
+        let Some(mut proc_) = self.main.take() else { return };
+        let now = sys::monotonic_secs();
+        // Take any last beats (a healthy report just before exit still counts).
+        Self::drain_beats(&mut proc_, now);
+        if proc_.healthy {
+            self.note_healthy();
+        }
+        let ran = now.saturating_sub(proc_.started);
+        let clean = libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0;
+        if libc::WIFSIGNALED(status) {
+            error!("main role killed by signal {} after {ran} s", libc::WTERMSIG(status));
+        } else if clean {
+            info!("main role exited cleanly after {ran} s; restarting");
+        } else {
+            error!("main role exited with status {} after {ran} s", libc::WEXITSTATUS(status));
+        }
+        if proc_.is_override && !clean && ran < OVERRIDE_QUICK_FAIL_SECS {
+            self.override_failures += 1;
+            if self.override_failures == OVERRIDE_MAX_FAILURES {
+                warn!("{DEV_OVERRIDE} failed {OVERRIDE_MAX_FAILURES} times; using the built-in main role");
+            }
+        } else if proc_.is_override {
+            self.override_failures = 0;
+        }
+        if clean {
+            self.next_start = now;
+            return;
+        }
+        if proc_.healthy && ran > 300 {
+            self.crashes = 0;
+        }
+        self.crashes += 1;
+        let backoff = (1u64 << (self.crashes - 1).min(6)).min(MAX_BACKOFF_SECS);
+        self.next_start = now + backoff;
+        info!("restarting main role in {backoff} s (failure {} in a row)", self.crashes);
+        if self.trial.is_some() && self.crashes >= trial::MAX_TRIAL_CRASHES {
+            self.roll_back("main role keeps failing during trial boot");
+        }
+    }
+
+    fn drain_beats(proc_: &mut MainProc, now: u64) {
+        let mut buf = [0u8; 64];
+        loop {
+            match proc_.beat.read(&mut buf) {
+                Ok(0) => return,
+                Ok(n) => {
+                    proc_.last_beat = Some(now);
+                    if buf[..n].contains(&BEAT_HEALTHY) {
+                        proc_.healthy = true;
+                    }
+                }
+                Err(_) => return,
+            }
+        }
+    }
+
+    fn read_beats(&mut self, now: u64) {
+        let Some(proc_) = self.main.as_mut() else { return };
+        let was_healthy = proc_.healthy;
+        Self::drain_beats(proc_, now);
+        if proc_.last_beat == Some(now) {
+            self.last_alive = now;
+        }
+        if proc_.healthy && !was_healthy {
+            info!("main role reports healthy");
+            self.note_healthy();
+        }
+    }
+
+    fn note_healthy(&mut self) {
+        self.crashes = 0;
+        if self.trial.take().is_some() {
+            match trial::clear(&self.paths.open_dir()) {
+                Ok(()) => info!("trial boot confirmed"),
+                Err(e) => warn!("could not clear trial record: {e}"),
+            }
+        }
+    }
+
+    fn check_main(&mut self, now: u64) {
+        match self.main.as_mut() {
+            Some(proc_) if proc_.killed => {}
+            Some(proc_) => {
+                let (since, limit) = match proc_.last_beat {
+                    Some(t) => (t, self.beat_timeout),
+                    None => (proc_.started, self.start_grace),
+                };
+                if now.saturating_sub(since) > limit {
+                    error!("main role silent for more than {limit} s; killing it");
+                    let _ = sys::kill(proc_.pid, libc::SIGKILL);
+                    proc_.killed = true;
+                    // SIGCHLD follows; main_exited() counts it as a failure.
+                }
+            }
+            None if now >= self.next_start => self.spawn_main(now),
+            None => {}
+        }
+        let hold = self.dev || self.paths.run.join("no-reboot").exists();
+        if !hold && now.saturating_sub(self.last_alive) > self.unhealthy_reboot {
+            error!("no heartbeat from the main role for {} s; rebooting", self.unhealthy_reboot);
+            self.shutdown(Shutdown::Reboot, Some("init: main role not running"));
+        }
+    }
+
+    fn main_program(&self) -> (Vec<String>, bool) {
+        if self.dev && self.override_failures < OVERRIDE_MAX_FAILURES && is_executable(Path::new(DEV_OVERRIDE)) {
+            return (vec![DEV_OVERRIDE.to_string(), "main".to_string()], true);
+        }
+        (self.main_command.clone(), false)
+    }
+
+    fn spawn_main(&mut self, now: u64) {
+        let (argv, is_override) = self.main_program();
+        let Some(program) = argv.first() else { return };
+        let mut fds = [0 as RawFd; 2];
+        // SAFETY: fds is a valid two-element array.
+        if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+            error!("pipe: {}", std::io::Error::last_os_error());
+            self.next_start = now + 5;
+            return;
+        }
+        let (rd, wr) = (fds[0], fds[1]);
+        // SAFETY: rd is a fresh descriptor we own.
+        let beat = unsafe { File::from_raw_fd(rd) };
+        let _ = sys::set_nonblocking(rd, true);
+
+        let mut cmd = Command::new(program);
+        cmd.args(&argv[1..]);
+        if self.real {
+            cmd.arg0("dphone");
+        }
+        cmd.env(HEARTBEAT_FD_ENV, HEARTBEAT_FD.to_string());
+        if self.recovery {
+            cmd.env(RECOVERY_ENV, "nvdata");
+        }
+        if let Some(m) = self.model {
+            cmd.env(MODEL_ENV, m.name());
+        }
+        cmd.stdin(std::process::Stdio::null());
+        // SAFETY: the closure runs between fork and exec and makes only
+        // async-signal-safe calls.
+        unsafe {
+            cmd.pre_exec(move || {
+                let mut set: libc::sigset_t = std::mem::zeroed();
+                libc::sigemptyset(&mut set);
+                libc::sigprocmask(libc::SIG_SETMASK, &set, std::ptr::null_mut());
+                if wr == HEARTBEAT_FD {
+                    let flags = libc::fcntl(wr, libc::F_GETFD);
+                    libc::fcntl(wr, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
+                } else if libc::dup2(wr, HEARTBEAT_FD) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let spawned = cmd.spawn();
+        // SAFETY: wr is ours and no longer needed in this process.
+        unsafe { libc::close(wr) };
+        match spawned {
+            Ok(child) => {
+                let pid = child.id() as libc::pid_t;
+                // The child is reaped by waitpid(-1) in reap(); dropping the
+                // handle does not wait.
+                drop(child);
+                info!("started main role: {} (pid {pid})", argv.join(" "));
+                self.main = Some(MainProc { pid, beat, started: now, last_beat: None, healthy: false, is_override, killed: false });
+            }
+            Err(e) => {
+                error!("cannot start main role {program}: {e}");
+                if is_override {
+                    self.override_failures += 1;
+                }
+                self.crashes += 1;
+                self.next_start = now + (1u64 << (self.crashes - 1).min(6)).min(MAX_BACKOFF_SECS);
+            }
+        }
+    }
+
+    /// Serial console shell on the UART, unless EHS has claimed it.
+    fn check_console(&mut self, now: u64) {
+        if !self.real {
+            return;
+        }
+        let claimed = self.paths.console_claimed().exists();
+        match self.console {
+            Some(pid) if claimed => {
+                info!("serial console released to EHS");
+                let _ = sys::kill(pid, libc::SIGHUP);
+                let _ = sys::kill(pid, libc::SIGKILL);
+            }
+            None if !claimed && now >= self.console_next => {
+                self.console_next = now + 10;
+                let Some(shell) = SHELLS.iter().find(|s| Path::new(s).exists()) else { return };
+                if !Path::new(SERIAL_CONSOLE).exists() {
+                    return;
+                }
+                match spawn_console(shell, &self.paths) {
+                    Ok(pid) => self.console = Some(pid),
+                    Err(e) => warn!("serial console: {e}"),
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn periodic(&mut self, now: u64) {
+        if now.saturating_sub(self.last_clock_save) >= CLOCK_SAVE_SECS {
+            self.last_clock_save = now;
+            self.save_clock();
+        }
+    }
+
+    fn save_clock(&self) {
+        if self.recovery {
+            return;
+        }
+        let wall = sys::now_secs();
+        // A clock nothing has corrected is not worth a flash write, unless
+        // there is no file at all.
+        if wall <= crate::clock::FLOOR && self.paths.systime().exists() {
+            return;
+        }
+        if let Err(e) = crate::clock::save(&self.paths.systime(), wall) {
+            warn!("saving clock: {e}");
+        }
+    }
+
+    /// Stop everything and reboot, halt, or power off.  Never returns.
+    fn shutdown(&mut self, kind: Shutdown, reason: Option<&str>) -> ! {
+        info!("shutting down ({kind:?})");
+        if let (Some(reason), false) = (reason, self.recovery) {
+            let _ = crate::paths::write_atomic(&self.paths.reboot_reason(), format!("{reason}\n").as_bytes(), 0o644);
+        }
+        if let Some(proc_) = self.main.as_ref() {
+            let _ = sys::kill(proc_.pid, libc::SIGTERM);
+        }
+        self.wait_children(50, |s| s.main.is_none());
+        if let Some(proc_) = self.main.as_ref() {
+            let _ = sys::kill(proc_.pid, libc::SIGKILL);
+            self.wait_children(10, |s| s.main.is_none());
+        }
+        if !self.real {
+            std::process::exit(0);
+        }
+        // Everything else: ask, then insist.
+        let _ = sys::kill(-1, libc::SIGTERM);
+        self.wait_children(10, |_| false);
+        let _ = sys::kill(-1, libc::SIGKILL);
+        self.wait_children(3, |_| false);
+        self.save_clock();
+        mounts::unmount_for_shutdown();
+        self.wd.feed();
+        if kind != Shutdown::Reboot {
+            // Nothing will feed the watchdog after a halt; try to disarm it.
+            self.wd.disarm();
+        }
+        let err = sys::reboot(kind);
+        error!("reboot system call failed: {err}");
+        // Stop feeding: the watchdog resets the phone.
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+    }
+
+    /// Reap for up to `tenths` tenths of a second, feeding the watchdog,
+    /// until `done` says so.
+    fn wait_children(&mut self, tenths: u32, done: impl Fn(&Self) -> bool) {
+        // While shutting down, exits must not schedule restarts or rollbacks;
+        // main_exited() only records state, and nothing restarts it because
+        // check_main() is not called from here.
+        for _ in 0..tenths {
+            self.reap_quiet();
+            if done(self) {
+                return;
+            }
+            self.wd.feed();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        self.reap_quiet();
+    }
+
+    fn reap_quiet(&mut self) {
+        loop {
+            let mut status: libc::c_int = 0;
+            // SAFETY: status is a valid out pointer.
+            let pid = unsafe { libc::waitpid(-1, &mut status, libc::WNOHANG) };
+            if pid <= 0 {
+                return;
+            }
+            if self.main.as_ref().is_some_and(|m| m.pid == pid) {
+                self.main = None;
+            } else if self.console == Some(pid) {
+                self.console = None;
+            }
+        }
+    }
+}
+
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+}
+
+/// Environment for interactive shells on the phone.
+pub fn shell_environment(paths: &Paths, shell: &str) -> Vec<(String, String)> {
+    let home = paths.home();
+    let home = if home.is_dir() { home.to_string_lossy().into_owned() } else { "/".to_string() };
+    vec![
+        ("PATH".into(), "/sbin:/usr/sbin:/bin:/usr/bin".into()),
+        ("HOME".into(), home),
+        ("USER".into(), "root".into()),
+        ("LOGNAME".into(), "root".into()),
+        ("SHELL".into(), shell.into()),
+    ]
+}
+
+fn spawn_console(shell: &str, paths: &Paths) -> std::io::Result<libc::pid_t> {
+    let tty = CString::new(SERIAL_CONSOLE).map_err(|_| std::io::Error::other("bad tty path"))?;
+    let mut cmd = Command::new(shell);
+    cmd.env_clear();
+    cmd.envs(shell_environment(paths, shell));
+    cmd.env("TERM", "vt100");
+    cmd.current_dir("/");
+    // SAFETY: only async-signal-safe calls between fork and exec.
+    unsafe {
+        cmd.pre_exec(move || {
+            let mut set: libc::sigset_t = std::mem::zeroed();
+            libc::sigemptyset(&mut set);
+            libc::sigprocmask(libc::SIG_SETMASK, &set, std::ptr::null_mut());
+            libc::setsid();
+            let fd = libc::open(tty.as_ptr(), libc::O_RDWR);
+            if fd < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            libc::ioctl(fd, libc::TIOCSCTTY as _, 1);
+            libc::dup2(fd, 0);
+            libc::dup2(fd, 1);
+            libc::dup2(fd, 2);
+            if fd > 2 {
+                libc::close(fd);
+            }
+            Ok(())
+        });
+    }
+    let child = cmd.spawn()?;
+    Ok(child.id() as libc::pid_t)
+}
