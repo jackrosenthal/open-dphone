@@ -20,10 +20,24 @@
 //! siblings apart by `id` (not by `label`), so several entries of one kind
 //! survive it only when each has its own `id`.
 //!
-//! - `certs/certs.crt` is the base bundle of the root file system followed
-//!   by every `<cert>`, each wrapped in PEM certificate markers.  It is what
-//!   TLS clients on the phone trust (SIP over TLS, when
-//!   `allow_insecure_ssl` is off).
+//! - `certs/certs.crt` is the base bundle of the root file system
+//!   ([`BASE_BUNDLE_PATH`]) followed by every `<cert>`, each wrapped in PEM
+//!   certificate markers.  It is what TLS clients on the phone trust when
+//!   `allow_insecure_ssl` is off: SIP over TLS, HTTPS requests of apps, and
+//!   HTTPS downloads of provisioned files.
+//!
+//!   Stock rebuilds the file from those two sources at every configuration
+//!   merge (the merge routine at `0xbdc74` calls `updateTrustedCerts`
+//!   unconditionally), through `certs.crt.tmp` and a rename; what the file
+//!   held before plays no part.  Its start-up script copies the base bundle
+//!   there when the file is missing (after a factory reset, which removes
+//!   `certs/`).  A certificate that is also in the base bundle, or that is
+//!   provisioned twice, is in the file twice: stock does not compare them.
+//!
+//!   The image's base bundle is the Mozilla CA bundle of nixpkgs (`cacert`);
+//!   stock's is the same list from curl's `mk-ca-bundle`, as of its build.
+//!   So a `certs.crt` that stock wrote is replaced with ours at the first
+//!   start, and stock replaces it with its own again when it next runs.
 //! - Each `<clientcert>` is written to `clientcerts/<label>` in the same
 //!   wrapping, and each `<clientkey>` to `clientcerts/<label>` as a
 //!   `PRIVATE KEY` block, or `<TYPE> PRIVATE KEY` when it has a `type`
@@ -39,8 +53,8 @@ use std::io;
 use crate::nvdata::Nvdata;
 use crate::view::Config;
 
-/// Where stock's root file system keeps the base bundle; ours uses the same
-/// path when the image carries one.
+/// The base bundle of the root file system: public certificate authorities,
+/// PEM.  Stock keeps its bundle at this path, and so does our image.
 pub const BASE_BUNDLE_PATH: &str = "/usr/share/ssl/certs/cacert.pem";
 
 /// The trust bundle inside nvdata.
@@ -113,7 +127,7 @@ fn pem_key(body: &str, key_type: Option<&str>) -> String {
 }
 
 /// The trust bundle for a configuration: `base` (the root file system's
-/// bundle, if the image has one) followed by every `<cert>`.
+/// bundle) followed by every `<cert>`, as stock writes `certs.crt`.
 pub fn trust_bundle(config: &Config, base: Option<&[u8]>) -> Vec<u8> {
     let mut out = base.map(<[u8]>::to_vec).unwrap_or_default();
     for cert in config.provisioned_certs().trusted {
@@ -122,6 +136,25 @@ pub fn trust_bundle(config: &Config, base: Option<&[u8]>) -> Vec<u8> {
         }
     }
     out
+}
+
+/// The PEM roots TLS clients trust: what `certs.crt` holds once
+/// [`Nvdata::update_trust`] has run for `config`, whether or not it has
+/// (it has not in recovery, where nothing is written).
+///
+/// `base` is the content of [`BASE_BUNDLE_PATH`].  Where that file is
+/// missing (a run outside an image), `certs.crt` cannot be rebuilt and is
+/// not written; then the roots are the file as found (`on_disk`) followed
+/// by the provisioned certificates.
+pub fn roots(config: &Config, base: Option<&[u8]>, on_disk: Option<&[u8]>) -> Vec<u8> {
+    match base {
+        Some(base) => trust_bundle(config, Some(base)),
+        None => {
+            let mut out = on_disk.map(<[u8]>::to_vec).unwrap_or_default();
+            out.extend_from_slice(&trust_bundle(config, None));
+            out
+        }
+    }
 }
 
 impl Nvdata {
@@ -140,7 +173,10 @@ impl Nvdata {
 
     /// Bring `certs/certs.crt`, `clientcerts/`, and the `md5s/` entries of
     /// the certificates in line with `config`.  `base` is the content of
-    /// [`BASE_BUNDLE_PATH`], when the image has that file.
+    /// [`BASE_BUNDLE_PATH`].  The bundle is rebuilt from `base` and the
+    /// configuration alone, so a file from stock, or from an image with
+    /// another base bundle, is replaced; a missing one (first start, factory
+    /// reset) is created.
     pub fn update_trust(&self, config: &Config, base: Option<&[u8]>) -> io::Result<TrustChange> {
         let mut change = TrustChange::default();
         let certs = config.provisioned_certs();

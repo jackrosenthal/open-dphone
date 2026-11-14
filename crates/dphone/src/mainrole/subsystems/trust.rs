@@ -2,13 +2,18 @@
 //! (`dphone_config::trust`): the trust bundle `/nvdata/certs/certs.crt` and
 //! the client certificates and keys in `/nvdata/clientcerts/`.
 //!
+//! The trust bundle is the image's base bundle (the Mozilla CA bundle, at
+//! stock's path `/usr/share/ssl/certs/cacert.pem`) followed by the
+//! provisioned certificates; like stock, the phone rebuilds it from those
+//! two alone, so a bundle stock left behind is replaced at the first start.
+//!
 //! The files follow the merged configuration.  They are written on the
 //! blocking pool; when something changed, the configuration hub is told
-//! once more so that the users of the files (SIP over TLS) read them again.
+//! once more so that the users of the files read them again.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
-use dphone_config::trust::{BASE_BUNDLE_PATH, trust_bundle};
+use dphone_config::trust::BASE_BUNDLE_PATH;
 use dphone_config::{Config, Nvdata};
 use log::{info, warn};
 use tokio::sync::Notify;
@@ -17,29 +22,30 @@ use super::SharedConfig;
 use super::system::ConfigHub;
 use crate::mainrole::Context;
 
-/// The base bundle of this image's root file system, if it has one.
-fn base_bundle() -> Option<Vec<u8>> {
-    std::fs::read(BASE_BUNDLE_PATH).ok().filter(|b| !b.is_empty())
+/// The base bundle of the image's root file system (public certificate
+/// authorities), read once: the root file system does not change under a
+/// running phone.  `None` where the file is missing, i.e., outside an image.
+fn base_bundle() -> Option<&'static [u8]> {
+    static BASE: OnceLock<Option<Vec<u8>>> = OnceLock::new();
+    BASE.get_or_init(|| {
+        let base = std::fs::read(BASE_BUNDLE_PATH).ok().filter(|b| !b.is_empty());
+        if base.is_none() {
+            warn!("certificates: no base bundle at {BASE_BUNDLE_PATH}; only provisioned certificates are trusted");
+        }
+        base
+    })
+    .as_deref()
 }
 
-/// The PEM roots TLS clients on the phone trust.
-///
-/// With a base bundle in the image this is `certs.crt` as
-/// [`Nvdata::update_trust`] writes it.  An image without one cannot
-/// rebuild that file, so it leaves the file as it finds it (on a phone that
-/// has run stock, stock's bundle) and adds the provisioned certificates to
-/// what the file holds.
+/// The PEM roots TLS clients on the phone trust: the base bundle followed
+/// by the provisioned certificates, which is also what `certs.crt` holds
+/// (see [`dphone_config::trust::roots`]).  Every TLS client that checks its
+/// server takes its roots from here.
 pub fn roots(nv: &Nvdata, cfg: &Config) -> Vec<u8> {
-    let on_disk = nv.trust_bundle().ok().flatten();
-    match (base_bundle(), on_disk) {
-        (Some(_), Some(file)) => file,
-        (Some(base), None) => trust_bundle(cfg, Some(&base)),
-        (None, file) => {
-            let mut out = file.unwrap_or_default();
-            out.extend_from_slice(&trust_bundle(cfg, None));
-            out
-        }
-    }
+    let base = base_bundle();
+    // The file matters only where there is no base bundle.
+    let on_disk = if base.is_none() { nv.trust_bundle().ok().flatten() } else { None };
+    dphone_config::trust::roots(cfg, base, on_disk.as_deref())
 }
 
 pub fn start(ctx: &Context, config: Option<SharedConfig>, hub: &ConfigHub) {
@@ -64,11 +70,10 @@ pub fn start(ctx: &Context, config: Option<SharedConfig>, hub: &ConfigHub) {
             let job = {
                 let cfg = cfg.clone();
                 tokio::task::spawn_blocking(move || {
-                    let base = base_bundle();
                     // Without a base bundle the trust file is not ours to
                     // rebuild (see `roots`); client certificates still are.
-                    match base {
-                        Some(base) => nv.update_trust(&cfg, Some(&base)),
+                    match base_bundle() {
+                        Some(base) => nv.update_trust(&cfg, Some(base)),
                         None => nv.update_client_certs(&cfg),
                     }
                 })

@@ -10,8 +10,7 @@ publish = false
 default = ["sip", "update", "https"]
 # The provisioned-firmware installer over dphone-update.
 update = ["dep:dphone-update", "dep:dphone-hal"]
-# Firmware downloads over https (rustls with the RustCrypto provider; no
-# certificate check, as stock's `curl --insecure`).
+# Downloads over https (rustls with the RustCrypto provider).
 https = ["dep:rustls", "dep:rustls-rustcrypto"]
 # Adapter that carries DPMA over dphone-sip's out-of-dialog MESSAGE.
 sip = ["dep:dphone-sip"]

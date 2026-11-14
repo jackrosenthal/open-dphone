@@ -420,6 +420,114 @@ fn provisioned_certificates_are_kept_in_stocks_layout() {
     assert!(text.contains("Q0Ey") && !text.contains("Q0E=\n"));
 }
 
+const BASE: &[u8] = b"# base bundle\n\nFirst CA\n-----BEGIN CERTIFICATE-----\nQkFTRTE=\n-----END CERTIFICATE-----\n\nSecond CA\n-----BEGIN CERTIFICATE-----\nQkFTRTI=\n-----END CERTIFICATE-----\n";
+
+fn blocks(bundle: &[u8], body: &str) -> usize {
+    String::from_utf8_lossy(bundle).matches(&format!("-----BEGIN CERTIFICATE-----\n{body}\n-----END CERTIFICATE-----\n")).count()
+}
+
+/// The roots TLS clients get, with what is on disk.
+fn roots(nv: &dphone_config::Nvdata, cfg: &dphone_config::Config, base: Option<&[u8]>) -> Vec<u8> {
+    dphone_config::trust::roots(cfg, base, nv.trust_bundle().unwrap().as_deref())
+}
+
+#[test]
+fn trust_bundle_is_the_base_alone_without_provisioned_certificates() {
+    // Also the state after a factory reset: no `certs/certs.crt`.
+    let (_d, s) = store(Model::D60);
+    let nv = s.nvdata().clone();
+    assert!(!nv.exists("certs/certs.crt"));
+    // TLS clients already trust the base before anything is written.
+    assert_eq!(roots(&nv, &s.config(), Some(BASE)), BASE);
+
+    assert_eq!(nv.update_trust(&s.config(), Some(BASE)).unwrap().written, ["certs/certs.crt"]);
+    assert_eq!(nv.trust_bundle().unwrap().unwrap(), BASE);
+    assert_eq!(roots(&nv, &s.config(), Some(BASE)), BASE);
+    assert!(nv.update_trust(&s.config(), Some(BASE)).unwrap().is_empty());
+    assert!(nv.list("clientcerts").unwrap().is_empty());
+}
+
+#[test]
+fn trust_bundle_is_the_base_followed_by_provisioned_certificates() {
+    let (_d, mut s) = store(Model::D60);
+    let nv = s.nvdata().clone();
+    let cfg = s
+        .apply_fetched(r#"<config><certs><cert id="a" label="pbx-ca">UEJY</cert><cert id="b" label="other">T1RIRVI=</cert></certs></config>"#)
+        .unwrap();
+    nv.update_trust(&cfg, Some(BASE)).unwrap();
+    let mut expect = BASE.to_vec();
+    expect.extend_from_slice(b"\n-----BEGIN CERTIFICATE-----\nUEJY\n-----END CERTIFICATE-----\n");
+    expect.extend_from_slice(b"\n-----BEGIN CERTIFICATE-----\nT1RIRVI=\n-----END CERTIFICATE-----\n");
+    assert_eq!(nv.trust_bundle().unwrap().unwrap(), expect);
+    assert_eq!(roots(&nv, &cfg, Some(BASE)), expect);
+
+    // A factory reset removes `certs/` and the fetched configuration: the
+    // next start trusts the base alone again.
+    std::fs::remove_dir_all(nv.path("certs")).unwrap();
+    let cfg = s.apply_fetched("<config/>").unwrap();
+    assert_eq!(roots(&nv, &cfg, Some(BASE)), BASE);
+    assert_eq!(nv.update_trust(&cfg, Some(BASE)).unwrap().written, ["certs/certs.crt"]);
+    assert_eq!(nv.trust_bundle().unwrap().unwrap(), BASE);
+}
+
+#[test]
+fn provisioned_certificate_that_the_base_has_is_listed_twice() {
+    // Stock appends every `<cert>` without comparing it with the base or
+    // with the others.
+    let (_d, mut s) = store(Model::D60);
+    let nv = s.nvdata().clone();
+    let cfg = s
+        .apply_fetched(r#"<config><certs><cert id="a" label="first">QkFTRTE=</cert><cert id="b" label="again">QkFTRTE=</cert></certs></config>"#)
+        .unwrap();
+    nv.update_trust(&cfg, Some(BASE)).unwrap();
+    let bundle = nv.trust_bundle().unwrap().unwrap();
+    assert!(bundle.starts_with(BASE));
+    assert_eq!((blocks(&bundle, "QkFTRTE="), blocks(&bundle, "QkFTRTI=")), (3, 1));
+
+    // The entry `a` with other content replaces what `a` held; the base's
+    // own copy stays.
+    let cfg = s.apply_fetched(r#"<config><certs><cert id="a" label="first">TkVX</cert></certs></config>"#).unwrap();
+    assert_eq!(nv.update_trust(&cfg, Some(BASE)).unwrap().written, ["certs/certs.crt"]);
+    let bundle = nv.trust_bundle().unwrap().unwrap();
+    assert_eq!((blocks(&bundle, "QkFTRTE="), blocks(&bundle, "TkVX")), (1, 1));
+    assert_eq!(roots(&nv, &cfg, Some(BASE)), bundle);
+}
+
+#[test]
+fn trust_bundle_written_by_stock_is_rebuilt_from_our_base() {
+    let (_d, mut s) = store(Model::D60);
+    let nv = s.nvdata().clone();
+    // Stock's file: its own base bundle and a certificate provisioned then.
+    let stock = b"# stock's bundle\n-----BEGIN CERTIFICATE-----\nU1RPQ0s=\n-----END CERTIFICATE-----\n\n-----BEGIN CERTIFICATE-----\nT0xE\n-----END CERTIFICATE-----\n";
+    nv.write("certs/certs.crt", stock).unwrap();
+    nv.write("certs/phonekey.pem", b"key").unwrap();
+    let cfg = s.apply_fetched(r#"<config><certs><cert id="a" label="pbx-ca">UEJY</cert></certs></config>"#).unwrap();
+
+    // Before the file is rewritten, clients already get the new roots.
+    let mut expect = BASE.to_vec();
+    expect.extend_from_slice(b"\n-----BEGIN CERTIFICATE-----\nUEJY\n-----END CERTIFICATE-----\n");
+    assert_eq!(roots(&nv, &cfg, Some(BASE)), expect);
+
+    assert_eq!(nv.update_trust(&cfg, Some(BASE)).unwrap().written, ["certs/certs.crt"]);
+    assert_eq!(nv.trust_bundle().unwrap().unwrap(), expect);
+    // Nothing else in `certs/` is touched, and no temporary file is left.
+    assert_eq!(nv.list("certs").unwrap(), ["certs.crt", "phonekey.pem"]);
+    assert_eq!(nv.read("certs/phonekey.pem").unwrap().unwrap(), b"key");
+}
+
+#[test]
+fn without_a_base_bundle_the_file_on_disk_is_kept_and_extended() {
+    // A run outside an image (no `/usr/share/ssl/certs/cacert.pem`).
+    let (_d, mut s) = store(Model::D60);
+    let nv = s.nvdata().clone();
+    let cfg = s.apply_fetched(r#"<config><certs><cert id="a" label="pbx-ca">UEJY</cert></certs></config>"#).unwrap();
+    assert_eq!(roots(&nv, &cfg, None), b"\n-----BEGIN CERTIFICATE-----\nUEJY\n-----END CERTIFICATE-----\n");
+    nv.write("certs/certs.crt", BASE).unwrap();
+    let mut expect = BASE.to_vec();
+    expect.extend_from_slice(b"\n-----BEGIN CERTIFICATE-----\nUEJY\n-----END CERTIFICATE-----\n");
+    assert_eq!(roots(&nv, &cfg, None), expect);
+}
+
 #[test]
 fn user_ringtones_are_the_sln16_files() {
     let (_d, s) = store(Model::D60);

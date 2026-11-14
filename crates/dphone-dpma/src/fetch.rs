@@ -1,12 +1,17 @@
-//! The firmware download: a small blocking HTTP client that hands the
-//! response body out as a stream, so an image goes from the socket to
-//! flash without being held in memory.
+//! The download client: a small blocking HTTP client that hands the
+//! response body out as a stream, so a firmware image goes from the socket
+//! to flash without being held in memory.  It follows redirects, as curl
+//! does with `-L`.  curl's other schemes (FTP, TFTP) are not supported.
 //!
-//! Stock downloads with `curl --insecure -L`: `http://` and `https://`
-//! without certificate checking, following redirects.  This does the same
-//! (the image is checked by its own checksums, and stock-era servers
-//! often have self-signed certificates).  curl's other schemes (FTP,
-//! TFTP) are not supported.
+//! How an `https://` server is checked is the caller's choice
+//! ([`HttpSource::with_trust`]), because stock has two:
+//!
+//! - Firmware is downloaded with `curl --insecure -L`: no certificate
+//!   check, whatever the configuration says.  That is the default here.
+//! - The files a configuration names by URL (contact lists, ringtones) come
+//!   through `core`'s own client, which checks the server's certificate and
+//!   name against the trust bundle `/nvdata/certs/certs.crt` unless
+//!   `allow_insecure_ssl` is set.
 
 use crate::firmware::{FetchError, FirmwareSource};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -16,8 +21,24 @@ use std::time::Duration;
 /// Resolves a host name.  The default uses the system resolver.
 pub type Lookup = dyn Fn(&str, u16) -> std::io::Result<std::net::SocketAddr> + Send + Sync;
 
+/// How an `https://` server is checked.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Trust {
+    /// Not at all (`curl --insecure`): any certificate, but a real
+    /// handshake.
+    Any,
+    /// The certificate must chain to one of these roots (PEM) and be valid
+    /// for the server's name.
+    Roots(Vec<u8>),
+}
+
+/// Asked at every `https://` connection, so that the answer follows the
+/// configuration.
+pub type TrustPolicy = dyn Fn() -> Trust + Send + Sync;
+
 pub struct HttpSource {
     lookup: Box<Lookup>,
+    trust: Option<Box<TrustPolicy>>,
     /// Connection and per-read timeout.
     pub timeout: Duration,
     pub max_redirects: u32,
@@ -41,7 +62,14 @@ impl HttpSource {
 
     /// With the phone's own resolver (the one fed by DHCP).
     pub fn with_lookup(lookup: Box<Lookup>) -> Self {
-        HttpSource { lookup, timeout: Duration::from_secs(30), max_redirects: 5 }
+        HttpSource { lookup, trust: None, timeout: Duration::from_secs(30), max_redirects: 5 }
+    }
+
+    /// Checks `https://` servers as `policy` says.  Without this, none is
+    /// checked ([`Trust::Any`]).
+    pub fn with_trust(mut self, policy: Box<TrustPolicy>) -> Self {
+        self.trust = Some(policy);
+        self
     }
 }
 
@@ -89,8 +117,10 @@ fn err(message: impl Into<String>) -> FetchError {
 mod tls {
     use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
     use rustls::crypto::CryptoProvider;
+    use super::Trust;
+    use rustls::pki_types::pem::PemObject;
     use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-    use rustls::{ClientConfig, ClientConnection, DigitallySignedStruct, SignatureScheme, StreamOwned};
+    use rustls::{ClientConfig, ClientConnection, DigitallySignedStruct, RootCertStore, SignatureScheme, StreamOwned};
     use std::net::TcpStream;
     use std::sync::Arc;
 
@@ -130,14 +160,26 @@ mod tls {
         }
     }
 
-    pub fn wrap(host: &str, tcp: TcpStream) -> Result<StreamOwned<ClientConnection, TcpStream>, String> {
+    pub fn wrap(host: &str, tcp: TcpStream, trust: &Trust) -> Result<StreamOwned<ClientConnection, TcpStream>, String> {
         let provider = Arc::new(rustls_rustcrypto::provider());
-        let config = ClientConfig::builder_with_provider(provider.clone())
+        let builder = ClientConfig::builder_with_provider(provider.clone())
             .with_safe_default_protocol_versions()
-            .map_err(|e| e.to_string())?
-            .dangerous()
-            .with_custom_certificate_verifier(Arc::new(Insecure(provider)))
-            .with_no_client_auth();
+            .map_err(|e| e.to_string())?;
+        let config = match trust {
+            Trust::Any => {
+                builder.dangerous().with_custom_certificate_verifier(Arc::new(Insecure(provider))).with_no_client_auth()
+            }
+            Trust::Roots(pem) => {
+                let mut roots = RootCertStore::empty();
+                for cert in CertificateDer::pem_slice_iter(pem).flatten() {
+                    let _ = roots.add(cert);
+                }
+                if roots.is_empty() {
+                    return Err("certificate checking is on but no trusted roots are configured".into());
+                }
+                builder.with_root_certificates(roots).with_no_client_auth()
+            }
+        };
         let name = ServerName::try_from(host.to_string())
             .or_else(|_| tcp.peer_addr().map(|a| ServerName::IpAddress(a.ip().into())))
             .map_err(|e| e.to_string())?;
@@ -226,7 +268,8 @@ impl HttpSource {
         let mut stream: Box<dyn Stream> = if u.tls {
             #[cfg(feature = "https")]
             {
-                Box::new(tls::wrap(&u.host, tcp).map_err(err)?)
+                let trust = self.trust.as_ref().map_or(Trust::Any, |policy| policy());
+                Box::new(tls::wrap(&u.host, tcp, &trust).map_err(|e| err(format!("TLS with {}: {e}", u.host)))?)
             }
             #[cfg(not(feature = "https"))]
             {

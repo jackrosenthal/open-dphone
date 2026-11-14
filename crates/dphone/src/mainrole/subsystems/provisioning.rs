@@ -83,19 +83,39 @@ impl Files for NvFiles {
     }
 }
 
-/// The HTTP client for the files a configuration names by URL: names are
-/// resolved by the network manager's resolver (the one DHCP feeds), or by
-/// the host system's when the manager has none (the simulator).  Call it
-/// on the runtime; the downloads themselves run on blocking threads.
-pub fn http_source(net: &NetHandle) -> Arc<dyn dphone_dpma::firmware::FirmwareSource> {
+/// The download client: names are resolved by the network manager's
+/// resolver (the one DHCP feeds), or by the host system's when the manager
+/// has none (the simulator).
+fn downloader(net: &NetHandle) -> dphone_dpma::fetch::HttpSource {
     use std::net::{SocketAddr, ToSocketAddrs};
     let (runtime, net) = (tokio::runtime::Handle::current(), net.clone());
-    Arc::new(dphone_dpma::fetch::HttpSource::with_lookup(Box::new(move |host, port| {
+    dphone_dpma::fetch::HttpSource::with_lookup(Box::new(move |host, port| {
         let Some(resolver) = net.resolver() else {
             return (host, port).to_socket_addrs()?.next().ok_or_else(|| std::io::Error::other("no address"));
         };
         let addrs = runtime.block_on(resolver.lookup_ip(host, false, false)).map_err(|e| std::io::Error::other(format!("{e:?}")))?;
         addrs.first().map(|ip| SocketAddr::new(*ip, port)).ok_or_else(|| std::io::Error::other("no address"))
+    }))
+}
+
+/// The HTTP client for firmware images.  Like stock's (`curl --insecure`),
+/// it does not check an `https://` server's certificate.  Call it on the
+/// runtime; the downloads themselves run on blocking threads.
+pub fn http_source(net: &NetHandle) -> Arc<dyn dphone_dpma::firmware::FirmwareSource> {
+    Arc::new(downloader(net))
+}
+
+/// The HTTP client for the files a configuration names by URL (contact
+/// lists, ringtones).  As on stock, an `https://` server is checked against
+/// the trust bundle ([`super::trust::roots`]) unless `allow_insecure_ssl`
+/// is set: the policy of SIP over TLS and of the apps' requests.  Call it
+/// on the runtime.
+pub fn resource_source(net: &NetHandle, config: super::SharedConfig) -> Arc<dyn dphone_dpma::firmware::FirmwareSource> {
+    use dphone_dpma::fetch::Trust;
+    Arc::new(downloader(net).with_trust(Box::new(move || {
+        let store = config.lock().unwrap();
+        let cfg = store.config();
+        if cfg.sip().allow_insecure_ssl { Trust::Any } else { Trust::Roots(super::trust::roots(store.nvdata(), &cfg)) }
     })))
 }
 
