@@ -1,6 +1,7 @@
 //! The idle (home) screen: clock, status, and line-key tabs.
 
 use super::*;
+use crate::gfx::Rgb;
 use dphone_state::{AccountId, BlfState, LineKeyBinding, Registration};
 
 pub(crate) struct Idle;
@@ -9,8 +10,6 @@ pub(crate) struct Idle;
 pub(crate) struct Tab {
     pub label: String,
     pub icon: &'static str,
-    pub active: bool,
-    pub dim: bool,
 }
 
 /// The line-key tabs, from the key state, or from the accounts while the
@@ -29,12 +28,11 @@ pub(crate) fn line_tabs(cx: &Cx) -> Vec<Tab> {
             label,
             icon: match reg {
                 _ if active => "phone",
-                Some(Registration::Registered { .. }) => "registered",
+                // Stock: a person while idle, a handset while in a call.
+                Some(Registration::Registered { .. }) => "contacts",
                 Some(Registration::Failed { .. }) => "warning",
                 _ => "unregistered",
             },
-            active,
-            dim: !matches!(reg, Some(Registration::Registered { .. })),
         }
     };
     if st.keys.line_keys.is_empty() {
@@ -58,52 +56,24 @@ pub(crate) fn line_tabs(cx: &Cx) -> Vec<Tab> {
                         BlfState::Idle => "registered",
                         _ => "unregistered",
                     },
-                    active: matches!(state, BlfState::Ringing | BlfState::InUse | BlfState::OnHold),
-                    dim: matches!(state, BlfState::Unknown | BlfState::Unavailable),
                 }
             }
-            LineKeyBinding::Unused => Tab { label: String::new(), icon: "", active: false, dim: true },
+            LineKeyBinding::Unused => Tab { label: String::new(), icon: "" },
         })
         .collect()
 }
 
-/// The one-line status message under the clock.
-pub(crate) fn status_line(cx: &Cx) -> (String, bool) {
-    let st = cx.st;
-    if st.accounts.accounts.is_empty() {
-        return (tr::NO_ACCOUNTS.into(), true);
-    }
-    let default = st.accounts.default_account.and_then(|id| st.accounts.get(id)).or(st.accounts.accounts.first());
-    if let Some(a) = default {
-        match &a.registration {
-            Registration::Registered { .. } => {}
-            Registration::Registering => return (tr::REGISTERING.into(), false),
-            Registration::Failed { code, reason, .. } => {
-                return (format!("{}: {} {}", tr::NOT_REGISTERED, code, reason), true);
-            }
-            Registration::Disabled => return (tr::DISABLED.into(), true),
-            Registration::Unregistered => return (tr::NOT_REGISTERED.into(), true),
-        }
-    }
-    if st.features.dnd {
-        return (tr::DND_ON.into(), true);
-    }
-    if !st.features.forward.always.is_empty() {
-        return (format!("{} {}", tr::FORWARD_ON, st.features.forward.always), true);
-    }
-    if st.call_log.missed_unseen > 0 {
-        return (format!("{} {}", st.call_log.missed_unseen, tr::MISSED_CALLS), false);
-    }
-    let name = default
-        .map(|a| if a.display_name.is_empty() { a.label.clone() } else { a.display_name.clone() })
-        .unwrap_or_default();
-    (name, false)
-}
-
-/// Status icons, right to left: (icon, count).
+/// Status icons, left to right: (icon, count).  Stock shows the missed
+/// call count at the top left of the idle screen; the others follow it.
 pub(crate) fn status_icons(cx: &Cx) -> Vec<(&'static str, u32)> {
     let st = cx.st;
     let mut v = Vec::new();
+    if st.call_log.missed_unseen > 0 {
+        v.push(("phone-missed", st.call_log.missed_unseen));
+    }
+    if st.mwi.any_waiting() {
+        v.push(("voicemail", st.mwi.total_new()));
+    }
     if !st.network.is_up() {
         v.push(("net-down", 0));
     }
@@ -119,120 +89,167 @@ pub(crate) fn status_icons(cx: &Cx) -> Vec<(&'static str, u32)> {
     if st.audio.muted {
         v.push(("mute", 0));
     }
-    if st.mwi.any_waiting() {
-        v.push(("voicemail", st.mwi.total_new()));
-    }
-    if st.call_log.missed_unseen > 0 {
-        v.push(("phone-missed", st.call_log.missed_unseen));
-    }
     if matches!(st.update.trial, dphone_state::TrialBoot::Pending { .. }) {
         v.push(("update", 0));
     }
     v
 }
 
-/// The status bar shared by the idle and call screens.
-pub(crate) fn status_bar(cx: &Cx, c: &mut Canvas, r: IRect, show_clock: bool) {
+/// Draws the status icons in the header band, from its left edge.
+pub(crate) fn draw_status_icons(cx: &Cx, c: &mut Canvas, fg: Rgb) {
     let th = cx.th;
-    c.fill(r, th.title_bg);
-    let fg = th.title_fg;
+    let r = th.header_rect();
     let f = th.font(Font::Normal);
-    let mut x = r.right() - th.pad;
+    // Stock: the first icon starts at x 8 (color); the count follows 8
+    // pixels after it.
+    let (start, gap, after) = if th.gray { (3, 2, 5) } else { (8, 8, 12) };
+    let mut x = r.x + start;
+    let old = c.push_clip(r);
     for (name, count) in status_icons(cx) {
+        let Some(icon) = th.icon(name) else { continue };
+        c.icon(icon, x, r.y + (r.h - icon.height()) / 2, fg);
+        x += icon.width();
         if count > 0 {
             let s = count.to_string();
-            let w = f.width(&s);
-            x -= w;
-            c.text_in(f, IRect::new(x, r.y, w, r.h), &s, fg, HAlign::Left);
-            x -= 2;
+            x += gap;
+            x += c.text(f, x, r.y + (r.h - f.height()) / 2 + f.ascent as i32, &s, fg);
         }
-        if let Some(icon) = th.icon(name) {
-            x -= icon.width();
-            c.icon(icon, x, r.y + (r.h - icon.height()) / 2, fg);
-            x -= th.pad;
-        }
+        x += after;
     }
-    let left = IRect::new(r.x + th.pad, r.y, (x - r.x - th.pad).max(0), r.h);
-    if show_clock {
-        let civil = cx.civil();
-        let m = civil.meridiem(cx.cfg.time_24h);
-        let text = if cx.st.system.time_synced || cx.unix > 1_600_000_000 {
-            format!("{}{}{}  {}", civil.time(cx.cfg.time_24h), if m.is_empty() { "" } else { " " }, m, civil.date())
-        } else {
-            tr::PRODUCT.to_string()
-        };
-        c.text_in(f, left, &text, fg, HAlign::Left);
-    } else if let Some(icon) = th.icon("wordmark") {
-        let old = c.push_clip(left);
-        c.icon(icon, left.x, r.y + (r.h - icon.height()) / 2, fg);
-        c.restore_clip(old);
-    }
+    c.restore_clip(old);
 }
 
-/// Width of the line-key tab column.
-pub(crate) fn tab_width(th: &Theme) -> i32 {
-    match th.skin {
-        dphone_state::Skin::Color => 156,
-        dphone_state::Skin::LargeGray => 104,
-        dphone_state::Skin::SmallGray => 80,
-    }
-}
-
-fn draw_tabs(cx: &Cx, c: &mut Canvas, r: IRect) {
+/// Draws the line-key tabs down the right edge.  Tab `i` is at
+/// [`Theme::tab_rect`]`(i)`: a fixed pitch from the top of the screen, so
+/// that each label sits beside its physical key.
+pub(crate) fn draw_tabs(cx: &Cx, c: &mut Canvas) {
     let th = cx.th;
-    let tabs = line_tabs(cx);
-    let n = (cx.model.line_keys() as usize).max(tabs.len()).max(1) as i32;
-    let max_h = if th.gray { 22 } else { 46 };
-    let h = (r.h / n).min(max_h);
     let f = th.font(Font::Normal);
-    for (i, tab) in tabs.iter().enumerate() {
-        let tr_ = IRect::new(r.x, r.y + i as i32 * h, r.w, h);
-        let cell = tr_.inset_xy(0, 1);
-        let (bg, fg) = if tab.active {
-            (th.sel_bg, th.sel_fg)
-        } else if th.gray {
-            (th.bg, th.fg)
-        } else {
-            (th.card, if tab.dim { th.secondary } else { th.fg })
-        };
-        if th.gray {
-            c.fill(cell, bg);
-            c.frame(cell, th.fg);
-        } else {
-            c.fill_round(cell, 6, bg);
+    let edge = if th.gray { th.fg } else { 0x000001 };
+    for (i, tab) in line_tabs(cx).iter().enumerate() {
+        let r = th.tab_rect(i);
+        if r.bottom() > th.soft_y {
+            break;
         }
-        let inner = cell.inset_xy(th.pad.min(5), 0);
-        let (ic, text) = inner.split_left(th.icon + 3);
-        if let Some(icon) = th.icon(tab.icon) {
-            let tint = if tab.active || th.gray {
-                fg
-            } else if tab.icon == "registered" {
-                th.good
-            } else if tab.icon == "warning" {
-                th.warn
+        if tab.label.is_empty() && tab.icon.is_empty() {
+            continue;
+        }
+        // The tab is open to the right edge of the screen and to the tab
+        // above; its left and bottom edges are drawn, with the lower-left
+        // corner cut (color) or rounded (gray) as on stock.
+        let bottom = r.h - 1;
+        for j in 0..r.h {
+            // Border offset from the tab's left edge on this row, and how
+            // many border pixels it has there.
+            let (off, run) = if th.gray {
+                match bottom - j {
+                    0 => (7, r.w),
+                    1 => (5, 2),
+                    2 => (3, 2),
+                    3 => (2, 1),
+                    4 | 5 => (1, 1),
+                    _ => (0, 1),
+                }
             } else {
-                th.secondary
+                match bottom - j {
+                    0 => (4, r.w),
+                    k @ 1..=3 => (3 - k, 2),
+                    _ => (0, 1),
+                }
             };
-            c.icon_in(icon, IRect { w: th.icon, ..ic }, tint);
+            let y = r.y + j;
+            c.span(y, r.x + off, (r.x + off + run).min(r.right()), edge);
+            if j != bottom {
+                c.span(y, r.x + off + run, r.right(), th.tab_bg);
+            }
         }
-        c.text_in(f, text, &tab.label, fg, HAlign::Left);
+        let (left, right) = if th.gray { (6, 5) } else { (14, 9) };
+        let mut text = IRect::new(r.x + left, r.y, r.w - left - right, r.h - 1);
+        if let Some(icon) = th.icon(tab.icon) {
+            let ir = IRect::new(r.right() - right - icon.width(), r.y, icon.width(), r.h - 1);
+            c.icon_in(icon, ir, th.tab_fg);
+            text.w -= icon.width() + 4;
+        }
+        c.text_in(f, text, &tab.label, th.tab_fg, HAlign::Left);
     }
+}
+
+/// The header band on gray skins: black, left of the tab column, with
+/// `text` (a call state) or the status icons.
+pub(crate) fn gray_header(cx: &Cx, c: &mut Canvas, text: Option<&str>) {
+    let th = cx.th;
+    let r = th.header_rect();
+    c.fill(r, th.title_bg);
+    match text {
+        Some(t) => c.text_in(
+            th.font(Font::Normal),
+            IRect { x: r.x + th.title_pad, w: r.w - 2 * th.title_pad, ..r },
+            t,
+            th.title_fg,
+            HAlign::Left,
+        ),
+        None => draw_status_icons(cx, c, th.title_fg),
+    }
+}
+
+/// Where the idle clock goes: the time's right edge and baseline, the
+/// meridiem's left edge, and the date's center and baseline.  Color values
+/// are the stock positions (digits at x 68..222, y 89..152; meridiem from
+/// x 242; date centered on x 148 with its baseline at y 196).
+pub(crate) struct ClockLayout {
+    pub time_right: i32,
+    pub time_base: i32,
+    pub mer_x: i32,
+    pub date_cx: i32,
+    pub date_base: i32,
+}
+
+pub(crate) fn clock_layout(th: &Theme, area: IRect) -> ClockLayout {
+    if !th.gray {
+        return ClockLayout { time_right: 228, time_base: 152, mer_x: 240, date_cx: 148, date_base: 196 };
+    }
+    // Gray: no stock clock to match (stock shows a logo with a small time
+    // line under it), so the block is centered in the area left of the
+    // tabs.
+    let big = th.clock_font();
+    let digits = big.glyph('0').map(|g| g.top as i32).unwrap_or(big.ascent as i32);
+    let block = digits + 4 + th.line_h;
+    let top = area.y + ((area.h - block) / 2).max(0);
+    let cx = area.x + area.w / 2;
+    ClockLayout {
+        time_right: cx, // centered: see `Idle::draw`
+        time_base: top + digits,
+        mer_x: 0,
+        date_cx: cx,
+        date_base: top + digits + 4 + (th.line_h + th.font(Font::Normal).ascent as i32) / 2,
+    }
+}
+
+/// Height of the idle-screen area offered to an app's idle view.
+pub(crate) fn idle_app_h(th: &Theme) -> i32 {
+    if th.gray { 2 * th.line_h } else { 36 }
 }
 
 impl Screen for Idle {
     fn name(&self) -> String {
         "idle".into()
     }
+    fn wallpaper(&self) -> bool {
+        true
+    }
     fn softkeys(&self, cx: &Cx) -> Vec<Soft> {
+        // Stock: the first softkey reads "Missed Calls" while there are
+        // unseen missed calls.
+        let log = if cx.st.call_log.missed_unseen > 0 { tr::MISSED_CALLS_KEY } else { tr::CALL_LOG };
         vec![
-            soft(1, tr::CALL_LOG),
+            soft(1, log),
             soft(2, tr::CONTACTS),
+            soft(8, tr::STATUS),
             soft(3, tr::MENU),
             soft(4, tr::APPS),
-            soft(5, if cx.st.features.dnd { "DND Off" } else { tr::DND }),
+            soft(5, if cx.st.features.dnd { tr::DND_OFF } else { tr::DND }),
             soft(6, tr::FORWARD),
             soft(7, tr::REDIAL),
-            soft(8, tr::STATUS),
         ]
     }
     fn softkey(&mut self, cx: &Cx, id: u32) -> Nav {
@@ -271,57 +288,55 @@ impl Screen for Idle {
     }
     fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
         let th = cx.th;
-        c.fill(area, th.bg);
-        let (bar, body) = area.split_top(th.status_h);
-        status_bar(cx, c, bar, false);
-        let (main, tabs) = body.split_right(tab_width(th));
-        // An app's idle view takes the bottom of the main area.
-        let main = match cx.idle_view {
-            Some(view) => {
-                let (rest, app) = main.split_bottom(2 * th.line_h);
-                let mut tree = view.batch_quiet();
-                crate::appview_impl::render(&mut tree, c, th, app, cx.now_ms);
-                rest
-            }
-            None => main,
-        };
-        draw_tabs(cx, c, tabs.inset_xy(if th.gray { 1 } else { 4 }, if th.gray { 0 } else { 3 }));
+        // The background (wallpaper) is already painted.
+        if th.gray {
+            gray_header(cx, c, None);
+        } else {
+            draw_status_icons(cx, c, th.fg);
+        }
+        draw_tabs(cx, c);
 
-        // Clock, date, and status line, centered in the main area.
+        // The clock area: left of the tabs, below the header band.
+        let mut main = IRect::new(area.x, th.header_h, th.tab_x - area.x, area.bottom() - th.header_h);
+        if let Some(view) = cx.idle_view {
+            let (rest, app) = main.split_bottom(idle_app_h(th));
+            let mut tree = view.batch_quiet();
+            if th.gray {
+                crate::appview_impl::render(&mut tree, c, th, app, cx.now_ms);
+            } else {
+                // Over the wallpaper: the app's widgets without a fill.
+                crate::appview_impl::render_over(&mut tree, c, th, app, cx.now_ms);
+            }
+            main = rest;
+        }
         let civil = cx.civil();
-        let big = th.font(Font::Large);
-        let norm = th.font(Font::Normal);
+        let big = th.clock_font();
+        let sub = th.date_font();
         let clock_set = cx.st.system.time_synced || cx.unix > 1_600_000_000;
         let time = if clock_set { civil.time(cx.cfg.time_24h) } else { "--:--".to_string() };
         let mer = if clock_set { civil.meridiem(cx.cfg.time_24h) } else { "" };
-        let compact = main.h < big.height() + 2 * th.line_h;
-        let total_h = big.height() + if compact { th.line_h } else { 2 * th.line_h };
-        let mut y = main.y + ((main.h - total_h) / 2).max(0);
+        let lay = clock_layout(th, main);
         let tw = big.width(&time);
-        let mw = if mer.is_empty() { 0 } else { norm.width(mer) + th.pad };
-        let x = main.x + (main.w - tw - mw) / 2;
-        let base = y + big.ascent as i32;
-        c.text(big, x, base, &time, th.fg);
-        if !mer.is_empty() {
-            c.text(norm, x + tw + th.pad, base, mer, th.secondary);
+        if th.gray {
+            let mw = if mer.is_empty() { 0 } else { sub.width(mer) + 3 };
+            let x = lay.date_cx - (tw + mw) / 2;
+            c.text(big, x, lay.time_base, &time, th.fg);
+            if !mer.is_empty() {
+                c.text(sub, x + tw + 3, lay.time_base, mer, th.fg);
+            }
+        } else {
+            // With a meridiem the time ends where stock's does; without
+            // one it is centered over the date.
+            let x = if mer.is_empty() { lay.date_cx - tw / 2 } else { lay.time_right - tw };
+            c.text(big, x, lay.time_base, &time, th.fg);
+            if !mer.is_empty() {
+                c.text(th.meridiem_font(), lay.mer_x, lay.time_base, mer, th.fg);
+            }
         }
-        y += big.height();
         if clock_set {
-            c.text_in(norm, IRect::new(main.x, y, main.w, th.line_h), &civil.date(), th.secondary, HAlign::Center);
+            let date = civil.date();
+            c.text(sub, lay.date_cx - sub.width(&date) / 2, lay.date_base, &date, th.fg);
         }
-        y += th.line_h;
-        if compact {
-            return;
-        }
-        let (text, alert) = status_line(cx);
-        let color = if alert && !th.gray { th.warn } else { th.fg };
-        c.text_in(
-            th.font(if alert { Font::Bold } else { Font::Normal }),
-            IRect::new(main.x + th.pad, y, main.w - 2 * th.pad, th.line_h),
-            &text,
-            color,
-            HAlign::Center,
-        );
     }
     fn deadline(&self, cx: &Cx) -> Option<u64> {
         // Repaint at the next minute boundary.

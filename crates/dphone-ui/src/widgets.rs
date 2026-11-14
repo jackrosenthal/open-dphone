@@ -91,10 +91,14 @@ pub fn list(
             if th.gray {
                 c.fill(rr, th.sel_bg);
             } else {
-                c.fill_round(rr.inset_xy(2, 1), 4, th.sel_bg);
+                c.fill(IRect { h: rr.h - 1, ..rr }, th.sel_bg);
             }
         }
         draw_row(c, rr, idx, sel, if sel { th.sel_fg } else { th.fg });
+        if !th.gray {
+            // Stock: a hairline under each row.
+            c.hline(rr.x + 16, rr.bottom() - 1, rr.w - 24, th.border);
+        }
     }
     if bar {
         scroll_bar(c, th, r, len as i32, visible as i32, state.top as i32);
@@ -107,36 +111,56 @@ pub fn list(
 pub fn title_bar(c: &mut Canvas, th: &Theme, r: IRect, title: &str) {
     c.fill(r, th.title_bg);
     let f = th.font(Font::Title);
-    c.text_in(f, r.inset_xy(th.pad, 0), title, th.title_fg, if th.gray { HAlign::Center } else { HAlign::Left });
-    if !th.gray {
-        c.hline(r.x, r.bottom() - 1, r.w, th.border);
+    // Stock: left-aligned on every skin (x 15 on color, 3 on gray).
+    c.text_in(f, IRect { x: r.x + th.title_pad, w: r.w - 2 * th.title_pad, ..r }, title, th.title_fg, HAlign::Left);
+}
+
+/// How a softkey is colored.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SoftStyle {
+    Normal,
+    /// Answer: green on the color skin.
+    Go,
+    /// End, ignore, reject: red on the color skin.
+    Stop,
+}
+
+/// The style the stock firmware gives a native softkey label.
+pub fn soft_style(label: &str) -> SoftStyle {
+    use crate::strings as tr;
+    if label == tr::ANSWER {
+        SoftStyle::Go
+    } else if [tr::END_CALL, tr::IGNORE, tr::REJECT].contains(&label) {
+        SoftStyle::Stop
+    } else {
+        SoftStyle::Normal
     }
 }
 
-/// The softkey bar: four cells; empty labels draw nothing.  A label
-/// starting with `icon:` draws that icon instead.
-pub fn softkey_bar(c: &mut Canvas, th: &Theme, r: IRect, labels: &[String; 4]) {
-    c.fill(r, th.sk_bg);
-    if !th.gray {
-        c.hline(r.x, r.y, r.w, th.border);
-    }
-    let f = th.font(if th.gray { Font::Normal } else { Font::Bold });
-    let cell_w = r.w / 4;
+/// The four softkeys at the skin's measured positions
+/// ([`Theme::softkey_rect`]).  All four shapes are always drawn, as on the
+/// stock firmware; an empty label leaves its shape blank.  The background
+/// behind the shapes is the caller's.  A label starting with `icon:` draws
+/// that icon instead.
+pub fn softkey_bar(c: &mut Canvas, th: &Theme, labels: &[String; 4]) {
+    let f = th.font(Font::Normal);
     for (i, label) in labels.iter().enumerate() {
-        let cell = IRect::new(r.x + i as i32 * cell_w, r.y, cell_w, r.h);
-        if i > 0 && th.gray {
-            c.vline(cell.x, cell.y + 2, cell.h - 4, crate::gfx::GRAY[2]);
-        }
+        let r = th.softkey_rect(i);
+        let (fill, edge) = match soft_style(label) {
+            SoftStyle::Normal => (th.sk_bg, Some(th.sk_edge)),
+            SoftStyle::Go => (th.sk_go, None),
+            SoftStyle::Stop => (th.sk_stop, None),
+        };
+        c.softkey_shape(r, fill, if th.gray { None } else { edge });
         if label.is_empty() {
             continue;
         }
-        if !th.gray {
-            c.fill_round(cell.inset_xy(3, 3), 5, th.border);
-        }
+        // The label sits in the rectangular part, above the point.
+        let body = if th.gray { IRect { y: r.y + 1, h: r.h - 1, ..r } } else { IRect { y: r.y + 2, h: r.h - 5, ..r } };
         if let Some(icon) = label.strip_prefix("icon:").and_then(|n| th.icon(n)) {
-            c.icon_in(icon, cell, th.sk_fg);
+            c.icon_in(icon, body, th.sk_fg);
         } else {
-            c.text_in(f, cell.inset_xy(4, 0), label, th.sk_fg, HAlign::Center);
+            c.text_in(f, body.inset_xy(4, 0), label, th.sk_fg, HAlign::Center);
         }
     }
 }
@@ -175,8 +199,8 @@ pub fn modal(c: &mut Canvas, th: &Theme, area: IRect, w: i32, h: i32) -> IRect {
         c.frame(r, th.fg);
         c.frame(r.inset(1), th.fg);
     } else {
-        c.fill_round(r.inset(-2), 10, th.border);
-        c.fill_round(r, 8, th.modal_bg);
+        c.fill_round(r.inset(-1), 5, th.sk_edge);
+        c.fill_round(r, 4, th.modal_bg);
     }
     r.inset(th.pad)
 }
@@ -291,8 +315,8 @@ pub fn text_field(
         c.fill(r, th.bg);
         c.frame(r, th.fg);
     } else {
-        c.fill_round(r, 5, if focused { th.sel_bg } else { th.border });
-        c.fill_round(r.inset(if focused { 2 } else { 1 }), 4, th.title_bg);
+        c.fill_round(r, 4, if focused { th.accent } else { th.sk_edge });
+        c.fill_round(r.inset(1), 3, 0x141414);
     }
     let inner = r.inset_xy(th.pad.max(4), 2);
     if text.is_empty() && !placeholder.is_empty() {
@@ -336,4 +360,10 @@ pub fn key_value(c: &mut Canvas, th: &Theme, r: IRect, label: &str, value: &str,
     let (l, v) = r.split_right(vw);
     c.text_in(f, IRect { w: (l.w - th.pad).max(0), ..l }, label, fg, HAlign::Left);
     c.text_in(f, v, value, dim, HAlign::Right);
+}
+
+/// The rows area under a title bar: stock's color lists start two pixels
+/// below the title (rows at y 42, 74, ...).
+pub fn body_rows(th: &Theme, body: IRect) -> IRect {
+    if th.gray { body } else { IRect { y: body.y + 2, h: body.h - 2, ..body } }
 }

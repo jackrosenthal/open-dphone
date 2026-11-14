@@ -11,6 +11,9 @@ impl Screen for Boot {
     fn name(&self) -> String {
         "boot".into()
     }
+    fn wallpaper(&self) -> bool {
+        true
+    }
     fn softkeys(&self, cx: &Cx) -> Vec<Soft> {
         if cx.st.system.phase == Phase::NetworkWait {
             vec![soft(1, tr::NETWORK), soft(0, ""), soft(0, ""), soft(4, tr::STATUS)]
@@ -197,7 +200,7 @@ impl Screen for Provision {
             c.fill(area, th.bg);
             let (t, body) = area.split_top(th.title_h);
             widgets::title_bar(c, th, t, title);
-            widgets::list(c, th, body, rows.len(), st, th.row_h, true, |c, r, i, _, fg| {
+            widgets::list(c, th, widgets::body_rows(th, body), rows.len(), st, th.row_h, true, |c, r, i, _, fg| {
                 c.text_in(f, r.inset_xy(th.pad * 2, 0), &rows[i], fg, HAlign::Left);
             });
         };
@@ -236,7 +239,7 @@ impl Screen for Provision {
                 };
                 let server = p.server.as_ref().map(|s| s.address.as_str()).unwrap_or("");
                 let text = if server.is_empty() { text.to_string() } else { format!("{text}\n{server}") };
-                splash(c, th, area, true, "", &text, None);
+                splash(c, th, area, false, "", &text, None);
             }
         }
     }

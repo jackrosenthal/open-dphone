@@ -237,7 +237,7 @@ async fn run_async(opts: Options) -> i32 {
     let ctx = Context {
         safe: opts.safe || std::env::var(crate::init::SAFE_ENV).is_ok_and(|v| v == "1"),
         store: dphone_state::Store::new(state_model(model)),
-        dev: crate::ssh::dev_key().is_some() || (!opts.sim && crate::init::dev_mode(&paths)),
+        dev: !opts.sim && crate::init::dev_mode(&paths),
         paths,
         model,
         sim: opts.sim,

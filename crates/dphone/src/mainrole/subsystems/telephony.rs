@@ -375,6 +375,10 @@ impl dphone_dpma::ConfigSink for Sink {
         self.nv().cached_md5("config").ok().flatten()
     }
 
+    fn fetched_config(&self) -> Option<Vec<u8>> {
+        self.nv().read("fetched-config.xml").ok().flatten()
+    }
+
     fn apply(&self, fetched_config: &[u8], md5: &str) -> Result<(), String> {
         self.guard()?;
         let xml = std::str::from_utf8(fetched_config).map_err(|e| format!("fetched configuration is not UTF-8: {e}"))?;
@@ -540,7 +544,7 @@ async fn run(
             ctx.store.set_health(Subsystem::Dpma, HealthStatus::Starting);
             let (transport, incoming) = dphone_dpma::sip::transport(&sip, &mac);
             let mut cfg = dphone_dpma::DpmaConfig::new(mac, state_model(ctx.model).user_agent(&dphone_state::FirmwareVersion::CURRENT));
-            cfg.accept_firmware = config.lock().unwrap().config().access().allow_provisioned_firmware;
+            cfg.ignore_provisioned_firmware = config.lock().unwrap().config().ignore_provisioned_firmware().value;
             let sink = Arc::new(Sink {
                 config: config.clone(),
                 hub: hub.clone(),

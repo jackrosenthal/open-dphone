@@ -46,7 +46,7 @@ fn valid_setting_id(id: &str) -> bool {
 
 fn local_ids(c: &ConfigStore) -> std::collections::HashSet<String> {
     let mut ids = std::collections::HashSet::new();
-    for layer in [Layer::Ui, Layer::Open] {
+    for layer in [Layer::Ui] {
         if let Ok(Some(root)) = c.layer(layer) {
             ids.extend(root.children_named("setting").filter_map(|e| e.attr("id").map(str::to_owned)));
         }

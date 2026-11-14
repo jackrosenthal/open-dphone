@@ -96,7 +96,7 @@ async fn first_boot_user_token_config_and_pushes() {
     assert_eq!(applied.len(), 1);
     let text = String::from_utf8(applied[0].clone()).unwrap();
     assert!(text.contains("login_password") && text.contains("<accounts>"));
-    assert!(!text.contains("firmware"), "provisioned firmware is ignored by default");
+    assert!(text.contains("<firmware model=\"D60\""), "provisioned firmware is passed on by default");
     // No digest from the server: the cache holds the MD5 of the download.
     assert_eq!(p.config_md5.len(), 32);
     assert_eq!(r.sink.md5.lock().unwrap().as_deref(), Some(p.config_md5.as_str()));
@@ -247,4 +247,58 @@ impl ReadFile for MemStorage {
     fn read_file(&self, name: &str) -> Vec<u8> {
         self.0.lock().unwrap().get(name).cloned().unwrap_or_default()
     }
+}
+
+/// Counts how often the firmware check asks what is running.
+struct CountingInstaller(std::sync::atomic::AtomicUsize);
+impl dphone_dpma::firmware::FirmwareInstaller for CountingInstaller {
+    fn running_image(&self) -> Result<dphone_dpma::firmware::ImageSum, String> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Err("test".into())
+    }
+    fn install(&self, _: &mut dyn std::io::Read) -> Result<(), dphone_dpma::firmware::InstallError> {
+        unreachable!("the running image is unknown, so nothing may be installed")
+    }
+}
+struct NoSource;
+impl dphone_dpma::firmware::FirmwareSource for NoSource {
+    fn open(&self, _: &str, _: &str) -> Result<Box<dyn std::io::Read + Send>, dphone_dpma::firmware::FetchError> {
+        Err(dphone_dpma::firmware::FetchError { status: None, message: "test".into() })
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn provisioned_firmware_is_checked_unless_ignored() {
+    let mut s = FakeServer::new();
+    s.config = CONFIG.as_bytes().to_vec();
+    s.token_reqs = "mac".into();
+    let server = Arc::new(Mutex::new(s));
+    let r = rig_with(server.clone(), Arc::new(MemStorage::default()), Arc::new(MemSink::default()));
+    let installer = Arc::new(CountingInstaller(Default::default()));
+    r.dpma.set_firmware_updater(Arc::new(NoSource), installer.clone());
+    let checks = || installer.0.load(std::sync::atomic::Ordering::SeqCst);
+
+    // By default the provisioned firmware is respected: the entry is kept
+    // and the check runs after the configuration is applied.
+    r.dpma.network(true, Some("sip:proxy@pbx.test".into()), Vec::new());
+    until(&r.store, "provisioned", ProvisionPhase::Provisioned).await;
+    wait("the firmware check", || (checks() == 1).then_some(())).await;
+    assert!(String::from_utf8_lossy(&r.sink.applied.lock().unwrap()[0]).contains("<firmware model=\"D60\""));
+    assert_eq!(r.store.get::<Provisioning>().offered_firmware.as_deref(), Some("2_9_28"));
+
+    // With the development setting on, the entry is dropped and nothing
+    // is checked; the offer is still reported.
+    r.dpma.set_ignore_provisioned_firmware(true);
+    r.store.send(Command::Reprovision).await.unwrap();
+    wait("second fetch", || (r.sink.applied.lock().unwrap().len() == 2).then_some(())).await;
+    until(&r.store, "provisioned again", ProvisionPhase::Provisioned).await;
+    assert!(!String::from_utf8_lossy(&r.sink.applied.lock().unwrap()[1]).contains("firmware"));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(checks(), 1, "no check while ignoring");
+    assert_eq!(r.store.get::<Provisioning>().offered_firmware.as_deref(), Some("2_9_28"));
+
+    // And back.
+    r.dpma.set_ignore_provisioned_firmware(false);
+    r.store.send(Command::Reprovision).await.unwrap();
+    wait("the check resumes", || (checks() == 2).then_some(())).await;
 }

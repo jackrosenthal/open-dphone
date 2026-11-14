@@ -153,7 +153,7 @@ impl Screen for CallLogScreen {
         }
         let h24 = cx.cfg.time_24h;
         let off = cx.cfg.utc_offset_secs;
-        widgets::list(c, th, body, rows.len(), &mut self.st, th.row_h, true, |c, r, i, sel, fg| {
+        widgets::list(c, th, widgets::body_rows(th, body), rows.len(), &mut self.st, th.row_h, true, |c, r, i, sel, fg| {
             let e = rows[i];
             let (ic, rest) = r.split_left(th.icon + 2 * th.pad);
             let icon = match e.kind {
@@ -266,7 +266,7 @@ impl Screen for Launcher {
             // a grid.
             let row_h = (th.row_h).max(24 + 2).min(body.h / 3);
             let f = th.font(Font::Normal);
-            widgets::list(c, th, body, apps.len(), &mut self.st, row_h, true, |c, r, i, sel, fg| {
+            widgets::list(c, th, widgets::body_rows(th, body), apps.len(), &mut self.st, row_h, true, |c, r, i, sel, fg| {
                 let (ic, rest) = r.split_left(row_h + 6);
                 if let Some(icon) = app_icon(th, apps[i]) {
                     // The gray app icons are opaque four-level bitmaps.
@@ -628,7 +628,7 @@ impl Screen for Ringtones {
         widgets::title_bar(c, th, title, tr::RINGTONE);
         let f = th.font(Font::Normal);
         let tones = &cx.cfg.ringtones;
-        widgets::list(c, th, body, tones.len(), &mut self.st, th.row_h, true, |c, r, i, _, fg| {
+        widgets::list(c, th, widgets::body_rows(th, body), tones.len(), &mut self.st, th.row_h, true, |c, r, i, _, fg| {
             let (mark, rest) = r.split_left(th.icon + 2 * th.pad);
             if tones[i] == cx.cfg.ringtone
                 && let Some(icon) = th.icon("ok") {

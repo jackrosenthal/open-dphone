@@ -212,7 +212,9 @@ pub(crate) fn config_error(e: ConfigError) -> ConnectError {
     {
         let code = match &e {
             ConfigError::Io(_) => Code::Internal,
-            ConfigError::Parse(_) | ConfigError::TooManyAccounts { .. } => Code::InvalidArgument,
+            ConfigError::Parse(_) | ConfigError::NotAStockSetting(_) | ConfigError::TooManyAccounts { .. } => {
+                Code::InvalidArgument
+            }
             ConfigError::Frozen(_) | ConfigError::ReadOnlyLayer(_) => Code::FailedPrecondition,
         };
         ConnectError::new(code, e.to_string())

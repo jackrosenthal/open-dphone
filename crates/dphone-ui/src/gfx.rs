@@ -443,3 +443,129 @@ impl Canvas {
         self.presented = false;
     }
 }
+
+// ------------------------------------------------------------- wallpaper
+
+/// The color skin's wallpaper: a deep blue vertical gradient crossed by
+/// broad diagonal facets.  Drawn procedurally (our own design in the stock
+/// firmware's palette); computed once and kept.
+fn wallpaper_pixels(w: i32, h: i32) -> &'static [u32] {
+    static PIXELS: std::sync::OnceLock<Vec<u32>> = std::sync::OnceLock::new();
+    PIXELS.get_or_init(|| {
+        let mut v = Vec::with_capacity((w * h) as usize);
+        // Vertical gradient stops: (row, r, g, b).
+        const STOPS: [(i32, i32, i32, i32); 4] =
+            [(0, 0x15, 0x1E, 0x2C), (56, 0x10, 0x24, 0x44), (150, 0x0D, 0x20, 0x3E), (268, 0x0A, 0x14, 0x26)];
+        // Facets: (slant: +1 leans right going down, -1 left; start and
+        // width along the slanted axis; strength in 1/64).  Each facet is
+        // brightest at its leading edge and fades across its width.
+        const FACETS: [(i32, i32, i32, i32); 6] =
+            [(1, 60, 170, 30), (1, 330, 150, 22), (1, 560, 190, 32), (-1, -120, 160, 24), (-1, 130, 140, 18), (-1, 300, 170, 28)];
+        for y in 0..h {
+            let (mut r, mut g, mut b) = (0x20, 0x21, 0x22);
+            if y <= 268 {
+                let i = STOPS.iter().rposition(|s| s.0 <= y).unwrap_or(0).min(STOPS.len() - 2);
+                let (a, z) = (STOPS[i], STOPS[i + 1]);
+                let (t, span) = (y - a.0, z.0 - a.0);
+                r = a.1 + (z.1 - a.1) * t / span;
+                g = a.2 + (z.2 - a.2) * t / span;
+                b = a.3 + (z.3 - a.3) * t / span;
+            }
+            for x in 0..w {
+                let (mut pr, mut pg, mut pb) = (r, g, b);
+                if y <= 268 {
+                    let mut light = 0;
+                    for (slant, start, width, strength) in FACETS {
+                        // Slope 3 across to 5 down.
+                        let u = x + slant * y * 3 / 5 - start;
+                        if (0..width).contains(&u) {
+                            light += strength * (width - u) / width;
+                        }
+                    }
+                    // Lighten toward a brighter blue.
+                    pr += 0x06 * light / 64;
+                    pg += 0x16 * light / 64;
+                    pb += 0x38 * light / 64;
+                }
+                v.push(rgb(pr.clamp(0, 255) as u8, pg.clamp(0, 255) as u8, pb.clamp(0, 255) as u8));
+            }
+        }
+        v
+    })
+}
+
+impl Canvas {
+    /// Paints the idle/call background over the whole screen: the blue
+    /// wallpaper on the color skin, the plain background on gray.
+    pub fn wallpaper(&mut self, plain: Rgb) {
+        if self.gray || self.w != 480 || self.h != 272 {
+            self.clear(plain);
+            return;
+        }
+        let src = wallpaper_pixels(self.w, self.h);
+        let clip = self.clip;
+        for y in clip.y..clip.bottom() {
+            let row = (y * self.w) as usize;
+            let (a, b) = (row + clip.x as usize, row + clip.right() as usize);
+            self.pix[a..b].copy_from_slice(&src[a..b]);
+        }
+    }
+
+    /// Fills one row span `x0..x1` (exclusive) at `y`.
+    pub fn span(&mut self, y: i32, x0: i32, x1: i32, c: Rgb) {
+        self.fill(IRect::new(x0, y, x1 - x0, 1), c);
+    }
+
+    /// A softkey shape in `r`.  On the color skin: a rectangle whose
+    /// bottom edge comes to a shallow point at the center, aimed at the
+    /// physical key below (the last five rows of `r` are the point), with
+    /// an optional one-pixel outline.  On gray: a cell with rounded top
+    /// corners and a one-pixel gap at each side.
+    pub fn softkey_shape(&mut self, r: IRect, fill: Rgb, edge: Option<Rgb>) {
+        if self.gray {
+            for j in 0..r.h {
+                let inset = match j {
+                    0 => 3,
+                    1 => 2,
+                    _ => 1,
+                };
+                self.span(r.y + j, r.x + inset, r.right() - inset, fill);
+            }
+            return;
+        }
+        const POINT: i32 = 5;
+        let body = r.h - POINT;
+        let edge = edge.unwrap_or(fill);
+        // The rectangular part: rows 0..body, with the top corners cut by
+        // one pixel.
+        self.span(r.y, r.x + 1, r.right() - 1, edge);
+        for j in 1..body - 1 {
+            self.span(r.y + j, r.x, r.right(), fill);
+            self.span(r.y + j, r.x, r.x + 1, edge);
+            self.span(r.y + j, r.right() - 1, r.right(), edge);
+        }
+        // The point: the bottom edge runs from each lower corner down to
+        // the center, anti-aliased, in sixteenths of a pixel.
+        let half = (r.w / 2).max(1);
+        for x in 0..r.w {
+            let d = x.min(r.w - 1 - x);
+            let edge_y = body * 16 - 8 + POINT * 16 * d / half;
+            for j in body - 1..r.h {
+                let t = edge_y - j * 16;
+                let (px, py) = (r.x + x, r.y + j);
+                if t >= 32 && d > 0 {
+                    self.put_blend(px, py, self.color(fill), 1, 1);
+                } else if t >= 16 {
+                    self.put_blend(px, py, self.color(edge), 1, 1);
+                } else if t > 0 {
+                    self.put_blend(px, py, self.color(edge), t as u32, 16);
+                }
+            }
+        }
+    }
+}
+
+/// Mixes `n` eighths of `b` into `a`.
+pub fn mix(a: Rgb, b: Rgb, n: u32) -> Rgb {
+    blend(a, b, n.min(8), 8)
+}

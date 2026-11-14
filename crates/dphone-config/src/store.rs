@@ -10,12 +10,14 @@ use std::sync::Arc;
 
 use crate::merge::{self, NetContext};
 use crate::model::{BASE_CONFIG, Model};
+use crate::settings::{DphoneSettings, SettingsDocument};
 use crate::nvdata::{Nvdata, WEB_USER, htdigest_ha1, WEB_REALM};
 use crate::view::{BlfItem, Config, parse_blf_items};
 use crate::xml::{Element, Node};
 
 /// The merge layers, in merge order.  The first ten are the stock layers in
-/// the stock order; [`Layer::Open`] is ours and is merged last.
+/// the stock order.  Settings only Open DPhone has are not a layer: see
+/// [`crate::settings`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Layer {
     /// Compiled-in model-independent defaults (stock: `/etc/base-config.xml`).
@@ -38,13 +40,11 @@ pub enum Layer {
     Lldp,
     /// `/nvdata/hack.xml`
     Hack,
-    /// `/nvdata/open/config.xml`: settings only Open DPhone knows.
-    Open,
 }
 
 impl Layer {
     /// All layers in merge order.
-    pub const ORDER: [Layer; 11] = [
+    pub const ORDER: [Layer; 10] = [
         Layer::Base,
         Layer::Factory,
         Layer::G729Legacy,
@@ -55,7 +55,6 @@ impl Layer {
         Layer::Ui,
         Layer::Lldp,
         Layer::Hack,
-        Layer::Open,
     ];
 
     /// Path relative to the nvdata root, for the layers stored there.
@@ -68,7 +67,6 @@ impl Layer {
             Layer::Fetched => "fetched-config.xml",
             Layer::Ui => "ui-config.xml",
             Layer::Hack => "hack.xml",
-            Layer::Open => "open/config.xml",
             Layer::Base | Layer::Factory | Layer::Lldp => return None,
         })
     }
@@ -78,15 +76,21 @@ impl Layer {
     pub fn writable(self) -> bool {
         matches!(
             self,
-            Layer::NetSelect | Layer::Configurator | Layer::Fetched | Layer::Ui | Layer::Lldp | Layer::Open
+            Layer::NetSelect | Layer::Configurator | Layer::Fetched | Layer::Ui | Layer::Lldp
         )
     }
 }
 
-/// Prefix of setting IDs that only Open DPhone knows.  They are stored in
-/// [`Layer::Open`]; every other setting changed locally goes to
-/// [`Layer::Ui`], as on stock.
-pub const OPEN_PREFIX: &str = "open_";
+/// The retired layer file that held `open_*` settings during bring-up; its
+/// values are carried into the settings file once, then it is removed.
+const LEGACY_OPEN_LAYER: &str = "open/config.xml";
+/// Prefixes the generic set path refuses: the retired `open_*` IDs, and the
+/// `dphone_*` IDs a provisioning server uses for Open DPhone's own settings.
+/// Locally those are changed in the settings file, never in `ui-config.xml`.
+const NOT_STOCK_PREFIXES: [&str; 2] = ["open_", "dphone_"];
+/// The factory default web password (stock ships `admin` / `789` in its
+/// default digest file and as the base `login_password`).
+pub const DEFAULT_WEB_PASSWORD: &str = "789";
 
 #[derive(Debug)]
 pub enum ConfigError {
@@ -97,6 +101,9 @@ pub enum ConfigError {
     Frozen(String),
     /// The layer is not one this crate writes.
     ReadOnlyLayer(Layer),
+    /// Not a stock setting ID.  Open DPhone's own settings are changed with
+    /// [`ConfigStore::update_dphone_settings`].
+    NotAStockSetting(String),
     /// More accounts than the model allows.
     TooManyAccounts { max: usize, given: usize },
 }
@@ -107,6 +114,9 @@ impl fmt::Display for ConfigError {
             ConfigError::Io(e) => write!(f, "{e}"),
             ConfigError::Parse(e) => write!(f, "{e}"),
             ConfigError::Frozen(id) => write!(f, "setting {id} is frozen and cannot be changed"),
+            ConfigError::NotAStockSetting(id) => {
+                write!(f, "{id} is not a stock setting; use the Open DPhone settings instead")
+            }
             ConfigError::ReadOnlyLayer(l) => write!(f, "layer {l:?} is read-only"),
             ConfigError::TooManyAccounts { max, given } => {
                 write!(f, "{given} accounts given, but this model allows {max}")
@@ -132,6 +142,8 @@ pub struct ConfigStore {
     net: NetContext,
     current: Arc<Config>,
     warnings: Vec<String>,
+    /// `/nvdata/dphone_settings.txtpb` as last read or written.
+    settings: SettingsDocument,
     /// Never rewrite the merged `/nvdata/config.xml` (see `open_read_only`).
     keep_merged_file: bool,
 }
@@ -161,7 +173,9 @@ impl ConfigStore {
             net: NetContext::default(),
             current: Arc::new(Config::from_merged(Element::new("config"), model, None)),
             warnings: Vec::new(),
+            settings: SettingsDocument::default(),
         };
+        store.migrate_legacy_open_layer()?;
         store.reload()?;
         Ok(store)
     }
@@ -217,16 +231,12 @@ impl ConfigStore {
         }
     }
 
-    /// Re-read every layer and merge.  Returns the new generation, or the
-    /// current one if nothing changed.
+    /// Re-read every layer and the settings file, and merge.  Returns the
+    /// new generation, or the current one if nothing changed.
     pub fn reload(&mut self) -> Result<Arc<Config>, ConfigError> {
         let mut warnings = Vec::new();
         let mut acc = Element::new("config");
-        let mut stock = None;
         for layer in Layer::ORDER {
-            if layer == Layer::Open {
-                stock = Some(acc.clone());
-            }
             match self.layer(layer) {
                 Ok(Some(e)) => merge::merge_layer(&mut acc, e, &self.net),
                 Ok(None) => {}
@@ -235,27 +245,112 @@ impl ConfigStore {
             }
         }
         self.warnings = warnings;
-        // /nvdata/config.xml holds the merge of the ten stock layers only,
-        // without our private defaults, so it never carries a setting stock
-        // does not know.
-        let mut stock = stock.unwrap_or_else(|| acc.clone());
-        stock.remove_children(|e| {
-            e.name == "setting" && e.attr("id").is_some_and(|id| id.starts_with(OPEN_PREFIX))
-        });
-        let stock_doc = stock.to_document();
+        // /nvdata/config.xml holds exactly the merge of the ten stock layers.
+        let stock_doc = acc.to_document();
         if !self.keep_merged_file && self.nv.read_string("config.xml")?.as_deref() != Some(stock_doc.as_str()) {
             self.nv.write("config.xml", stock_doc.as_bytes())?;
         }
-        if acc != self.current.root || self.current.generation == 0 {
+        self.settings = SettingsDocument::load(&self.nv)?;
+        self.mirror_provisioned_ssh_keys(&acc)?;
+        if acc != self.current.root
+            || self.settings.settings != self.current.settings
+            || self.current.generation == 0
+        {
             let selected = merge::selected_network(&acc, &self.net);
             self.current = Arc::new(Config {
                 root: acc,
                 generation: self.current.generation + 1,
                 model: self.model,
                 selected_network: selected,
+                settings: self.settings.settings.clone(),
             });
         }
         Ok(self.config())
+    }
+
+    /// Keep `/nvdata/open/provisioned_authorized_keys` equal to the keys in
+    /// the merged configuration, so the SSH server can read them next to
+    /// the locally added ones.  The file is derived state: local keys are
+    /// never in it, and a key the server stops sending is gone after the
+    /// next merge.
+    fn mirror_provisioned_ssh_keys(&self, merged: &Element) -> Result<(), ConfigError> {
+        let keys = Config::from_merged(merged.clone(), self.model, None).provisioned_ssh_keys();
+        let want = if keys.is_empty() { None } else { Some(keys.join("\n") + "\n") };
+        let rel = crate::settings::PROVISIONED_SSH_KEYS_FILE;
+        if self.nv.read_string(rel)? != want {
+            match want {
+                Some(text) => self.nv.write(rel, text.as_bytes())?,
+                None => self.nv.remove(rel)?,
+            }
+        }
+        Ok(())
+    }
+
+    /// Every SSH public key to accept: the ones added on the phone
+    /// (`/nvdata/root/.ssh/authorized_keys`) followed by the provisioned
+    /// ones, without duplicates.
+    pub fn ssh_authorized_keys(&self) -> Result<Vec<String>, ConfigError> {
+        let mut keys = self.nv.authorized_keys()?;
+        for k in self.current.provisioned_ssh_keys() {
+            if !keys.contains(&k) {
+                keys.push(k);
+            }
+        }
+        Ok(keys)
+    }
+
+    // ---- Open DPhone's own settings ----------------------------------------
+
+    /// The settings only Open DPhone has (`/nvdata/dphone_settings.txtpb`).
+    /// The same value is on every generation: [`Config::dphone_settings`].
+    pub fn dphone_settings(&self) -> &DphoneSettings {
+        &self.settings.settings
+    }
+
+    /// Change Open DPhone's own settings: `change` edits the message (set a
+    /// field to `Some(..)`, or to `None` to return it to its default), the
+    /// file is written atomically, and a new generation is returned.  Fields
+    /// in the file that this firmware does not know are kept.  Nothing is
+    /// written when `change` changes nothing.
+    pub fn update_dphone_settings(
+        &mut self,
+        change: impl FnOnce(&mut DphoneSettings),
+    ) -> Result<Arc<Config>, ConfigError> {
+        let mut doc = SettingsDocument::load(&self.nv)?;
+        let before = doc.settings.clone();
+        change(&mut doc.settings);
+        if doc.settings != before {
+            doc.save(&self.nv)?;
+        }
+        self.reload()
+    }
+
+    /// One-time migration from the bring-up layout: carry the
+    /// `open_ssh_enabled` value out of `/nvdata/open/config.xml` into the settings
+    /// file (a value already in the settings file wins), then remove it.
+    fn migrate_legacy_open_layer(&mut self) -> Result<(), ConfigError> {
+        let Some(text) = self.nv.read_string(LEGACY_OPEN_LAYER)? else { return Ok(()) };
+        match Element::parse(&text) {
+            Ok(root) => {
+                let get = |id: &str| {
+                    let v = root.child_with_id("setting", id)?.attr("value")?.trim();
+                    (!v.is_empty()).then_some(matches!(v, "1" | "true" | "yes" | "on"))
+                };
+                let mut doc = SettingsDocument::load(&self.nv)?;
+                let before = doc.settings.clone();
+                let s = &mut doc.settings;
+                s.ssh_enabled = s.ssh_enabled.or(get("open_ssh_enabled"));
+                // `open_https_enabled` and `open_allow_provisioned_firmware`
+                // are dropped: the settings they stood for no longer exist.
+                if doc.settings != before {
+                    doc.save(&self.nv)?;
+                }
+                log::info!("migrated {LEGACY_OPEN_LAYER} into {}", crate::settings::SETTINGS_FILE);
+            }
+            Err(e) => log::warn!("{LEGACY_OPEN_LAYER} does not parse ({e}); removing it"),
+        }
+        self.nv.remove(LEGACY_OPEN_LAYER)?;
+        Ok(())
     }
 
     /// Replace a whole layer and re-merge.
@@ -285,29 +380,23 @@ impl ConfigStore {
         self.reload()
     }
 
-    /// The layer a locally changed setting is saved in.
-    pub fn layer_for_setting(id: &str) -> Layer {
-        if id.starts_with(OPEN_PREFIX) { Layer::Open } else { Layer::Ui }
-    }
-
-    /// Change settings locally (phone menu, web UI, `dphone config set`).
-    /// Each is saved to the UI layer, or to the open layer for `open_*`
-    /// settings, and the configuration is re-merged.  Fails without saving
-    /// anything if one of them is frozen by the base or factory layer.
+    /// Change stock settings locally (phone menu, web UI, `dphone config
+    /// set`).  Each is saved to the UI layer, as on stock, and the
+    /// configuration is re-merged.  Fails without saving anything if one of
+    /// them is frozen by an earlier layer.  Open DPhone's own settings are
+    /// not setting IDs; see [`ConfigStore::update_dphone_settings`].
     pub fn set_many(&mut self, changes: &[(&str, &str)]) -> Result<Arc<Config>, ConfigError> {
         for (id, _) in changes {
+            if NOT_STOCK_PREFIXES.iter().any(|p| id.starts_with(p)) {
+                return Err(ConfigError::NotAStockSetting((*id).to_owned()));
+            }
             if self.frozen_below_local(id)? {
                 return Err(ConfigError::Frozen((*id).to_owned()));
             }
         }
-        for layer in [Layer::Ui, Layer::Open] {
-            let mine: Vec<_> =
-                changes.iter().filter(|(id, _)| Self::layer_for_setting(id) == layer).collect();
-            if mine.is_empty() {
-                continue;
-            }
-            let mut root = self.layer_or_empty(layer);
-            for (id, value) in mine {
+        if !changes.is_empty() {
+            let mut root = self.layer_or_empty(Layer::Ui);
+            for (id, value) in changes {
                 match root.child_with_id_mut("setting", id) {
                     Some(e) => e.set_attr("value", value),
                     None => root.children.push(Node::Element(
@@ -315,7 +404,7 @@ impl ConfigStore {
                     )),
                 }
             }
-            self.nv.write_xml(layer.nvdata_path().unwrap(), &root)?;
+            self.nv.write_xml(Layer::Ui.nvdata_path().unwrap(), &root)?;
         }
         self.reload()
     }
@@ -327,7 +416,7 @@ impl ConfigStore {
 
     /// Drop a local override so the provisioned or default value shows again.
     pub fn unset(&mut self, id: &str) -> Result<Arc<Config>, ConfigError> {
-        let layer = Self::layer_for_setting(id);
+        let layer = Layer::Ui;
         if let Some(mut root) = self.layer(layer).ok().flatten() {
             root.remove_children(|e| e.name == "setting" && e.attr("id") == Some(id));
             self.nv.write_xml(layer.nvdata_path().unwrap(), &root)?;
@@ -434,12 +523,13 @@ impl ConfigStore {
     // ---- web login ---------------------------------------------------------
 
     /// Check a web login.  The digest file is authoritative; if it has no
-    /// entry for the user, `admin` is checked against `login_password`.
+    /// entry for the user, `admin` is checked against `login_password`,
+    /// and against the factory default (`789`) when that is not set either.
     pub fn verify_web_password(&self, user: &str, password: &str) -> Result<bool, ConfigError> {
         if let Some(ok) = self.nv.verify_web_password(user, password)? {
             return Ok(ok);
         }
-        Ok(user == WEB_USER && self.current.setting("login_password") == Some(password))
+        Ok(user == WEB_USER && self.fallback_web_password() == password)
     }
 
     /// HA1 (`MD5(user:realm:password)`) for HTTP digest authentication.
@@ -447,10 +537,13 @@ impl ConfigStore {
         if let Some(h) = self.nv.web_ha1(user)? {
             return Ok(Some(h));
         }
-        Ok((user == WEB_USER)
-            .then(|| self.current.setting("login_password"))
-            .flatten()
-            .map(|p| htdigest_ha1(user, WEB_REALM, p)))
+        Ok((user == WEB_USER).then(|| htdigest_ha1(user, WEB_REALM, self.fallback_web_password())))
+    }
+
+    /// The admin password when there is no digest file: `login_password`,
+    /// or the factory default when that is absent or empty.
+    fn fallback_web_password(&self) -> &str {
+        self.current.setting("login_password").filter(|p| !p.is_empty()).unwrap_or(DEFAULT_WEB_PASSWORD)
     }
 
     /// Change the admin password: rewrites the digest file in stock's format

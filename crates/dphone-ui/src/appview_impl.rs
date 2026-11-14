@@ -269,9 +269,15 @@ fn draw_node(tree: &mut Tree, c: &mut Canvas, th: &Theme, id: WidgetId, ox: i32,
 
 /// Paints the tree into `area` (the app content area).
 pub(crate) fn render(tree: &mut Tree, c: &mut Canvas, th: &Theme, area: IRect, now_ms: u64) {
-    let old = c.push_clip(area);
     let bg = th.resolve(tree.background, Some(th.bg)).unwrap_or(th.bg);
     c.fill(area, bg);
+    render_over(tree, c, th, area, now_ms);
+}
+
+/// Paints the tree's widgets into `area` over whatever is there (the idle
+/// view over the wallpaper).
+pub(crate) fn render_over(tree: &mut Tree, c: &mut Canvas, th: &Theme, area: IRect, now_ms: u64) {
+    let old = c.push_clip(area);
     for id in tree.roots.clone() {
         draw_node(tree, c, th, id, area.x, area.y, now_ms);
     }

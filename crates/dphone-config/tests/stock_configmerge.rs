@@ -138,7 +138,11 @@ fn stock_accepts_trees_we_wrote() {
             &Element::parse(r#"<config><setting id="config_server_url" value="sip:proxy@10.10.0.2"/></config>"#).unwrap(),
         )
         .unwrap();
-        s.set_many(&[("ringer_volume", "8"), ("network_enable_dhcp", "0"), ("open_ssh_enabled", "1")]).unwrap();
+        s.set_many(&[("ringer_volume", "8"), ("network_enable_dhcp", "0")]).unwrap();
+        // Our own settings file sits at the top of nvdata, where stock never
+        // looks: stock's merge takes its ten fixed paths and nothing else.
+        s.update_dphone_settings(|d| d.ssh_enabled = Some(false)).unwrap();
+        assert!(nv.exists("dphone_settings.txtpb"));
         s.set_web_password("pa&ss\"<wd>'").unwrap();
         let ours_cfg = s.config();
 
@@ -159,7 +163,9 @@ fn stock_accepts_trees_we_wrote() {
         assert_eq!(get("login_password").as_deref(), Some("pa&ss\"<wd>'"));
         assert_eq!(get("time_zone").as_deref(), Some("America/Denver"));
         assert_eq!(get("config_server_url").as_deref(), Some("sip:proxy@10.10.0.2"));
-        assert_eq!(get("open_ssh_enabled"), None);
+        assert!(!out.contains("ssh_enabled"));
+        // What we leave in config.xml is the stock layers' merge and no more.
+        assert!(!nv.read_string("config.xml").unwrap().unwrap().contains("ssh_enabled"));
         // The same accounts both firmwares see for the selected network
         // (stock applies its own account limit at run time, not in the merge).
         let stock_accounts: Vec<_> =
@@ -169,5 +175,46 @@ fn stock_accepts_trees_we_wrote() {
 
         // And the same layer files merged by us give the same bytes.
         assert_eq!(ours(&files), out, "{model}");
+    }
+}
+
+/// The DPMA extension must leave a stock phone unaffected: the stock merge
+/// accepts a provisioned configuration carrying the `dphone_*` settings and
+/// the key element, and apart from carrying those unknown entries along
+/// inertly its result is identical to the one without them.
+#[test]
+fn stock_is_unaffected_by_the_dpma_extension() {
+    let Some(rootfs) = rootfs() else { return };
+    let dir = TempDir::new("ext");
+    let base = [rootfs.join("etc/base-config.xml"), rootfs.join("etc/factory-config.xml")];
+    let run = |fetched: &str, ui: &str| {
+        let extra = write_inputs(
+            dir.path(),
+            &[r#"<config><netselect id="office"/></config>"#, fetched, ui],
+        );
+        let files: Vec<PathBuf> = base.iter().cloned().chain(extra).collect();
+        let (code, out) = stock_merge(&rootfs, &files);
+        assert_eq!(code, 0);
+        // Our merge agrees byte for byte on the same inputs.
+        assert_eq!(ours(&files), out);
+        out
+    };
+    let ui = r#"<config><setting id="ringer_volume" value="8"/></config>"#;
+    let without = run(FETCHED, ui);
+    let with = run(&common::fetched_with_extension(), ui);
+    assert_ne!(with, without);
+
+    // Remove what the extension added and nothing else differs.
+    let mut stripped = Element::parse(&with).unwrap();
+    stripped.remove_children(|e| {
+        e.name == "dphone_ssh_authorized_keys"
+            || (e.name == "setting" && e.attr("id").is_some_and(|id| id.starts_with("dphone_")))
+    });
+    assert_eq!(stripped.to_document(), without);
+
+    // No stock setting ID starts with the prefix, so nothing stock looks up
+    // by ID can collide with the extension.
+    for f in &base {
+        assert!(!std::fs::read_to_string(f).unwrap().contains("dphone_"));
     }
 }

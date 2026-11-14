@@ -46,5 +46,5 @@ pub use ui::{Ui, UiConfig, UiHandle};
 /// relative to this area, not to the app content area.
 pub fn idle_app_area(model: dphone_state::Model) -> dphone_state::Size {
     let th = skin::Theme::for_model(model);
-    dphone_state::Size::new((th.width - screens::idle::tab_width(th)) as u16, (2 * th.line_h) as u16)
+    dphone_state::Size::new(th.tab_x as u16, screens::idle::idle_app_h(th) as u16)
 }

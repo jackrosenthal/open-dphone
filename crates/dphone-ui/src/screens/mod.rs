@@ -125,6 +125,11 @@ pub(crate) trait Screen: Send {
     fn dial_buffer(&self) -> Option<&str> {
         None
     }
+    /// Paint the wallpaper behind this screen (idle and call screens)
+    /// instead of the plain background.
+    fn wallpaper(&self) -> bool {
+        false
+    }
     /// Paints over the softkey bar too.
     fn full_screen(&self) -> bool {
         false
@@ -235,7 +240,7 @@ impl Screen for Menu {
         let items = (self.build)(cx);
         let num_w = if self.numbered { if th.gray { 15 } else { area.w / 10 } } else { th.pad };
         let f = th.font(Font::Normal);
-        widgets::list(c, th, body, items.len(), &mut self.st, th.row_h, true, |c, r, i, sel, fg| {
+        widgets::list(c, th, widgets::body_rows(th, body), items.len(), &mut self.st, th.row_h, true, |c, r, i, sel, fg| {
             let it = &items[i];
             let (num, rest) = r.split_left(num_w);
             if let Some(icon) = it.icon.and_then(|n| th.icon(n)) {
@@ -377,19 +382,25 @@ impl Screen for Info {
         let (title, body) = area.split_top(th.title_h);
         widgets::title_bar(c, th, title, &self.title);
         let rows = (self.build)(cx);
-        let visible = (body.h / th.line_h).max(1) as usize;
+        // Stock (color): 32-pixel rows from y 42 with a hairline under
+        // each, text inset 15 pixels.
+        let (row_h, top, inset) = if th.gray { (th.line_h, 0, th.pad + 2) } else { (th.row_h, 2, th.title_pad) };
+        let visible = ((body.h - top) / row_h).max(1) as usize;
         self.top = self.top.min(rows.len().saturating_sub(visible));
         let bar = rows.len() > visible;
-        let w = body.w - if bar { th.scroll_w } else { 0 } - 2 * th.pad;
+        let w = body.w - if bar { th.scroll_w } else { 0 } - 2 * inset;
         let f = th.font(Font::Normal);
         for (i, (k, v)) in rows.iter().skip(self.top).take(visible).enumerate() {
-            let r = IRect::new(body.x + th.pad, body.y + i as i32 * th.line_h, w, th.line_h);
+            let r = IRect::new(body.x + inset, body.y + top + i as i32 * row_h, w, row_h - if th.gray { 0 } else { 1 });
             if v.is_empty() {
                 c.text_in(th.font(Font::Bold), r, k, th.fg, HAlign::Left);
             } else if k.is_empty() {
                 c.text_in(f, r, v, th.fg, HAlign::Left);
             } else {
-                widgets::key_value(c, th, r, k, v, th.secondary, th.fg);
+                widgets::key_value(c, th, r, k, v, th.fg, th.fg);
+            }
+            if !th.gray {
+                c.hline(r.x, r.bottom(), r.w + 4, th.border);
             }
         }
         widgets::scroll_bar(c, th, body, rows.len() as i32, visible as i32, self.top as i32);
@@ -527,7 +538,6 @@ impl Screen for Level {
 /// A full-area centered message with an optional icon and progress bar
 /// (boot, provisioning progress, update).
 pub(crate) fn splash(c: &mut Canvas, th: &Theme, area: IRect, art: bool, title: &str, text: &str, percent: Option<u32>) {
-    c.fill(area, th.bg);
     let mut y = area.y + th.pad;
     if art {
         if let Some(icon) = th.icon("splash") {

@@ -85,6 +85,14 @@ pub async fn start(ctx: &Context, opts: &Options) {
         return;
     }
 
+    // The SSH switch: opens or closes the listener, now and on every later
+    // configuration change.  Not consulted in safe mode or when the
+    // configuration cannot be read: SSH stays on.
+    if let Some(cfg) = config.as_ref().map(|c| c.lock().unwrap().config()) {
+        crate::ssh::set_enabled(ssh_enabled(&cfg));
+    }
+    hub.on_change(|cfg| crate::ssh::set_enabled(ssh_enabled(cfg)));
+
     // 4. dphone-hal: `phone` backend, or `sim` when `ctx.sim`.
     let hal = hal::start(ctx).await;
 
@@ -108,10 +116,28 @@ pub async fn start(ctx: &Context, opts: &Options) {
     }
 
     // 6. The main role's own command domains: Config, Network, Update, System.
+    let firmware_mtd = mtd.clone();
     system::start(ctx, system::Parts { config: config.clone(), hub: hub.clone(), net: net.clone(), mtd });
 
     // 7. dphone-sip and dphone-dpma: accounts, provisioning.
     let telephony = telephony::start(ctx, config.clone(), &hub, net.clone(), audio.clone());
+    // Provisioned firmware: downloaded over HTTP(S) and written by the updater.
+    if let (Some(dpma), Some(mtd)) = (telephony.dpma.lock().unwrap().clone(), firmware_mtd) {
+        let (runtime, net) = (tokio::runtime::Handle::current(), net.clone());
+        let source = dphone_dpma::fetch::HttpSource::with_lookup(Box::new(move |host, port| {
+            let resolver = net.resolver().ok_or_else(|| std::io::Error::other("the network is not up"))?;
+            let addrs = runtime.block_on(resolver.lookup_ip(host, false, false)).map_err(|e| std::io::Error::other(format!("{e:?}")))?;
+            addrs.first().map(|ip| std::net::SocketAddr::new(*ip, port)).ok_or_else(|| std::io::Error::other("no address"))
+        }));
+        let installer = dphone_dpma::install::MtdInstaller {
+            mtd,
+            model: super::state_model(ctx.model),
+            cmdline: std::fs::read_to_string("/proc/cmdline").unwrap_or_default(),
+            open_dir: ctx.paths.open_dir(),
+            store: ctx.store.clone(),
+        };
+        dpma.set_firmware_updater(Arc::new(source), Arc::new(installer));
+    }
 
     // 8. dphone-ui: the UI thread.  (It takes the display, keys, and lamps
     //    out of the hardware bundle; `dphone hal` then only reports status.)
@@ -130,6 +156,14 @@ pub async fn start(ctx: &Context, opts: &Options) {
 
     let _ = (audio, hal, telephony, ui);
     finish(ctx);
+}
+
+/// Whether the SSH server should listen.  This is the one place that reads
+/// the switch from the configuration; the SSH module only takes the answer
+/// (`crate::ssh::set_enabled`).  SSH is on by default; the switch is
+/// `ssh_enabled` in `/nvdata/dphone_settings.txtpb`.
+fn ssh_enabled(config: &dphone_config::Config) -> bool {
+    config.ssh_enabled().value
 }
 
 fn finish(ctx: &Context) {

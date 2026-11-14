@@ -398,8 +398,6 @@ fn all_screens(model: Model) {
     r.store.update::<Calls, _>(|c| c.get_mut(c1).unwrap().state = CallState::Held { local: true, remote: false });
     r.call(Direction::Outgoing, CallState::Active, "", "15555550123");
     r.shot("16-call-two");
-    r.tap(Key::Transfer);
-    r.tap(Key::Soft(4));
     r.store.update::<Calls, _>(|c| {
         for call in &mut c.calls {
             call.state = CallState::Active;
@@ -511,11 +509,11 @@ fn idle_app_view() {
         let area = dphone_ui::idle_app_area(model);
         {
             let mut t = view.batch();
-            let m = t.metrics();
-            let line = t.create(WidgetKind::Text, None, av::Rect::new(0, 0, area.width, m.line_height));
+            let lh = area.height / 2;
+            let line = t.create(WidgetKind::Text, None, av::Rect::new(0, 0, area.width, lh));
             t.set_text(line, "Status: Available");
             t.set_align(line, av::Align::Center, av::VAlign::Middle);
-            let line2 = t.create(WidgetKind::Text, None, av::Rect::new(0, m.line_height as i16, area.width, m.line_height));
+            let line2 = t.create(WidgetKind::Text, None, av::Rect::new(0, lh as i16, area.width, lh));
             t.set_text(line2, "In the office until 5");
             t.set_align(line2, av::Align::Center, av::VAlign::Middle);
             t.set_colors(line2, av::Color::Theme(av::ThemeColor::Secondary), av::Color::Default);

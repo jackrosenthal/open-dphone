@@ -6,9 +6,6 @@
   rust,
   protobuf,
   webDist ? null, # built frontend, embedded by dphone-web (DPHONE_WEB_DIST)
-  # A development image's SSH public key, compiled into dphone.  Empty for
-  # release images.
-  devSshKey ? "",
 }:
 let
   root = ../.;
@@ -41,9 +38,7 @@ let
       {
         inherit src cargoDeps version;
         nativeBuildInputs = [ protobuf ];
-        env =
-          lib.optionalAttrs (webDist != null) { DPHONE_WEB_DIST = "${webDist}"; }
-          // lib.optionalAttrs (devSshKey != "") { DPHONE_DEV_SSH_KEY = devSshKey; };
+        env = lib.optionalAttrs (webDist != null) { DPHONE_WEB_DIST = "${webDist}"; };
       }
       // args
     );

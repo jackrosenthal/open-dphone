@@ -71,31 +71,15 @@ let
     inherit kernel dspFirmware apps;
   };
 
-  # Development images: SSH on, with one public key compiled in.  The key
-  # is not in the repository; name it in the environment and build with
-  # --impure:
-  #
-  #   DPHONE_DEV_SSH_KEY="$(cat ~/.ssh/id_ed25519.pub)" nix build --impure .#eff-d60-dev
-  devSshKey = builtins.getEnv "DPHONE_DEV_SSH_KEY";
-  devWorkspace = pkgs.callPackage ./workspace.nix {
-    inherit rustPlatform rust devSshKey;
-    webDist = web;
-  };
+  # Development images.  No SSH key is compiled in: keys are added on the
+  # phone (the web UI), as on any other image.
   devImage = pkgs.callPackage ./image.nix {
-    inherit (devWorkspace) dphone dphone-image version;
+    inherit (workspace) dphone dphone-image version;
     inherit (userland) brush coreutils applets;
     inherit kernel dspFirmware apps;
     dev = true;
   };
-  devEffs = lib.mapAttrs' (
-    m: v:
-    lib.nameValuePair "eff-${m}-dev" (
-      if devSshKey == "" then
-        throw "eff-${m}-dev needs an SSH public key: set DPHONE_DEV_SSH_KEY and build with --impure"
-      else
-        v
-    )
-  ) devImage.effs;
+  devEffs = lib.mapAttrs' (m: v: lib.nameValuePair "eff-${m}-dev" v) devImage.effs;
 
   effs = lib.mapAttrs' (m: v: lib.nameValuePair "eff-${m}" v) image.effs;
   kernels = lib.mapAttrs' (m: v: lib.nameValuePair "kernel-${m}" v) image.kernelImages;

@@ -6,13 +6,20 @@
 //!
 //! ## When it runs
 //!
-//! - `dphone main --ssh-port N` or `--ssh-listen ADDR`: always.
-//! - On a phone: in development mode (a key baked in with
-//!   `DPHONE_DEV_SSH_KEY` at build time, `dphone.dev` on the kernel command
-//!   line, `/etc/dphone/dev`, or `/nvdata/open/dev`), or when
-//!   `/nvdata/open/ssh-enabled` exists.  The latter stands in for the
-//!   configuration setting until the config crate is wired.
-//! - Otherwise off, as release images should be.
+//! On every image, by default.  One input can turn it off: the user's
+//! "SSH server" switch, handed to [`set_enabled`] by whoever reads the
+//! settings (this module does not know where the switch is stored).  The
+//! switch applies at once, by closing or reopening the listening socket.
+//! Turning SSH off leaves established sessions running, as stopping `sshd`
+//! does, so that whoever turned it off from an SSH session is not cut off
+//! mid-command; they end when their clients disconnect.  Until the settings
+//! have been read, and whenever they cannot be read (including safe mode),
+//! the server is on: it is the way in when things are broken.
+//!
+//! Who may log in is decided by keys alone: the files named by
+//! [`authorized_key_files`], read at each attempt.  No key is compiled in.
+//! In the host simulator the server runs only when `--ssh-port N` or
+//! `--ssh-listen ADDR` is given, and `--no-ssh` turns it off for tests.
 
 pub mod keys;
 pub mod pty;
@@ -20,14 +27,16 @@ pub mod session;
 pub mod sftp;
 
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, OnceLock};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use log::{debug, info, warn};
 use russh::server::Config;
 use russh::{MethodKind, MethodSet, Preferred, SshId};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::watch;
 
 use crate::mainrole::{Context, Options};
 
@@ -38,13 +47,15 @@ pub const AUTH_TIMEOUT: Duration = Duration::from_secs(60);
 /// Sessions (shell, exec, SFTP) per connection.
 pub const MAX_CHANNELS: usize = 8;
 
-/// A public key baked in at build time for development images: set
-/// `DPHONE_DEV_SSH_KEY` to one `authorized_keys` line when compiling.
-pub fn dev_key() -> Option<&'static str> {
-    option_env!("DPHONE_DEV_SSH_KEY").map(str::trim).filter(|k| !k.is_empty())
+/// The `authorized_keys` files consulted at each login attempt: the user's
+/// own (also what stock's SSH server reads), and the keys a provisioning
+/// server supplied.  Either may be absent.
+pub fn authorized_key_files(paths: &crate::paths::Paths) -> Vec<PathBuf> {
+    vec![paths.authorized_keys(), paths.open_dir().join("provisioned_authorized_keys")]
 }
 
-/// Decide whether SSH runs and where.
+/// Decide where SSH listens.  `None` only in the simulator without an
+/// explicit address, or with `--no-ssh`.
 pub fn listen_address(ctx: &Context, opts: &Options) -> Option<SocketAddr> {
     if opts.no_ssh {
         return None;
@@ -55,10 +66,27 @@ pub fn listen_address(ctx: &Context, opts: &Options) -> Option<SocketAddr> {
     if ctx.sim {
         return None;
     }
-    if ctx.dev || ctx.paths.open_dir().join("ssh-enabled").exists() {
-        return Some(SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, 22)));
+    Some(SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, 22)))
+}
+
+/// The run-time switch: whether the server listens.
+fn switch() -> &'static watch::Sender<bool> {
+    static SWITCH: OnceLock<watch::Sender<bool>> = OnceLock::new();
+    SWITCH.get_or_init(|| watch::channel(true).0)
+}
+
+/// Turn the listener on or off (the user's "SSH server" switch).  Takes
+/// effect at once; established sessions are left alone.  Harmless when the
+/// server was never started, and callable from any thread.
+pub fn set_enabled(enabled: bool) {
+    if switch().send_replace(enabled) != enabled {
+        info!("ssh: {}", if enabled { "enabled" } else { "disabled; established sessions stay" });
     }
-    None
+}
+
+/// Whether the listener is switched on.
+pub fn enabled() -> bool {
+    *switch().borrow()
 }
 
 fn server_config(host_key: russh::keys::PrivateKey) -> Config {
@@ -82,74 +110,188 @@ fn server_config(host_key: russh::keys::PrivateKey) -> Config {
     }
 }
 
+async fn bind(listen: SocketAddr) -> std::io::Result<TcpListener> {
+    match TcpListener::bind(listen).await {
+        Ok(l) => Ok(l),
+        // No IPv6 in the kernel: fall back to IPv4.
+        Err(_) if listen.ip().is_unspecified() && listen.is_ipv6() => {
+            TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], listen.port()))).await
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// Start the server.  Returns the bound address.
 pub async fn start(ctx: &Context, listen: SocketAddr) -> std::io::Result<SocketAddr> {
     let host_key = keys::load_or_create_host_key(&ctx.paths.ssh_host_key())?;
     let config = Arc::new(server_config(host_key));
-    let listener = match TcpListener::bind(listen).await {
-        Ok(l) => l,
-        // No IPv6 in the kernel: fall back to IPv4.
-        Err(_) if listen.ip().is_unspecified() && listen.is_ipv6() => {
-            TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], listen.port()))).await?
-        }
-        Err(e) => return Err(e),
-    };
+    let listener = bind(listen).await?;
     let addr = listener.local_addr()?;
-    if keys::authorized_keys(&ctx.paths).is_empty() {
-        warn!("ssh: no authorized keys ({}); nobody can log in", ctx.paths.authorized_keys().display());
+    if keys::authorized_keys(&authorized_key_files(&ctx.paths)).is_empty() {
+        info!("ssh: no authorized keys yet; nobody can log in until one is added");
     }
-    tokio::spawn(accept_loop(ctx.clone(), listener, config));
+    let ctx = ctx.clone();
+    let active = Arc::new(AtomicUsize::new(0));
+    let serve: Serve = Arc::new(move |socket, peer| connection(&ctx, &config, &active, socket, peer));
+    tokio::spawn(supervise(listener, addr, serve));
     Ok(addr)
 }
 
-async fn accept_loop(ctx: Context, listener: TcpListener, config: Arc<Config>) {
-    let active = Arc::new(AtomicUsize::new(0));
+/// What to do with an accepted connection (spawn its task, or refuse it).
+type Serve = Arc<dyn Fn(TcpStream, SocketAddr) + Send + Sync>;
+
+/// Listen while SSH is switched on: accept until it is switched off, close
+/// the listening socket, and bind it again when it is switched back on.
+async fn supervise(listener: TcpListener, addr: SocketAddr, serve: Serve) {
+    let mut switch = switch().subscribe();
+    let mut listener = Some(listener);
     loop {
-        let (socket, peer) = match listener.accept().await {
-            Ok(x) => x,
-            Err(e) => {
-                warn!("ssh accept: {e}");
-                tokio::time::sleep(Duration::from_millis(200)).await;
-                continue;
+        if !*switch.borrow_and_update() {
+            // Switched off: no listening socket at all, until switched on.
+            listener = None;
+            if switch.changed().await.is_err() {
+                return;
             }
-        };
-        if active.load(Ordering::Relaxed) >= MAX_CONNECTIONS {
-            warn!("ssh: too many connections; refusing {peer}");
             continue;
         }
-        active.fetch_add(1, Ordering::Relaxed);
-        let _ = socket.set_nodelay(true);
-        let config = config.clone();
-        let active = active.clone();
-        let authed = Arc::new(AtomicBool::new(false));
-        let handler = session::Handler::new(ctx.clone(), peer, authed.clone());
-        tokio::spawn(async move {
-            debug!("ssh: connection from {peer}");
-            match russh::server::run_stream(config, socket, handler).await {
-                Ok(mut running) => {
-                    let handle = running.handle();
-                    let result = tokio::select! {
-                        r = &mut running => r,
-                        _ = tokio::time::sleep(AUTH_TIMEOUT), if !authed.load(Ordering::Relaxed) => {
-                            if authed.load(Ordering::Relaxed) {
-                                (&mut running).await
-                            } else {
-                                info!("ssh: {peer} did not authenticate in time");
-                                let _ = handle
-                                    .disconnect(russh::Disconnect::ByApplication, "authentication timeout".into(), "en".into())
-                                    .await;
-                                Ok(())
-                            }
-                        }
-                    };
-                    if let Err(e) = result {
-                        debug!("ssh: {peer}: {e}");
+        let l = match listener.take() {
+            Some(l) => l,
+            None => match bind(addr).await {
+                Ok(l) => {
+                    info!("ssh listening on {addr}");
+                    l
+                }
+                Err(e) => {
+                    warn!("ssh: cannot listen on {addr}: {e}");
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+            },
+        };
+        loop {
+            tokio::select! {
+                accepted = l.accept() => match accepted {
+                    Ok((socket, peer)) => serve(socket, peer),
+                    Err(e) => {
+                        warn!("ssh accept: {e}");
+                        tokio::time::sleep(Duration::from_millis(200)).await;
+                    }
+                },
+                _ = switch.changed() => {
+                    if !*switch.borrow_and_update() {
+                        break;
                     }
                 }
-                Err(e) => debug!("ssh: {peer}: setup failed: {e}"),
             }
-            active.fetch_sub(1, Ordering::Relaxed);
-            debug!("ssh: {peer} closed");
+        }
+    }
+}
+
+/// Serve one accepted connection on a task of its own, within the cap.
+fn connection(ctx: &Context, config: &Arc<Config>, active: &Arc<AtomicUsize>, socket: TcpStream, peer: SocketAddr) {
+    if active.load(Ordering::Relaxed) >= MAX_CONNECTIONS {
+        warn!("ssh: too many connections; refusing {peer}");
+        return;
+    }
+    active.fetch_add(1, Ordering::Relaxed);
+    let _ = socket.set_nodelay(true);
+    let config = config.clone();
+    let active = active.clone();
+    let authed = Arc::new(AtomicBool::new(false));
+    let handler = session::Handler::new(ctx.clone(), peer, authed.clone());
+    tokio::spawn(async move {
+        debug!("ssh: connection from {peer}");
+        match russh::server::run_stream(config, socket, handler).await {
+            Ok(mut running) => {
+                let handle = running.handle();
+                let result = tokio::select! {
+                    r = &mut running => r,
+                    _ = tokio::time::sleep(AUTH_TIMEOUT), if !authed.load(Ordering::Relaxed) => {
+                        if authed.load(Ordering::Relaxed) {
+                            (&mut running).await
+                        } else {
+                            info!("ssh: {peer} did not authenticate in time");
+                            let _ = handle
+                                .disconnect(russh::Disconnect::ByApplication, "authentication timeout".into(), "en".into())
+                                .await;
+                            Ok(())
+                        }
+                    }
+                };
+                if let Err(e) = result {
+                    debug!("ssh: {peer}: {e}");
+                }
+            }
+            Err(e) => debug!("ssh: {peer}: setup failed: {e}"),
+        }
+        active.fetch_sub(1, Ordering::Relaxed);
+        debug!("ssh: {peer} closed");
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    async fn greet(addr: SocketAddr) -> std::io::Result<TcpStream> {
+        let mut s = TcpStream::connect(addr).await?;
+        let mut b = [0u8; 2];
+        tokio::time::timeout(Duration::from_secs(5), s.read_exact(&mut b)).await??;
+        assert_eq!(&b, b"hi");
+        Ok(s)
+    }
+
+    /// The switch closes and reopens the listening socket and leaves an
+    /// established connection alone.
+    #[tokio::test]
+    async fn switch_closes_and_reopens_the_listener() {
+        let listener = bind("127.0.0.1:0".parse().unwrap()).await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        // Each connection: greet, then echo until the peer closes.
+        let serve: Serve = Arc::new(|mut socket, _peer| {
+            tokio::spawn(async move {
+                let _ = socket.write_all(b"hi").await;
+                let mut b = [0u8; 16];
+                while let Ok(n) = socket.read(&mut b).await {
+                    if n == 0 || socket.write_all(&b[..n]).await.is_err() {
+                        break;
+                    }
+                }
+            });
         });
+        tokio::spawn(supervise(listener, addr, serve));
+
+        // On: served.
+        assert!(enabled());
+        let mut held = greet(addr).await.unwrap();
+
+        // Off: the port refuses; the established connection still works.
+        set_enabled(false);
+        let mut refused = false;
+        for _ in 0..100 {
+            if TcpStream::connect(addr).await.is_err() {
+                refused = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(refused, "the listener stayed open");
+        held.write_all(b"x").await.unwrap();
+        let mut b = [0u8; 1];
+        held.read_exact(&mut b).await.unwrap();
+        assert_eq!(b[0], b'x');
+
+        // On again: served again, on the same address.
+        set_enabled(true);
+        let mut reopened = false;
+        for _ in 0..100 {
+            if greet(addr).await.is_ok() {
+                reopened = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(reopened, "the listener did not reopen");
     }
 }

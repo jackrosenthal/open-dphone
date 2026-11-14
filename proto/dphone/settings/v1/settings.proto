@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package dphone.settings.v1;
+
+// Settings that only Open DPhone has.  Stored on the phone in protobuf text
+// format as /nvdata/dphone_settings.txtpb, a file the stock firmware never
+// reads.  Settings stock also knows stay in the stock XML layers.
+//
+// Every field has explicit presence: an absent field means "not set
+// locally", which is not the same as false.
+//
+// A provisioning server can supply the same settings in the configuration
+// it sends, as <setting id="dphone_<field name>" value="0|1"/>.  For each
+// field the effective value is: the provisioned value if the server marked
+// it conflict="freeze"; otherwise the value in this file if the field is
+// present; otherwise the provisioned value; otherwise the default.
+message DphoneSettings {
+  // Run the SSH server.  Default: true.
+  optional bool ssh_enabled = 1;
+  // Ignore the firmware a provisioning server asks for.  Default: false,
+  // which follows the server as the stock firmware does.  Meant for
+  // development against a server that provisions stock firmware.
+  optional bool ignore_provisioned_firmware = 2;
+}

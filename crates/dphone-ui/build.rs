@@ -11,29 +11,47 @@ use std::{env, fs};
 
 const SKINS: [&str; 3] = ["SMALL_GRAY", "LARGE_GRAY", "COLOR"];
 
-/// (role, font file, pixel size) per skin, in `Font` role order:
-/// Normal, Bold, Small, Title, Large.
-const FONTS: [[(&str, f32); 5]; 3] = [
+/// (font file, pixel size, digits only) per skin, in role order: Normal,
+/// Bold, Small, Title, Large, then the two idle-screen roles: Clock (the
+/// big time; digits and the colon only), Sub (meridiem and date), Number
+/// (the number line of a call card), and Meridiem (AM/PM beside the clock).
+///
+/// Color sizes follow the stock screenshots: 14 px body text (cap height
+/// 10), a 16 px title, and a clock whose digits are 64 px tall.
+const FONTS: [[(&str, f32, bool); 9]; 3] = [
+    // Gray body sizes are the stock `default_fontsize`: 10 and 11.
     [
-        ("DroidSans.ttf", 11.0),
-        ("DroidSans-Bold.ttf", 11.0),
-        ("DroidSans.ttf", 10.0),
-        ("DroidSans-Bold.ttf", 11.0),
-        ("DroidSans-Bold.ttf", 19.0),
+        ("DroidSans.ttf", 10.0, false),
+        ("DroidSans-Bold.ttf", 10.0, false),
+        ("DroidSans.ttf", 9.0, false),
+        ("DroidSans.ttf", 10.0, false),
+        ("DroidSans-Bold.ttf", 19.0, false),
+        ("DroidSans-Bold.ttf", 36.0, true),
+        ("DroidSans.ttf", 10.0, false),
+        ("DroidSans.ttf", 10.0, false),
+        ("DroidSans.ttf", 10.0, false),
     ],
     [
-        ("DroidSans.ttf", 12.0),
-        ("DroidSans-Bold.ttf", 12.0),
-        ("DroidSans.ttf", 10.0),
-        ("DroidSans-Bold.ttf", 13.0),
-        ("DroidSans-Bold.ttf", 24.0),
+        ("DroidSans.ttf", 11.0, false),
+        ("DroidSans-Bold.ttf", 11.0, false),
+        ("DroidSans.ttf", 10.0, false),
+        ("DroidSans.ttf", 11.0, false),
+        ("DroidSans-Bold.ttf", 24.0, false),
+        ("DroidSans-Bold.ttf", 52.0, true),
+        ("DroidSans.ttf", 11.0, false),
+        ("DroidSans.ttf", 11.0, false),
+        ("DroidSans.ttf", 11.0, false),
     ],
     [
-        ("Roboto-Regular.ttf", 17.0),
-        ("Roboto-Medium.ttf", 17.0),
-        ("Roboto-Regular.ttf", 13.0),
-        ("Roboto-Bold.ttf", 18.0),
-        ("Roboto-Regular.ttf", 34.0),
+        ("Roboto-Regular.ttf", 14.0, false),
+        ("Roboto-Medium.ttf", 15.0, false),
+        ("Roboto-Regular.ttf", 12.0, false),
+        ("Roboto-Bold.ttf", 16.0, false),
+        ("Roboto-Regular.ttf", 30.0, false),
+        ("Roboto-Thin.ttf", 89.0, true),
+        ("Roboto-Light.ttf", 22.0, false),
+        ("Roboto-Regular.ttf", 17.0, false),
+        ("Roboto-Regular.ttf", 22.0, false),
     ],
 ];
 
@@ -41,10 +59,9 @@ const FONTS: [[(&str, f32); 5]; 3] = [
 /// skin keeps color (else an alpha mask tinted at draw time).
 /// The last flag inverts luminance on the gray skins (artwork drawn for a
 /// dark background, shown on the light gray screens).
-const CLASSES: [(&str, [u32; 3], bool, bool); 4] = [
-    ("icons/status", [11, 13, 22], false, false),
+const CLASSES: [(&str, [u32; 3], bool, bool); 3] = [
+    ("icons/status", [13, 15, 22], false, false),
     ("icons/app", [24, 28, 48], true, false),
-    ("icons/wide", [12, 14, 26], true, false),
     ("art", [44, 60, 104], true, true),
 ];
 
@@ -78,7 +95,8 @@ impl Nibbles {
     }
 }
 
-fn gen_font(out: &mut String, blobs: &Path, assets: &Path, name: &str, file: &str, px: f32, gray: bool) {
+#[allow(clippy::too_many_arguments)]
+fn gen_font(out: &mut String, blobs: &Path, assets: &Path, name: &str, file: &str, px: f32, gray: bool, digits: bool) {
     let data = fs::read(assets.join("fonts").join(file)).expect("font file");
     let font = fontdue::Font::from_bytes(data, fontdue::FontSettings { scale: px, ..Default::default() })
         .expect("font parse");
@@ -88,6 +106,9 @@ fn gen_font(out: &mut String, blobs: &Path, assets: &Path, name: &str, file: &st
     let mut blob: Vec<u8> = Vec::new();
     let mut recs = String::new();
     for ch in charset() {
+        if digits && !(ch.is_ascii_digit() || matches!(ch, ':' | ' ' | '-')) {
+            continue;
+        }
         if font.lookup_glyph_index(ch) == 0 && ch != ' ' {
             continue;
         }
@@ -97,7 +118,7 @@ fn gen_font(out: &mut String, blobs: &Path, assets: &Path, name: &str, file: &st
         for &c in &cov {
             // Small gray text has no hinting; steepen the coverage curve so
             // stems land on solid levels instead of smearing over two.
-            let c = if gray {
+            let c = if gray && px < 20.0 {
                 let v = (c as i32 - 40) * 255 / 150;
                 v.clamp(0, 255) as u8
             } else {
@@ -199,21 +220,21 @@ fn main() {
     // Fonts (deduplicated by file and size within a skin).
     for (si, skin) in SKINS.iter().enumerate() {
         let mut names: Vec<String> = Vec::new();
-        let mut done: Vec<(&str, u32, String)> = Vec::new();
-        for (file, px) in FONTS[si] {
-            let key = (file, px as u32);
-            let name = match done.iter().find(|d| (d.0, d.1) == key) {
-                Some(d) => d.2.clone(),
+        let mut done: Vec<(&str, u32, bool, String)> = Vec::new();
+        for (file, px, digits) in FONTS[si] {
+            let key = (file, px as u32, digits);
+            let name = match done.iter().find(|d| (d.0, d.1, d.2) == key) {
+                Some(d) => d.3.clone(),
                 None => {
                     let name = format!("FONT_{skin}_{}", done.len());
-                    gen_font(&mut out, &out_dir, &assets, &name, file, px, si < 2);
-                    done.push((file, px as u32, name.clone()));
+                    gen_font(&mut out, &out_dir, &assets, &name, file, px, si < 2, digits);
+                    done.push((file, px as u32, digits, name.clone()));
                     name
                 }
             };
             names.push(format!("&{name}"));
         }
-        writeln!(out, "pub static FONTS_{skin}: [&FontData; 5] = [{}];", names.join(", ")).unwrap();
+        writeln!(out, "pub static FONTS_{skin}: [&FontData; 9] = [{}];", names.join(", ")).unwrap();
     }
 
     // Icons and art.

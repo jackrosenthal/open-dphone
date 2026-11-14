@@ -1,7 +1,8 @@
 //! The dialer and the call screen.
 
 use super::*;
-use dphone_state::{AccountId, AudioPath, Call, CallId, CallState, EndCause, Tone};
+use crate::gfx::Rgb;
+use dphone_state::{AccountId, AudioPath, Call, CallId, CallState, Direction, EndCause, Tone};
 
 /// Why the dialer is open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,7 +96,7 @@ impl Screen for Dialer {
             Purpose::Transfer(_) => vec![soft(1, tr::TRANSFER), soft(2, tr::CONSULT), soft(3, tr::DELETE), soft(4, tr::CANCEL)],
             _ => vec![
                 soft(1, if self.text.is_empty() { tr::REDIAL } else { tr::DIAL }),
-                soft(0, ""),
+                soft(5, tr::CONTACTS),
                 soft(3, tr::DELETE),
                 soft(4, tr::CANCEL),
             ],
@@ -122,6 +123,10 @@ impl Screen for Dialer {
             4 => {
                 self.close_live(cx);
                 Nav::Pop
+            }
+            5 => {
+                cx.post(Command::LaunchApp { name: "contacts".into() });
+                Nav::Stay
             }
             _ => Nav::Stay,
         }
@@ -189,38 +194,39 @@ impl Screen for Dialer {
             Nav::Stay
         }
     }
-    fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
+    fn wallpaper(&self) -> bool {
+        true
+    }
+    fn draw(&mut self, cx: &Cx, c: &mut Canvas, _area: IRect) {
         let th = cx.th;
-        c.fill(area, th.bg);
-        let (title, body) = area.split_top(th.title_h);
         let label = match self.purpose {
             Purpose::Transfer(_) => tr::TRANSFER_TO,
             Purpose::Conference(_) => tr::CONFERENCE_WITH,
-            _ => tr::ENTER_NUMBER,
+            _ => tr::NEW_CALL_TITLE,
         };
-        widgets::title_bar(c, th, title, label);
-        let big = th.font(Font::Large);
-        let r = IRect::new(body.x + th.pad, body.y + (body.h - big.height()) / 2 - th.line_h / 2, body.w - 2 * th.pad, big.height());
-        // Keep the tail of a long number visible.
-        let mut shown: &str = &self.text;
-        while big.width(shown) > r.w - 4 && !shown.is_empty() {
-            shown = &shown[shown.chars().next().map(|c| c.len_utf8()).unwrap_or(1)..];
-        }
-        let w = big.width(shown);
-        let x = r.x + (r.w - w) / 2;
-        c.text(big, x, r.y + big.ascent as i32, shown, th.fg);
-        c.vline(x + w + 1, r.y + 2, r.h - 4, if th.gray { th.fg } else { th.accent });
-        c.hline(r.x, r.bottom() + 2, r.w, th.border);
-        // The account the call will use.
+        call_header(cx, c, label, &[]);
+        idle::draw_tabs(cx, c);
+        // Stock: the digits appear on the first line of a call card.
         let acct = self
             .account
             .or(cx.st.accounts.default_account)
             .and_then(|id| cx.st.accounts.get(id))
             .or(cx.st.accounts.accounts.first());
-        if let Some(a) = acct {
-            let name = if a.label.is_empty() { a.user.clone() } else { a.label.clone() };
-            c.text_in(th.font(Font::Normal), IRect::new(r.x, r.bottom() + 4, r.w, th.line_h), &name, th.secondary, HAlign::Center);
-        }
+        let via = match (cx.st.accounts.accounts.len() > 1, acct) {
+            (true, Some(a)) => if a.label.is_empty() { a.user.clone() } else { a.label.clone() },
+            _ => String::new(),
+        };
+        let card = Card {
+            fill: th.card,
+            line1: &self.text,
+            line2: &via,
+            line2_bold: false,
+            icon: "phone-out",
+            right: "",
+            cursor: true,
+            marked: false,
+        };
+        call_card(cx, c, 0, &card);
     }
     fn deadline(&self, cx: &Cx) -> Option<u64> {
         if self.live.is_some() && !self.text.is_empty() && self.purpose == Purpose::Call {
@@ -266,20 +272,21 @@ impl Dialer {
 // ------------------------------------------------------------ call screen
 
 /// State text and icon of a call.
-pub(crate) fn call_status(call: &Call, now_ms: u64) -> (String, &'static str) {
-    let timer = |label: &str| match call.duration_secs(now_ms) {
-        Some(s) => format!("{label}  {}", crate::time::duration(s)),
-        None => label.to_string(),
-    };
-    match &call.state {
+/// The parts of a call's status: state label (stock wording), icon, and
+/// the running timer once connected.
+pub(crate) fn call_parts(call: &Call, now_ms: u64) -> (String, &'static str, Option<String>) {
+    let timer = call.duration_secs(now_ms).filter(|_| !call.state.is_ended()).map(crate::time::duration);
+    let (label, icon): (String, &'static str) = match &call.state {
         CallState::Dialing | CallState::Proceeding => (tr::CALLING.into(), "phone-out"),
         CallState::Ringback { .. } => (tr::RINGING.into(), "phone-out"),
         CallState::Ringing => (if call.paging { tr::PAGING.into() } else { tr::INCOMING_CALL.into() }, "phone-in"),
-        CallState::Active if call.in_conference => (timer(tr::IN_CONFERENCE), "conference"),
-        CallState::Active if call.paging => (timer(tr::PAGING), "page"),
-        CallState::Active => (timer(tr::CONNECTED), "phone"),
-        CallState::Held { local: false, remote: true } => (timer(tr::HELD_BY_REMOTE), "hold"),
-        CallState::Held { .. } => (timer(tr::ON_HOLD), "hold"),
+        CallState::Active if call.in_conference => (tr::IN_CONFERENCE.into(), "conference"),
+        CallState::Active if call.paging => (tr::PAGING.into(), "page"),
+        CallState::Active => {
+            (tr::CONNECTED.into(), if call.direction == Direction::Outgoing { "phone-out" } else { "phone-in" })
+        }
+        CallState::Held { local: false, remote: true } => (tr::HELD_BY_REMOTE.into(), "hold"),
+        CallState::Held { .. } => (tr::ON_HOLD.into(), "hold"),
         CallState::Transferring => (tr::TRANSFERRING.into(), "transfer"),
         CallState::Ended(cause) => (
             match cause {
@@ -292,7 +299,157 @@ pub(crate) fn call_status(call: &Call, now_ms: u64) -> (String, &'static str) {
             },
             "phone",
         ),
+    };
+    (label, icon, timer)
+}
+
+/// State text with the timer appended, and the icon (list rows).
+pub(crate) fn call_status(call: &Call, now_ms: u64) -> (String, &'static str) {
+    let (label, icon, timer) = call_parts(call, now_ms);
+    match timer {
+        Some(t) => (format!("{label}  {t}"), icon),
+        None => (label, icon),
     }
+}
+
+/// The state band at the top left of the call screens: the stock header
+/// (x 0..295, y 0..39 on color, with a black line under it; the black bar
+/// on gray).  `flags` are icons drawn at its right end.
+pub(crate) fn call_header(cx: &Cx, c: &mut Canvas, text: &str, flags: &[&str]) {
+    let th = cx.th;
+    let r = th.header_rect();
+    if th.gray {
+        idle::gray_header(cx, c, Some(text));
+    } else {
+        c.fill(r, th.title_bg);
+        c.hline(r.x, r.bottom(), r.w, 0x000001);
+        c.text_in(
+            th.font(Font::Bold),
+            IRect { x: r.x + th.title_pad, w: r.w - 2 * th.title_pad, ..r },
+            text,
+            th.title_fg,
+            HAlign::Left,
+        );
+    }
+    let mut x = r.right() - th.pad;
+    for name in flags {
+        if let Some(i) = th.icon(name) {
+            x -= i.width();
+            c.icon(i, x, r.y + (r.h - i.height()) / 2, th.title_fg);
+            x -= th.pad;
+        }
+    }
+}
+
+/// What a call card shows.
+pub(crate) struct Card<'a> {
+    pub fill: Rgb,
+    pub line1: &'a str,
+    pub line2: &'a str,
+    pub line2_bold: bool,
+    pub icon: &'a str,
+    /// Right-aligned on the second line (the timer).
+    pub right: &'a str,
+    /// Draw a text cursor after `line1` (the dialer).
+    pub cursor: bool,
+    /// Mark this card as the one the softkeys act on.
+    pub marked: bool,
+}
+
+/// Height of one card including its separator line.
+pub(crate) fn card_pitch(th: &Theme) -> i32 {
+    if th.gray { 2 * th.line_h } else { 63 }
+}
+
+/// How many cards fit between the header and the softkeys.
+pub(crate) fn max_cards(th: &Theme) -> usize {
+    (((th.soft_y - 1) - (th.header_h + 1)) / card_pitch(th)).max(1) as usize
+}
+
+/// The rectangle of card `idx` (0 is directly under the header band).
+/// Color: 296x62 at y 41, as on stock.
+pub(crate) fn card_rect(th: &Theme, idx: usize) -> IRect {
+    let r = th.header_rect();
+    if th.gray {
+        IRect::new(0, th.header_h + 1 + idx as i32 * card_pitch(th), r.w, card_pitch(th))
+    } else {
+        IRect::new(0, th.header_h + 1 + idx as i32 * card_pitch(th), r.w, 62)
+    }
+}
+
+/// Draws a call card.
+pub(crate) fn call_card(cx: &Cx, c: &mut Canvas, idx: usize, card: &Card) {
+    let th = cx.th;
+    let r = card_rect(th, idx);
+    let icon = th.icon(card.icon);
+    if th.gray {
+        // Stock gray layout: icon at the left, number then name, the timer
+        // at the right of the first line.
+        let f = th.font(Font::Normal);
+        let (ic, text) = r.split_left(if th.skin == dphone_state::Skin::LargeGray { 26 } else { 22 });
+        if card.marked {
+            c.fill(IRect::new(r.x, r.y, 2, r.h - 2), th.fg);
+        }
+        if let Some(i) = icon {
+            c.icon(i, ic.x + (ic.w - i.width()) / 2 + 1, r.y + (th.line_h - i.height()) / 2, th.fg);
+        }
+        let tw = f.width(card.right);
+        let l1 = IRect::new(text.x + 6, r.y, text.w - 4 - th.pad - tw - 4, th.line_h);
+        c.text_in(f, l1, card.line1, th.fg, HAlign::Left);
+        if card.cursor {
+            let x = l1.x + f.width(card.line1).min(l1.w) + 1;
+            c.vline(x, l1.y + 2, l1.h - 4, th.fg);
+        }
+        c.text_in(f, IRect::new(text.right() - th.pad - tw, r.y, tw, th.line_h), card.right, th.fg, HAlign::Left);
+        c.text_in(f, IRect::new(text.x + 6, r.y + th.line_h, text.w - 6 - th.pad, th.line_h), card.line2, th.fg, HAlign::Left);
+        return;
+    }
+    // The colored part ends in a slanted edge with a light stripe; the
+    // right part is dark.  Stock: the dark part starts at x 238 on the
+    // first row and x 203 on the last.
+    // Stripe colors by measurement for the two stock fills; derived for
+    // the others.
+    let (light, mid) = if card.fill == th.card {
+        (0x67B4F1, 0x3592CA)
+    } else if card.fill == th.card_ringing {
+        (0x78E27D, 0x388E3C)
+    } else {
+        (crate::gfx::mix(card.fill, 0xFFFFFF, 4), crate::gfx::mix(card.fill, 0xFFFFFF, 2))
+    };
+    for j in 0..r.h {
+        let y = r.y + j;
+        let xd = 238 - j * 35 / 61;
+        c.span(y, r.x, xd - 8, card.fill);
+        c.span(y, xd - 8, xd - 5, light);
+        c.span(y, xd - 5, xd, mid);
+        c.span(y, xd, r.right(), th.card_dark);
+    }
+    c.hline(r.x, r.bottom(), r.w, 0x000001);
+    if card.marked {
+        c.fill(IRect::new(r.x, r.y, 3, r.h), th.fg);
+    }
+    let num = th.number_font();
+    // Stock baselines: number at y 64, name and timer at y 90 (card at 41).
+    let text_w = 238 - 61 * 35 / 61 - 8 - 10 - 6;
+    let old = c.push_clip(IRect::new(r.x + 10, r.y, text_w, r.h));
+    let mut shown: &str = card.line1;
+    while num.width(shown) > text_w - 3 && !shown.is_empty() {
+        shown = &shown[shown.chars().next().map(|c| c.len_utf8()).unwrap_or(1)..];
+    }
+    let w = c.text(num, r.x + 10, r.y + 23, shown, th.fg);
+    if card.cursor {
+        c.vline(r.x + 10 + w + 1, r.y + 9, 16, th.fg);
+    }
+    c.restore_clip(old);
+    let f2 = th.font(if card.line2_bold { Font::Bold } else { Font::Normal });
+    c.text_in(f2, IRect::new(r.x + 10, r.y + 49 - f2.ascent as i32, text_w, f2.height()), card.line2, th.fg, HAlign::Left);
+    if let Some(i) = icon {
+        // Stock: a 17x18 glyph at x 264, 8 rows into the card.
+        c.icon(i, 272 - i.width() / 2, r.y + 17 - i.height() / 2, th.fg);
+    }
+    let f = th.font(Font::Normal);
+    let tw = f.width(card.right);
+    c.text(f, 286 - tw, r.y + 49, card.right, th.fg);
 }
 
 fn party_name(call: &Call) -> String {
@@ -348,36 +505,23 @@ impl Screen for CallScreen {
         let Some(call) = self.selected(cx) else { return Vec::new() };
         let other = self.other(cx, call.id).is_some();
         match &call.state {
-            CallState::Ringing => vec![
-                soft(1, tr::ANSWER),
-                soft(2, tr::IGNORE),
-                soft(3, tr::REJECT),
-                soft(4, tr::VOICEMAIL),
-                soft(5, tr::TRANSFER),
-            ],
+            // The sets and positions follow stock: End Call is always the
+            // fourth key; Hold and Transfer also have hard keys; Cancel
+            // declines a ringing call.
+            CallState::Ringing => vec![soft(1, tr::ANSWER), soft(2, tr::IGNORE), soft(5, tr::TRANSFER), soft(0, "")],
             CallState::Dialing | CallState::Proceeding | CallState::Ringback { .. } | CallState::Transferring => {
                 vec![soft(0, ""), soft(0, ""), soft(0, ""), soft(10, tr::END_CALL)]
             }
             CallState::Active if call.in_conference => {
                 vec![soft(6, tr::HOLD), soft(13, tr::SPLIT), soft(0, ""), soft(10, tr::END_CALL)]
             }
-            CallState::Active | CallState::Held { .. } => {
-                let mut v = vec![
-                    soft(if call.state.is_held() { 7 } else { 6 }, if call.state.is_held() { tr::RESUME } else { tr::HOLD }),
-                    soft(8, tr::TRANSFER),
-                ];
-                if other {
-                    v.push(soft(12, tr::JOIN));
-                    v.push(soft(10, tr::END_CALL));
-                    v.push(soft(14, tr::SWAP));
-                } else {
-                    v.push(soft(9, tr::CONFERENCE));
-                    v.push(soft(10, tr::END_CALL));
-                }
-                v.push(soft(11, tr::PARK));
-                v.push(soft(15, tr::NEW_CALL));
-                v
+            CallState::Active | CallState::Held { .. } if other => {
+                vec![soft(12, tr::JOIN), soft(14, tr::SWAP), soft(8, tr::TRANSFER), soft(10, tr::END_CALL)]
             }
+            CallState::Held { .. } => {
+                vec![soft(7, tr::RESUME), soft(15, tr::NEW_CALL), soft(0, ""), soft(10, tr::END_CALL)]
+            }
+            CallState::Active => vec![soft(9, tr::CONFERENCE), soft(0, ""), soft(0, ""), soft(10, tr::END_CALL)],
             CallState::Ended(_) => Vec::new(),
         }
     }
@@ -462,92 +606,58 @@ impl Screen for CallScreen {
         }
         Nav::Stay
     }
-    fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
+    fn wallpaper(&self) -> bool {
+        true
+    }
+    fn draw(&mut self, cx: &Cx, c: &mut Canvas, _area: IRect) {
         let th = cx.th;
-        c.fill(area, th.bg);
-        let (bar, body) = area.split_top(th.status_h);
-        idle::status_bar(cx, c, bar, true);
         let Some(sel) = self.selected(cx) else { return };
-        let others: Vec<&Call> = cx.st.calls.live().filter(|c| c.id != sel.id).collect();
-        let row_h = th.row_h;
-        let max_rows = ((body.h - 3 * th.line_h) / row_h).max(0) as usize;
-        let shown = others.len().min(max_rows);
-        let (card, rows) = body.split_bottom(shown as i32 * row_h);
-
-        // The selected call's card.
-        let card = card.inset_xy(if th.gray { 0 } else { 6 }, if th.gray { 0 } else { 4 });
-        let (status, icon) = call_status(sel, cx.now_ms);
-        let name = party_name(sel);
-        if th.gray {
-            // Stock layout: an inverted state header, then name and number.
-            let (hdr, rest) = card.split_top(th.line_h);
-            c.fill(hdr, th.fg);
-            c.text_in(th.font(Font::Bold), hdr.inset_xy(th.pad, 0), &status, th.bg, HAlign::Left);
-            let (ic, text) = rest.split_left(th.icon + 2 * th.pad + 6);
-            if let Some(i) = th.icon(icon) {
-                c.icon(i, ic.x + th.pad + 3, ic.y + 3, th.fg);
-            }
-            let big = th.font(Font::Bold);
-            c.text_in(big, IRect::new(text.x, text.y + 1, text.w - th.pad, th.line_h), &name, th.fg, HAlign::Left);
-            if sel.remote.number != name {
-                c.text_in(
-                    th.font(Font::Normal),
-                    IRect::new(text.x, text.y + 1 + th.line_h, text.w - th.pad, th.line_h),
-                    &sel.remote.number,
-                    th.fg,
-                    HAlign::Left,
-                );
-            }
-        } else {
-            let ringing = sel.state == CallState::Ringing;
-            c.fill_round(card, 8, th.card);
-            c.fill_round(IRect::new(card.x, card.y, 6, card.h), 3, if ringing { th.good } else if sel.state.is_held() { th.warn } else { th.sel_bg });
-            let inner = IRect::new(card.x + 18, card.y + 4, card.w - 28, card.h - 8);
-            let (top, rest) = inner.split_top(th.line_h);
-            if let Some(i) = th.icon(icon) {
-                c.icon(i, top.x, top.y + (top.h - i.height()) / 2, th.accent);
-            }
-            c.text_in(th.font(Font::Bold), IRect::new(top.x + th.icon + 8, top.y, top.w - th.icon - 8, top.h), &status, th.accent, HAlign::Left);
-            let big = th.font(Font::Large);
-            let name_font = if big.width(&name) <= rest.w { big } else { th.font(Font::Title) };
-            let nh = name_font.height().min(rest.h);
-            c.text_in(name_font, IRect::new(rest.x, rest.y, rest.w, nh), &name, th.fg, HAlign::Left);
-            if sel.remote.number != name && rest.h >= nh + th.line_h {
-                c.text_in(th.font(Font::Normal), IRect::new(rest.x, rest.y + nh, rest.w, th.line_h), &sel.remote.number, th.secondary, HAlign::Left);
-            }
+        let (label, _, _) = call_parts(sel, cx.now_ms);
+        let mut flags: Vec<&str> = Vec::new();
+        if cx.st.audio.muted || sel.muted {
+            flags.push("mute");
         }
-        // Flags at the card's top right: muted, secure, codec.
-        let mut x = card.right() - th.pad;
-        let fy = if th.gray { card.y } else { card.y + 4 };
-        let flag_fg = if th.gray { th.bg } else { th.secondary };
-        for (on, name) in [(cx.st.audio.muted || sel.muted, "mute"), (sel.srtp, "lock")] {
-            if on
-                && let Some(i) = th.icon(name) {
-                    x -= i.width();
-                    c.icon(i, x, fy + (th.line_h - i.height()) / 2, if name == "mute" && !th.gray { th.error } else { flag_fg });
-                    x -= th.pad;
-                }
+        if sel.srtp {
+            flags.push("lock");
         }
-        if let (Some(codec), false) = (sel.codec, th.gray) {
+        call_header(cx, c, &label, &flags);
+        idle::draw_tabs(cx, c);
+        // One card per call, the selected one first (stock shows the call
+        // card directly under the state band).
+        let mut calls: Vec<&Call> = vec![sel];
+        calls.extend(cx.st.calls.live().filter(|c| c.id != sel.id));
+        let fit = max_cards(th);
+        let many = calls.len() > 1;
+        for (i, call) in calls.iter().take(fit).enumerate() {
+            let (_, icon, timer) = call_parts(call, cx.now_ms);
+            let name = party_name(call);
+            // Stock: the number on the first line, the name in bold on
+            // the second; a call with no name shows the number alone.
+            let number = if call.remote.number.is_empty() { name.clone() } else { call.remote.number.clone() };
+            let second = if name == number { String::new() } else { name };
+            let fill = match call.state {
+                CallState::Ringing => th.card_ringing,
+                CallState::Held { .. } => th.card_held,
+                _ => th.card,
+            };
+            let card = Card {
+                fill,
+                line1: &number,
+                line2: &second,
+                line2_bold: true,
+                icon,
+                right: timer.as_deref().unwrap_or(""),
+                cursor: false,
+                marked: many && i == 0,
+            };
+            call_card(cx, c, i, &card);
+        }
+        if calls.len() > fit {
+            let r = th.header_rect();
             let f = th.font(Font::Small);
-            let w = f.width(codec.name());
-            c.text_in(f, IRect::new(x - w, fy, w, th.line_h), codec.name(), th.secondary, HAlign::Left);
-        }
-
-        // The other calls, one row each.
-        for (i, call) in others.iter().take(shown).enumerate() {
-            let r = IRect::new(rows.x, rows.y + i as i32 * row_h, rows.w, row_h);
-            c.hline(r.x, r.y, r.w, th.border);
-            let (status, icon) = call_status(call, cx.now_ms);
-            let (ic, rest) = r.inset_xy(th.pad, 0).split_left(th.icon + th.pad);
-            if let Some(ico) = th.icon(icon) {
-                c.icon_in(ico, IRect { w: th.icon, ..ic }, th.fg);
-            }
-            widgets::key_value(c, th, rest, &party_name(call), &status, th.fg, th.secondary);
-        }
-        if others.len() > shown {
-            let r = IRect::new(body.right() - 40, body.y, 36, th.line_h);
-            c.text_in(th.font(Font::Small), r, &format!("+{}", others.len() - shown), th.secondary, HAlign::Right);
+            let s = format!("+{}", calls.len() - fit);
+            let w = f.width(&s);
+            c.text_in(f, IRect::new(r.right() - w - th.pad, r.y, w, r.h), &s, th.title_fg, HAlign::Left);
         }
     }
     fn deadline(&self, cx: &Cx) -> Option<u64> {

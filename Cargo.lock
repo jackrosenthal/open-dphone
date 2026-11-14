@@ -1049,7 +1049,12 @@ dependencies = [
 name = "dphone-config"
 version = "3.0.0"
 dependencies = [
+ "buffa",
+ "buffa-codegen",
+ "log",
  "md-5 0.10.6",
+ "prost",
+ "protox",
  "roxmltree 0.20.0",
  "serde_json",
 ]
@@ -1059,12 +1064,17 @@ name = "dphone-dpma"
 version = "3.0.0"
 dependencies = [
  "async-trait",
+ "dphone-hal",
  "dphone-sip",
  "dphone-state",
+ "dphone-update",
  "dpma-proto",
+ "eff",
  "log",
  "md-5 0.10.6",
  "rsa",
+ "rustls",
+ "rustls-rustcrypto",
  "serde_json",
  "tokio",
 ]

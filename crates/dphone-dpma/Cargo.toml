@@ -7,7 +7,12 @@ license.workspace = true
 publish = false
 
 [features]
-default = ["sip"]
+default = ["sip", "update", "https"]
+# The provisioned-firmware installer over dphone-update.
+update = ["dep:dphone-update", "dep:dphone-hal"]
+# Firmware downloads over https (rustls with the RustCrypto provider; no
+# certificate check, as stock's `curl --insecure`).
+https = ["dep:rustls", "dep:rustls-rustcrypto"]
 # Adapter that carries DPMA over dphone-sip's out-of-dialog MESSAGE.
 sip = ["dep:dphone-sip"]
 
@@ -15,6 +20,11 @@ sip = ["dep:dphone-sip"]
 dphone-state = { path = "../dphone-state" }
 dphone-sip = { path = "../dphone-sip", optional = true }
 dpma-proto = "0.2.1"
+eff = { path = "../eff" }
+dphone-update = { path = "../dphone-update", optional = true }
+dphone-hal = { path = "../dphone-hal", optional = true }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12"], optional = true }
+rustls-rustcrypto = { version = "0.0.2-alpha", default-features = false, features = ["std", "tls12"], optional = true }
 tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
 async-trait = "0.1"
 log = "0.4"
@@ -23,4 +33,6 @@ rsa = "0.9"
 serde_json = "1"
 
 [dev-dependencies]
+dphone-hal = { path = "../dphone-hal" }
+dphone-update = { path = "../dphone-update" }
 tokio = { version = "1", features = ["rt", "net", "time", "sync", "macros", "test-util"] }

@@ -28,13 +28,12 @@ const APPLETS: &[&str] = &[
 const DPHONE_LINKS: &[&str] =
     &["mount", "umount", "insmod", "rmmod", "lsmod", "modprobe", "reboot", "poweroff", "halt", "dmesg"];
 
-const USAGE: &str = "dev-image <model> --dsp-firmware <file> [--ssh-key <file.pub>] [--kernel-out <dir>] \
+const USAGE: &str = "dev-image <model> --dsp-firmware <file> [--kernel-out <dir>] \
 [--brush <file>] [--coreutils <file>] [--out <dir>] [--no-stock-writes] [--no-web] [--version 3_0_0]";
 
 struct Options {
     model: String,
     dsp: PathBuf,
-    ssh_key: Option<PathBuf>,
     kernel_out: PathBuf,
     brush: PathBuf,
     coreutils: PathBuf,
@@ -50,7 +49,6 @@ fn parse(args: &[String]) -> Result<Options> {
     let root = repo_root();
     let mut model = None;
     let mut dsp = None;
-    let mut ssh_key = None;
     let mut kernel_out = root.join("target/kernel-build/out");
     let mut brush = root.join("target/nix-spike/out-brush/bin/brush");
     let mut coreutils = root.join("target/nix-spike/out-uu/bin/coreutils");
@@ -63,7 +61,6 @@ fn parse(args: &[String]) -> Result<Options> {
         let mut value = || it.next().cloned().ok_or_else(|| format!("{a} needs a value\nusage: {USAGE}"));
         match a.as_str() {
             "--dsp-firmware" => dsp = Some(PathBuf::from(value()?)),
-            "--ssh-key" => ssh_key = Some(PathBuf::from(value()?)),
             "--kernel-out" => kernel_out = PathBuf::from(value()?),
             "--brush" => brush = PathBuf::from(value()?),
             "--coreutils" => coreutils = PathBuf::from(value()?),
@@ -81,7 +78,7 @@ fn parse(args: &[String]) -> Result<Options> {
     }
     let dsp = dsp.ok_or("--dsp-firmware is required: the family's dspapp1107_lcc.bin from a stock rootfs")?;
     let out = out.unwrap_or_else(|| root.join("target/images").join(format!("{model}-dev")));
-    Ok(Options { model, dsp, ssh_key, kernel_out, brush, coreutils, out, no_stock_writes, no_web, version })
+    Ok(Options { model, dsp, kernel_out, brush, coreutils, out, no_stock_writes, no_web, version })
 }
 
 fn run(cmd: &mut Command) -> Result<()> {
@@ -143,19 +140,8 @@ pub fn dev_image(args: &[String]) -> Result<()> {
         run(Command::new("pnpm").current_dir(&web).args(["run", "build"]))?;
     }
 
-    // 1. dphone for the phone, with the development key compiled in.
-    let mut build = Command::new(&cargo);
-    build.current_dir(&root).args(["build", "--release", "-p", "dphone", "--target", TARGET]);
-    match &o.ssh_key {
-        Some(path) => {
-            let key = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            build.env("DPHONE_DEV_SSH_KEY", key.trim());
-        }
-        None => {
-            build.env_remove("DPHONE_DEV_SSH_KEY");
-        }
-    }
-    run(&mut build)?;
+    // 1. dphone for the phone.
+    run(Command::new(&cargo).current_dir(&root).args(["build", "--release", "-p", "dphone", "--target", TARGET]))?;
     let target_dir = std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| root.join("target"));
     let dphone = target_dir.join(TARGET).join("release/dphone");
 

@@ -8,6 +8,7 @@
 use std::net::Ipv4Addr;
 
 use crate::model::Model;
+use crate::settings::{self, DphoneSettings, Resolved};
 use crate::xml::Element;
 
 /// One merged configuration.  Cheap to share behind an `Arc`.
@@ -17,6 +18,7 @@ pub struct Config {
     pub(crate) generation: u64,
     pub(crate) model: Model,
     pub(crate) selected_network: Option<String>,
+    pub(crate) settings: DphoneSettings,
 }
 
 fn truthy(v: &str) -> bool {
@@ -268,12 +270,11 @@ pub struct LogSettings {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AccessSettings {
     pub web_ui_enabled: bool,
-    pub https_enabled: bool,
     pub ssh_enabled: bool,
-    pub dev_mode: bool,
     pub allow_app_dev: bool,
-    /// Whether a provisioned `<firmware>` entry may trigger an update.
-    pub allow_provisioned_firmware: bool,
+    /// Whether a provisioned `<firmware>` entry is ignored (development
+    /// aid; by default the server's firmware is followed, as on stock).
+    pub ignore_provisioned_firmware: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -390,7 +391,58 @@ pub fn parse_blf_items(config: &Element) -> Vec<BlfItem> {
 impl Config {
     /// Wrap an already merged tree (for tests and tools).
     pub fn from_merged(root: Element, model: Model, selected_network: Option<String>) -> Self {
-        Config { root, generation: 0, model, selected_network }
+        Config { root, generation: 0, model, selected_network, settings: DphoneSettings::default() }
+    }
+
+    /// The locally stored Open DPhone settings
+    /// (`/nvdata/dphone_settings.txtpb`) as of this generation: `None`
+    /// means "not set locally".  For what is in effect, with provisioning
+    /// and defaults applied, use [`Config::ssh_enabled`] and
+    /// [`Config::ignore_provisioned_firmware`].
+    pub fn dphone_settings(&self) -> &DphoneSettings {
+        &self.settings
+    }
+
+    fn provisioned_bool(&self, id: &str) -> (Option<bool>, bool) {
+        let v = self.setting(id).filter(|v| !v.trim().is_empty()).map(truthy);
+        (v, v.is_some() && self.setting_frozen(id))
+    }
+
+    /// Whether the SSH server runs (default on), and where that came from.
+    pub fn ssh_enabled(&self) -> Resolved<bool> {
+        let (p, frozen) = self.provisioned_bool(settings::PROVISIONED_SSH_ENABLED);
+        settings::resolve(self.settings.ssh_enabled, p, frozen, true)
+    }
+
+    /// Whether provisioned firmware is ignored (default off: the server's
+    /// firmware is followed, as on stock).
+    pub fn ignore_provisioned_firmware(&self) -> Resolved<bool> {
+        let (p, frozen) = self.provisioned_bool(settings::PROVISIONED_IGNORE_FIRMWARE);
+        settings::resolve(self.settings.ignore_provisioned_firmware, p, frozen, false)
+    }
+
+    /// SSH public keys supplied by the provisioning server, in
+    /// `authorized_keys` line form.  They are accepted in addition to the
+    /// keys added on the phone (`/nvdata/root/.ssh/authorized_keys`) and
+    /// disappear when the server stops sending them.  Entries that are not
+    /// plain public-key lines are left out.
+    pub fn provisioned_ssh_keys(&self) -> Vec<String> {
+        let Some(list) = self.root.child(settings::PROVISIONED_SSH_KEYS) else { return Vec::new() };
+        let mut keys: Vec<String> = Vec::new();
+        for k in list.children_named("key") {
+            let line = k.attr("value").unwrap_or("").trim();
+            if settings::valid_public_key_line(line) && !keys.iter().any(|x| x == line) {
+                keys.push(line.to_owned());
+            }
+        }
+        keys
+    }
+
+    /// The same configuration with the given Open DPhone settings (for
+    /// tests and tools).
+    pub fn with_dphone_settings(mut self, settings: DphoneSettings) -> Self {
+        self.settings = settings;
+        self
     }
 
     /// The merged `<config>` element.
@@ -592,11 +644,9 @@ impl Config {
     pub fn access(&self) -> AccessSettings {
         AccessSettings {
             web_ui_enabled: self.setting_bool("web_ui_enabled", true),
-            https_enabled: self.setting_bool("open_https_enabled", true),
-            ssh_enabled: self.setting_bool("open_ssh_enabled", false),
-            dev_mode: self.setting_bool("open_dev_mode", false),
+            ssh_enabled: self.ssh_enabled().value,
             allow_app_dev: self.setting_bool("allow_app_dev", false),
-            allow_provisioned_firmware: self.setting_bool("open_allow_provisioned_firmware", false),
+            ignore_provisioned_firmware: self.ignore_provisioned_firmware().value,
         }
     }
 

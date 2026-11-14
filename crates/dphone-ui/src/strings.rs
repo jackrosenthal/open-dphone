@@ -4,7 +4,7 @@
 pub const PRODUCT: &str = "Open DPhone";
 
 // Softkeys and actions.
-pub const MORE: &str = "More";
+pub const MORE: &str = "More...";
 pub const DELETE: &str = "Delete";
 pub const BACK: &str = "Back";
 pub const CANCEL: &str = "Cancel";
@@ -24,7 +24,7 @@ pub const END_CALL: &str = "End Call";
 pub const HOLD: &str = "Hold";
 pub const RESUME: &str = "Resume";
 pub const TRANSFER: &str = "Transfer";
-pub const CONFERENCE: &str = "Conf";
+pub const CONFERENCE: &str = "Conference";
 pub const SPLIT: &str = "Split";
 pub const PARK: &str = "Park";
 pub const NEW_CALL: &str = "New Call";
@@ -38,6 +38,8 @@ pub const APPS: &str = "Apps";
 pub const LOG: &str = "Log";
 pub const CONTACTS: &str = "Contacts";
 pub const DND: &str = "DND";
+pub const DND_OFF: &str = "DND Off";
+pub const MISSED_CALLS_KEY: &str = "Missed Calls";
 pub const FORWARD: &str = "Forward";
 pub const REDIAL: &str = "Redial";
 pub const CLEAR: &str = "Clear";
@@ -88,11 +90,11 @@ pub const NEW_MESSAGES: &str = "new";
 pub const UNUSED: &str = "";
 
 // Dialer and calls.
-pub const ENTER_NUMBER: &str = "Enter number";
+pub const NEW_CALL_TITLE: &str = "New Call";
 pub const TRANSFER_TO: &str = "Transfer to";
 pub const CONFERENCE_WITH: &str = "Conference with";
-pub const INCOMING_CALL: &str = "Incoming call";
-pub const CALLING: &str = "Calling\u{2026}";
+pub const INCOMING_CALL: &str = "Incoming";
+pub const CALLING: &str = "Calling";
 pub const RINGING: &str = "Ringing\u{2026}";
 pub const CONNECTED: &str = "Connected";
 pub const ON_HOLD: &str = "On hold";

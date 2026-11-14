@@ -145,10 +145,14 @@ fn incoming_call_keys() {
     assert_eq!(r.call_cmds(), vec![Command::Answer { call: id, path: Some(AudioPath::Speaker) }]);
     r.hook(true);
     assert_eq!(r.call_cmds(), vec![Command::Answer { call: id, path: Some(AudioPath::Handset) }]);
-    // Softkey paging: five actions, so the fourth key is More.
+    // Stock layout: Answer, Ignore, Transfer, and an empty fourth key.
     r.tap(Key::Soft(4));
-    r.tap(Key::Soft(1)); // VM, the first action of page two
-    assert_eq!(r.call_cmds(), vec![Command::SendToVoicemail { call: id }]);
+    assert!(r.call_cmds().is_empty());
+    assert_eq!(r.screen(), "call");
+    r.tap(Key::Soft(3)); // Transfer the ringing call
+    assert_eq!(r.screen(), "dialer");
+    r.tap(Key::Cancel);
+    assert_eq!(r.screen(), "call");
     // The call ends: back to where the user was (the menu was replaced by
     // the call; the stack below the call screen is kept).
     r.store.update::<Calls, _>(|c| c.calls.clear());
@@ -206,7 +210,10 @@ fn active_call_keys() {
 #[test]
 fn menu_shortcuts_and_settings() {
     let mut r = Rig::new(Model::D60);
-    r.tap(Key::Soft(3)); // Menu
+    // Idle softkeys page behind "More...": Call Log, Contacts, Status,
+    // then Menu, Apps, DND.
+    r.tap(Key::Soft(4));
+    r.tap(Key::Soft(1)); // Menu
     assert_eq!(r.screen(), "menu");
     r.tap(Key::Digit(4)); // Do Not Disturb toggles in place
     assert_eq!(r.call_cmds(), vec![Command::SetDnd { on: true }]);
@@ -226,7 +233,7 @@ fn menu_shortcuts_and_settings() {
     r.tap(Key::Cancel);
     assert_eq!(r.screen(), "idle");
     // Settings write stock setting IDs.
-    r.tap(Key::Soft(3));
+    r.tap(Key::Select);
     r.tap(Key::Digit(6)); // Settings
     r.tap(Key::Digit(1)); // Network
     r.tap(Key::Digit(1)); // Addressing: DHCP -> static

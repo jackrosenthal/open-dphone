@@ -75,9 +75,6 @@ pub fn start(ctx: &Context, opts: &Options, config: Option<SharedConfig>, tap: O
         if let Some(port) = opts.web_port {
             options.http = Some(SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)));
         }
-        if !access.https_enabled {
-            options.https = None;
-        }
     }
     ctx.store.set_health(Subsystem::Web, HealthStatus::Starting);
     let ctx = ctx.clone();

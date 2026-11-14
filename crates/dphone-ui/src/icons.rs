@@ -40,8 +40,8 @@ impl Icon {
 /// Names of the built-in icons (the same set in every skin).  Icons from
 /// `assets/icons/status` are monochrome and take the text color; the app
 /// icons from `assets/icons/app` are named `app-<file>` (`app-contacts`)
-/// and are full color on the color skin; `wordmark` and `splash` are the
-/// artwork.
+/// and are full color on the color skin; `splash` is the boot-screen
+/// artwork (the only branding; no other screen uses it).
 pub fn names() -> Vec<&'static str> {
     crate::atlas::ICONS_COLOR.iter().map(|r| r.name).collect()
 }

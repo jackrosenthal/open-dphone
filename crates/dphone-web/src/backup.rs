@@ -20,7 +20,7 @@ pub trait Backup: Send + Sync {
 /// (`fetched-config.xml`, `configurator.xml`, `md5s/`), identity keys, and
 /// stock-owned files are left out: a restore must not move an identity to
 /// another phone or fight the provisioning server.
-const FILES: &[&str] = &["ui-config.xml", "open/config.xml", "blf_items.xml", "netselect.xml"];
+const FILES: &[&str] = &["ui-config.xml", "dphone_settings.txtpb", "blf_items.xml", "netselect.xml"];
 /// Directories whose plain files are included.
 const DIRS: &[&str] = &["contact_lists"];
 const MAX_FILE: usize = 4 << 20;

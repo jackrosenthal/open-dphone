@@ -50,23 +50,24 @@ fn factory_layers_freeze_model_facts() {
 }
 
 #[test]
-fn set_goes_to_the_right_layer_and_config_xml_stays_stock() {
+fn set_goes_to_the_ui_layer_and_config_xml_stays_stock() {
     let (_d, mut s) = store(Model::D60);
     let g0 = s.config().generation();
-    let c = s.set_many(&[("ringer_volume", "7"), ("open_ssh_enabled", "1")]).unwrap();
+    let c = s.set_many(&[("ringer_volume", "7")]).unwrap();
     assert!(c.generation() > g0);
     assert_eq!(c.setting("ringer_volume"), Some("7"));
-    assert!(c.access().ssh_enabled);
 
     let nv = s.nvdata().clone();
     let ui = nv.read_string("ui-config.xml").unwrap().unwrap();
     assert_eq!(ui, "<config>\n    <setting id=\"ringer_volume\" value=\"7\" />\n</config>\n");
-    let open = nv.read_string("open/config.xml").unwrap().unwrap();
-    assert!(open.contains("open_ssh_enabled"));
-    // The effective file stock reads never carries our private settings.
+    // The retired private IDs are refused, so they cannot reach a stock file.
+    assert!(matches!(s.set("open_ssh_enabled", "1"), Err(ConfigError::NotAStockSetting(_))));
+    assert_eq!(nv.read_string("ui-config.xml").unwrap().unwrap(), ui);
+    // The effective file stock reads carries nothing of ours.
     let effective = nv.read_string("config.xml").unwrap().unwrap();
     assert!(effective.contains("<setting id=\"ringer_volume\" value=\"7\" />"));
     assert!(!effective.contains("open_"));
+    assert!(!nv.exists("open/config.xml"));
 
     // Same value again: no new generation.
     let g1 = c.generation();
@@ -110,7 +111,7 @@ fn fetched_config_network_selection_and_typed_view() {
     assert_eq!(c.time().time_zone, "America/Denver");
     assert_eq!(c.firmware_for_model().unwrap().version, "2_9_28");
     assert_eq!(c.firmwares().len(), 2);
-    assert!(!c.access().allow_provisioned_firmware);
+    assert!(!c.access().ignore_provisioned_firmware);
     assert_eq!(c.contact_sources()[0].url, "http://10.10.0.2/contacts.xml");
     assert_eq!(c.blf_items_url(), Some("http://10.10.0.2/blf.xml"));
     let r = c.ringtones();
@@ -172,9 +173,16 @@ fn lldp_layer_and_unparsable_layers() {
 #[test]
 fn web_password() {
     let (_d, mut s) = store(Model::D60);
-    // No digest file: the default login_password applies.
+    // No digest file: the factory default, admin / 789, and nothing else.
+    assert!(!s.nvdata().exists("etc/.passwd"));
     assert!(s.verify_web_password("admin", "789").unwrap());
     assert!(!s.verify_web_password("admin", "nope").unwrap());
+    assert!(!s.verify_web_password("admin", "").unwrap());
+    assert!(!s.verify_web_password("root", "789").unwrap());
+    // The same hash stock ships in its default digest file.
+    assert_eq!(s.web_ha1("admin").unwrap().as_deref(), Some("42c4089ad2eabaeb4d56e37078e21d62"));
+    // Checking a login writes nothing.
+    assert!(!s.nvdata().exists("etc/.passwd"));
     s.set_web_password("s3cret").unwrap();
     assert!(s.verify_web_password("admin", "s3cret").unwrap());
     assert!(!s.verify_web_password("admin", "789").unwrap());
@@ -188,6 +196,31 @@ fn web_password() {
         dphone_config::nvdata::htdigest_ha1("Mufasa", "testrealm@host.com", "Circle Of Life"),
         "939e7578ed9e3c518a452acee763bce9"
     );
+}
+
+#[test]
+fn default_web_password_without_file_or_setting() {
+    // A configuration with no login_password at all (not even the base
+    // default) still accepts exactly admin / 789.
+    let (_d, mut s) = store(Model::D40);
+    s.apply_fetched(r#"<config><setting id="login_password" conflict="replace"/></config>"#).unwrap();
+    assert_eq!(s.config().setting("login_password"), None);
+    assert!(!s.nvdata().exists("etc/.passwd"));
+    assert!(s.verify_web_password("admin", "789").unwrap());
+    assert!(!s.verify_web_password("admin", "").unwrap());
+    assert!(!s.verify_web_password("admin", "7890").unwrap());
+    // An empty digest file has no entry for the user either.
+    s.nvdata().write("etc/.passwd", b"").unwrap();
+    assert!(s.verify_web_password("admin", "789").unwrap());
+    // First change: written in the stock htdigest form, and then only the
+    // new password works.
+    s.set_web_password("fresh").unwrap();
+    assert_eq!(
+        s.nvdata().read_string("etc/.passwd").unwrap().unwrap(),
+        format!("admin:Digium Phone Admin Login:{}", dphone_config::nvdata::htdigest_ha1("admin", "Digium Phone Admin Login", "fresh"))
+    );
+    assert!(s.verify_web_password("admin", "fresh").unwrap());
+    assert!(!s.verify_web_password("admin", "789").unwrap());
 }
 
 #[test]
@@ -243,7 +276,7 @@ fn factory_reset_follows_stock_whitelist() {
         "etc/enet.cfg", "etc/.passwd", "etc/passwd", "reboot_reason", "phoneservice_lockdown",
         "g729-legacy-support.xml", "g729-config.xml", "if-setup-debug", "config.xml", "ui-config.xml",
         "fetched-config.xml", "systime", "certs/a.pem", "appdata/x/y", "root/.ssh/authorized_keys",
-        "open/config.xml", "open/kv/ssh_host", "open/kv/trial",
+        "open/kv/ssh_host", "open/kv/trial", "dphone_settings.txtpb",
     ] {
         nv.write(f, b"x").unwrap();
     }

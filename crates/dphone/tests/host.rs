@@ -194,10 +194,9 @@ fn ssh_exec_and_sftp_with_openssh_client() {
     let rsa = d.join("id_rsa");
     let ok = Command::new("ssh-keygen").args(["-q", "-t", "rsa", "-b", "3072", "-N", "", "-f"]).arg(&rsa).status().unwrap();
     assert!(ok.success());
+    // No key file yet: the server starts with nobody able to log in.
     std::fs::create_dir_all(d.join("nv/root/.ssh")).unwrap();
-    let mut authorized = std::fs::read_to_string(d.join("id.pub")).unwrap();
-    authorized.push_str(&std::fs::read_to_string(d.join("id_rsa.pub")).unwrap());
-    std::fs::write(d.join("nv/root/.ssh/authorized_keys"), authorized).unwrap();
+    std::fs::create_dir_all(d.join("nv/open")).unwrap();
 
     let nv = d.join("nv");
     let run = d.join("run");
@@ -240,6 +239,17 @@ fn ssh_exec_and_sftp_with_openssh_client() {
         cmd.args(["-p", &port]).arg(format!("{user}@127.0.0.1")).arg(command);
         cmd.output().unwrap()
     };
+
+    // No key is compiled in, so with no key file nobody gets in.
+    assert_eq!(ssh(&key, "root", "true").status.code(), Some(255));
+    assert_eq!(ssh(&rsa, "root", "true").status.code(), Some(255));
+
+    // Keys are read at each attempt, from both files: the user's own, and
+    // the provisioned ones.  No restart in between.
+    std::fs::copy(d.join("id.pub"), d.join("nv/root/.ssh/authorized_keys")).unwrap();
+    assert_eq!(ssh(&key, "root", "true").status.code(), Some(0));
+    assert_eq!(ssh(&rsa, "root", "true").status.code(), Some(255));
+    std::fs::copy(d.join("id_rsa.pub"), d.join("nv/open/provisioned_authorized_keys")).unwrap();
 
     // Command, output on both streams, exit status.
     let out = ssh(&key, "root", "echo out; echo err >&2; exit 7");

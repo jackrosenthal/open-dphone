@@ -1,13 +1,11 @@
 //! Host key and authorized keys.
 
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use log::{info, warn};
 use russh::keys::ssh_key::LineEnding;
 use russh::keys::{Algorithm, PrivateKey, PublicKey};
-
-use crate::paths::Paths;
 
 /// Load the Ed25519 host key, creating it on first boot.  It lives under
 /// `/nvdata/open/`; stock's Dropbear key is not touched.
@@ -59,21 +57,15 @@ pub fn parse_authorized_keys(text: &str) -> Vec<PublicKey> {
     keys
 }
 
-/// Every key allowed to log in right now: the nvdata file (read on each
-/// attempt, so edits apply at once) and the key baked in for development.
-pub fn authorized_keys(paths: &Paths) -> Vec<PublicKey> {
-    let mut keys = match std::fs::read_to_string(paths.authorized_keys()) {
-        Ok(text) => parse_authorized_keys(&text),
-        Err(_) => Vec::new(),
-    };
-    if let Some(dev) = super::dev_key() {
-        keys.extend(parse_authorized_keys(dev));
-    }
-    keys
+/// Every key allowed to log in right now: the keys in `files`, which are
+/// read on each attempt, so edits apply at once.  A missing file holds no
+/// keys.
+pub fn authorized_keys(files: &[PathBuf]) -> Vec<PublicKey> {
+    files.iter().filter_map(|f| std::fs::read_to_string(f).ok()).flat_map(|text| parse_authorized_keys(&text)).collect()
 }
 
-pub fn is_authorized(paths: &Paths, key: &PublicKey) -> bool {
-    authorized_keys(paths).iter().any(|k| k.key_data() == key.key_data())
+pub fn is_authorized(files: &[PathBuf], key: &PublicKey) -> bool {
+    authorized_keys(files).iter().any(|k| k.key_data() == key.key_data())
 }
 
 #[cfg(test)]
@@ -88,6 +80,22 @@ mod tests {
         let keys = parse_authorized_keys(&text);
         assert_eq!(keys.len(), 2);
         assert_eq!(keys[0].key_data(), keys[1].key_data());
+    }
+
+    /// Keys come from every listed file; a missing file holds none.
+    #[test]
+    fn keys_from_both_files() {
+        const OTHER: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC59MX83SYx6QcMDSzdkfFxRhVvxQ27YyC0y4szp3K8H other";
+        let dir = tempfile::tempdir().unwrap();
+        let files = vec![dir.path().join("authorized_keys"), dir.path().join("provisioned_authorized_keys")];
+        let (a, b) = (PublicKey::from_openssh(ED).unwrap(), PublicKey::from_openssh(OTHER).unwrap());
+        assert!(authorized_keys(&files).is_empty());
+        assert!(!is_authorized(&files, &a));
+        std::fs::write(&files[1], format!("{OTHER}\n")).unwrap();
+        assert!(is_authorized(&files, &b) && !is_authorized(&files, &a));
+        std::fs::write(&files[0], format!("{ED}\n")).unwrap();
+        assert!(is_authorized(&files, &a) && is_authorized(&files, &b));
+        assert_eq!(authorized_keys(&files).len(), 2);
     }
 
     #[test]

@@ -1,9 +1,25 @@
 //! The three skins: metrics, colors, fonts, and icons per screen class.
+//!
+//! The geometry here is measured from stock firmware screenshots (the
+//! owner's D60 captures in `screenshots/` and the per-model renders in
+//! `docs/assets/` of the reverse-engineering notes), so that line-key
+//! labels sit beside their physical keys and softkey labels above theirs:
+//!
+//! | | D40/D45/D50 | D70 | D60/D62/D65 |
+//! | --- | --- | --- | --- |
+//! | Line-key tab column | x 155..239 | x 206..319 | x 297..479 |
+//! | Tab pitch from y = 0 | 23 | 23 | 40 |
+//! | Header band (left of the tabs) | y 0..14 | y 0..16 | y 0..39 |
+//! | Softkey shapes | y 103..119 | y 141..159 | y 244..268 |
+//! | Softkey x: first, pitch, width | 0, 60, 60 | 0, 80, 80 | 14, 116, 104 |
+//!
+//! Colors of the color skin are the stock values by measurement; the
+//! wallpaper and every bitmap are our own.
 
 use crate::appview::{Color, Font, ThemeColor};
-use crate::font::FontData;
 use crate::atlas;
-use crate::gfx::{rgb, Rgb, GRAY};
+use crate::font::FontData;
+use crate::gfx::{rgb, IRect, Rgb, GRAY};
 use crate::icons::{Icon, IconRec};
 use dphone_state::{Model, Skin};
 
@@ -11,16 +27,30 @@ use dphone_state::{Model, Skin};
 pub struct Theme {
     pub skin: Skin,
     pub gray: bool,
-    fonts: &'static [&'static FontData; 5],
+    fonts: &'static [&'static FontData; 9],
     icons: &'static [IconRec],
     icon_data: &'static [u8],
     /// Main screen size.
     pub width: i32,
     pub height: i32,
-    /// Softkey bar height (18, 20, 29).
+    /// Height reserved for softkeys at the bottom (18, 20, 29).
     pub softkey_h: i32,
-    /// Status bar at the top of native screens.
-    pub status_h: i32,
+    /// Left edge of the first softkey shape, distance between shapes, and
+    /// the width, top, and height of each shape.
+    pub soft_x0: i32,
+    pub soft_pitch: i32,
+    pub soft_w: i32,
+    pub soft_y: i32,
+    pub soft_h: i32,
+    /// Line-key tabs: left edge (including the border), width, and pitch.
+    /// Tab `i` occupies rows `i * tab_h .. (i + 1) * tab_h` from the top of
+    /// the screen, beside physical line key `i + 1`.
+    pub tab_x: i32,
+    pub tab_w: i32,
+    pub tab_h: i32,
+    /// Height of the header band at the top left of the idle and call
+    /// screens (15, 17, 40).
+    pub header_h: i32,
     /// `Text.LINE_HEIGHT`.
     pub line_h: i32,
     /// `Text.ROW_HEIGHT`.
@@ -30,6 +60,8 @@ pub struct Theme {
     pub scroll_w: i32,
     /// General padding.
     pub pad: i32,
+    /// Left inset of titles and header text.
+    pub title_pad: i32,
     /// Size of status icons.
     pub icon: i32,
     pub bg: Rgb,
@@ -41,14 +73,26 @@ pub struct Theme {
     pub secondary: Rgb,
     pub border: Rgb,
     pub modal_bg: Rgb,
+    /// Softkey fill, outline, and label.
     pub sk_bg: Rgb,
+    pub sk_edge: Rgb,
     pub sk_fg: Rgb,
+    /// Softkey fills for "go" (answer) and "stop" (end, ignore) actions.
+    pub sk_go: Rgb,
+    pub sk_stop: Rgb,
     pub good: Rgb,
     pub warn: Rgb,
     pub error: Rgb,
     pub accent: Rgb,
-    /// Card background (call cards, line tabs).
+    /// Call card: fill for an active call, a ringing call, and a held one;
+    /// and the dark part at its right.
     pub card: Rgb,
+    pub card_ringing: Rgb,
+    pub card_held: Rgb,
+    pub card_dark: Rgb,
+    /// Line-key tab fill.
+    pub tab_bg: Rgb,
+    pub tab_fg: Rgb,
 }
 
 static SMALL_GRAY: Theme = gray_theme(Skin::SmallGray);
@@ -62,29 +106,46 @@ static COLOR: Theme = Theme {
     width: 480,
     height: 272,
     softkey_h: 29,
-    status_h: 30,
+    soft_x0: 14,
+    soft_pitch: 116,
+    soft_w: 104,
+    soft_y: 244,
+    soft_h: 25,
+    tab_x: 296,
+    tab_w: 184,
+    tab_h: 40,
+    header_h: 40,
     line_h: 25,
     row_h: 32,
     title_h: 40,
     scroll_w: 8,
     pad: 8,
+    title_pad: 15,
     icon: 22,
-    bg: rgb(0x10, 0x14, 0x1A),
-    fg: rgb(0xF2, 0xF4, 0xF7),
-    title_bg: rgb(0x1B, 0x24, 0x30),
+    bg: rgb(0x21, 0x21, 0x21),
+    fg: rgb(0xEE, 0xEE, 0xEE),
+    title_bg: rgb(0x01, 0x41, 0x74),
     title_fg: rgb(0xFF, 0xFF, 0xFF),
-    sel_bg: rgb(0x2F, 0x80, 0xED),
+    sel_bg: rgb(0x01, 0x57, 0x9B),
     sel_fg: rgb(0xFF, 0xFF, 0xFF),
-    secondary: rgb(0x9A, 0xA4, 0xB2),
-    border: rgb(0x2A, 0x34, 0x41),
-    modal_bg: rgb(0x22, 0x2C, 0x3A),
-    sk_bg: rgb(0x1B, 0x24, 0x30),
-    sk_fg: rgb(0xE6, 0xEA, 0xF0),
-    good: rgb(0x34, 0xC7, 0x59),
-    warn: rgb(0xFF, 0xB0, 0x20),
-    error: rgb(0xFF, 0x4D, 0x4F),
-    accent: rgb(0x5A, 0xA2, 0xFF),
-    card: rgb(0x1B, 0x24, 0x30),
+    secondary: rgb(0xB4, 0xB8, 0xBE),
+    border: rgb(0x4D, 0x4D, 0x4D),
+    modal_bg: rgb(0x2E, 0x2E, 0x2E),
+    sk_bg: rgb(0x2E, 0x2E, 0x2E),
+    sk_edge: rgb(0x75, 0x75, 0x75),
+    sk_fg: rgb(0xEE, 0xEE, 0xEE),
+    sk_go: rgb(0x38, 0x8E, 0x3C),
+    sk_stop: rgb(0xB7, 0x1C, 0x1C),
+    good: rgb(0x4C, 0xAF, 0x50),
+    warn: rgb(0xFF, 0xB3, 0x00),
+    error: rgb(0xEF, 0x53, 0x50),
+    accent: rgb(0x67, 0xB4, 0xF1),
+    card: rgb(0x01, 0x57, 0x9B),
+    card_ringing: rgb(0x2A, 0x6B, 0x2D),
+    card_held: rgb(0x45, 0x5A, 0x64),
+    card_dark: rgb(0x21, 0x21, 0x21),
+    tab_bg: rgb(0x42, 0x42, 0x42),
+    tab_fg: rgb(0xEE, 0xEE, 0xEE),
 };
 
 const fn gray_theme(skin: Skin) -> Theme {
@@ -98,13 +159,22 @@ const fn gray_theme(skin: Skin) -> Theme {
         width: if large { 320 } else { 240 },
         height: if large { 160 } else { 120 },
         softkey_h: if large { 20 } else { 18 },
-        status_h: if large { 17 } else { 15 },
+        soft_x0: 0,
+        soft_pitch: if large { 80 } else { 60 },
+        soft_w: if large { 80 } else { 60 },
+        soft_y: if large { 141 } else { 103 },
+        soft_h: if large { 19 } else { 17 },
+        tab_x: if large { 206 } else { 155 },
+        tab_w: if large { 114 } else { 85 },
+        tab_h: 23,
+        header_h: if large { 17 } else { 15 },
         line_h: if large { 17 } else { 15 },
         row_h: if large { 17 } else { 15 },
         title_h: if large { 17 } else { 15 },
         scroll_w: 4,
         pad: if large { 4 } else { 3 },
-        icon: if large { 13 } else { 11 },
+        title_pad: 3,
+        icon: if large { 15 } else { 13 },
         bg: GRAY[3],
         fg: GRAY[0],
         title_bg: GRAY[0],
@@ -115,12 +185,20 @@ const fn gray_theme(skin: Skin) -> Theme {
         border: GRAY[1],
         modal_bg: GRAY[3],
         sk_bg: GRAY[0],
+        sk_edge: GRAY[1],
         sk_fg: GRAY[3],
+        sk_go: GRAY[0],
+        sk_stop: GRAY[0],
         good: GRAY[0],
         warn: GRAY[0],
         error: GRAY[0],
         accent: GRAY[0],
         card: GRAY[3],
+        card_ringing: GRAY[3],
+        card_held: GRAY[3],
+        card_dark: GRAY[3],
+        tab_bg: GRAY[3],
+        tab_fg: GRAY[0],
     }
 }
 
@@ -144,6 +222,23 @@ impl Theme {
             Font::Title => 3,
             Font::Large => 4,
         }]
+    }
+
+    /// The idle clock's digits (digits, colon, and space only).
+    pub fn clock_font(&self) -> &'static FontData {
+        self.fonts[5]
+    }
+    /// The idle screen's meridiem and date.
+    pub fn date_font(&self) -> &'static FontData {
+        self.fonts[6]
+    }
+    /// The number line of a call card (stock: 17 px on color).
+    pub fn number_font(&self) -> &'static FontData {
+        self.fonts[7]
+    }
+    /// The AM/PM beside the idle clock.
+    pub fn meridiem_font(&self) -> &'static FontData {
+        self.fonts[8]
     }
 
     pub fn text_width(&self, f: Font, s: &str) -> u16 {
@@ -187,5 +282,21 @@ impl Theme {
     /// The app content area on the main screen.
     pub fn content_h(&self) -> i32 {
         self.height - self.softkey_h
+    }
+
+    /// The outline of softkey shape `i` (0..4): the rectangle that holds
+    /// it, including the pointed part on the color skin.
+    pub fn softkey_rect(&self, i: usize) -> IRect {
+        IRect::new(self.soft_x0 + i as i32 * self.soft_pitch, self.soft_y, self.soft_w, self.soft_h)
+    }
+
+    /// Line-key tab `i` (0 = beside line key 1), border included.
+    pub fn tab_rect(&self, i: usize) -> IRect {
+        IRect::new(self.tab_x, i as i32 * self.tab_h, self.tab_w, self.tab_h)
+    }
+
+    /// The header band left of the tab column.
+    pub fn header_rect(&self) -> IRect {
+        IRect::new(0, 0, self.tab_x - if self.gray { 1 } else { 0 }, self.header_h)
     }
 }

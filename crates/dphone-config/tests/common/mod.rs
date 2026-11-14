@@ -29,6 +29,22 @@ impl Drop for TempDir {
 }
 
 /// A provisioned configuration in the shape a DPMA server sends.
+/// What a DPMA server adds to its configuration to provision Open DPhone's
+/// own settings and SSH keys.
+pub const DPHONE_EXTENSION: &str = r#"
+  <setting id="dphone_ssh_enabled" value="1" conflict="freeze" />
+  <setting id="dphone_ignore_provisioned_firmware" value="0" />
+  <dphone_ssh_authorized_keys>
+    <key id="1" value="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa alice@laptop" />
+    <key id="2" value="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb bob@desk" />
+  </dphone_ssh_authorized_keys>
+"#;
+
+/// [`FETCHED`] with [`DPHONE_EXTENSION`] added.
+pub fn fetched_with_extension() -> String {
+    FETCHED.replace("</config>", &format!("{DPHONE_EXTENSION}</config>"))
+}
+
 pub const FETCHED: &str = r#"<?xml version="1.0"?>
 <config>
   <networks>

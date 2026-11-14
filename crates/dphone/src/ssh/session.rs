@@ -57,7 +57,7 @@ impl Handler {
     }
 
     fn check_key(&self, user: &str, key: &PublicKey) -> bool {
-        user == USER && super::keys::is_authorized(&self.ctx.paths, key)
+        user == USER && super::keys::is_authorized(&super::authorized_key_files(&self.ctx.paths), key)
     }
 
     /// Start a shell (`command` is `None`) or run a command on a channel.

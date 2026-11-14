@@ -890,13 +890,20 @@ impl Ui {
         if top.full_screen() {
             top.draw(&cx, c, bounds);
         } else {
-            let (area, bar) = bounds.split_bottom(th.softkey_h);
+            // The whole frame gets a background first: the softkey shapes
+            // and the line-key tabs sit on it.
+            if top.wallpaper() {
+                c.wallpaper(th.bg);
+            } else {
+                c.clear(th.bg);
+            }
+            let (area, _) = bounds.split_bottom(th.softkey_h);
             top.draw(&cx, c, area);
             let labels = match top.raw_softkeys(&cx) {
                 Some(l) => l,
                 None => soft_slots(&top.softkeys(&cx), self.nav.soft_page).map(|(_, l)| l),
             };
-            widgets::softkey_bar(c, th, bar, &labels);
+            widgets::softkey_bar(c, th, &labels);
         }
         self.screen_deadline = top.deadline(&cx);
         let name = top.name();

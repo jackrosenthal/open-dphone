@@ -11,10 +11,17 @@
 //! let reply = dpma.app_request("dasp://pbx/json", Some("100:1234"), doc).await?;
 //! ```
 //!
+//! Firmware the server provisions is installed when it differs from the
+//! running image (see [`firmware`]).
+//!
 //! It owns the `Provisioning` state, handles
 //! [`dphone_state::Domain::Provisioning`] commands, emits `Event::Push` for
 //! server events, and heartbeats as [`dphone_state::Subsystem::Dpma`].
 
+pub mod fetch;
+pub mod firmware;
+#[cfg(feature = "update")]
+pub mod install;
 mod link;
 mod machine;
 #[cfg(feature = "sip")]
@@ -57,6 +64,11 @@ pub trait ConfigSink: Send + Sync + 'static {
     /// A configuration was downloaded: write `fetched-config.xml` and the
     /// digest, merge, and apply.
     fn apply(&self, fetched_config: &[u8], md5: &str) -> Result<(), String>;
+    /// The saved `fetched-config.xml`, for the firmware check on boots
+    /// where the configuration is not downloaded again.
+    fn fetched_config(&self) -> Option<Vec<u8>> {
+        None
+    }
     /// Provisioning was forgotten: remove `fetched-config.xml`, the
     /// digest, and the configurator state, and merge again.
     fn forget(&self) -> Result<(), String>;
@@ -76,9 +88,15 @@ pub struct DpmaConfig {
     pub mac: String,
     /// `Digium <model> <version>`; the server reads the model from it.
     pub user_agent: String,
-    /// Act on firmware the server provisions.  Off by default: stock
-    /// flashes on any version difference, which would put stock back.
-    pub accept_firmware: bool,
+    /// Leave the firmware the server provisions alone: its entries are
+    /// dropped from the fetched configuration and nothing is installed.
+    /// For development.  Off by default: a provisioned phone runs the
+    /// firmware its server names.  Changeable at run time with
+    /// [`DpmaHandle::set_ignore_provisioned_firmware`].
+    pub ignore_provisioned_firmware: bool,
+    /// Send the MAC in the firmware download's User-Agent (stock
+    /// `send_mac_with_useragent`).
+    pub mac_in_user_agent: bool,
     /// How long to wait for an application-level reply.
     pub timeout: Duration,
     /// Body bytes per MESSAGE.  UDP needs the whole MESSAGE under the MTU.
@@ -94,13 +112,23 @@ impl DpmaConfig {
         DpmaConfig {
             mac: mac.into().to_ascii_lowercase().replace([':', '-'], ""),
             user_agent: user_agent.into(),
-            accept_firmware: false,
+            ignore_provisioned_firmware: false,
+            mac_in_user_agent: false,
             timeout: Duration::from_secs(15),
             chunk_len: 600,
             ping_secs: 300,
             retry_secs: 30,
         }
     }
+}
+
+pub(crate) type FirmwareParts = (Arc<dyn firmware::FirmwareSource>, Arc<dyn firmware::FirmwareInstaller>);
+
+/// What the firmware check needs that is set after [`start`].
+pub(crate) struct FirmwareCtl {
+    pub ignore: std::sync::atomic::AtomicBool,
+    pub parts: std::sync::Mutex<Option<FirmwareParts>>,
+    pub running: Arc<std::sync::atomic::AtomicBool>,
 }
 
 pub(crate) enum Input {
@@ -112,6 +140,7 @@ pub(crate) enum Input {
 pub struct DpmaHandle {
     link: Arc<link::Link>,
     input: mpsc::UnboundedSender<Input>,
+    firmware: Arc<FirmwareCtl>,
 }
 
 impl DpmaHandle {
@@ -149,6 +178,23 @@ impl DpmaHandle {
         self.link.file(name).await
     }
 
+    /// Gives the client the means to act on provisioned firmware: where
+    /// images come from and what writes them.  Until this is called (the
+    /// simulator never does), provisioned firmware is only reported.
+    pub fn set_firmware_updater(
+        &self,
+        source: Arc<dyn firmware::FirmwareSource>,
+        installer: Arc<dyn firmware::FirmwareInstaller>,
+    ) {
+        *self.firmware.parts.lock().unwrap() = Some((source, installer));
+    }
+
+    /// Turns "ignore firmware provisioned by the server" on or off.  It
+    /// applies from the next configuration fetch.
+    pub fn set_ignore_provisioned_firmware(&self, ignore: bool) {
+        self.firmware.ignore.store(ignore, std::sync::atomic::Ordering::SeqCst);
+    }
+
     /// Whether a session is up.
     pub fn attached(&self) -> bool {
         self.link.has_session()
@@ -172,7 +218,12 @@ pub fn start(
     // Registered here, not in the task, so commands sent right after
     // `start` returns find their handler.
     let commands = store.handle(dphone_state::Domain::Provisioning);
-    let m = machine::Machine::new(store, cfg, link.clone(), storage, sink);
+    let firmware = Arc::new(FirmwareCtl {
+        ignore: std::sync::atomic::AtomicBool::new(cfg.ignore_provisioned_firmware),
+        parts: std::sync::Mutex::new(None),
+        running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    });
+    let m = machine::Machine::new(store, cfg, link.clone(), storage, sink, firmware.clone());
     tokio::spawn(m.run(input_rx, events_rx, commands));
-    DpmaHandle { link, input }
+    DpmaHandle { link, input, firmware }
 }

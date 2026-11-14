@@ -4,7 +4,8 @@
 
 use crate::link::{body_of, DpmaError, Link};
 use crate::xml::{self, Configurator};
-use crate::{files, ConfigSink, DpmaConfig, Input, Storage};
+use crate::{files, ConfigSink, DpmaConfig, FirmwareCtl, Input, Storage};
+use std::sync::atomic::Ordering;
 use dphone_state::{
     clock, Command, CommandError, DiscoveredServer, DiscoverySource, Envelope, Event, ProvisionPhase,
     ProvisionUser, Provisioning, Reply, Store, Subsystem,
@@ -58,6 +59,7 @@ pub(crate) struct Machine {
     standalone: bool,
     attached: bool,
     server: Option<DiscoveredServer>,
+    firmware: Arc<FirmwareCtl>,
 }
 
 fn sip_uri(address: &str) -> String {
@@ -80,6 +82,7 @@ impl Machine {
         link: Arc<Link>,
         storage: Arc<dyn Storage>,
         sink: Arc<dyn ConfigSink>,
+        firmware: Arc<FirmwareCtl>,
     ) -> Machine {
         Machine {
             store,
@@ -96,6 +99,7 @@ impl Machine {
             standalone: false,
             attached: false,
             server: None,
+            firmware,
         }
     }
 
@@ -436,6 +440,12 @@ impl Machine {
             if resp.error == 0 {
                 let md5 = header_text(&resp, headers::MD5);
                 if !md5.is_empty() && self.sink.cached_md5().as_deref() == Some(md5.as_str()) {
+                    // Same configuration as last boot; the firmware it
+                    // provisions is still checked, as stock does on
+                    // every boot.
+                    if let Some(saved) = self.sink.fetched_config() {
+                        self.check_firmware(saved);
+                    }
                     self.done(&user, &md5);
                     return Ok(Outcome::Provisioned);
                 }
@@ -558,14 +568,54 @@ impl Machine {
             if h.is_empty() { md5_hex(&config) } else { h }
         };
         let offered = xml::offered_firmware(&config);
-        let content = if self.cfg.accept_firmware { config } else { xml::strip_firmware(&config) };
+        let ignore = self.firmware.ignore.load(Ordering::SeqCst);
+        if ignore && offered.is_some() {
+            log::info!("dpma: ignoring provisioned firmware {} (ignore_provisioned_firmware is set)", offered.as_deref().unwrap_or(""));
+        }
+        let content = if ignore { xml::strip_firmware(&config) } else { config.clone() };
         self.store.update::<Provisioning, _>(|p| {
             p.offered_firmware = offered;
             p.phase = ProvisionPhase::Applying;
         });
         self.sink.apply(&content, &md5).map_err(|e| Fail { reason: format!("cannot apply the configuration: {e}"), code: None, retry: false })?;
+        if !ignore {
+            self.check_firmware(config);
+        }
         self.done(&user, &md5);
         Ok(Outcome::Provisioned)
+    }
+
+    /// Compares the firmware a fetched configuration provisions with the
+    /// running image and installs it when they differ.  Runs on its own
+    /// thread: the download and the flash write take minutes.
+    fn check_firmware(&self, config: Vec<u8>) {
+        if self.firmware.ignore.load(Ordering::SeqCst) {
+            return;
+        }
+        let Some((source, installer)) = self.firmware.parts.lock().unwrap().clone() else {
+            log::debug!("dpma: no firmware updater; provisioned firmware is not acted on");
+            return;
+        };
+        // `Digium <model> <version>`.
+        let mut words = self.cfg.user_agent.split_whitespace().skip(1);
+        let (model, running) = (words.next().unwrap_or(""), words.next().unwrap_or(""));
+        let mac: Vec<&str> = (0..self.cfg.mac.len() / 2).map(|i| &self.cfg.mac[i * 2..i * 2 + 2]).collect();
+        let mut policy = crate::firmware::Policy::new(model, running, &mac.join(":"));
+        policy.mac_in_user_agent = self.cfg.mac_in_user_agent;
+        let runner = crate::firmware::Runner {
+            store: self.store.clone(),
+            policy,
+            storage: self.storage.clone(),
+            source,
+            installer,
+            running: self.firmware.running.clone(),
+        };
+        let spawned = std::thread::Builder::new().name("firmware".into()).spawn(move || {
+            runner.run(&config);
+        });
+        if let Err(e) = spawned {
+            log::error!("dpma: cannot start the firmware check: {e}");
+        }
     }
 
     fn done(&self, user: &str, md5: &str) {

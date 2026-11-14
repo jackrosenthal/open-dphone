@@ -5,8 +5,8 @@
     Setting IDs and value vocabularies follow the stock firmware wherever the
     meaning is the same, so that provisioned and locally saved layers written
     for either firmware merge the same way.  Settings that only Open DPhone
-    knows start with "open_" and are stored in /nvdata/open/config.xml when
-    changed, never in a file stock reads.
+    has are not here at all: they live in /nvdata/dphone_settings.txtpb, a
+    file stock never reads.
 
     Repeated elements need an identity attribute ("id" for most elements),
     or the merge folds them into one.
@@ -145,12 +145,6 @@
             <setting id="translations" value="en_US"/>
         </locale>
     </locales>
-
-    <!-- Open DPhone settings (stock ignores these). -->
-    <setting id="open_ssh_enabled" value="0"/>
-    <setting id="open_allow_provisioned_firmware" value="0"/>
-    <setting id="open_dev_mode" value="0"/>
-    <setting id="open_https_enabled" value="1"/>
 
     <codecs>
         <codec id="PCMU" priority="255" packetization="20" jitter_min="0" jitter_max="0" jitter_target="0" enabled="1"/>
