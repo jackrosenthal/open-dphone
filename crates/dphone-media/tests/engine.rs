@@ -419,7 +419,33 @@ fn tones_ring_and_volume() {
     for family in [Family::Old, Family::New] {
         let mut r = rig(family, 0);
         r.core.handle(Command::SetPath(Some(AudioPath::Speaker)));
+        r.jobs.lock().unwrap().clear();
         r.core.handle(Command::PlayTone(Some(ToneSpec::DIAL)));
+        for _ in 0..100 {
+            r.core.tick();
+        }
+        // the canceller is told about the tone, as the stock firmware
+        // does: option bit 1, and bit 15 of the second tone register
+        let tone_reg = if family == Family::New { 330 } else { 329 };
+        let sets = |r: &Rig| -> Vec<(u16, u16)> {
+            r.jobs.lock().unwrap().iter().filter(|j| (j.client, j.opcode) == (3, 4)).map(|j| (j.arg1, j.arg2)).collect()
+        };
+        let on = sets(&r);
+        assert_eq!(on.len(), 2, "{family:?}: {on:?}");
+        assert_eq!(on[0], (0, 2), "{family:?}");
+        assert_eq!((on[1].0, on[1].1 & 0x8000), (tone_reg, 0x8000), "{family:?}");
+        // its frame jobs pass 80 samples, and the mock (which answers as
+        // a D60's DSP does) gave back whole frames
+        assert!(r.jobs.lock().unwrap().iter().filter(|j| j.client == 3 && matches!(j.opcode, 8 | 9)).all(|j| j.arg1 == 80), "{family:?}");
+        assert_eq!(r.core.meters().dsp_errors.load(std::sync::atomic::Ordering::Relaxed), 0, "{family:?}");
+        r.jobs.lock().unwrap().clear();
+        r.core.handle(Command::PlayTone(None));
+        r.core.tick();
+        let off = sets(&r);
+        assert_eq!(off.len(), 2, "{family:?}: {off:?}");
+        assert_eq!((off[0], off[1].0, off[1].1 & 0x8000), ((0, 0), tone_reg, 0), "{family:?}");
+        r.core.handle(Command::PlayTone(Some(ToneSpec::DIAL)));
+        r.audio.lock().unwrap().played.clear();
         for _ in 0..100 {
             r.core.tick();
         }

@@ -343,6 +343,8 @@ pub struct EngineCore {
     path: Option<AudioPath>,
     device_open: bool,
     rx_gain: [i16; 3],
+    /// The tone mode last given to the attached path's canceller.
+    tone_mode: bool,
     mute: bool,
     tone: Option<ToneGen>,
     feedback: Option<(ToneGen, u32)>,
@@ -385,6 +387,7 @@ impl EngineCore {
             path: None,
             device_open: false,
             rx_gain: [gains.handset, gains.headset, gains.speaker],
+            tone_mode: false,
             mute: false,
             tone: None,
             feedback: None,
@@ -466,8 +469,17 @@ impl EngineCore {
         self.dsp_failed |= fatal;
     }
 
-    fn in_call(&self) -> bool {
-        self.streams.iter().any(Option::is_some)
+    /// Whether a local tone is playing (the path's canceller is told).
+    fn tone_playing(&self) -> bool {
+        self.tone.is_some()
+    }
+
+    fn attach_dsp(&mut self, path: AudioPath) {
+        let tone = self.tone_playing();
+        self.tone_mode = tone;
+        if let Err(e) = self.dsp.attach(path, self.rx_gain[path.index()], tone) {
+            self.dsp_error(e);
+        }
     }
 
     fn open_path(&mut self) {
@@ -479,10 +491,9 @@ impl EngineCore {
                 self.emit(Event::AudioError { kind: e.kind() });
             }
         }
-        if !self.dsp_failed
-            && let Err(e) = self.dsp.attach(path, self.rx_gain[path.index()], self.in_call()) {
-                self.dsp_error(e);
-            }
+        if !self.dsp_failed {
+            self.attach_dsp(path);
+        }
     }
 
     fn close_path(&mut self) {
@@ -496,9 +507,16 @@ impl EngineCore {
         }
     }
 
-    fn update_in_call(&mut self) {
+    /// Tell the attached path's canceller when a local tone starts or
+    /// stops.
+    fn update_tone_mode(&mut self) {
+        let tone = self.tone_playing();
+        if tone == self.tone_mode {
+            return;
+        }
+        self.tone_mode = tone;
         if let (Some(path), false) = (self.path, self.dsp_failed)
-            && let Err(e) = self.dsp.set_in_call(path, self.in_call()) {
+            && let Err(e) = self.dsp.set_tone_mode(path, tone) {
                 self.dsp_error(e);
             }
     }
@@ -577,10 +595,9 @@ impl EngineCore {
                 match started {
                     Err(e) => self.dsp_error(e),
                     Ok(()) => {
-                        if let Some(path) = self.path
-                            && let Err(e) = self.dsp.attach(path, self.rx_gain[path.index()], self.in_call()) {
-                                self.dsp_error(e);
-                            }
+                        if let Some(path) = self.path {
+                            self.attach_dsp(path);
+                        }
                         for id in 0..MAX_STREAMS {
                             let Some(codec) = self.streams[id].as_ref().and_then(|s| s.codec.dsp_codec()) else { continue };
                             let ok = match self.dsp.codec_open(id, codec) {
@@ -682,7 +699,6 @@ impl EngineCore {
             srtp_rx,
             dsp_ready,
         }));
-        self.update_in_call();
     }
 
     fn stop_stream(&mut self, id: usize) {
@@ -690,7 +706,6 @@ impl EngineCore {
         self.send_rtcp(&mut s, true);
         drop(s);
         self.conference &= !(1 << id);
-        self.update_in_call();
     }
 
     /// One 10 ms tick.  Returns whether the audio device paced it; if not,
@@ -741,6 +756,7 @@ impl EngineCore {
         }
 
         // 4. local sounds, then out to the device
+        self.update_tone_mode();
         self.local_sounds();
         let dsp_ok = !self.dsp_failed;
         if let (Some(path), true) = (self.path, self.device_open) {

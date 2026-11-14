@@ -150,15 +150,33 @@ pub fn startup_jobs(family: Family, opts: &StartupOptions) -> Vec<OwnedJob> {
                         // reads register 0 as 0.  Only the argument-1 form
                         // is sent, so the idle state matches stock's.
                         .filter(|j| !(j.client == abi::CLIENT_SBAEC && j.op == sbaec::ENABLE && j.arg1 == 0))
+                        // The capture's "set one register" jobs of this
+                        // canceller all show register 0: the DSP's reply
+                        // (value 0) had replaced the register number
+                        // before the tracer looked.  The ones with value 1
+                        // are the frame-flag registers, sent below with
+                        // their numbers; register 0 itself reads 0 on
+                        // idle stock.
+                        .filter(|j| !(j.client == abi::CLIENT_SBAEC && j.op == sbaec::SET_REG && j.arg1 == 0))
                         .map(|j| owned(name, j)),
                 );
             }
-            // The vendor's last step for the speakerphone canceller, after
-            // its register load and "set register 0 = 1", is operation 1
-            // with argument 1 (register 0 then reads 0, as on idle stock).
+            // The vendor's last steps for the speakerphone canceller after
+            // its register load: operation 1 with argument 1 (register 0
+            // then reads 0, as on idle stock), and 1 in the two frame-flag
+            // registers, which the vendor's canceller service writes
+            // before its first frames (the register load had cleared
+            // them).
             let sb = ChannelMap::new(family).sbaec();
             let at = out.iter().rposition(|j| j.client == abi::CLIENT_SBAEC).map_or(out.len(), |i| i + 1);
-            out.insert(at, synth("boot_tail", abi::CLIENT_SBAEC, sb, 0, 0, sbaec::ENABLE, 1, 0, &[]));
+            out.splice(
+                at..at,
+                [
+                    synth("boot_tail", abi::CLIENT_SBAEC, sb, 0, 0, sbaec::ENABLE, 1, 0, &[]),
+                    synth("boot_tail", abi::CLIENT_SBAEC, sb, 0, 0, sbaec::SET_REG, sbaec::ingress_flags_reg(family), sbaec::FLAG_BOTH_BANDS, &[]),
+                    synth("boot_tail", abi::CLIENT_SBAEC, sb, 0, 0, sbaec::SET_REG, sbaec::egress_flags_reg(family), sbaec::FLAG_BOTH_BANDS, &[]),
+                ],
+            );
         }
         Family::Old => {
             let map = ChannelMap::new(family);
@@ -178,12 +196,12 @@ pub fn startup_jobs(family: Family, opts: &StartupOptions) -> Vec<OwnedJob> {
             let (h0, h1, sb) = (map.hec(0), map.hec(1), map.sbaec());
             let tail = "boot_tail_inferred";
             out.push(synth(tail, abi::CLIENT_HEC, h0, 0, 0, hec::ENABLE, 1, 0, &[]));
-            out.push(synth(tail, abi::CLIENT_SBAEC, sb, 0, 0, sbaec::SET_REG, sbaec::REG_ACTIVE, 1, &[]));
             out.push(synth(tail, abi::CLIENT_SBAEC, sb, 0, 0, sbaec::ENABLE, 1, 0, &[]));
             out.push(synth(tail, abi::CLIENT_SBAEC, sb, 0, 0, sbaec::SET_REGS, 0, tune.sbaec.len() as u16 - 1, tune.sbaec));
             out.push(synth(tail, abi::CLIENT_HEC, h0, 0, 0, hec::SET_REGS, 0, 0, &tune.hec[0]));
             out.push(synth(tail, abi::CLIENT_HEC, h1, 1, 0, hec::SET_REGS, 0, 0, &tune.hec[1]));
-            out.push(synth(tail, abi::CLIENT_SBAEC, sb, 0, 0, sbaec::SET_REG, sbaec::REG_ACTIVE, 1, &[]));
+            out.push(synth(tail, abi::CLIENT_SBAEC, sb, 0, 0, sbaec::SET_REG, sbaec::ingress_flags_reg(family), sbaec::FLAG_BOTH_BANDS, &[]));
+            out.push(synth(tail, abi::CLIENT_SBAEC, sb, 0, 0, sbaec::SET_REG, sbaec::egress_flags_reg(family), sbaec::FLAG_BOTH_BANDS, &[]));
             out.push(synth(tail, abi::CLIENT_HEC, h1, 1, 0, hec::ENABLE, 1, 0, &[]));
         }
     }
@@ -261,6 +279,7 @@ mod tests {
         assert_eq!(jobs.iter().filter(|j| j.is_query()).count(), 3 * 59);
         let rest: Vec<_> = jobs.iter().filter(|j| !j.is_query()).collect();
         assert_eq!(rest.len(), 3 + 8);
+        // (the tail: canceller enables, register files, and the two frame-flag registers)
         assert_eq!((rest[0].client, rest[0].channel, rest[0].op, rest[0].body.len()), (abi::CLIENT_HEC, 6, 0, 17));
         assert_eq!((rest[2].client, rest[2].channel, rest[2].arg1, rest[2].body.len()), (abi::CLIENT_SBAEC, 8, 2, 931));
         // every frame fits the old family's largest body

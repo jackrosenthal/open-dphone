@@ -147,11 +147,14 @@ pub struct MockTransport {
     pub keep: usize,
     handler: Option<Handler>,
     count: u32,
+    /// The speakerphone canceller's flag registers (microphone side,
+    /// loudspeaker side), as the DSP keeps them.
+    sbaec_flags: [u16; 2],
 }
 
 impl MockTransport {
     pub fn new(family: Family) -> Self {
-        Self { family, state: abi::STATE_ONLINE, jobs: Vec::new(), keep: 0, handler: None, count: 0 }
+        Self { family, state: abi::STATE_ONLINE, jobs: Vec::new(), keep: 0, handler: None, count: 0, sbaec_flags: [0; 2] }
     }
 
     pub fn with_handler(family: Family, handler: impl FnMut(&Request<'_>, &mut [u8]) -> Result<Reply> + Send + 'static) -> Self {
@@ -249,6 +252,49 @@ impl MockTransport {
     }
 }
 
+impl MockTransport {
+    /// What a D60's DSP was measured to do with the speakerphone
+    /// canceller's frame jobs: the result carries both band buffers only
+    /// while bit 0 of the direction's flag register is set, and otherwise
+    /// twice argument 1 in bytes.  Register writes are followed here so
+    /// that a caller that forgets the flags sees the short result.
+    fn sbaec_model(&mut self, req: &Request<'_>, answer: Result<Reply>) -> Result<Reply> {
+        use crate::vpm::sbaec;
+        if req.client != abi::CLIENT_SBAEC {
+            return answer;
+        }
+        let regs = [sbaec::ingress_flags_reg(self.family), sbaec::egress_flags_reg(self.family)];
+        match req.opcode {
+            sbaec::SET_REG => {
+                for (flag, reg) in self.sbaec_flags.iter_mut().zip(regs) {
+                    if req.arg1 == reg {
+                        *flag = req.arg2;
+                    }
+                }
+            }
+            sbaec::INIT | sbaec::SET_REGS => {
+                let first = if req.opcode == sbaec::INIT { 0 } else { usize::from(req.arg1) };
+                for (flag, reg) in self.sbaec_flags.iter_mut().zip(regs) {
+                    if let Some(word) = usize::from(reg).checked_sub(first).and_then(|i| req.body.get(2 * i..2 * i + 2)) {
+                        *flag = u16::from_le_bytes([word[0], word[1]]);
+                    }
+                }
+            }
+            sbaec::INGRESS | sbaec::EGRESS => {
+                let flag = self.sbaec_flags[usize::from(req.opcode == sbaec::EGRESS)];
+                if flag & sbaec::FLAG_BOTH_BANDS == 0 {
+                    return answer.map(|mut r| {
+                        r.len = r.len.min(2 * usize::from(req.arg1));
+                        r
+                    });
+                }
+            }
+            _ => {}
+        }
+        answer
+    }
+}
+
 impl Transport for MockTransport {
     fn info(&mut self) -> Result<Info> {
         Ok(Info {
@@ -280,9 +326,10 @@ impl Transport for MockTransport {
             arg2: req.arg2,
             body: req.body.to_vec(),
         });
-        match &mut self.handler {
+        let answer = match &mut self.handler {
             Some(h) => h(req, reply),
             None => Self::default_answer(self.family, req, reply),
-        }
+        };
+        self.sbaec_model(req, answer)
     }
 }

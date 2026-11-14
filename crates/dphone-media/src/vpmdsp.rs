@@ -26,6 +26,14 @@
 //!   old.  Handset is HEC instance 0, speakerphone the SBAEC.
 //! - Narrowband codecs and G.711 use buffer 0 only, with no stream-side
 //!   BAND job.
+//! - Tone mode (vendor module `ept_core`, and registers read back from a
+//!   stock D60): while a path plays a local tone the vendor sets option
+//!   bits in its canceller (HEC register 0 = 0x8002; SBAEC register 0
+//!   bit 1 and register 330 bit 15, 329 on the old family) and clears
+//!   them when the tone stops or the path is left.
+//! - The speakerphone canceller's frame jobs take argument 1 = 80 with
+//!   the 480-byte frame, and return the whole frame while bit 0 of the
+//!   direction's flag register is set (the start-up sequence sets both).
 //! - Old family, per 10 ms of a G.722 speakerphone call, in order: decode,
 //!   canceller egress, canceller ingress, encode.
 //!
@@ -39,9 +47,8 @@
 //!   fits mixing or gain but was not resolved).
 //! - The order of jobs within a tick on the new family.
 //! - The headset uses HEC instance 1.
-//! - Receive gain: HEC register 4 and SBAEC register 2, in dB * 256.
-//! - SBAEC register 0: written 0 when a call starts and a gain-like value
-//!   when idle; replayed as seen.
+//! - Receive gain: HEC register 4 and SBAEC register 2, in dB * 256
+//!   (the SBAEC's follows the volume on stock, read back from a D60).
 //! - The old family's ARM-side filter bank (the vendor's filters were not
 //!   recovered; ours has the same structure).
 //! - G.726's bytes are pair-swapped like G.722's.
@@ -98,7 +105,6 @@ pub struct VpmDsp<T: Transport> {
     started: bool,
     startup: Option<String>,
     gains: [i16; 3],
-    in_call: bool,
     codecs: [Option<CodecParams>; SLOTS],
     // old family: the filter bank runs here
     dev_split: Split2,
@@ -125,7 +131,6 @@ impl<T: Transport + Send> VpmDsp<T> {
             tuning,
             started: false,
             startup: None,
-            in_call: false,
             codecs: [None; SLOTS],
             dev_split: Split2::new(),
             dev_combine: Combine2::new(),
@@ -171,8 +176,24 @@ impl<T: Transport + Send> VpmDsp<T> {
         Ok(())
     }
 
-    fn sbaec_idle_value(&self) -> u16 {
-        if self.in_call { 0 } else { self.gains[AudioPath::Speaker.index()] as u16 }
+    /// Tone mode of a path's canceller, as the stock firmware sets it.
+    fn tone_mode(&mut self, path: AudioPath, tone: bool) -> DspResult<()> {
+        match canceller(path) {
+            Canceller::Sbaec => {
+                let sb = self.map.sbaec();
+                let reg = sbaec::tone_reg(self.vpm.family());
+                let with = |file: u16, bits: u16| if tone { file | bits } else { file & !bits };
+                let options = with(self.tuning.sbaec[usize::from(sbaec::REG_OPTIONS)], sbaec::OPTIONS_TONE);
+                let second = with(self.tuning.sbaec[usize::from(reg)], sbaec::TONE_REG_BIT);
+                self.vpm.sbaec_set_reg(sb, 0, sbaec::REG_OPTIONS, options)?;
+                self.vpm.sbaec_set_reg(sb, 0, reg, second)
+            }
+            Canceller::Hec(i) => {
+                let file = self.tuning.hec[usize::from(i)][usize::from(hec::REG_OPTIONS)];
+                let options = if tone { file | hec::OPTIONS_TONE } else { file & !hec::OPTIONS_TONE };
+                self.vpm.hec_set_reg(self.map.hec(i), i, hec::REG_OPTIONS, options)
+            }
+        }
     }
 }
 
@@ -233,36 +254,21 @@ impl<T: Transport + Send> Dsp for VpmDsp<T> {
         self.startup.clone()
     }
 
-    fn attach(&mut self, path: AudioPath, rx_gain_q8: i16, in_call: bool) -> DspResult<()> {
+    fn attach(&mut self, path: AudioPath, rx_gain_q8: i16, tone: bool) -> DspResult<()> {
         self.gains[path.index()] = rx_gain_q8;
-        self.in_call = in_call;
-        let sb = self.map.sbaec();
+        // as the stock firmware does when a device is attached: the
+        // filter-bank init pair, the receive gain, and the tone mode
+        self.init_device_band(path)?;
         match canceller(path) {
-            Canceller::Sbaec => {
-                // as the stock firmware does when the call returns to the
-                // speakerphone: filter-bank init pair, then the registers
-                self.init_device_band(path)?;
-                self.vpm.sbaec_set_reg(sb, 0, sbaec::REG_RX_GAIN, rx_gain_q8 as u16)?;
-                self.vpm.sbaec_set_reg(sb, 0, sbaec::REG_ACTIVE, self.sbaec_idle_value())
-            }
-            Canceller::Hec(i) => {
-                // as on lifting the handset: speakerphone canceller off,
-                // receive gain, register 0 cleared
-                self.vpm.sbaec_set_reg(sb, 0, sbaec::REG_ACTIVE, 0)?;
-                self.init_device_band(path)?;
-                let ch = self.map.hec(i);
-                self.vpm.hec_set_reg(ch, i, hec::REG_RX_GAIN, rx_gain_q8 as u16)?;
-                self.vpm.hec_set_reg(ch, i, 0, 0)
-            }
+            Canceller::Sbaec => self.vpm.sbaec_set_reg(self.map.sbaec(), 0, sbaec::REG_RX_GAIN, rx_gain_q8 as u16)?,
+            Canceller::Hec(i) => self.vpm.hec_set_reg(self.map.hec(i), i, hec::REG_RX_GAIN, rx_gain_q8 as u16)?,
         }
+        self.tone_mode(path, tone)
     }
 
     fn detach(&mut self, path: AudioPath) -> DspResult<()> {
-        match canceller(path) {
-            // nothing is sent when the speakerphone stops being used
-            Canceller::Sbaec => Ok(()),
-            Canceller::Hec(i) => self.vpm.hec_set_reg(self.map.hec(i), i, 0, 0),
-        }
+        // a path that is left is out of tone mode
+        self.tone_mode(path, false)
     }
 
     fn set_rx_gain(&mut self, path: AudioPath, rx_gain_q8: i16) -> DspResult<()> {
@@ -273,12 +279,8 @@ impl<T: Transport + Send> Dsp for VpmDsp<T> {
         }
     }
 
-    fn set_in_call(&mut self, path: AudioPath, in_call: bool) -> DspResult<()> {
-        self.in_call = in_call;
-        match canceller(path) {
-            Canceller::Sbaec => self.vpm.sbaec_set_reg(self.map.sbaec(), 0, sbaec::REG_ACTIVE, self.sbaec_idle_value()),
-            Canceller::Hec(_) => Ok(()),
-        }
+    fn set_tone_mode(&mut self, path: AudioPath, tone: bool) -> DspResult<()> {
+        self.tone_mode(path, tone)
     }
 
     fn mic_to_bands(&mut self, path: AudioPath, pcm: &[i16], out: &mut BandFrame) -> DspResult<()> {

@@ -69,12 +69,14 @@ pub trait Dsp: Send {
     }
 
     /// A path's canceller starts being used.  `rx_gain_q8` is the receive
-    /// gain in dB * 256.
-    fn attach(&mut self, path: AudioPath, rx_gain_q8: i16, in_call: bool) -> DspResult<()>;
+    /// gain in dB * 256; `tone` is as for [`Dsp::set_tone_mode`].
+    fn attach(&mut self, path: AudioPath, rx_gain_q8: i16, tone: bool) -> DspResult<()>;
     fn detach(&mut self, path: AudioPath) -> DspResult<()>;
     fn set_rx_gain(&mut self, path: AudioPath, rx_gain_q8: i16) -> DspResult<()>;
-    /// A call started or the last one ended while `path` is attached.
-    fn set_in_call(&mut self, path: AudioPath, in_call: bool) -> DspResult<()>;
+    /// A local tone (dial tone, ringback, a key tone, ...) started or
+    /// stopped playing on the attached path.  The stock firmware tells the
+    /// path's canceller ("tone mode").
+    fn set_tone_mode(&mut self, path: AudioPath, tone: bool) -> DspResult<()>;
 
     /// Microphone PCM (10 ms at the device rate) to band buffers.
     fn mic_to_bands(&mut self, path: AudioPath, pcm: &[i16], out: &mut BandFrame) -> DspResult<()>;

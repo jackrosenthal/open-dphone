@@ -40,6 +40,12 @@ pub mod hec {
     pub const RESET: u16 = 9;
     pub const GET_STATS: u16 = 14;
     pub const NUM_REGS: usize = 17;
+    /// Register 0 holds option bits.  The vendor sets these two while the
+    /// path plays a local tone ("tone mode") and clears them when the
+    /// tone stops; read back as 0x8002 on a stock D60 with the dial tone
+    /// on the headset, and 0 otherwise.
+    pub const REG_OPTIONS: u16 = 0;
+    pub const OPTIONS_TONE: u16 = 0x8002;
     /// Per-frame body: 10 ms as three band buffers (new) or two (old).
     pub const FRAME_NEW: usize = 1120;
     pub const FRAME_OLD: usize = 480;
@@ -70,11 +76,49 @@ pub mod sbaec {
     pub const FRAME: usize = 480;
     pub const FRAME_SAMPLES: u16 = 80;
     pub const STATE_BYTES: usize = 40;
-    /// Written 1 after every register load, 0 or a gain-like value around
-    /// calls (meaning not established).
-    pub const REG_ACTIVE: u16 = 0;
-    /// Receive gain in dB * 256 (inferred).
+    /// Register 0 holds option bits.  The vendor sets bit 1, and bit 15
+    /// of the register [`tone_reg`] names, while the speakerphone plays a
+    /// local tone ("tone mode"), and clears both when the tone stops
+    /// (read back from a stock D60: 2 and 0x8020 with the dial tone on,
+    /// 0 and 0x0020 after).
+    pub const REG_OPTIONS: u16 = 0;
+    pub const OPTIONS_TONE: u16 = 0x0002;
+    pub const TONE_REG_BIT: u16 = 0x8000;
+    /// Receive gain in dB * 256.
     pub const REG_RX_GAIN: u16 = 2;
+    /// Bit 0 of a direction's flag register: the frame job takes and
+    /// returns both band buffers.  Without it the DSP returns only the
+    /// lower band (twice argument 1 in bytes).  The vendor's canceller
+    /// service writes 1 to both registers before its first frames;
+    /// measured on a D60, on stock and on this driver.
+    pub const FLAG_BOTH_BANDS: u16 = 1;
+
+    use crate::Family;
+
+    /// The second register of tone mode (the old family's register file
+    /// is one word shorter below it).
+    pub const fn tone_reg(family: Family) -> u16 {
+        match family {
+            Family::New => 330,
+            Family::Old => 329,
+        }
+    }
+
+    /// The flag register of the microphone-side frame job.
+    pub const fn ingress_flags_reg(family: Family) -> u16 {
+        match family {
+            Family::New => 0x300,
+            Family::Old => 0x2ff,
+        }
+    }
+
+    /// The flag register of the loudspeaker-side frame job.
+    pub const fn egress_flags_reg(family: Family) -> u16 {
+        match family {
+            Family::New => 0x301,
+            Family::Old => 0x300,
+        }
+    }
 }
 
 /// BAND (filter bank, new family only) operations.
@@ -355,22 +399,18 @@ impl<T: Transport> Vpm<T> {
     }
 
     /// Microphone side, in place; `frame` is [`sbaec::FRAME`] bytes.
+    ///
+    /// Argument 1 is the frame's sample count at 8 kHz (80), as the
+    /// vendor's wrapper passes it.  The whole frame comes back only while
+    /// bit 0 of the direction's flag register is set (see
+    /// [`sbaec::FLAG_BOTH_BANDS`]); the start-up sequence sets it.
     pub fn sbaec_ingress(&mut self, channel: u16, instance: u16, frame: &mut [u8]) -> Result<()> {
-        self.frame(abi::CLIENT_SBAEC, channel, instance, sbaec::INGRESS, (frame.len() / 2) as u16, frame)
+        self.frame(abi::CLIENT_SBAEC, channel, instance, sbaec::INGRESS, sbaec::FRAME_SAMPLES, frame)
     }
 
-    /// Loudspeaker side, in place.
-    ///
-    /// Argument 1 is the number of 16-bit samples in the body.  Measured on
-    /// a D60, through this driver and through the stock kernel's job device
-    /// alike: the result carries twice argument 1 in bytes whatever the
-    /// body length (80 gives 160 bytes, 240 gives 480, 0 gives none), for
-    /// this job and for the microphone-side one.  The vendor's wrapper
-    /// passes 80 with its 480-byte frame and its results in the rings are
-    /// 480 bytes; what puts the DSP into that state was not found, so the
-    /// count here is the body's and the whole frame comes back.
+    /// Loudspeaker side, in place; as [`Self::sbaec_ingress`].
     pub fn sbaec_egress(&mut self, channel: u16, instance: u16, frame: &mut [u8]) -> Result<()> {
-        self.frame(abi::CLIENT_SBAEC, channel, instance, sbaec::EGRESS, (frame.len() / 2) as u16, frame)
+        self.frame(abi::CLIENT_SBAEC, channel, instance, sbaec::EGRESS, sbaec::FRAME_SAMPLES, frame)
     }
 
     /// 40-byte state block, not decoded.

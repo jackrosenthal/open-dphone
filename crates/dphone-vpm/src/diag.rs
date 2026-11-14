@@ -91,11 +91,11 @@ pub fn selftest() -> SelfTestReport {
             || format!("{fam}: HEC ingress request {j:?}"),
         );
         let j = &jobs[5];
-        r.check((j.client, j.channel, j.opcode, j.arg1, j.body.len()) == (3, if new { 18 } else { 8 }, 8, 240, 480), || {
+        r.check((j.client, j.channel, j.opcode, j.arg1, j.body.len()) == (3, if new { 18 } else { 8 }, 8, 80, 480), || {
             format!("{fam}: SBAEC egress request {j:?}")
         });
         let j = &jobs[6];
-        r.check((j.opcode, j.arg1, j.body.len()) == (9, 240, 480), || format!("{fam}: SBAEC ingress request {j:?}"));
+        r.check((j.opcode, j.arg1, j.body.len()) == (9, 80, 480), || format!("{fam}: SBAEC ingress request {j:?}"));
         let j = &jobs[7];
         let last = if new { 0x3a3 } else { 0x3a2 };
         r.check((j.opcode, j.arg1, j.arg2, j.body.len()) == (5, 0, last, 2 * (usize::from(last) + 1)), || {
