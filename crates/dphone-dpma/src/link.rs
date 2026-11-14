@@ -243,24 +243,21 @@ pub(crate) async fn pump(link: Arc<Link>, mut incoming: mpsc::UnboundedReceiver<
         let now = (clock::mono_ms() / 1000) as i64;
         // The server gives up on partial transactions after 40 seconds.
         transactions.prune(now, 40);
-        let last = message.clone();
         let Some(((), parts)) = transactions.add(message, (), now, ()) else { continue };
+        // `decode_reply` falls back to the plaintext envelope when an
+        // error reply cannot be decrypted: a request that names a session
+        // the server holds but fails its check, and the reassignment push,
+        // are both encrypted under a password we may no longer share.
         let decoded = {
             let st = link.state.lock().unwrap();
-            parts.decode(Sender::Server, st.session.common_password())
+            parts.decode_reply(st.session.common_password())
         };
         let msg = match decoded {
             Ok(m) => m,
-            // A server that no longer knows our session answers -398
-            // encrypted under a session we do not share.  The envelope
-            // headers are in the clear, and they are all that matters.
-            Err(e) => match envelope_error(&last) {
-                Some(m) => m,
-                None => {
-                    log::warn!("dpma: dropped an undecodable message: {}", e.message());
-                    continue;
-                }
-            },
+            Err(e) => {
+                log::warn!("dpma: dropped an undecodable message: {}", e.message());
+                continue;
+            }
         };
         let waiter = link.state.lock().unwrap().waiting.remove(&msg.id);
         match waiter {
@@ -272,35 +269,6 @@ pub(crate) async fn pump(link: Arc<Link>, mut incoming: mpsc::UnboundedReceiver<
             }
         }
     }
-}
-
-/// An [`Incoming`] made from the plaintext headers of an error reply
-/// whose body cannot be decrypted.
-fn envelope_error(m: &Message) -> Option<Incoming> {
-    let error = m.header(headers::ERROR_ID).map(framing::parse_sequence).filter(|e| *e != 0)?;
-    let get = |name: &str| m.header(name).map(<[u8]>::to_vec).unwrap_or_default();
-    let mut first = m.clone();
-    first.body.clear();
-    Some(Incoming {
-        id: get(headers::APPSERVER_ID),
-        request_type: get(headers::REQUEST_TYPE),
-        response_type: get(headers::RESPONSE_TYPE),
-        session_id: get(headers::SESSION),
-        mac: get(headers::MAC_ADDRESS),
-        username: Vec::new(),
-        response_uri: get(headers::RESPONSE_URI),
-        full_contact: get(headers::RESPONSE_FULLCONTACT),
-        origination_network: get(headers::ORIGINATION_NETWORK),
-        handshake_version: Vec::new(),
-        error,
-        password: Vec::new(),
-        config_password: Vec::new(),
-        config_token: Vec::new(),
-        encrypted: true,
-        body: Vec::new(),
-        payload: Vec::new(),
-        first,
-    })
 }
 
 #[cfg(test)]

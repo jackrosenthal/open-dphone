@@ -13,6 +13,8 @@ use tokio::sync::mpsc;
 struct ServerSession {
     password: Vec<u8>,
     chain: bool,
+    /// Answer everything with an encrypted -398.
+    broken: bool,
 }
 
 pub struct FakeServer {
@@ -61,6 +63,16 @@ impl FakeServer {
         self.sessions.clear();
     }
 
+    /// The server keeps the newest session but changes its password, so
+    /// its error replies reach the phone undecryptable (the case of a
+    /// session that fails the server's MAC/contact check).
+    pub fn rekey_sessions(&mut self) {
+        for s in self.sessions.values_mut() {
+            s.password = crypto::new_common_password().unwrap();
+            s.broken = true;
+        }
+    }
+
     fn ctx<'a>(s: &'a ServerSession, id: &'a [u8]) -> SendContext<'a> {
         SendContext { password: &s.password, session_id: id, origination_network: b"", chain_certificate: s.chain }
     }
@@ -91,18 +103,29 @@ impl FakeServer {
         let Some((sid, parts)) = self.transactions.add(m, (), self.clock, sid) else { return Vec::new() };
         let password = self.sessions.get(&sid).map(|s| s.password.clone());
         let id = raw.header(headers::APPSERVER_ID).unwrap_or_default().to_vec();
+        if let Some(s) = self.sessions.get(&sid).filter(|s| s.broken) {
+            let t = String::from_utf8_lossy(raw.header(headers::REQUEST_TYPE).unwrap_or_default()).into_owned();
+            self.log.push(format!("{t}(failed check)"));
+            let out = Outgoing {
+                error: errors::msg::SESSION_TIMEOUT,
+                id,
+                response_type: types::response_type_for(&t).unwrap_or("Error").into(),
+                ..Default::default()
+            };
+            return out.encode(&Self::ctx(s, &sid)).unwrap();
+        }
         let raw_type = String::from_utf8_lossy(raw.header(headers::REQUEST_TYPE).unwrap_or_default()).into_owned();
         let request = match parts.decode(Sender::Phone, password.as_deref()) {
             Ok(r) if raw_type.eq_ignore_ascii_case(types::HANDSHAKE) || password.is_some() || !types::needs_session(&raw_type) => r,
             _ => {
-                // Unknown session: "Session Timeout" under a session the
-                // phone does not share, as the real server sends it.
+                // Unknown session: the real server answers with a
+                // plaintext HandshakeResponse carrying Error-ID -398.
                 self.log.push(format!("{raw_type}(no session)"));
-                let stranger = ServerSession { password: crypto::new_common_password().unwrap(), chain: false };
+                let stranger = ServerSession { password: Vec::new(), chain: false, broken: false };
                 let out = Outgoing {
                     error: errors::msg::SESSION_TIMEOUT,
                     id,
-                    response_type: types::response_type_for(&raw_type).unwrap_or("Error").into(),
+                    response_type: b"HandshakeResponse".to_vec(),
                     ..Default::default()
                 };
                 return out.encode(&Self::ctx(&stranger, b"9999")).unwrap();
@@ -133,7 +156,7 @@ impl FakeServer {
             reply.append(cert::DEFAULT_APPSERVER_CERTIFICATE);
             let sid = self.next_session.to_string().into_bytes();
             self.next_session += 1;
-            let session = ServerSession { password, chain: client.intermediate_serial != 0 };
+            let session = ServerSession { password, chain: client.intermediate_serial != 0, broken: false };
             let out = reply.encode(&Self::ctx(&session, &sid)).unwrap();
             self.sessions.insert(sid, session);
             return out;

@@ -61,7 +61,10 @@ async fn registered(transport: Transport, port: u16, tls: TlsConfig) -> bool {
     for _ in 0..150 {
         match p.store.get::<Accounts>().get(AccountId(0)).map(|a| a.registration.clone()) {
             Some(Registration::Registered { .. }) => return true,
-            Some(Registration::Failed { .. }) => return false,
+            Some(Registration::Failed { code, reason, .. }) => {
+                eprintln!("registration failed: {code} {reason}");
+                return false;
+            }
             _ => tokio::time::sleep(std::time::Duration::from_millis(20)).await,
         }
     }
@@ -82,7 +85,7 @@ async fn register_over_tcp() {
     assert!(registered(Transport::Tcp, port, TlsConfig::default()).await);
     let reg = wait("REGISTER", || log.lock().unwrap().first().cloned()).await;
     assert!(reg.header("Via").unwrap().starts_with("SIP/2.0/TCP "), "{:?}", reg.header("Via"));
-    assert!(reg.header("Contact").unwrap().contains(";transport=tcp"));
+    assert!(reg.header("Contact").unwrap().to_ascii_lowercase().contains(";transport=tcp"), "{:?}", reg.header("Contact"));
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -116,7 +119,7 @@ async fn register_over_tls() {
     assert!(registered(Transport::Tls, port, verify).await, "verified TLS registration");
     let reg = wait("REGISTER", || log.lock().unwrap().first().cloned()).await;
     assert!(reg.header("Via").unwrap().starts_with("SIP/2.0/TLS "), "{:?}", reg.header("Via"));
-    assert!(reg.header("Contact").unwrap().contains(";transport=tls"));
+    assert!(reg.header("Contact").unwrap().to_ascii_lowercase().contains(";transport=tls"), "{:?}", reg.header("Contact"));
 
     // Stock's default: no certificate check.
     log.lock().unwrap().clear();

@@ -149,6 +149,14 @@ async fn first_boot_user_token_config_and_pushes() {
     until(&r.store, "provisioned again", ProvisionPhase::Provisioned).await;
     assert_eq!(r.dpma.file("ringtone1").await.unwrap(), b"RIFFdata");
 
+    // A session the server holds but refuses: its -398 comes encrypted
+    // under a password we do not share, and is still understood.
+    r.server.lock().unwrap().rekey_sessions();
+    let handshakes = r.server.lock().unwrap().count("Handshake");
+    assert!(matches!(r.dpma.file("ringtone1").await, Err(DpmaError::Server { code: -398, .. })));
+    wait("handshake after an undecryptable error", || (r.server.lock().unwrap().count("Handshake") > handshakes).then_some(())).await;
+    until(&r.store, "provisioned a third time", ProvisionPhase::Provisioned).await;
+
     // Reassignment: back to the handshake, token and user dropped.
     let push = r.server.lock().unwrap().reassign();
     for m in push {

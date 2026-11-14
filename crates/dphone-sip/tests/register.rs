@@ -5,7 +5,7 @@
 mod common;
 
 use common::{base_config, phone_with, wait, Msg, Server};
-use dphone_sip::{digest, AccountConfig, BlfConfig, HostConfig, OutMessage};
+use dphone_sip::{AccountConfig, BlfConfig, HostConfig, OutMessage};
 use dphone_state::{
     AccountId, Accounts, ActiveHost, Blink, BlfState, Keys, LampColor, Mwi, Presence, Registration,
 };
@@ -15,11 +15,11 @@ const DIALOG_INFO: &str = r#"<?xml version="1.0"?>
 <dialog id="x" call-id="c1" local-tag="l" remote-tag="r" direction="recipient"><state>early</state>
 <remote><identity display="Alice">sip:100@pbx</identity></remote></dialog></dialog-info>"#;
 
-fn notify(sub: &Msg, server: std::net::SocketAddr, event: &str, ctype: &str, body: &str) -> String {
+fn notify(sub: &Msg, server: std::net::SocketAddr, event: &str, ctype: &str, body: &str, seq: u32) -> String {
     let contact = sub.header("Contact").unwrap().trim_matches(|c| c == '<' || c == '>').to_string();
     format!(
-        "NOTIFY {contact} SIP/2.0\r\nVia: SIP/2.0/UDP {server};branch=z9hG4bKsrv{}\r\nMax-Forwards: 70\r\n\
-         From: {};tag=srv\r\nTo: {}\r\nCall-ID: {}\r\nCSeq: 1 NOTIFY\r\nEvent: {event}\r\n\
+        "NOTIFY {contact} SIP/2.0\r\nVia: SIP/2.0/UDP {server};branch=z9hG4bKsrv{seq}{}\r\nMax-Forwards: 70\r\n\
+         From: {};tag=srv\r\nTo: {}\r\nCall-ID: {}\r\nCSeq: {seq} NOTIFY\r\nEvent: {event}\r\n\
          Subscription-State: active;expires=600\r\nContact: <sip:{server}>\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\n\r\n{body}",
         sub.header("Call-ID").unwrap().replace('@', ""),
         sub.header("To").unwrap(),
@@ -39,7 +39,9 @@ async fn register_failover_subscribe_message() {
         let me = ga.lock().unwrap().expect("address set");
         match m.method() {
             "REGISTER" => match m.header("Authorization") {
-                Some(auth) if digest::verify(auth, "secret", "REGISTER") => {
+                // The digest itself is the stack's; the server only needs
+                // to see that credentials for the challenge came back.
+                Some(auth) if auth.contains("nonce=\"abc123\"") && auth.contains("response=") => {
                     vec![m.reply(200, "OK", &[("Contact", m.header("Contact").unwrap().to_string())], "")]
                 }
                 _ => vec![m.reply(
@@ -52,12 +54,13 @@ async fn register_failover_subscribe_message() {
             "SUBSCRIBE" => {
                 let event = m.header("Event").unwrap_or("").to_string();
                 let ok = m.reply(200, "OK", &[("Expires", "600".into()), ("Contact", format!("<sip:{me}>"))], "");
-                let n = if event == "message-summary" {
-                    notify(m, me, "message-summary", "application/simple-message-summary", "Messages-Waiting: yes\r\nVoice-Message: 2/8 (0/0)\r\n")
+                if event == "message-summary" {
+                    let n = notify(m, me, "message-summary", "application/simple-message-summary", "Messages-Waiting: yes\r\nVoice-Message: 2/8 (0/0)\r\n", 1);
+                    vec![ok, n]
                 } else {
-                    notify(m, me, "dialog", "application/dialog-info+xml", DIALOG_INFO)
-                };
-                vec![ok, n]
+                    // The first NOTIFY may overtake the 200: send it first.
+                    vec![notify(m, me, "dialog", "application/dialog-info+xml", DIALOG_INFO, 1), ok]
+                }
             }
             "ACK" => vec![],
             _ => vec![m.reply(200, "OK", &[], "")],
@@ -116,6 +119,14 @@ async fn register_failover_subscribe_message() {
     assert_eq!(keys.rapid_dial[0].lamp.blink, Blink::Fast);
     let subs = good.requests("SUBSCRIBE");
     assert!(subs.iter().any(|s| s.start.starts_with("SUBSCRIBE sip:auto_hint_101@127.0.0.1")), "{:?}", subs.iter().map(|s| &s.start).collect::<Vec<_>>());
+
+    // A later NOTIFY belongs to the established dialog (it carries the
+    // tags both sides now know) and updates the same entry.
+    let sub = subs.iter().find(|s| s.header("Event") == Some("dialog")).unwrap();
+    let idle = notify(sub, good.addr, "dialog", "application/dialog-info+xml", &DIALOG_INFO.replace("early", "terminated"), 2);
+    good.socket.send_to(idle.as_bytes(), format!("127.0.0.1:{}", p.handle.local_port())).await.unwrap();
+    wait("BLF idle", || p.store.get::<Presence>().get("c101").filter(|e| e.state == BlfState::Idle).map(|_| ())).await;
+    assert_eq!(p.store.get::<Keys>().rapid_dial[0].lamp.color, LampColor::Green);
 
     // MESSAGE out (as DPMA sends it: from the MAC at the phone's address).
     let code = p

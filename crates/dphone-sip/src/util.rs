@@ -20,11 +20,6 @@ pub fn token(n: usize) -> String {
     buf.iter().map(|b| ALPHABET[(*b as usize) % ALPHABET.len()] as char).collect()
 }
 
-/// A new Via branch.
-pub fn branch() -> String {
-    format!("z9hG4bK{}", token(16))
-}
-
 /// The value of the first header called `name` (case-insensitive; the
 /// stack has already expanded compact forms it knows).
 pub fn header<'a>(headers: &'a Headers, name: &str) -> Option<&'a str> {

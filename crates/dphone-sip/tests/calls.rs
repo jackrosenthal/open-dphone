@@ -191,3 +191,24 @@ async fn cancel_reject_and_dnd() {
     let cc = wait("C to ring instead", || only_call(&c.store)).await;
     assert_eq!(state(&c.store, cc), Some(CallState::Ringing));
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn forward_on_no_answer() {
+    // B rings, nobody answers, and B redirects the caller to C; A follows
+    // the redirect.
+    let a = phone("alice", 4000).await;
+    let b = phone("bob", 5000).await;
+    let c = phone("carol", 6000).await;
+    b.store
+        .send(Command::SetForward { kind: dphone_state::ForwardKind::NoAnswer, target: c.uri(), no_answer_secs: Some(1) })
+        .await
+        .unwrap();
+    let ca = dial(&a, &b.uri()).await;
+    let cb = wait("B to ring", || only_call(&b.store)).await;
+    assert_eq!(state(&b.store, cb), Some(CallState::Ringing));
+    let cc = wait("C to ring after the forward", || only_call(&c.store)).await;
+    wait("B stopped ringing", || (state(&b.store, cb) == Some(CallState::Ended(EndCause::NoAnswer))).then_some(())).await;
+    c.store.send(Command::Answer { call: cc, path: None }).await.unwrap();
+    wait("A talking to C", || (state(&a.store, ca) == Some(CallState::Active)).then_some(())).await;
+    assert_eq!(a.media.last_start(ca).unwrap().remote.port(), 6000);
+}

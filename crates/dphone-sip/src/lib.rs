@@ -1,9 +1,10 @@
 //! Open DPhone SIP user agent.
 //!
-//! Built on `rsipstack`'s message types, transports, and transaction
-//! layer; dialogs, registration, subscriptions, and call control are
-//! implemented here on top of transactions (see `S3` in the firmware
-//! plan: the stack's own dialog layer is not used).
+//! Built on `rsipstack`: its transports, transactions, and dialog layer
+//! (`Registration`, INVITE dialogs, client subscription dialogs) do the
+//! signaling.  This crate adds what a phone needs around them: failover
+//! between registrars, SDP offer/answer, the NOTIFY bodies, transfer and
+//! hold policy, out-of-dialog MESSAGE, and the state store.
 //!
 //! # Running it
 //!
@@ -32,7 +33,6 @@ pub mod bodies;
 mod calls;
 pub mod config;
 mod core;
-pub mod digest;
 pub mod media;
 mod reg;
 pub mod sdp;
@@ -49,6 +49,7 @@ use rsipstack::transport::udp::UdpConnection;
 use rsipstack::transport::SipAddr;
 use rsipstack::EndpointBuilder;
 use std::collections::HashMap;
+use rsipstack::dialog::dialog_layer::DialogLayer;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
@@ -184,7 +185,7 @@ pub async fn start(
     let resolver = resolver.unwrap_or_else(|| Arc::new(SystemResolver));
     let endpoint = EndpointBuilder::new()
         .with_user_agent(&cfg.user_agent())
-        .with_domain_resolver(Box::new(StackResolver(resolver)))
+        .with_domain_resolver(Box::new(StackResolver(resolver.clone())))
         .build();
     let any: IpAddr = match cfg.local_ip {
         IpAddr::V4(_) => Ipv4Addr::UNSPECIFIED.into(),
@@ -239,15 +240,28 @@ pub async fn start(
     }
     store.update::<Features, _>(|f| f.call_waiting = cfg.call_waiting);
 
+    let layer = Arc::new(DialogLayer::new(inner.clone()));
+    let (dialog_tx, mut dialog_rx) = layer.new_dialog_state_channel();
+    {
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            while let Some(state) = dialog_rx.recv().await {
+                if tx.send(Ev::Dialog(state)).is_err() {
+                    break;
+                }
+            }
+        });
+    }
     let mut core = Core {
         store,
         cfg: SipConfig::new(cfg.model, cfg.local_ip),
         media,
+        resolver,
         inner,
+        layer,
+        dialog_tx,
         tx: tx.clone(),
         local_port,
-        next_id: 0,
-        pending: HashMap::new(),
         accts: Vec::new(),
         calls: Vec::new(),
         subs: Vec::new(),
@@ -255,7 +269,6 @@ pub async fn start(
         conference: Vec::new(),
         last_dialed: None,
         listeners: Vec::new(),
-        nonce_count: 0,
         park_extension: cfg.park_extension.clone(),
         blf_dialogs: HashMap::new(),
     };
@@ -282,17 +295,20 @@ impl Core {
         match ev {
             Ev::Cmd(env) => self.on_command(env),
             Ev::Incoming(tx) => self.on_incoming(tx),
-            Ev::Resp { id, resp } => self.on_resp(id, *resp),
-            Ev::TxDone { id } => self.on_tx_done(id),
-            Ev::ServerReq { tx, req } => self.on_server_req(tx, *req),
-            Ev::ServerDone { tx } => self.on_server_done(tx),
+            Ev::Dialog(state) => self.on_dialog(state),
+            Ev::InviteDone { call, result } => self.on_invite_done(call, result),
+            Ev::ReinviteDone { call, hold, result } => self.on_reinvite_done(call, hold, result),
+            Ev::ReferDone { call, result } => self.on_refer_done(call, result),
+            Ev::AckBody { call, body } => self.on_ack_body(call, &body),
+            Ev::Registered { acct, generation, outcome } => self.on_registered(acct, generation, outcome),
+            Ev::Subscribed { sub, generation, result } => self.on_subscribed(sub, generation, result),
             Ev::Timer(t) => match t {
                 Timer::Register { acct, generation } => self.on_register_timer(acct, generation),
                 Timer::Keepalive { acct, generation } => self.on_keepalive_timer(acct, generation),
                 Timer::Subscribe { sub, generation } => self.on_subscribe_timer(sub, generation),
                 Timer::NoAnswer { call } => self.on_no_answer(call),
                 Timer::Linger { call } => self.on_linger(call),
-                Timer::Glare { call } => self.on_glare(call),
+                Timer::HoldRetry { call } => self.on_hold_retry(call),
                 Timer::Heartbeat => {
                     self.heartbeat();
                     self.after(Duration::from_secs(5), Timer::Heartbeat);
@@ -312,35 +328,28 @@ impl Core {
         }
     }
 
-    /// A new server transaction.
+    /// A new server transaction: the dialog layer takes what belongs to
+    /// one of its dialogs; the rest is ours.
     fn on_incoming(&mut self, tx: rsipstack::transaction::transaction::Transaction) {
         use rsipstack::sip::Method as M;
-        let method = tx.original.method.clone();
-        match method {
+        if let Some(dialog) = self.layer.match_dialog(&tx) {
+            return self.dispatch(dialog, tx);
+        }
+        match tx.original.method.clone() {
             M::Invite => self.on_invite(tx),
             M::Ack | M::Cancel => {}
-            M::Notify | M::Message | M::Options | M::Bye | M::Update | M::Info | M::Refer => {
-                match self.call_for(&tx.original) {
-                    Some(call) => self.on_call_request(call, tx),
-                    None => match method {
-                        M::Notify => self.on_notify(tx),
-                        M::Message => self.on_message(tx),
-                        M::Options => {
-                            let resp = self.response(
-                                &tx.original,
-                                200,
-                                Some(&util::token(8)),
-                                &[("Allow", Core::allow().to_string()), ("Accept", "application/sdp".into())],
-                                None,
-                            );
-                            self.respond(tx, resp);
-                        }
-                        _ => self.respond_code(tx, 481),
-                    },
-                }
+            M::Notify => self.on_stray_notify(tx),
+            M::Message => {
+                self.deliver_message(&tx.original.clone());
+                self.reply(tx, 200, Vec::new());
             }
-            M::Subscribe => self.respond_code(tx, 489),
-            _ => self.respond_code(tx, 405),
+            M::Options => {
+                let headers = vec![Core::allow(), rsipstack::sip::Header::Accept("application/sdp".to_string().into())];
+                self.reply(tx, 200, headers);
+            }
+            M::Bye | M::Update | M::Info | M::Refer => self.reply(tx, 481, Vec::new()),
+            M::Subscribe => self.reply(tx, 489, Vec::new()),
+            _ => self.reply(tx, 405, Vec::new()),
         }
     }
 

@@ -1,23 +1,38 @@
-//! Call control: INVITE dialogs in both directions, hold, transfer,
-//! conference, DTMF, forward and DND, and the commands of
-//! [`dphone_state::Domain::Calls`].
+//! Call control policy on top of the stack's INVITE dialogs: what to
+//! offer and answer, when to ring, hold, transfer, and conference, DND
+//! and forward, and the commands of [`dphone_state::Domain::Calls`].
+//!
+//! The dialog layer owns the signaling mechanics (transactions, CANCEL
+//! races, ACK, authentication, target refresh, glare back-off); this file
+//! reacts to its [`DialogState`] events and calls its dialog methods.
 
 use crate::bodies;
-use crate::core::{CallRt, Core, Ctx, Dialog, Owner, ReferFrom, ServerInvite, Spec, Timer};
+use crate::core::{CallRt, Core, Ev, ReferFrom, Timer};
 use crate::media::{MediaEvent, RingRequest, StreamParams, StreamSrtp};
 use crate::sdp::{self, Crypto, Direction as SdpDir, Sdp, SrtpPolicy, SrtpSuite};
 use crate::util::{self, NameAddr, SipUri};
 use dphone_state::{
     clock, AccountId, AudioPath, Call, CallId, CallLog, CallLogEntry, CallLogKind, CallState, Calls, Command,
     CommandError, CommandResult, Direction, EndCause, Envelope, Event, Features, ForwardKind, Keys, Party,
-    Presence, Reply, Tone, Transport,
+    Presence, Reply, Tone,
 };
-use rsipstack::sip::{Request, Response};
-use rsipstack::transaction::transaction::Transaction;
+use rsipstack::dialog::dialog::{Dialog, DialogState, TerminatedReason, TransactionHandle};
+use rsipstack::dialog::invitation::InviteOption;
+use rsipstack::dialog::invite_dialog::InviteDialog;
+use rsipstack::sip::{Header, Method, Request, Response, StatusCode};
+use rsipstack::transaction::transaction::{Transaction, TransactionEvent};
 use std::time::Duration;
 
 fn invalid(s: impl Into<String>) -> CommandError {
     CommandError::Invalid(s.into())
+}
+
+fn sdp_type() -> Header {
+    Header::ContentType("application/sdp".to_string().into())
+}
+
+fn flatten<T>(r: rsipstack::Result<T>) -> Result<T, String> {
+    r.map_err(|e| e.to_string())
 }
 
 impl Core {
@@ -29,10 +44,6 @@ impl Core {
                 f(call);
             }
         });
-    }
-
-    fn call_transport(&self, c: &CallRt) -> Transport {
-        self.acct(c.acct).map(|a| a.cfg.host(c.alt).transport).unwrap_or(Transport::Udp)
     }
 
     fn local_media(&self, c: &CallRt, direction: SdpDir) -> sdp::Local {
@@ -81,9 +92,7 @@ impl Core {
     /// Tells the media engine which streams feed the audio path.
     fn refresh_connect(&self) {
         let calls = self.store.get::<Calls>();
-        let live = |id: &CallId| {
-            self.call(*id).is_some_and(|c| !c.ended && c.neg.is_some() && !c.local_hold)
-        };
+        let live = |id: &CallId| self.call(*id).is_some_and(|c| !c.ended && c.neg.is_some() && !c.local_hold);
         let list: Vec<CallId> = if self.conference.len() >= 2 {
             self.conference.iter().copied().filter(live).collect()
         } else {
@@ -104,71 +113,25 @@ impl Core {
         self.store.update::<Calls, _>(|c| c.focused = id);
     }
 
-    /// Our SDP key for a call, made on first use.
+    /// Our SRTP key for a call, made on first use.
     fn ensure_key(&mut self, id: CallId) {
         let srtp = self.call(id).is_some_and(|c| self.acct(c.acct).is_some_and(|a| a.cfg.host(c.alt).srtp));
         if let Some(c) = self.call_mut(id) {
-            if srtp && c.key.is_none() {
-                c.key = Crypto::generate(1, SrtpSuite::AesCm128HmacSha1_80).ok();
+            if srtp && c.key_material.is_none() {
+                c.key_material = Crypto::generate(1, SrtpSuite::AesCm128HmacSha1_80).ok();
             }
         }
     }
 
-    fn in_dialog_spec(
-        &mut self,
-        id: CallId,
-        method: &str,
-        headers: Vec<(String, String)>,
-        body: Option<(&str, Vec<u8>)>,
-    ) -> Option<(Spec, rsipstack::transport::SipAddr, Option<(String, String)>)> {
-        let transport = self.call_transport(self.call(id)?);
-        let user = self.acct(self.call(id)?.acct).map(|a| a.cfg.user.clone()).unwrap_or_default();
-        let contact = self.contact(&user, transport);
-        let cred = self.call(id).and_then(|c| self.acct(c.acct).map(|a| a.cfg.credentials(c.alt)));
-        let c = self.call_mut(id)?;
-        let cseq = c.dialog.next_cseq();
-        let d = c.dialog.clone();
-        let (dest, t) = Core::dialog_dest(&d, transport).ok()?;
-        let mut h = vec![("Contact".to_string(), contact)];
-        h.extend(headers);
-        let (content_type, body) = match body {
-            Some((c, b)) => (c.to_string(), b),
-            None => (String::new(), Vec::new()),
-        };
-        Some((
-            Spec {
-                method: method.into(),
-                ruri: d.target.clone(),
-                from: d.local_header(),
-                to: d.remote_header(),
-                call_id: d.call_id.clone(),
-                cseq,
-                routes: d.routes.clone(),
-                headers: h,
-                content_type,
-                body,
-                transport: t,
-            },
-            dest,
-            cred,
-        ))
-    }
-
-    fn send_in_dialog(
-        &mut self,
-        id: CallId,
-        method: &str,
-        headers: Vec<(String, String)>,
-        body: Option<(&str, Vec<u8>)>,
-        ctx: Ctx,
-    ) -> Option<u64> {
-        let (spec, dest, cred) = self.in_dialog_spec(id, method, headers, body)?;
-        self.send(spec, dest, ctx, cred, Owner::Call(id)).ok()
-    }
-
-    fn send_bye(&mut self, id: CallId) {
-        if self.call(id).is_some_and(|c| !c.dialog.remote_tag.is_empty()) {
-            self.send_in_dialog(id, "BYE", Vec::new(), None, Ctx::Bye);
+    /// Hangs the dialog up in the background: CANCEL or BYE, as the layer
+    /// decides from its state.
+    fn hangup_dialog(&self, id: CallId) {
+        if let Some(dialog) = self.call(id).map(|c| c.dialog.clone()) {
+            tokio::spawn(async move {
+                if let Err(e) = dialog.hangup().await {
+                    log::debug!("sip: hangup: {e}");
+                }
+            });
         }
     }
 
@@ -179,6 +142,7 @@ impl Core {
             return;
         }
         c.ended = true;
+        c.server = None;
         let (answered, outgoing, refer_from) = (c.answered, c.outgoing, c.refer_from.clone());
         self.media.close(id);
         self.media.ring(None);
@@ -194,12 +158,12 @@ impl Core {
             }
         }
         if let (Some(r), false) = (refer_from, answered) {
-            let (code, text) = match &cause {
-                EndCause::Failed { code, reason } => (*code, reason.clone()),
-                EndCause::Busy => (486, "Busy Here".into()),
-                _ => (487, "Request Terminated".into()),
+            let code = match &cause {
+                EndCause::Failed { code, .. } => *code,
+                EndCause::Busy => 486,
+                _ => 487,
             };
-            self.notify_refer(r.call, code, &text, true);
+            self.notify_refer(r.call, code, true);
         }
         let mut snapshot = None;
         self.store.update::<Calls, _>(|calls| {
@@ -224,7 +188,8 @@ impl Core {
                 (false, true) => CallLogKind::Received,
                 (false, false) => CallLogKind::Missed,
             };
-            let duration = call.connected_mono_ms.map(|c| (clock::mono_ms().saturating_sub(c) / 1000) as u32).unwrap_or(0);
+            let duration =
+                call.connected_mono_ms.map(|c| (clock::mono_ms().saturating_sub(c) / 1000) as u32).unwrap_or(0);
             self.store.update::<CallLog, _>(|log| {
                 log.push(CallLogEntry {
                     id: 0,
@@ -251,6 +216,9 @@ impl Core {
 
     pub fn on_linger(&mut self, id: CallId) {
         if self.call(id).is_some_and(|c| c.ended) {
+            if let Some(c) = self.call(id) {
+                self.layer.remove_dialog(&c.dialog.id());
+            }
             self.calls.retain(|c| c.id != id);
             let mut idle = false;
             self.store.update::<Calls, _>(|c| {
@@ -313,37 +281,51 @@ impl Core {
         let rtp_port = self.media.open(id).map_err(CommandError::Failed)?;
         self.hold_others(None);
         let a = self.acct(acct).expect("picked account exists");
-        let alt = a.alt;
-        let dialog = Dialog {
-            call_id: format!("{}@dphone", util::token(20)),
-            local_tag: util::token(10),
-            remote_tag: String::new(),
-            local: self.aor(a),
-            remote: format!("<{uri}>"),
-            target: uri.clone(),
-            routes: Vec::new(),
-            cseq: 0,
+        let (alt, srtp) = (a.alt, a.cfg.host(a.alt).srtp);
+        let key_material = if srtp { Crypto::generate(1, SrtpSuite::AesCm128HmacSha1_80).ok() } else { None };
+        // The layer creates the dialog from the INVITE, and the INVITE
+        // carries the offer, so the offer is built before the call record.
+        let session_id = clock::unix_secs();
+        let probe = sdp::Local {
+            addr: self.cfg.local_ip,
+            port: rtp_port,
+            codecs: {
+                let available = self.media.codecs();
+                self.cfg.codecs.iter().filter(|p| available.contains(&p.codec)).map(|p| p.codec).collect()
+            },
+            ptime: self.cfg.codecs.first().map(|p| p.ptime).unwrap_or(20),
+            srtp: if srtp { SrtpPolicy::Sdes } else { SrtpPolicy::Off },
+            direction: SdpDir::SendRecv,
+            session_id,
+            version: 1,
         };
+        let offer = sdp::offer(&probe, key_material.as_ref());
         let number = SipUri::parse(&uri).map(|u| util::percent_decode(&u.user)).unwrap_or_default();
+        let pending = PendingCall { acct, replaces: replaces.clone(), referred_by: referred_by.clone() };
+        let dialog = match self.invite_for(id, &pending, &uri, &offer) {
+            Ok(d) => d,
+            Err(e) => {
+                self.media.close(id);
+                return Err(CommandError::Failed(e));
+            }
+        };
+        let did = dialog.id();
         let mut call = Call::new(id, acct, Direction::Outgoing, Party { name: String::new(), number, uri: uri.clone() });
-        call.sip_call_id = dialog.call_id.clone();
+        call.sip_call_id = did.call_id.clone();
         self.calls.push(CallRt {
             id,
             acct,
             alt,
+            key: (did.call_id, did.local_tag),
             dialog,
             outgoing: true,
-            invite: None,
-            provisional_seen: false,
-            cancel_wanted: false,
             server: None,
-            reinvite_server: None,
             rtp_port,
-            session_id: clock::unix_secs(),
+            session_id,
             sdp_version: 1,
-            offer: None,
+            offer: Some(offer),
             remote_offer: None,
-            key: None,
+            key_material,
             neg: None,
             local_hold: false,
             remote_hold: false,
@@ -355,7 +337,8 @@ impl Core {
             refer_from,
             replaces,
             referred_by,
-            target_text: target.to_string(),
+            redirected: false,
+            peer: uri.clone(),
         });
         self.store.update::<Calls, _>(|c| {
             c.calls.push(call);
@@ -365,95 +348,51 @@ impl Core {
             self.media.request_path(p);
         }
         self.media.tone(None);
-        if let Err(e) = self.send_invite(id) {
-            self.end_call(id, EndCause::Error(e.clone()));
-            return Err(CommandError::Failed(e));
-        }
         self.sync_keys();
         Ok(id)
     }
 
-    fn send_invite(&mut self, id: CallId) -> Result<(), String> {
-        self.ensure_key(id);
-        let c = self.call(id).ok_or("no such call")?;
-        let a = self.acct(c.acct).ok_or("no such account")?;
-        let transport = a.cfg.host(c.alt).transport;
-        let offer = sdp::offer(&self.local_media(c, SdpDir::SendRecv), c.key.as_ref());
-        let mut headers = vec![
-            ("Contact".to_string(), self.contact(&a.cfg.user, transport)),
-            ("Allow".to_string(), Core::allow().to_string()),
-            ("Supported".to_string(), "replaces".to_string()),
-        ];
-        if let Some(r) = &c.replaces {
-            headers.push(("Replaces".into(), r.clone()));
+    /// Starts an INVITE through the dialog layer; its end is reported as
+    /// [`Ev::InviteDone`].
+    fn invite_for(&mut self, id: CallId, p: &PendingCall, uri: &str, offer: &Sdp) -> Result<InviteDialog, String> {
+        let a = self.acct(p.acct).ok_or("no such account")?;
+        let (dest, transport) = self.request_dest(a, uri)?;
+        let mut headers = vec![Core::allow(), Header::Supported("replaces".to_string().into())];
+        if let Some(r) = &p.replaces {
+            headers.push(Header::Replaces(r.clone().into()));
         }
-        if let Some(r) = &c.referred_by {
-            headers.push(("Referred-By".into(), r.clone()));
+        if let Some(r) = &p.referred_by {
+            headers.push(Header::ReferredBy(r.clone().into()));
         }
-        let (dest, transport) = self.request_dest(a, &c.dialog.target)?;
-        headers[0].1 = self.contact(&a.cfg.user, transport);
-        let cred = Some(a.cfg.credentials(c.alt));
-        let d = &c.dialog;
-        let spec = Spec {
-            method: "INVITE".into(),
-            ruri: d.target.clone(),
-            from: d.local_header(),
-            to: d.remote.clone(),
-            call_id: d.call_id.clone(),
-            cseq: d.cseq + 1,
-            routes: Vec::new(),
-            headers,
-            content_type: "application/sdp".into(),
-            body: offer.render().into_bytes(),
-            transport,
+        let opt = InviteOption {
+            caller_display_name: (!a.cfg.display_name.is_empty()).then(|| a.cfg.display_name.clone()),
+            caller: crate::core::uri(&format!("sip:{}@{}", a.cfg.user, a.cfg.host(a.alt).server))?,
+            callee: crate::core::uri(uri)?,
+            destination: Some(dest),
+            offer: Some(offer.render().into_bytes()),
+            contact: self.contact_uri(&a.cfg.user, a.public.clone(), transport),
+            credential: Some(Core::credential(a)),
+            headers: Some(headers),
+            ..Default::default()
         };
-        let pending = self.send(spec, dest, Ctx::Invite { call: id }, cred, Owner::Call(id))?;
-        let c = self.call_mut(id).ok_or("no such call")?;
-        c.dialog.cseq += 1;
-        c.offer = Some(offer);
-        c.invite = Some(pending);
-        c.provisional_seen = false;
-        Ok(())
+        let (dialog, done) = flatten(self.layer.do_invite_async(opt, self.dialog_tx.clone()))?;
+        let post = self.tx.clone();
+        tokio::spawn(async move {
+            let result = match done.await {
+                Ok(Ok((_, resp))) => Ok(resp),
+                Ok(Err(e)) => Err(e.to_string()),
+                Err(e) => Err(e.to_string()),
+            };
+            let _ = post.send(Ev::InviteDone { call: id, result });
+        });
+        Ok(dialog)
     }
 
-    /// Records dialog identifiers from a response to our INVITE.
-    fn learn_dialog(c: &mut CallRt, resp: &Response, final_response: bool) {
-        if let Some(tag) = util::header(&resp.headers, "To").and_then(|t| NameAddr::parse(t).tag().map(str::to_string)) {
-            c.dialog.remote_tag = tag;
-        }
-        if let Some(contact) = util::header(&resp.headers, "Contact") {
-            c.dialog.target = NameAddr::parse(contact).uri;
-        }
-        if final_response || c.dialog.routes.is_empty() {
-            let mut routes: Vec<String> = util::headers_all(&resp.headers, "Record-Route")
-                .into_iter()
-                .flat_map(|v| v.split(',').map(|x| x.trim().to_string()).collect::<Vec<_>>())
-                .collect();
-            routes.reverse();
-            c.dialog.routes = routes;
-        }
-    }
-
-    pub(crate) fn on_invite_provisional(&mut self, id: CallId, resp: &Response) {
-        let code = resp.status_code.code();
+    fn on_early(&mut self, id: CallId, resp: &Response) {
         let Some(c) = self.call_mut(id) else { return };
-        c.provisional_seen = true;
-        if c.cancel_wanted || c.ended {
-            if let Some(inv) = c.invite {
-                c.cancel_wanted = false;
-                self.send_cancel(inv);
-            }
+        if c.ended || c.answered || !c.outgoing {
             return;
         }
-        if code == 100 {
-            self.set_call(id, |call| {
-                if call.state == CallState::Dialing {
-                    call.state = CallState::Proceeding;
-                }
-            });
-            return;
-        }
-        Self::learn_dialog(c, resp, false);
         let mut early = false;
         if !resp.body.is_empty() {
             if let (Some(offer), Ok(remote)) = (c.offer.clone(), Sdp::parse(&String::from_utf8_lossy(&resp.body))) {
@@ -478,114 +417,116 @@ impl Core {
             }
         });
         if let Some(r) = self.call(id).and_then(|c| c.refer_from.clone()) {
-            self.notify_refer(r.call, 180, "Ringing", false);
+            self.notify_refer(r.call, 180, false);
         }
         self.sync_keys();
     }
 
-    pub(crate) fn on_invite_final(&mut self, id: CallId, code: u16, reason: &str, resp: Option<&Response>) {
+    /// The 2xx to our INVITE: the answer to our offer.
+    fn on_answered(&mut self, id: CallId, resp: &Response) {
         let Some(c) = self.call_mut(id) else { return };
-        c.invite = None;
-        if (200..300).contains(&code) {
-            let Some(resp) = resp else { return };
-            Self::learn_dialog(c, resp, true);
-            if c.ended || c.cancel_wanted {
-                // Answered while we were hanging up: the dialog exists, so
-                // it needs a BYE.
-                self.send_bye(id);
-                return;
-            }
-            let negotiated = match (&c.offer, Sdp::parse(&String::from_utf8_lossy(&resp.body))) {
-                (Some(offer), Ok(remote)) => sdp::accept(offer, &remote),
-                (_, Err(e)) if c.neg.is_some() => {
-                    // No SDP in the 200 after an early answer: keep it.
-                    let _ = e;
-                    Ok(c.neg.clone().expect("checked"))
-                }
-                (_, Err(e)) => Err(e),
-                (None, _) => Err("no offer outstanding".into()),
-            };
-            match negotiated {
-                Ok(n) => {
-                    c.neg = Some(n);
-                    c.offer = None;
-                    c.answered = true;
-                }
-                Err(e) => {
-                    log::warn!("sip: call {}: unusable answer: {e}", id.0);
-                    self.send_bye(id);
-                    self.end_call(id, EndCause::Error(e));
-                    return;
-                }
-            }
-            let refer = c.refer_from.clone();
-            self.media.tone(None);
-            self.apply_media(id);
-            let name = NameAddr::parse(util::header(&resp.headers, "To").unwrap_or(""));
-            self.set_call(id, |call| {
-                call.state = CallState::Active;
-                call.connected_mono_ms = Some(clock::mono_ms());
-                if call.remote.name.is_empty() {
-                    call.remote.name = name.display.clone();
-                }
-            });
-            if let Some(r) = refer {
-                self.notify_refer(r.call, 200, "OK", true);
-            }
-            self.sync_keys();
+        if c.ended || c.answered || !c.outgoing {
             return;
         }
+        let negotiated = match (&c.offer, Sdp::parse(&String::from_utf8_lossy(&resp.body))) {
+            (Some(offer), Ok(remote)) => sdp::accept(offer, &remote),
+            // No SDP in the 200 after an early answer: keep that one.
+            (_, Err(_)) if c.neg.is_some() => Ok(c.neg.clone().expect("checked")),
+            (_, Err(e)) => Err(e),
+            (None, _) => Err("no offer outstanding".into()),
+        };
+        match negotiated {
+            Ok(n) => {
+                c.neg = Some(n);
+                c.offer = None;
+                c.answered = true;
+            }
+            Err(e) => {
+                log::warn!("sip: call {}: unusable answer: {e}", id.0);
+                self.hangup_dialog(id);
+                self.end_call(id, EndCause::Error(e));
+                return;
+            }
+        }
+        let refer = c.refer_from.clone();
+        self.media.tone(None);
+        self.apply_media(id);
+        let name = NameAddr::parse(util::header(&resp.headers, "To").unwrap_or(""));
+        self.set_call(id, |call| {
+            call.state = CallState::Active;
+            call.connected_mono_ms = Some(clock::mono_ms());
+            if call.remote.name.is_empty() {
+                call.remote.name = name.display.clone();
+            }
+        });
+        if let Some(r) = refer {
+            self.notify_refer(r.call, 200, true);
+        }
+        self.sync_keys();
+    }
+
+    /// The INVITE transaction finished: failures and redirects are ours to
+    /// interpret (success also arrives as `DialogState::Confirmed`).
+    pub fn on_invite_done(&mut self, id: CallId, result: Result<Option<Response>, String>) {
+        let Some(c) = self.call_mut(id) else { return };
         if c.ended {
             return;
         }
+        let resp = match result {
+            Ok(Some(r)) => r,
+            Ok(None) => return self.end_call(id, EndCause::NoAnswer),
+            Err(e) => return self.end_call(id, EndCause::Error(e)),
+        };
+        let code = resp.status_code.code();
+        if (200..300).contains(&code) {
+            return self.on_answered(id, &resp);
+        }
         // Redirect: follow the first Contact once.
-        if (300..400).contains(&code) && !c.target_text.starts_with('\u{1}') {
-            if let Some(contact) = resp.and_then(|r| util::header(&r.headers, "Contact")).map(|c| NameAddr::parse(c).uri) {
-                if SipUri::parse(&contact).is_some() {
-                    c.target_text.insert(0, '\u{1}');
-                    c.dialog.target = contact.clone();
-                    c.dialog.remote = format!("<{contact}>");
-                    c.dialog.remote_tag.clear();
-                    if self.send_invite(id).is_ok() {
-                        return;
+        if (300..400).contains(&code) && !c.redirected {
+            let contact = util::header(&resp.headers, "Contact").map(|c| NameAddr::parse(c).uri);
+            if let (Some(contact), Some(offer)) = (contact.filter(|c| SipUri::parse(c).is_some()), c.offer.clone()) {
+                c.redirected = true;
+                let old = c.dialog.id();
+                let p = PendingCall { acct: c.acct, replaces: c.replaces.clone(), referred_by: c.referred_by.clone() };
+                if let Ok(dialog) = self.invite_for(id, &p, &contact, &offer) {
+                    self.layer.remove_dialog(&old);
+                    let did = dialog.id();
+                    if let Some(c) = self.call_mut(id) {
+                        c.key = (did.call_id.clone(), did.local_tag);
+                        c.dialog = dialog;
                     }
+                    self.set_call(id, |call| call.sip_call_id = did.call_id);
+                    return;
                 }
             }
         }
+        let reason = resp.reason_phrase().map(str::to_string).unwrap_or_else(|| resp.status_code.to_string());
         let cause = match code {
             486 | 600 => EndCause::Busy,
             487 => EndCause::LocalHangup,
             408 | 480 => EndCause::NoAnswer,
-            _ => EndCause::Failed { code, reason: reason.to_string() },
+            _ => EndCause::Failed { code, reason },
         };
         self.end_call(id, cause);
     }
 
     // --------------------------------------------------------- incoming
 
-    /// A new INVITE transaction: a call, a re-INVITE, or a replacement.
+    /// An INVITE that matches no dialog: a new call (or a replacement).
+    /// Policy that refuses the call outright answers on the transaction;
+    /// otherwise the call becomes a server dialog of the layer.
     pub fn on_invite(&mut self, tx: Transaction) {
         let req = tx.original.clone();
-        let call_id = util::header(&req.headers, "Call-ID").unwrap_or("").to_string();
-        let to = NameAddr::parse(util::header(&req.headers, "To").unwrap_or(""));
         let from = NameAddr::parse(util::header(&req.headers, "From").unwrap_or(""));
-        let server = self.adopt_invite(tx);
-        if let Some(tag) = to.tag() {
-            let found = self.calls.iter().find(|c| !c.ended && c.dialog.call_id == call_id && c.dialog.local_tag == tag).map(|c| c.id);
-            return match found {
-                Some(id) => self.on_reinvite(id, server),
-                None => self.server_respond(&server, self.response(&req, 481, None, &[], None)),
-            };
+        if NameAddr::parse(util::header(&req.headers, "To").unwrap_or("")).tag().is_some() {
+            return self.reply(tx, 481, Vec::new());
         }
-        let tag = util::token(10);
-        let Some(acct) = self.account_for(&req) else {
-            return self.server_respond(&server, self.response(&req, 404, Some(&tag), &[], None));
-        };
+        let Some(acct) = self.account_for(&req) else { return self.reply(tx, 404, Vec::new()) };
         let features = self.store.get::<Features>();
         let host = self.acct(acct).map(|a| a.cfg.host(a.alt).server.clone()).unwrap_or_default();
         let redirect = |target: &str| {
             let uri = if target.starts_with("sip:") { target.to_string() } else { format!("sip:{target}@{host}") };
-            self.response(&req, 302, Some(&tag), &[("Contact", format!("<{uri}>"))], None)
+            vec![Header::Contact(format!("<{uri}>").into())]
         };
         // A replacement (attended transfer, pickup) bypasses DND and busy.
         let replaced = util::header(&req.headers, "Replaces").and_then(|r| {
@@ -598,34 +539,29 @@ impl Core {
             let (to_tag, from_tag) = (get("to-tag")?, get("from-tag")?);
             self.calls
                 .iter()
-                .find(|c| !c.ended && c.dialog.call_id == cid && c.dialog.local_tag == to_tag && c.dialog.remote_tag == from_tag)
+                .find(|c| {
+                    let d = c.dialog.id();
+                    !c.ended && d.call_id == cid && d.local_tag == to_tag && d.remote_tag == from_tag
+                })
                 .map(|c| c.id)
         });
         if replaced.is_none() {
             if !features.forward.always.is_empty() {
-                return self.server_respond(&server, redirect(&features.forward.always));
+                return self.reply(tx, 302, redirect(&features.forward.always));
             }
             if features.dnd {
-                return self.server_respond(&server, self.response(&req, 486, Some(&tag), &[], None));
+                return self.reply(tx, 486, Vec::new());
             }
             let live = self.calls.iter().filter(|c| !c.ended).count();
             if live > 0 && (!self.cfg.call_waiting || !features.call_waiting || live >= self.cfg.max_calls) {
-                let resp = if features.forward.busy.is_empty() {
-                    self.response(&req, 486, Some(&tag), &[], None)
+                return if features.forward.busy.is_empty() {
+                    self.reply(tx, 486, Vec::new())
                 } else {
-                    redirect(&features.forward.busy)
+                    self.reply(tx, 302, redirect(&features.forward.busy))
                 };
-                return self.server_respond(&server, resp);
             }
         }
         let id = self.store.next_call_id();
-        let rtp_port = match self.media.open(id) {
-            Ok(p) => p,
-            Err(e) => {
-                log::warn!("sip: no media for an incoming call: {e}");
-                return self.server_respond(&server, self.response(&req, 480, Some(&tag), &[], None));
-            }
-        };
         let remote_offer = if req.body.is_empty() {
             None
         } else {
@@ -633,29 +569,58 @@ impl Core {
                 Ok(s) => Some(s),
                 Err(e) => {
                     log::warn!("sip: bad offer: {e}");
-                    self.media.close(id);
-                    return self.server_respond(&server, self.response(&req, 488, Some(&tag), &[], None));
+                    return self.reply(tx, 488, Vec::new());
                 }
             }
         };
-        let alt = self.acct(acct).is_some_and(|a| a.alt);
-        let routes: Vec<String> = util::headers_all(&req.headers, "Record-Route")
-            .into_iter()
-            .flat_map(|v| v.split(',').map(|x| x.trim().to_string()).collect::<Vec<_>>())
-            .collect();
-        let strip = |n: &NameAddr| {
-            if n.display.is_empty() { format!("<{}>", n.uri) } else { format!("\"{}\" <{}>", n.display, n.uri) }
+        let rtp_port = match self.media.open(id) {
+            Ok(p) => p,
+            Err(e) => {
+                log::warn!("sip: no media for an incoming call: {e}");
+                return self.reply(tx, 480, Vec::new());
+            }
         };
-        let dialog = Dialog {
-            call_id: call_id.clone(),
-            local_tag: tag.clone(),
-            remote_tag: from.tag().unwrap_or("").to_string(),
-            local: strip(&to),
-            remote: strip(&from),
-            target: util::header(&req.headers, "Contact").map(|c| NameAddr::parse(c).uri).unwrap_or_else(|| from.uri.clone()),
-            routes,
-            cseq: 0,
+        let a = self.acct(acct).expect("account_for returned it");
+        let (alt, srtp) = (a.alt, a.cfg.host(a.alt).srtp);
+        let key_material = if srtp { Crypto::generate(1, SrtpSuite::AesCm128HmacSha1_80).ok() } else { None };
+        // Refuse now what cannot be answered later.
+        if let Some(offer) = &remote_offer {
+            let available = self.media.codecs();
+            let probe = sdp::Local {
+                addr: self.cfg.local_ip,
+                port: rtp_port,
+                codecs: self.cfg.codecs.iter().filter(|p| available.contains(&p.codec)).map(|p| p.codec).collect(),
+                ptime: 20,
+                srtp: if srtp { SrtpPolicy::Sdes } else { SrtpPolicy::Off },
+                direction: SdpDir::SendRecv,
+                session_id: 0,
+                version: 0,
+            };
+            if let Err(e) = sdp::answer(offer, &probe, key_material.as_ref()) {
+                log::info!("sip: refusing a call: {e}");
+                self.media.close(id);
+                return self.reply(tx, 488, Vec::new());
+            }
+        }
+        let contact = self.account_contact(a);
+        let dialog = match self.layer.get_or_create_server_invite(
+            &tx,
+            self.dialog_tx.clone(),
+            Some(Core::credential(a)),
+            Some(contact),
+        ) {
+            Ok(d) => d,
+            Err(e) => {
+                log::warn!("sip: cannot create a dialog: {e}");
+                self.media.close(id);
+                return self.reply(tx, 400, Vec::new());
+            }
         };
+        let server = Some((tx.tu_sender.clone(), req.clone()));
+        self.dispatch(Dialog::Invite(dialog.clone()), tx);
+        if let Err(e) = dialog.ringing(None, None) {
+            log::debug!("sip: ringing: {e}");
+        }
         let alert_info = util::header(&req.headers, "Alert-Info").unwrap_or("").to_string();
         let call_info = util::header(&req.headers, "Call-Info").unwrap_or("").to_ascii_lowercase();
         let lower_alert = alert_info.to_ascii_lowercase();
@@ -664,23 +629,29 @@ impl Core {
             || lower_alert.contains("autoanswer")
             || lower_alert.contains("ring answer")
             || lower_alert.contains("intercom");
-        let mut rt = CallRt {
+        let did = dialog.id();
+        let pai = util::header(&req.headers, "P-Asserted-Identity").map(NameAddr::parse);
+        let who = pai.as_ref().unwrap_or(&from);
+        let party = Party { name: who.display.clone(), number: util::percent_decode(&who.user()), uri: who.uri.clone() };
+        let mut call = Call::new(id, acct, Direction::Incoming, party);
+        call.sip_call_id = did.call_id.clone();
+        call.auto_answer = wants_auto && self.cfg.allow_auto_answer;
+        call.paging = lower_alert.contains("paging") || call_info.contains("paging");
+        let auto = call.auto_answer;
+        self.calls.push(CallRt {
             id,
             acct,
             alt,
+            key: (did.call_id, did.local_tag),
             dialog,
             outgoing: false,
-            invite: None,
-            provisional_seen: false,
-            cancel_wanted: false,
-            server: None,
-            reinvite_server: None,
+            server,
             rtp_port,
             session_id: clock::unix_secs(),
             sdp_version: 1,
             offer: None,
             remote_offer,
-            key: None,
+            key_material,
             neg: None,
             local_hold: false,
             remote_hold: false,
@@ -692,33 +663,10 @@ impl Core {
             refer_from: None,
             replaces: None,
             referred_by: None,
-            target_text: String::new(),
-        };
-        // Refuse now what cannot be answered later.
-        if let Some(offer) = &rt.remote_offer {
-            let srtp = self.acct(acct).is_some_and(|a| a.cfg.host(alt).srtp);
-            let key = if srtp { Crypto::generate(1, SrtpSuite::AesCm128HmacSha1_80).ok() } else { None };
-            rt.key = key;
-            if let Err(e) = sdp::answer(offer, &self.local_media(&rt, SdpDir::SendRecv), rt.key.as_ref()) {
-                log::info!("sip: refusing a call: {e}");
-                self.media.close(id);
-                return self.server_respond(&server, self.response(&req, 488, Some(&tag), &[], None));
-            }
-        }
-        let pai = util::header(&req.headers, "P-Asserted-Identity").map(NameAddr::parse);
-        let who = pai.as_ref().unwrap_or(&from);
-        let party = Party { name: who.display.clone(), number: util::percent_decode(&who.user()), uri: who.uri.clone() };
-        let mut call = Call::new(id, acct, Direction::Incoming, party);
-        call.sip_call_id = call_id;
-        call.auto_answer = wants_auto && self.cfg.allow_auto_answer;
-        call.paging = lower_alert.contains("paging") || call_info.contains("paging");
-        let auto = call.auto_answer;
-        let user = self.acct(acct).map(|a| a.cfg.user.clone()).unwrap_or_default();
-        let contact = self.contact(&user, self.acct(acct).map(|a| a.cfg.host(alt).transport).unwrap_or(Transport::Udp));
-        self.server_respond(&server, self.response(&req, 180, Some(&tag), &[("Contact", contact)], None));
-        rt.server = Some(server);
-        self.calls.push(rt);
-        let others = self.store.get::<Calls>().live().any(|c| c.state.is_established() || !c.state.is_ended());
+            redirected: false,
+            peer: from.uri.clone(),
+        });
+        let others = self.store.get::<Calls>().live().next().is_some();
         self.store.update::<Calls, _>(|c| {
             c.calls.push(call);
             if c.focused.is_none() || c.focused().is_none_or(|f| f.state.is_ended()) {
@@ -730,7 +678,7 @@ impl Core {
         if let Some(old) = replaced {
             // The replacement takes over the old call's place at once.
             if self.answer(id, None).is_ok() {
-                self.send_bye(old);
+                self.hangup_dialog(old);
                 self.end_call(old, EndCause::Transferred);
             }
             return;
@@ -741,7 +689,8 @@ impl Core {
         }
         self.media.ring(Some(RingRequest { call: id, alert_info, call_waiting: others }));
         if !features.forward.no_answer.is_empty() {
-            let secs = if features.forward.no_answer_secs > 0 { features.forward.no_answer_secs } else { self.cfg.no_answer_secs };
+            let secs =
+                if features.forward.no_answer_secs > 0 { features.forward.no_answer_secs } else { self.cfg.no_answer_secs };
             self.after(Duration::from_secs(secs as u64), Timer::NoAnswer { call: id });
         }
     }
@@ -754,64 +703,67 @@ impl Core {
         self.redirect_call(id, &target, EndCause::NoAnswer);
     }
 
-    /// Answers an unanswered incoming call with a 302.
+    /// Answers a ringing call with a 302.  The layer's `reject` cannot
+    /// carry a Contact, so the response is built here and sent on the
+    /// INVITE transaction; `reject` then only retires the dialog (its own
+    /// response finds the transaction already completed).
     fn redirect_call(&mut self, id: CallId, target: &str, cause: EndCause) {
         let Some(c) = self.call_mut(id) else { return };
-        let Some(server) = c.server.take() else { return };
-        let tag = c.dialog.local_tag.clone();
+        let Some((tu, req)) = c.server.take() else { return };
+        let dialog = c.dialog.clone();
         let acct = c.acct;
         let host = self.acct(acct).map(|a| a.cfg.host(a.alt).server.clone()).unwrap_or_default();
         let uri = if target.starts_with("sip:") { target.to_string() } else { format!("sip:{target}@{host}") };
-        let resp = self.response(&server.req, 302, Some(&tag), &[("Contact", format!("<{uri}>"))], None);
-        self.server_respond(&server, resp);
+        let mut resp = self.inner.make_response(&req, StatusCode::MovedTemporarily, None);
+        let tag = dialog.id().local_tag;
+        for h in resp.headers.iter_mut() {
+            if let Header::To(to) = h {
+                let v = to.value().to_string();
+                if NameAddr::parse(&v).tag().is_none() {
+                    *h = Header::To(format!("{v};tag={tag}").into());
+                }
+                break;
+            }
+        }
+        resp.headers.push(Header::Contact(format!("<{uri}>").into()));
+        let _ = tu.send(TransactionEvent::Respond(resp));
+        let _ = dialog.reject(None, None);
         self.end_call(id, cause);
     }
 
     fn reject(&mut self, id: CallId, code: u16) -> CommandResult {
         let c = self.call_mut(id).ok_or_else(|| invalid("no such call"))?;
-        let server = c.server.take().ok_or_else(|| invalid("the call is not ringing"))?;
-        if c.answered {
-            return Err(invalid("the call is already answered"));
+        if c.answered || c.outgoing || c.ended {
+            return Err(invalid("the call is not ringing"));
         }
-        let tag = c.dialog.local_tag.clone();
-        let resp = self.response(&server.req, code, Some(&tag), &[], None);
-        self.server_respond(&server, resp);
+        flatten(c.dialog.reject(Some(StatusCode::from(code)), None)).map_err(CommandError::Failed)?;
         self.end_call(id, EndCause::Rejected);
         Ok(Reply::Done)
     }
 
     pub(crate) fn answer(&mut self, id: CallId, path: Option<AudioPath>) -> CommandResult {
-        self.ensure_key(id);
         let c = self.call(id).ok_or_else(|| invalid("no such call"))?;
         if c.answered || c.ended || c.outgoing {
             return Err(invalid("the call is not ringing"));
         }
-        let Some(server) = c.server.as_ref() else { return Err(invalid("the call is not ringing")) };
         let local = self.local_media(c, SdpDir::SendRecv);
         let (body, neg, offer) = match &c.remote_offer {
             Some(remote) => {
-                let (ans, neg) = sdp::answer(remote, &local, c.key.as_ref()).map_err(CommandError::Failed)?;
+                let (ans, neg) = sdp::answer(remote, &local, c.key_material.as_ref()).map_err(CommandError::Failed)?;
                 (ans.render(), Some(neg), None)
             }
             // An INVITE without SDP: we offer, the ACK answers.
             None => {
-                let offer = sdp::offer(&local, c.key.as_ref());
+                let offer = sdp::offer(&local, c.key_material.as_ref());
                 (offer.render(), None, Some(offer))
             }
         };
-        let user = self.acct(c.acct).map(|a| a.cfg.user.clone()).unwrap_or_default();
-        let contact = self.contact(&user, self.call_transport(c));
-        let resp = self.response(
-            &server.req,
-            200,
-            Some(&c.dialog.local_tag),
-            &[("Contact", contact), ("Allow", Core::allow().to_string()), ("Supported", "replaces".into())],
-            Some(("application/sdp", body.into_bytes())),
-        );
-        self.server_respond(server, resp);
+        let headers = vec![Core::allow(), Header::Supported("replaces".to_string().into()), sdp_type()];
+        flatten(c.dialog.accept(Some(headers), Some(body.into_bytes()))).map_err(CommandError::Failed)?;
         self.hold_others(Some(id));
         let c = self.call_mut(id).expect("checked above");
         c.answered = true;
+        c.server = None;
         c.neg = neg;
         c.offer = offer;
         self.media.ring(None);
@@ -829,67 +781,107 @@ impl Core {
         Ok(Reply::Done)
     }
 
-    /// ACK or CANCEL on a server INVITE transaction.
-    pub fn on_server_req(&mut self, tx: u64, req: Request) {
-        let Some(c) = self
-            .calls
-            .iter_mut()
-            .find(|c| c.server.as_ref().is_some_and(|s| s.tx == tx) || c.reinvite_server.as_ref().is_some_and(|s| s.tx == tx))
-        else {
-            return;
-        };
-        let id = c.id;
-        match req.method {
-            rsipstack::sip::Method::Cancel => {
-                if c.answered || c.ended {
-                    return;
-                }
-                let Some(server) = c.server.take() else { return };
-                let tag = c.dialog.local_tag.clone();
-                let elsewhere = util::header(&req.headers, "Reason").is_some_and(|r| r.to_ascii_lowercase().contains("elsewhere"));
-                let resp = self.response(&server.req, 487, Some(&tag), &[], None);
-                self.server_respond(&server, resp);
-                self.end_call(id, EndCause::Cancelled { answered_elsewhere: elsewhere });
+    /// The answer to an offer of ours that travelled in a 200.
+    pub fn on_ack_body(&mut self, id: CallId, body: &[u8]) {
+        let Some(c) = self.call_mut(id) else { return };
+        let Some(offer) = c.offer.take() else { return };
+        match Sdp::parse(&String::from_utf8_lossy(body)).and_then(|r| sdp::accept(&offer, &r)) {
+            Ok(n) => {
+                c.neg = Some(n);
+                self.apply_media(id);
             }
-            rsipstack::sip::Method::Ack => {
-                // The answer to an offer we made in a 200.
-                if let (Some(offer), false) = (c.offer.clone(), req.body.is_empty()) {
-                    match Sdp::parse(&String::from_utf8_lossy(&req.body)).and_then(|r| sdp::accept(&offer, &r)) {
-                        Ok(n) => {
-                            c.neg = Some(n);
-                            c.offer = None;
-                            self.apply_media(id);
-                        }
-                        Err(e) => {
-                            log::warn!("sip: call {}: bad answer in ACK: {e}", id.0);
-                            self.send_bye(id);
-                            self.end_call(id, EndCause::Error(e));
-                        }
+            Err(e) => {
+                log::warn!("sip: call {}: bad answer in ACK: {e}", id.0);
+                self.hangup_dialog(id);
+                self.end_call(id, EndCause::Error(e));
+            }
+        }
+    }
+
+    // ------------------------------------------------- dialog events
+
+    /// Everything the dialog layer reports.
+    pub fn on_dialog(&mut self, state: DialogState) {
+        let did = state.id().clone();
+        let Some(id) = self.calls.iter().find(|c| c.key.0 == did.call_id && c.key.1 == did.local_tag).map(|c| c.id)
+        else {
+            return self.on_sub_dialog(state);
+        };
+        match state {
+            DialogState::Calling(_) | DialogState::WaitAck(..) => {}
+            DialogState::Trying(_) => self.set_call(id, |call| {
+                if call.state == CallState::Dialing {
+                    call.state = CallState::Proceeding;
+                }
+            }),
+            DialogState::Early(_, resp) => self.on_early(id, &resp),
+            DialogState::Confirmed(_, resp) => {
+                let Some(c) = self.call(id) else { return };
+                if c.outgoing && !c.answered {
+                    self.on_answered(id, &resp);
+                } else if !c.outgoing && c.offer.is_some() && c.neg.is_none() {
+                    // Our 200 carried the offer; the ACK has the answer.
+                    if let Some(ack) = c.dialog.last_remote_ack().filter(|a| !a.body.is_empty()) {
+                        self.on_ack_body(id, &ack.body);
                     }
                 }
             }
+            DialogState::Updated(_, req, handle) => self.on_reoffer(id, req, handle),
+            DialogState::Info(_, req, handle) => {
+                let body = String::from_utf8_lossy(&req.body);
+                let ctype = util::header(&req.headers, "Content-Type").unwrap_or("").to_ascii_lowercase();
+                if ctype.contains("dtmf") {
+                    let digit = body
+                        .lines()
+                        .find_map(|l| l.trim().strip_prefix("Signal=").map(|s| s.trim().to_string()))
+                        .or_else(|| Some(body.trim().to_string()))
+                        .and_then(|s| s.chars().next());
+                    if let Some(d) = digit.filter(|d| "0123456789*#ABCDabcd".contains(*d)) {
+                        self.store.emit(Event::DtmfReceived { call: id, digit: d.to_ascii_uppercase() });
+                    }
+                }
+                self.respond(handle, 200, Vec::new(), None);
+            }
+            DialogState::Options(_, _, handle) => self.respond(handle, 200, vec![Core::allow()], None),
+            DialogState::Message(_, req, handle) => {
+                self.deliver_message(&req);
+                self.respond(handle, 200, Vec::new(), None);
+            }
+            DialogState::Publish(_, _, handle) => self.respond(handle, 405, Vec::new(), None),
+            DialogState::Refer(_, req, handle) => self.on_refer(id, req, handle),
+            DialogState::Notify(_, req, handle) => {
+                self.respond(handle, 200, Vec::new(), None);
+                self.on_call_notify(id, &req);
+            }
+            DialogState::Terminated(_, reason) => {
+                let Some(c) = self.call(id) else { return };
+                // A failed outgoing INVITE is reported, with its response,
+                // by `on_invite_done`.
+                if c.ended || (c.outgoing && !c.answered) {
+                    return;
+                }
+                let cause = match reason {
+                    TerminatedReason::UacBye | TerminatedReason::UasBye => EndCause::RemoteHangup,
+                    TerminatedReason::UacCancel => EndCause::Cancelled { answered_elsewhere: false },
+                    TerminatedReason::Timeout => EndCause::Error("the far end stopped answering".into()),
+                    other => EndCause::Error(format!("{other:?}")),
+                };
+                self.end_call(id, cause);
+            }
+        }
+    }
+
+    /// Dialog events that are not about a call: our subscriptions.
+    fn on_sub_dialog(&mut self, state: DialogState) {
+        let did = state.id().clone();
+        let Some(idx) = self.subs.iter().position(|s| s.call_id == did.call_id) else { return };
+        match state {
+            DialogState::Notify(_, req, handle) => self.on_sub_notify(idx, req, handle),
+            DialogState::Message(_, _, handle) | DialogState::Refer(_, _, handle) => {
+                self.respond(handle, 405, Vec::new(), None)
+            }
             _ => {}
         }
-    }
-
-    pub fn on_server_done(&mut self, tx: u64) {
-        for c in self.calls.iter_mut() {
-            if c.server.as_ref().is_some_and(|s| s.tx == tx) {
-                c.server = None;
-            }
-            if c.reinvite_server.as_ref().is_some_and(|s| s.tx == tx) {
-                c.reinvite_server = None;
-            }
-        }
-    }
-
-    // -------------------------------------------- in-dialog, from remote
-
-    /// Finds the call an in-dialog request belongs to.
-    pub fn call_for(&self, req: &Request) -> Option<CallId> {
-        let call_id = util::header(&req.headers, "Call-ID")?;
-        let to_tag = NameAddr::parse(util::header(&req.headers, "To")?).tag()?.to_string();
-        self.calls.iter().find(|c| c.dialog.call_id == call_id && c.dialog.local_tag == to_tag).map(|c| c.id)
     }
 
     /// Applies an offer of theirs inside the dialog; returns our answer.
@@ -900,7 +892,7 @@ impl Core {
         let c = self.call(id).ok_or("no such call")?;
         let remote = Sdp::parse(&String::from_utf8_lossy(body))?;
         let dir = if c.local_hold { SdpDir::SendOnly } else { SdpDir::SendRecv };
-        let (ans, neg) = sdp::answer(&remote, &self.local_media(c, dir), c.key.as_ref())?;
+        let (ans, neg) = sdp::answer(&remote, &self.local_media(c, dir), c.key_material.as_ref())?;
         let remote_hold = !remote.direction.receives();
         let c = self.call_mut(id).ok_or("no such call")?;
         c.neg = Some(neg);
@@ -916,106 +908,47 @@ impl Core {
         Ok(ans.render())
     }
 
-    fn on_reinvite(&mut self, id: CallId, server: ServerInvite) {
-        let req = server.req.clone();
-        let Some(c) = self.call(id) else { return };
-        let tag = c.dialog.local_tag.clone();
-        let user = self.acct(c.acct).map(|a| a.cfg.user.clone()).unwrap_or_default();
-        let contact = self.contact(&user, self.call_transport(c));
-        if c.reinvite_busy {
-            return self.server_respond(&server, self.response(&req, 491, Some(&tag), &[], None));
-        }
-        if let Some(target) = util::header(&req.headers, "Contact").map(|c| NameAddr::parse(c).uri) {
-            if let Some(c) = self.call_mut(id) {
-                c.dialog.target = target;
-            }
-        }
-        let resp = if req.body.is_empty() {
-            // Offerless re-INVITE: offer what we have now.
-            self.ensure_key(id);
-            let Some(c) = self.call_mut(id) else { return };
-            c.sdp_version += 1;
-            let c = self.call(id).expect("exists");
-            let dir = if c.local_hold { SdpDir::SendOnly } else { SdpDir::SendRecv };
-            let offer = sdp::offer(&self.local_media(c, dir), c.key.as_ref());
-            let body = offer.render().into_bytes();
-            if let Some(c) = self.call_mut(id) {
-                c.offer = Some(offer);
-            }
-            self.response(&req, 200, Some(&tag), &[("Contact", contact)], Some(("application/sdp", body)))
-        } else {
-            match self.answer_reoffer(id, &req.body) {
-                Ok(ans) => self.response(
-                    &req,
-                    200,
-                    Some(&tag),
-                    &[("Contact", contact)],
-                    Some(("application/sdp", ans.into_bytes())),
-                ),
+    /// A re-INVITE or UPDATE of theirs.
+    fn on_reoffer(&mut self, id: CallId, req: Request, handle: TransactionHandle) {
+        if !req.body.is_empty() {
+            return match self.answer_reoffer(id, &req.body) {
+                Ok(ans) => self.respond(handle, 200, vec![sdp_type()], Some(ans.into_bytes())),
                 Err(e) => {
-                    log::warn!("sip: call {}: refused re-INVITE: {e}", id.0);
-                    self.response(&req, 488, Some(&tag), &[], None)
+                    log::warn!("sip: call {}: refused a new offer: {e}", id.0);
+                    self.respond(handle, 488, Vec::new(), None)
                 }
-            }
-        };
-        self.server_respond(&server, resp);
+            };
+        }
+        if req.method != Method::Invite {
+            return self.respond(handle, 200, Vec::new(), None);
+        }
+        // Offerless re-INVITE: offer what we have now; the ACK answers.
+        self.ensure_key(id);
+        let Some(c) = self.call_mut(id) else { return };
+        c.sdp_version += 1;
+        let c = self.call(id).expect("exists");
+        let dir = if c.local_hold { SdpDir::SendOnly } else { SdpDir::SendRecv };
+        let offer = sdp::offer(&self.local_media(c, dir), c.key_material.as_ref());
+        let body = offer.render().into_bytes();
         if let Some(c) = self.call_mut(id) {
-            c.reinvite_server = Some(server);
+            c.offer = Some(offer);
         }
-    }
-
-    /// BYE, UPDATE, INFO, REFER, NOTIFY, OPTIONS, MESSAGE inside a call.
-    pub fn on_call_request(&mut self, id: CallId, tx: Transaction) {
-        use rsipstack::sip::Method as M;
-        let req = tx.original.clone();
-        match req.method {
-            M::Bye => {
-                self.respond_code(tx, 200);
-                self.end_call(id, EndCause::RemoteHangup);
-            }
-            M::Update => {
-                if req.body.is_empty() {
-                    return self.respond_code(tx, 200);
+        let post = self.tx.clone();
+        tokio::spawn(async move {
+            if handle.respond(StatusCode::OK, Some(vec![sdp_type()]), Some(body)).await.is_ok() {
+                if let Ok(ack) = handle.wait_ack().await {
+                    let _ = post.send(Ev::AckBody { call: id, body: ack.body });
                 }
-                let resp = match self.answer_reoffer(id, &req.body) {
-                    Ok(ans) => self.response(&req, 200, None, &[], Some(("application/sdp", ans.into_bytes()))),
-                    Err(_) => self.response(&req, 488, None, &[], None),
-                };
-                self.respond(tx, resp);
             }
-            M::Info => {
-                let body = String::from_utf8_lossy(&req.body);
-                let ctype = util::header(&req.headers, "Content-Type").unwrap_or("").to_ascii_lowercase();
-                if ctype.contains("dtmf") {
-                    let digit = body
-                        .lines()
-                        .find_map(|l| l.trim().strip_prefix("Signal=").map(|s| s.trim().to_string()))
-                        .or_else(|| Some(body.trim().to_string()))
-                        .and_then(|s| s.chars().next());
-                    if let Some(d) = digit.filter(|d| "0123456789*#ABCDabcd".contains(*d)) {
-                        self.store.emit(Event::DtmfReceived { call: id, digit: d.to_ascii_uppercase() });
-                    }
-                }
-                self.respond_code(tx, 200);
-            }
-            M::Refer => self.on_refer(id, tx),
-            M::Notify => self.on_call_notify(id, tx),
-            M::Message => self.on_message(tx),
-            M::Options => {
-                let resp = self.response(&req, 200, None, &[("Allow", Core::allow().to_string())], None);
-                self.respond(tx, resp);
-            }
-            _ => self.respond_code(tx, 405),
-        }
+        });
     }
 
     /// We are asked to call someone else (we are the transferee).
-    fn on_refer(&mut self, id: CallId, tx: Transaction) {
-        let req = tx.original.clone();
+    fn on_refer(&mut self, id: CallId, req: Request, handle: TransactionHandle) {
         let Some(refer_to) = util::header(&req.headers, "Refer-To").map(NameAddr::parse) else {
-            return self.respond_code(tx, 400);
+            return self.respond(handle, 400, Vec::new(), None);
         };
-        let Some(uri) = SipUri::parse(&refer_to.uri) else { return self.respond_code(tx, 400) };
+        let Some(uri) = SipUri::parse(&refer_to.uri) else { return self.respond(handle, 400, Vec::new(), None) };
         let replaces = uri
             .headers
             .split('&')
@@ -1024,34 +957,29 @@ impl Core {
         let target = refer_to.uri.split('?').next().unwrap_or(&refer_to.uri).to_string();
         let referred_by = util::header(&req.headers, "Referred-By").map(str::to_string);
         let acct = self.call(id).map(|c| c.acct);
-        self.respond_code(tx, 202);
-        self.notify_refer(id, 100, "Trying", false);
+        self.respond(handle, 202, Vec::new(), None);
+        self.notify_refer(id, 100, false);
         if let Err(e) = self.dial(&target, acct, None, replaces, referred_by, Some(ReferFrom { call: id })) {
             log::warn!("sip: cannot follow REFER: {e}");
-            self.notify_refer(id, 503, "Service Unavailable", true);
+            self.notify_refer(id, 503, true);
         }
     }
 
     /// Reports the progress of a REFER we are following.
-    fn notify_refer(&mut self, id: CallId, code: u16, text: &str, last: bool) {
-        if self.call(id).is_none_or(|c| c.ended) {
-            return;
-        }
-        let state = if last { "terminated;reason=noresource".to_string() } else { "active;expires=60".to_string() };
-        self.send_in_dialog(
-            id,
-            "NOTIFY",
-            vec![("Event".into(), "refer".into()), ("Subscription-State".into(), state)],
-            Some(("message/sipfrag;version=2.0", format!("SIP/2.0 {code} {text}\r\n").into_bytes())),
-            Ctx::Other("NOTIFY"),
-        );
+    fn notify_refer(&mut self, id: CallId, code: u16, last: bool) {
+        let Some(c) = self.call(id).filter(|c| !c.ended) else { return };
+        let dialog = c.dialog.clone();
+        let state = if last { "terminated;reason=noresource" } else { "active;expires=60" };
+        tokio::spawn(async move {
+            if let Err(e) = dialog.notify_refer(StatusCode::from(code), state).await {
+                log::debug!("sip: NOTIFY: {e}");
+            }
+        });
     }
 
     /// Progress of a transfer we asked for.
-    fn on_call_notify(&mut self, id: CallId, tx: Transaction) {
-        let req = tx.original.clone();
+    fn on_call_notify(&mut self, id: CallId, req: &Request) {
         let event = util::header(&req.headers, "Event").unwrap_or("").to_ascii_lowercase();
-        self.respond_code(tx, 200);
         if !event.starts_with("refer") {
             return;
         }
@@ -1062,10 +990,10 @@ impl Core {
         }
         if code < 300 {
             let consult = self.store.get::<Calls>().calls.iter().find(|c| c.transfer_of == Some(id)).map(|c| c.id);
-            self.send_bye(id);
+            self.hangup_dialog(id);
             self.end_call(id, EndCause::Transferred);
             if let Some(c) = consult {
-                self.send_bye(c);
+                self.hangup_dialog(c);
                 self.end_call(c, EndCause::Transferred);
             }
         } else {
@@ -1106,18 +1034,15 @@ impl Core {
         c.sdp_version += 1;
         let c = self.call(id).expect("exists");
         let dir = if hold { SdpDir::SendOnly } else { SdpDir::SendRecv };
-        let offer = sdp::offer(&self.local_media(c, dir), c.key.as_ref());
+        let offer = sdp::offer(&self.local_media(c, dir), c.key_material.as_ref());
         let body = offer.render().into_bytes();
-        let sent = self.send_in_dialog(
-            id,
-            "INVITE",
-            vec![("Allow".into(), Core::allow().into())],
-            Some(("application/sdp", body)),
-            Ctx::Reinvite { call: id, hold },
-        );
-        if sent.is_none() {
-            return Err(CommandError::Failed("cannot send the re-INVITE".into()));
-        }
+        let (dialog, post) = (c.dialog.clone(), self.tx.clone());
+        tokio::spawn(async move {
+            // The layer retries glare (491) with the RFC 3261 back-off.
+            let result =
+                dialog.reinvite_with_glare_retry(Some(vec![Core::allow(), sdp_type()]), Some(body), 3).await;
+            let _ = post.send(Ev::ReinviteDone { call: id, hold, result: result.map_err(|e| e.to_string()) });
+        });
         let c = self.call_mut(id).expect("exists");
         c.offer = Some(offer);
         c.reinvite_busy = true;
@@ -1125,20 +1050,17 @@ impl Core {
         Ok(())
     }
 
-    pub(crate) fn on_reinvite_final(&mut self, id: CallId, hold: bool, code: u16, resp: Option<&Response>) {
+    pub fn on_reinvite_done(&mut self, id: CallId, hold: bool, result: Result<Option<Response>, String>) {
         let Some(c) = self.call_mut(id) else { return };
         c.reinvite_busy = false;
         if c.ended {
             return;
         }
         let offer = c.offer.take();
-        match code {
-            200..=299 => {
-                if let Some(target) = resp.and_then(|r| util::header(&r.headers, "Contact")).map(|c| NameAddr::parse(c).uri) {
-                    c.dialog.target = target;
-                }
-                let neg = match (offer, resp.map(|r| Sdp::parse(&String::from_utf8_lossy(&r.body)))) {
-                    (Some(o), Some(Ok(remote))) => sdp::accept(&o, &remote).ok(),
+        match result {
+            Ok(Some(resp)) if (200..300).contains(&resp.status_code.code()) => {
+                let neg = match (offer, Sdp::parse(&String::from_utf8_lossy(&resp.body))) {
+                    (Some(o), Ok(remote)) => sdp::accept(&o, &remote).ok(),
                     _ => None,
                 };
                 if let Some(n) = neg {
@@ -1154,25 +1076,24 @@ impl Core {
                 self.apply_media(id);
                 self.sync_keys();
             }
-            491 => {
-                // Glare: try again after a random pause (RFC 3261 14.1).
+            Ok(Some(resp)) if matches!(resp.status_code.code(), 408 | 481) => {
+                self.hangup_dialog(id);
+                return self.end_call(id, EndCause::Error("the far end stopped answering".into()));
+            }
+            Ok(Some(resp)) => log::warn!("sip: call {}: re-INVITE refused with {}", id.0, resp.status_code),
+            // The dialog was not ready for a re-INVITE (our 200 not yet
+            // acknowledged): try once more shortly.
+            Ok(None) => {
                 c.hold_wanted = Some(hold);
-                let ms = 1000 + (clock::mono_ms() % 2000);
-                self.after(Duration::from_millis(ms), Timer::Glare { call: id });
-                return;
+                return self.after(Duration::from_millis(500), Timer::HoldRetry { call: id });
             }
-            408 | 481 => {
-                self.send_bye(id);
-                self.end_call(id, EndCause::Error("the far end stopped answering".into()));
-                return;
-            }
-            _ => log::warn!("sip: call {}: re-INVITE refused with {code}", id.0),
+            Err(e) => log::warn!("sip: call {}: re-INVITE failed: {e}", id.0),
         }
-        self.on_glare(id);
+        self.on_hold_retry(id);
     }
 
     /// Sends a hold change that was waiting for a re-INVITE to finish.
-    pub fn on_glare(&mut self, id: CallId) {
+    pub fn on_hold_retry(&mut self, id: CallId) {
         let Some(c) = self.call_mut(id) else { return };
         if let Some(want) = c.hold_wanted.take() {
             if want != c.local_hold && !c.reinvite_busy {
@@ -1206,16 +1127,15 @@ impl Core {
         }
         let a = self.acct(c.acct).ok_or_else(|| invalid("no such account"))?;
         let me = format!("<sip:{}@{}>", a.cfg.user, a.cfg.host(c.alt).server);
-        let sent = self.send_in_dialog(
-            id,
-            "REFER",
-            vec![("Refer-To".into(), refer_to), ("Referred-By".into(), me)],
-            None,
-            Ctx::Refer { call: id, consult },
-        );
-        if sent.is_none() {
-            return Err(CommandError::Failed("cannot send the REFER".into()));
-        }
+        let (dialog, post) = (c.dialog.clone(), self.tx.clone());
+        tokio::spawn(async move {
+            let headers = vec![Header::ReferredBy(me.into())];
+            let result = dialog
+                .refer(rsipstack::sip::ReferTo::from(refer_to), Some(headers), None)
+                .await
+                .map_err(|e| e.to_string());
+            let _ = post.send(Ev::ReferDone { call: id, result });
+        });
         self.set_call(id, |call| call.state = CallState::Transferring);
         if let Some(k) = consult {
             self.set_call(k, |call| call.transfer_of = Some(id));
@@ -1224,12 +1144,13 @@ impl Core {
         Ok(Reply::Done)
     }
 
-    pub(crate) fn on_refer_final(&mut self, id: CallId, _consult: Option<CallId>, code: u16, reason: &str) {
-        if code >= 300 {
-            log::info!("sip: call {}: REFER refused: {code} {reason}", id.0);
+    pub fn on_refer_done(&mut self, id: CallId, result: Result<Option<Response>, String>) {
+        let ok = matches!(&result, Ok(Some(r)) if (200..300).contains(&r.status_code.code()));
+        if !ok {
+            log::info!("sip: call {}: REFER was not accepted", id.0);
             self.transfer_failed(id);
         }
-        // 2xx: the NOTIFYs carry the outcome.
+        // Accepted: the NOTIFYs carry the outcome.
     }
 
     // ---------------------------------------------------------- commands
@@ -1301,14 +1222,13 @@ impl Core {
                 self.refer(call, format!("<{uri}>"), None)
             }
             Command::TransferAttended { call, consult } => {
+                // Attended transfer: the transferee calls the consulted
+                // party, replacing our consultation dialog.
                 let k = self.established(consult)?;
-                let d = &k.dialog;
-                let replaces = util::percent_encode(&format!(
-                    "{};to-tag={};from-tag={}",
-                    d.call_id, d.remote_tag, d.local_tag
-                ));
-                let base = NameAddr::parse(&d.remote).uri;
-                let base = base.split('?').next().unwrap_or(&base).to_string();
+                let d = k.dialog.id();
+                let replaces =
+                    util::percent_encode(&format!("{};to-tag={};from-tag={}", d.call_id, d.remote_tag, d.local_tag));
+                let base = k.peer.split('?').next().unwrap_or(&k.peer).to_string();
                 self.established(call)?;
                 self.refer(call, format!("<{base}?Replaces={replaces}>"), Some(consult))
             }
@@ -1375,13 +1295,24 @@ impl Core {
                 if n.dtmf_tx_pt.is_some() {
                     self.media.send_dtmf(call, digit, 100);
                 } else {
+                    // No telephone-event agreed: SIP INFO.
+                    let dialog = c.dialog.clone();
                     let body = format!("Signal={digit}\r\nDuration=100\r\n").into_bytes();
-                    self.send_in_dialog(call, "INFO", Vec::new(), Some(("application/dtmf-relay", body)), Ctx::Other("INFO"));
+                    tokio::spawn(async move {
+                        let headers = vec![Header::ContentType("application/dtmf-relay".to_string().into())];
+                        let _ = dialog.info(Some(headers), Some(body)).await;
+                    });
                 }
                 Ok(Reply::Done)
             }
             Command::Pickup { blf_entry } => {
-                let b = self.cfg.blf.iter().find(|b| b.id == blf_entry).cloned().ok_or_else(|| invalid("no such BLF entry"))?;
+                let b = self
+                    .cfg
+                    .blf
+                    .iter()
+                    .find(|b| b.id == blf_entry)
+                    .cloned()
+                    .ok_or_else(|| invalid("no such BLF entry"))?;
                 if !b.pickup_prefix.is_empty() {
                     let target = format!("{}{}", b.pickup_prefix, b.number);
                     return self.dial(&target, Some(b.account), None, None, None, None).map(Reply::Call);
@@ -1457,52 +1388,16 @@ impl Core {
     }
 
     pub(crate) fn hangup(&mut self, id: CallId) -> CommandResult {
-        let c = self.call_mut(id).ok_or_else(|| invalid("no such call"))?;
+        let c = self.call(id).ok_or_else(|| invalid("no such call"))?;
         if c.ended {
             return Ok(Reply::Done);
         }
-        if c.answered {
-            self.send_bye(id);
-            self.end_call(id, EndCause::LocalHangup);
-        } else if c.outgoing {
-            match (c.invite, c.provisional_seen) {
-                (Some(inv), true) => self.send_cancel(inv),
-                _ => c.cancel_wanted = true,
-            }
-            self.end_call(id, EndCause::LocalHangup);
-        } else {
+        if !c.answered && !c.outgoing {
             return self.reject(id, 486);
         }
+        self.hangup_dialog(id);
+        self.end_call(id, EndCause::LocalHangup);
         Ok(Reply::Done)
-    }
-
-    /// PUBLISH of our own presence on every registered account.
-    fn publish_presence(&mut self, status: dphone_state::PresenceStatus, text: &str) {
-        for i in 0..self.accts.len() {
-            let a = &self.accts[i];
-            if !a.registered {
-                continue;
-            }
-            let h = a.cfg.host(a.alt);
-            let uri = format!("sip:{}@{}", a.cfg.user, h.server);
-            let spec = Spec {
-                method: "PUBLISH".into(),
-                ruri: uri.clone(),
-                from: format!("<{uri}>;tag={}", util::token(10)),
-                to: format!("<{uri}>"),
-                call_id: format!("{}@dphone", util::token(20)),
-                cseq: 1,
-                routes: Vec::new(),
-                headers: vec![("Event".into(), "presence".into()), ("Expires".into(), "3600".into())],
-                content_type: "application/pidf+xml".into(),
-                body: bodies::build_pidf(&uri, status, text).into_bytes(),
-                transport: h.transport,
-            };
-            let cred = Some(a.cfg.credentials(a.alt));
-            if let Ok((dest, _)) = self.account_dest(a) {
-                let _ = self.send(spec, dest, Ctx::Other("PUBLISH"), cred, Owner::None);
-            }
-        }
     }
 
     // ------------------------------------------------------------- media
@@ -1515,10 +1410,17 @@ impl Core {
                 let dead = self.call(call).is_some_and(|c| c.answered && !c.ended && !c.local_hold && !c.remote_hold);
                 if dead {
                     log::warn!("sip: call {}: no media; hanging up", call.0);
-                    self.send_bye(call);
+                    self.hangup_dialog(call);
                     self.end_call(call, EndCause::Error("no audio from the far end".into()));
                 }
             }
         }
     }
+}
+
+/// What `invite_for` needs before the call record exists.
+struct PendingCall {
+    acct: AccountId,
+    replaces: Option<String>,
+    referred_by: Option<String>,
 }
