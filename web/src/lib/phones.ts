@@ -341,22 +341,21 @@ function oldFamily(v: Old): Panel {
     // Body.
     {
       d: v.wing
-        ? `M306 212H${hr}V${yb}${bottomTo(hr)}L284 236Q286 212 306 212Z`
+        ? // Body and rapid-dial section as one outline: the section's
+          // bottom edge is straight, rising to the right from the end of
+          // the body's curve to a rounded bottom-right corner.
+          `M306 212H${xr - 24}Q${xr - 2} 212 ${xr - 2} 236L${xr - 1.3} ${yb - 38}Q${xr} ${yb - 16} ${xr - 22} ${yb - 14}L${hr} ${yb}${bottomTo(hr)}L284 236Q286 212 306 212Z`
         : `M306 212H${right - 40}Q${right - 20} 212 ${right - 18} 236L${xr - 1.3} ${yb - 20}Q${xr} ${yb} ${cr} ${yb}${bottomTo(cr)}L284 236Q286 212 306 212Z`,
       fill: CHARCOAL,
     },
   ];
-  // Rapid-dial section: part of the body's own surface (same color),
-  // joined edge to edge to the right of the silver housing, holding ten
-  // keys beside a label window (D50) or a second display (D70).  Its
-  // bottom edge is straight: from the end of the body's curve it rises
-  // to the right, to a rounded bottom-right corner.
+  // Rapid-dial section: part of the body's own surface (drawn in the body
+  // outline above), directly right of the silver housing, holding ten
+  // keys beside a label window (D50) or a second display (D70).
   let side: Panel["side"];
   let vbRight = right + 28;
   if (v.wing) {
     const wx = hr;
-    const rise = 16;
-    shapes.push({ d: `M${wx} 212H${xr - 24}Q${xr - 2} 212 ${xr - 2} 236L${xr - 1.3} ${yb - rise - 22}Q${xr} ${yb - rise} ${xr - 22} ${yb - rise + 2}L${wx} ${yb}Z`, fill: CHARCOAL });
     const kx = wx + 160;
     if (v.wing === "paper") {
       // D50: ten label rows behind a window, a key beside each row.
