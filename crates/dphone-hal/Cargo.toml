@@ -1,0 +1,12 @@
+[package]
+name = "dphone-hal"
+description = "Open DPhone: hardware abstraction (phone and sim backends)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+dphone-state = { path = "../dphone-state" }
+log = "0.4"
+libc = "0.2"
