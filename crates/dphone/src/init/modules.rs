@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use log::{debug, info, warn};
 
-use crate::model::Family;
+use crate::model::{Family, Model};
 use crate::sys;
 
 pub const MODULES_ROOT: &str = "/lib/modules";
@@ -213,13 +213,23 @@ pub fn modprobe(index: &Index, name: &str, params: &str) -> io::Result<Vec<Strin
     Ok(done)
 }
 
-/// Load the boot list for a family.  Nothing here is fatal: a missing or
-/// failing module is logged and the boot goes on.
-pub fn load_boot_modules(family: Family) {
+/// Modules one model needs beyond its family's list: Bluetooth on the D65.
+pub fn model_list(model: Model) -> Vec<String> {
+    match model {
+        Model::D65 => dphone_bt::KERNEL_MODULES.iter().map(|s| s.to_string()).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Load the boot list for a model: its family's modules, then its own.
+/// Nothing here is fatal: a missing or failing module is logged and the
+/// boot goes on.
+pub fn load_boot_modules(model: Model) {
+    let family = model.family();
     set_firmware_path(family);
     let index = Index::scan(Path::new(MODULES_ROOT));
     let have_deps = !index.deps.is_empty();
-    for name in boot_list(family) {
+    for name in boot_list(family).into_iter().chain(model_list(model)) {
         if index.path(&name).is_none() {
             // Without modules.dep the list carries dependency names that may
             // be built in; say so quietly.
@@ -285,5 +295,12 @@ mod tests {
     #[test]
     fn list_file() {
         assert_eq!(parse_list("# comment\ndw_dmac\n\n  bcmring_vpm # dsp\n"), ["dw_dmac", "bcmring_vpm"]);
+    }
+
+    #[test]
+    fn the_d65_also_loads_bluetooth() {
+        assert!(model_list(Model::D60).is_empty());
+        let d65 = model_list(Model::D65);
+        assert!(d65.iter().any(|m| m == "hci_uart") && d65.iter().any(|m| m == "snd-soc-bcmring-pcm"));
     }
 }

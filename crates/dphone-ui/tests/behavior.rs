@@ -577,3 +577,47 @@ fn paging_screen_pages_a_group_and_stops_a_page() {
         assert_eq!(Rig::drain(&paging), [Command::StopPage]);
     }
 }
+
+#[test]
+fn bluetooth_application_asks_before_pairing() {
+    let mut r = Rig::new(Model::D65);
+    let bt = r.store.handle(Domain::Bluetooth);
+    let show = |r: &mut Rig| {
+        let shown = r.store.send(Command::ShowScreen { name: "bluetooth".into() });
+        r.ui.pump();
+        assert_eq!(shown.wait(), Ok(Reply::Done));
+    };
+    // Off: the only row turns it on.
+    r.store.update::<Bluetooth, _>(|b| b.present = true);
+    show(&mut r);
+    assert_eq!(r.screen(), "bluetooth");
+    r.tap(Key::Select);
+    assert_eq!(Rig::drain(&bt), [Command::SetBluetooth { on: true }]);
+
+    // A headset asks to pair: the question is the first row, with the six
+    // digits to compare; selecting it accepts, the next row refuses.
+    let addr = "00:1B:DC:0F:A1:02".to_string();
+    r.store.update::<Bluetooth, _>(|b| {
+        b.enabled = true;
+        b.pairing = Some(BluetoothPairing { addr: addr.clone(), name: "Headset".into(), passkey: Some(42), pin_needed: false });
+    });
+    r.ui.pump();
+    r.tap(Key::Select);
+    assert_eq!(Rig::drain(&bt), [Command::BluetoothAnswerPairing { addr: addr.clone(), accept: true, pin: None }]);
+    r.tap(Key::Down);
+    r.tap(Key::Select);
+    assert_eq!(Rig::drain(&bt), [Command::BluetoothAnswerPairing { addr: addr.clone(), accept: false, pin: None }]);
+
+    // An old device needs a PIN: it is typed, not assumed.
+    r.store.update::<Bluetooth, _>(|b| b.pairing.as_mut().unwrap().pin_needed = true);
+    r.ui.pump();
+    r.tap(Key::Up);
+    r.tap(Key::Select);
+    assert_eq!(r.screen(), "bluetooth-pin");
+    for d in [1, 2, 3, 4] {
+        r.tap(Key::Digit(d));
+    }
+    r.tap(Key::Select);
+    assert_eq!(Rig::drain(&bt), [Command::BluetoothAnswerPairing { addr, accept: true, pin: Some("1234".into()) }]);
+    assert_eq!(r.screen(), "bluetooth");
+}

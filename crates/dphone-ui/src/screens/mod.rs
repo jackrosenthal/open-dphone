@@ -11,6 +11,7 @@ use crate::UiConfig;
 use dphone_state::{Command, Key, Model, State, Store};
 
 pub(crate) mod app;
+pub(crate) mod bluetooth;
 pub(crate) mod boot;
 pub(crate) mod calls;
 pub(crate) mod diag;

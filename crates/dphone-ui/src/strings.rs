@@ -229,3 +229,19 @@ pub const ROLLED_BACK: &str = "Firmware was rolled back";
 pub const WEEKDAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 pub const MONTHS: [&str; 12] =
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Bluetooth.
+pub const BLUETOOTH: &str = "Bluetooth";
+pub const BT_NO_CONTROLLER: &str = "No Bluetooth controller";
+pub const BT_ENTER_PIN: &str = "Enter the PIN of";
+pub const BT_PAIR_WITH: &str = "Pair with";
+pub const BT_REFUSE: &str = "Do not pair";
+pub const BT_CONNECTED: &str = "Connected";
+pub const BT_PAIRED: &str = "Paired";
+pub const BT_PAIRING: &str = "Pairing";
+pub const BT_ADD_DEVICE: &str = "Add a headset";
+pub const BT_CONNECT: &str = "Connect";
+pub const BT_DISCONNECT: &str = "Disconnect";
+pub const BT_FORGET: &str = "Forget";
+pub const BT_SEARCHING: &str = "Searching";
+pub const BT_SEARCH_AGAIN: &str = "Search again";

@@ -34,6 +34,7 @@ use crate::diag::Output;
 
 pub mod apps;
 pub mod audio;
+pub mod bluetooth;
 pub mod ehs;
 pub mod expansion;
 pub mod hal;
@@ -178,6 +179,9 @@ pub async fn start(ctx: &Context, opts: &Options) {
     web::start(ctx, opts, config.clone(), ui.as_ref().map(|u| u.tap.clone()));
     #[cfg(not(feature = "web"))]
     let _ = opts;
+
+    // Bluetooth headsets (D65).
+    bluetooth::start(ctx, audio.clone());
 
     // Expansion modules (new family).
     {

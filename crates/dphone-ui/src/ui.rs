@@ -803,6 +803,7 @@ impl Ui {
                     "apps" => Some(Some(menus::launcher())),
                     "forward" => Some(Some(menus::forward_menu())),
                     "paging" => Some(Some(menus::paging())),
+                    "bluetooth" => Some(Some(crate::screens::bluetooth::menu())),
                     "settings" => Some(Some(menus::settings())),
                     "network" => Some(Some(menus::network_menu())),
                     "status" | "about" => Some(Some(menus::about())),

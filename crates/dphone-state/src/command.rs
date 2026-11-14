@@ -39,10 +39,12 @@ pub enum Domain {
     System,
     /// Multicast paging (the `dphone` main role).
     Paging,
+    /// Bluetooth headsets (the `dphone` main role).
+    Bluetooth,
 }
 
 impl Domain {
-    pub const COUNT: usize = 10;
+    pub const COUNT: usize = 11;
 }
 
 /// Which forward rule a [`Command::SetForward`] changes.
@@ -185,6 +187,23 @@ pub enum Command {
     /// Stop paging, or stop listening to the page that is playing.
     StopPage,
 
+    // ---- Bluetooth (addresses as text, `00:1B:DC:0F:A1:02`)
+    /// Turn Bluetooth on or off; remembered across reboots.
+    SetBluetooth { on: bool },
+    /// Look for devices (`on`), or stop looking.
+    BluetoothDiscovery { on: bool },
+    /// Pair with a device and connect to it.
+    BluetoothPair { addr: String },
+    /// Answer the pairing question in `Bluetooth::pairing`.  `pin` is for a
+    /// device that needs one typed in.
+    BluetoothAnswerPairing { addr: String, accept: bool, pin: Option<String> },
+    /// Forget a paired device.
+    BluetoothUnpair { addr: String },
+    /// Connect to a paired headset.
+    BluetoothConnect { addr: String },
+    /// Drop the headset connection.
+    BluetoothDisconnect,
+
     Reboot { reason: String },
     FactoryReset,
     /// Set the wall clock (Unix seconds).
@@ -219,6 +238,9 @@ impl Command {
             InstallFirmware { .. } | ConfirmTrial | Rollback => Domain::Update,
             Reboot { .. } | FactoryReset | SetTime { .. } => Domain::System,
             StartPage { .. } | StopPage => Domain::Paging,
+            SetBluetooth { .. } | BluetoothDiscovery { .. } | BluetoothPair { .. }
+            | BluetoothAnswerPairing { .. } | BluetoothUnpair { .. } | BluetoothConnect { .. }
+            | BluetoothDisconnect => Domain::Bluetooth,
         }
     }
 }

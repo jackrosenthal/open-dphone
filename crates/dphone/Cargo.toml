@@ -24,6 +24,7 @@ web = ["dep:dphone-web"]
 dphone-state = { path = "../dphone-state" }
 dphone-config = { path = "../dphone-config" }
 dphone-hal = { path = "../dphone-hal" }
+dphone-bt = { path = "../dphone-bt" }
 dphone-net = { path = "../dphone-net" }
 dphone-update = { path = "../dphone-update" }
 eff = { path = "../eff" }

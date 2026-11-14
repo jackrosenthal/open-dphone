@@ -156,7 +156,7 @@ pub fn run(hooks: Hooks) -> ! {
     sup.begin_trial_accounting();
     sup.wd.feed();
     if let Some(d) = detected {
-        modules::load_boot_modules(d.model.family());
+        modules::load_boot_modules(d.model);
     }
     sup.wd.feed();
     sup.run()

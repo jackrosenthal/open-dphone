@@ -39,10 +39,11 @@ pub enum Topic {
     Log,
     Paging,
     Expansion,
+    Bluetooth,
 }
 
 impl Topic {
-    pub const ALL: [Topic; 20] = [
+    pub const ALL: [Topic; 21] = [
         Topic::System,
         Topic::Network,
         Topic::Provisioning,
@@ -63,6 +64,7 @@ impl Topic {
         Topic::Log,
         Topic::Paging,
         Topic::Expansion,
+        Topic::Bluetooth,
     ];
 }
 
@@ -139,6 +141,7 @@ pub struct State {
     pub ui: Arc<Ui>,
     pub paging: Arc<Paging>,
     pub expansion: Arc<Expansion>,
+    pub bluetooth: Arc<Bluetooth>,
 }
 
 impl State {
@@ -163,6 +166,7 @@ impl State {
             ui: Default::default(),
             paging: Default::default(),
             expansion: Default::default(),
+            bluetooth: Default::default(),
         }
     }
 }
@@ -210,6 +214,7 @@ topic_state!(Health, Health, health);
 topic_state!(Ui, Ui, ui);
 topic_state!(Paging, Paging, paging);
 topic_state!(Expansion, Expansion, expansion);
+topic_state!(Bluetooth, Bluetooth, bluetooth);
 
 // ---------------------------------------------------------------- System
 
@@ -1537,5 +1542,58 @@ pub struct Expansion {
     pub enabled: bool,
     pub modules: Vec<ExpansionModule>,
     /// Why the subsystem is not running; empty when fine.
+    pub error: String,
+}
+
+// ------------------------------------------------------------- Bluetooth
+
+/// A Bluetooth device, found or paired.
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct BluetoothDevice {
+    /// Address as text, `00:1B:DC:0F:A1:02`.
+    pub addr: String,
+    /// Empty when the device has not said.
+    pub name: String,
+    /// Signal strength in dBm when it was found; 0 for a paired device
+    /// that is not in range.
+    pub rssi: i8,
+}
+
+/// A pairing that waits for the user.
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct BluetoothPairing {
+    pub addr: String,
+    pub name: String,
+    /// Six digits to compare with the other device's display, when it has
+    /// one.
+    pub passkey: Option<u32>,
+    /// The device pairs the old way and needs a PIN typed in.
+    pub pin_needed: bool,
+}
+
+/// Bluetooth headsets (D65).  Owner: the `dphone` main role (Bluetooth
+/// subsystem).
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Bluetooth {
+    /// This model has Bluetooth and its controller answered.
+    pub present: bool,
+    /// The user wants Bluetooth on (kept across reboots).
+    pub enabled: bool,
+    pub powered: bool,
+    /// The controller's own address.
+    pub address: String,
+    pub discovering: bool,
+    /// Devices seen by the current or last discovery, strongest first.
+    pub found: Vec<BluetoothDevice>,
+    pub paired: Vec<BluetoothDevice>,
+    /// Address of the pairing in progress, before the user is asked.
+    pub pairing_with: String,
+    /// A question for the user: accept this pairing?
+    pub pairing: Option<BluetoothPairing>,
+    /// Address of the connected headset; empty when none.
+    pub connected: String,
+    /// Call audio is on the headset.
+    pub audio_open: bool,
+    /// Why the last operation failed; empty when fine.
     pub error: String,
 }
