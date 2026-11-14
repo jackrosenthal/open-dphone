@@ -339,21 +339,53 @@ pub(crate) fn forward_menu() -> Box<dyn Screen> {
 
 // ---------------------------------------------------------------- paging
 
+/// Multicast paging: the page in progress (select it to stop it), the
+/// groups this phone can page (select one to page it), and any SIP paging
+/// calls.
 pub(crate) fn paging() -> Box<dyn Screen> {
-    Info::boxed("paging", tr::PAGING_TITLE, |cx| {
-        let mut rows: Vec<(String, String)> = cx
-            .st
-            .calls
-            .live()
-            .filter(|c| c.paging)
-            .map(|c| (c.remote.display().to_string(), calls::call_status(c, cx.now_ms).0))
-            .collect();
-        if rows.is_empty() {
-            rows.push((String::new(), tr::NO_CALLS.to_string()));
-        } else {
-            rows.insert(0, (tr::PAGE_ACTIVE.to_string(), String::new()));
+    use dphone_state::PageActivity;
+    Menu::boxed("paging", tr::PAGING_TITLE, |cx| {
+        let mut items = Vec::new();
+        let paging = &cx.st.paging;
+        let current = match &paging.activity {
+            PageActivity::Idle => None,
+            PageActivity::Receiving { name, .. } => Some((tr::PAGE_RECEIVING, name)),
+            PageActivity::Blocked { name, .. } => Some((tr::PAGE_BLOCKED, name)),
+            PageActivity::Sending { name, .. } => Some((tr::PAGE_SENDING, name)),
+        };
+        let busy = current.is_some();
+        if let Some((what, name)) = current {
+            items.push(
+                Item::new(format!("{what} {name}"), |cx| {
+                    cx.post(Command::StopPage);
+                    Nav::Stay
+                })
+                .value(tr::PAGE_STOP)
+                .icon("page"),
+            );
         }
-        rows
+        if !busy {
+            for group in &paging.broadcasts {
+                let id = group.id.clone();
+                items.push(
+                    Item::new(group.name.clone(), move |cx| {
+                        cx.post(Command::StartPage { id: id.clone() });
+                        Nav::Stay
+                    })
+                    .icon("page"),
+                );
+            }
+        }
+        for c in cx.st.calls.live().filter(|c| c.paging) {
+            items.push(Item::new(c.remote.display().to_string(), |_| Nav::Stay).value(calls::call_status(c, cx.now_ms).0));
+        }
+        if !paging.error.is_empty() {
+            items.push(Item::new(paging.error.clone(), |_| Nav::Stay));
+        }
+        if items.is_empty() {
+            items.push(Item::new(tr::NO_PAGE_GROUPS, |_| Nav::Stay));
+        }
+        items
     })
 }
 

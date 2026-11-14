@@ -37,10 +37,12 @@ pub enum Topic {
     Ui,
     /// The log ring got new entries (coalesced).
     Log,
+    Paging,
+    Expansion,
 }
 
 impl Topic {
-    pub const ALL: [Topic; 18] = [
+    pub const ALL: [Topic; 20] = [
         Topic::System,
         Topic::Network,
         Topic::Provisioning,
@@ -59,6 +61,8 @@ impl Topic {
         Topic::Health,
         Topic::Ui,
         Topic::Log,
+        Topic::Paging,
+        Topic::Expansion,
     ];
 }
 
@@ -133,6 +137,8 @@ pub struct State {
     pub apps: Arc<Apps>,
     pub health: Arc<Health>,
     pub ui: Arc<Ui>,
+    pub paging: Arc<Paging>,
+    pub expansion: Arc<Expansion>,
 }
 
 impl State {
@@ -155,6 +161,8 @@ impl State {
             apps: Default::default(),
             health: Default::default(),
             ui: Default::default(),
+            paging: Default::default(),
+            expansion: Default::default(),
         }
     }
 }
@@ -200,6 +208,8 @@ topic_state!(Update, Update, update);
 topic_state!(Apps, Apps, apps);
 topic_state!(Health, Health, health);
 topic_state!(Ui, Ui, ui);
+topic_state!(Paging, Paging, paging);
+topic_state!(Expansion, Expansion, expansion);
 
 // ---------------------------------------------------------------- System
 
@@ -1465,4 +1475,67 @@ pub struct Ui {
     pub notices: Vec<Notice>,
     /// Digits typed into the dialer so far (shown by the web UI too).
     pub dial_buffer: String,
+}
+
+// ---------------------------------------------------------------- Paging
+
+/// A multicast paging group from the configuration (`<multicastpage>`).
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct PageGroup {
+    pub id: String,
+    pub name: String,
+    /// Group address and port.
+    pub addr: String,
+    pub port: u16,
+}
+
+/// What multicast paging is doing.
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PageActivity {
+    #[default]
+    Idle,
+    /// A page is playing; `group` is the listener's `id`.
+    Receiving { group: String, name: String },
+    /// A page arrived and was not played because a call is up and the
+    /// group may not interrupt calls.
+    Blocked { group: String, name: String },
+    /// This phone is paging; `group` is the broadcast's `id`.
+    Sending { group: String, name: String },
+}
+
+/// Multicast paging.  Owner: the `dphone` main role (paging subsystem).
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Paging {
+    /// Groups this phone listens to.
+    pub listeners: Vec<PageGroup>,
+    /// Groups this phone can page (`Command::StartPage`).
+    pub broadcasts: Vec<PageGroup>,
+    pub activity: PageActivity,
+    /// Why the last page could not be sent or played; empty when fine.
+    pub error: String,
+}
+
+// ------------------------------------------------------------- Expansion
+
+/// One expansion module (EXP100 or EXP150) attached to the PC port.
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ExpansionModule {
+    /// Node number, 0 for the module nearest the phone.
+    pub node: u8,
+    /// The module's address on the private expansion network.
+    pub addr: String,
+    /// Version text from its discovery message.
+    pub version: String,
+    /// The key page it shows, from 0.
+    pub page: u8,
+}
+
+/// Expansion modules.  Owner: the `dphone` main role (expansion subsystem).
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Expansion {
+    /// The configuration enables expansion modules.
+    pub enabled: bool,
+    pub modules: Vec<ExpansionModule>,
+    /// Why the subsystem is not running; empty when fine.
+    pub error: String,
 }

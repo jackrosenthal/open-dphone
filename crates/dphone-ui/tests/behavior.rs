@@ -550,3 +550,30 @@ fn run_loop_on_its_own_thread() {
     handle.quit();
     thread.join().unwrap();
 }
+
+#[test]
+fn paging_screen_pages_a_group_and_stops_a_page() {
+    let mut r = Rig::new(Model::D60);
+    let paging = r.store.handle(Domain::Paging);
+    r.store.update::<Paging, _>(|p| {
+        p.broadcasts = vec![PageGroup { id: "dock".into(), name: "Loading dock".into(), addr: "239.1.1.1".into(), port: 5000 }];
+    });
+    let shown = r.store.send(Command::ShowScreen { name: "paging".into() });
+    r.ui.pump();
+    assert_eq!(shown.wait(), Ok(Reply::Done));
+    assert_eq!(r.screen(), "paging");
+    // Selecting the group pages it.
+    r.tap(Key::Select);
+    assert_eq!(Rig::drain(&paging), [Command::StartPage { id: "dock".into() }]);
+    // While a page is in progress the first row stops it, whether this
+    // phone is paging or listening.
+    for activity in [
+        PageActivity::Sending { group: "dock".into(), name: "Loading dock".into() },
+        PageActivity::Receiving { group: "1".into(), name: "Everyone".into() },
+    ] {
+        r.store.update::<Paging, _>(|p| p.activity = activity.clone());
+        r.ui.pump();
+        r.tap(Key::Select);
+        assert_eq!(Rig::drain(&paging), [Command::StopPage]);
+    }
+}

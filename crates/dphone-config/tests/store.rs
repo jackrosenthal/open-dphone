@@ -119,6 +119,12 @@ fn fetched_config_network_selection_and_typed_view() {
     assert_eq!(r.tones.len(), 4);
     assert_eq!(r.alerts[0].ring_type, "answer");
     assert_eq!(c.multicast_listeners()[0].addr, "239.1.1.1");
+    assert_eq!(c.multicast_listeners()[0].interrupt_calls, 1);
+    let groups = c.multicast_broadcasts();
+    assert_eq!(groups.iter().map(|b| (b.id.as_str(), b.name.as_str(), b.codec.as_str())).collect::<Vec<_>>(), [
+        ("b1", "Warehouse", "G722"),
+        ("b2", "Office", "PCMU"),
+    ]);
     let idle = c.softkeys("idle");
     assert_eq!(idle.len(), 2);
     assert_eq!(idle[1].args, ["voicemail"]);

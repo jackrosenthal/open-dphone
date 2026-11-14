@@ -356,7 +356,23 @@ pub struct MulticastListener {
     pub addr: String,
     pub port: u16,
     pub priority: u32,
-    pub interrupt_calls: bool,
+    /// What a page does while a call is connected: 0 does not interrupt
+    /// it, 1 puts it on hold and plays the page, and 2 drops the page.
+    pub interrupt_calls: u8,
+    /// A page is also dropped while the connected call is with this
+    /// extension (the page's own source).
+    pub extension: String,
+}
+
+/// A group this phone can page: a `<broadcast>` in `<multicastpage>`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MulticastBroadcast {
+    pub id: String,
+    pub name: String,
+    pub addr: String,
+    pub port: u16,
+    /// `PCMU` (the default), `PCMA`, or `G722`.
+    pub codec: String,
 }
 
 /// Lamp behavior for a line state.
@@ -788,11 +804,33 @@ impl Config {
                         addr: s(e, "addr"),
                         port: num(e, "port").unwrap_or(0),
                         priority: num(e, "priority").unwrap_or(0),
-                        interrupt_calls: e.attr("interrupt_calls").is_some_and(truthy),
+                        interrupt_calls: num(e, "interrupt_calls").unwrap_or(0),
+                        extension: s(e, "extension"),
                     })
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Groups this phone can page.  Entries without an `id`, address, or
+    /// port are dropped, and of two with the same `id` the first counts, as
+    /// in stock.
+    pub fn multicast_broadcasts(&self) -> Vec<MulticastBroadcast> {
+        let mut out: Vec<MulticastBroadcast> = Vec::new();
+        for e in self.root.child("multicastpage").into_iter().flat_map(|m| m.children_named("broadcast")) {
+            let b = MulticastBroadcast {
+                id: s(e, "id"),
+                name: s(e, "name"),
+                addr: s(e, "addr"),
+                port: num(e, "port").unwrap_or(0),
+                codec: e.attr("codec").filter(|c| !c.is_empty()).unwrap_or("PCMU").to_string(),
+            };
+            if b.id.is_empty() || b.addr.is_empty() || b.port == 0 || out.iter().any(|o| o.id == b.id) {
+                continue;
+            }
+            out.push(b);
+        }
+        out
     }
 
     /// An `<appconfig id>` element, for the app runtime.

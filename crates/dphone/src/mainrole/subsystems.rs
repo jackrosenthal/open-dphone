@@ -37,6 +37,7 @@ pub mod audio;
 pub mod ehs;
 pub mod hal;
 pub mod net;
+pub mod paging;
 pub mod remote;
 pub mod system;
 pub mod telephony;
@@ -164,6 +165,15 @@ pub async fn start(ctx: &Context, opts: &Options) {
     web::start(ctx, opts, config.clone(), ui.as_ref().map(|u| u.tap.clone()));
     #[cfg(not(feature = "web"))]
     let _ = opts;
+
+    // Multicast paging.
+    {
+        let paging = paging::start(ctx, audio.clone());
+        if let Some(cfg) = config.as_ref().map(|c| c.lock().unwrap().config()) {
+            paging.apply_config(&cfg);
+        }
+        hub.on_change(move |cfg| paging.apply_config(cfg));
+    }
 
     let _ = (audio, hal, telephony, ui);
     finish(ctx);

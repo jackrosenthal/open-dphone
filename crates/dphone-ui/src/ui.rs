@@ -802,6 +802,7 @@ impl Ui {
                     "call_log" => Some(Some(menus::call_log())),
                     "apps" => Some(Some(menus::launcher())),
                     "forward" => Some(Some(menus::forward_menu())),
+                    "paging" => Some(Some(menus::paging())),
                     "settings" => Some(Some(menus::settings())),
                     "network" => Some(Some(menus::network_menu())),
                     "status" | "about" => Some(Some(menus::about())),

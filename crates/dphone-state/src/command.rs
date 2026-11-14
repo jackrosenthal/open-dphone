@@ -37,10 +37,12 @@ pub enum Domain {
     Update,
     /// Reboot, factory reset, time (the `dphone` main role).
     System,
+    /// Multicast paging (the `dphone` main role).
+    Paging,
 }
 
 impl Domain {
-    pub const COUNT: usize = 9;
+    pub const COUNT: usize = 10;
 }
 
 /// Which forward rule a [`Command::SetForward`] changes.
@@ -176,6 +178,13 @@ pub enum Command {
     Rollback,
 
     // ---- System
+    // ---- Paging
+    /// Page a multicast group (`id` of one of `Paging::broadcasts`).  A
+    /// call in progress is put on hold first.
+    StartPage { id: String },
+    /// Stop paging, or stop listening to the page that is playing.
+    StopPage,
+
     Reboot { reason: String },
     FactoryReset,
     /// Set the wall clock (Unix seconds).
@@ -209,6 +218,7 @@ impl Command {
             }
             InstallFirmware { .. } | ConfirmTrial | Rollback => Domain::Update,
             Reboot { .. } | FactoryReset | SetTime { .. } => Domain::System,
+            StartPage { .. } | StopPage => Domain::Paging,
         }
     }
 }

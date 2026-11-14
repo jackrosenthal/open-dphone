@@ -89,6 +89,8 @@ pub const FETCHED: &str = r#"<?xml version="1.0"?>
   </ringtones>
   <multicastpage>
     <listener id="1" name="All" addr="239.1.1.1" port="5000" priority="1" interrupt_calls="1" />
+    <broadcast id="b1" name="Warehouse" addr="239.1.1.2" port="5002" codec="G722" />
+    <broadcast id="b2" name="Office" addr="239.1.1.4" port="5006" />
   </multicastpage>
   <keymap>
     <state id="idle" conflict="replace">

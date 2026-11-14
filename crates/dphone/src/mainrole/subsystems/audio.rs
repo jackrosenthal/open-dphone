@@ -78,6 +78,8 @@ struct Inner {
     ports: HashMap<CallId, u16>,
     started: HashMap<CallId, bool>,
     connected: Vec<CallId>,
+    /// A multicast page's stream, connected whatever call control says.
+    page: Option<CallId>,
     /// Path the user or call control asked for explicitly.
     requested: Option<AudioPath>,
     tone: Option<Tone>,
@@ -258,6 +260,14 @@ impl AudioService {
         self.refresh();
     }
 
+    /// Connect a multicast page's stream to the audio path (`None` to
+    /// disconnect).  Unlike [`AudioService::connect`], which call control
+    /// replaces wholesale, this stays until changed.
+    pub fn connect_page(&self, call: Option<CallId>) {
+        self.inner.lock().unwrap().page = call;
+        self.refresh();
+    }
+
     pub fn tone(&self, tone: Option<Tone>) {
         {
             let mut inner = self.inner.lock().unwrap();
@@ -303,7 +313,7 @@ impl AudioService {
         let (off_hook, headset_mode, volumes) =
             self.store.read::<Audio, _>(|a| (a.off_hook, a.headset_mode, (a.handset_volume, a.headset_volume, a.speaker_volume)));
         let mut inner = self.inner.lock().unwrap();
-        let wants_voice = !inner.connected.is_empty() || inner.tone.is_some() || inner.sound;
+        let wants_voice = !inner.connected.is_empty() || inner.page.is_some() || inner.tone.is_some() || inner.sound;
         if !wants_voice && !inner.ringing {
             // Nothing sounding: an explicit request does not outlive it.
             if inner.requested.is_some() && inner.slots.iter().all(Option::is_none) {
@@ -337,7 +347,7 @@ impl AudioService {
         }
         let mut mask = 0u8;
         for (slot, call) in inner.slots.iter().enumerate() {
-            if call.is_some_and(|c| inner.connected.contains(&c)) {
+            if call.is_some_and(|c| inner.connected.contains(&c) || inner.page == Some(c)) {
                 mask |= 1 << slot;
             }
         }
@@ -601,6 +611,7 @@ pub async fn start(ctx: &Context, hal: Option<SharedHal>) -> AudioService {
             ports: HashMap::new(),
             started: HashMap::new(),
             connected: Vec::new(),
+            page: None,
             requested: None,
             tone: None,
             ringing: false,

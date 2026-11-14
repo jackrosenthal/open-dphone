@@ -199,6 +199,11 @@ pub const LAMPS_CYCLING: &str = "Cycling all lamps";
 // Paging.
 pub const PAGING_TITLE: &str = "Paging";
 pub const PAGE_ACTIVE: &str = "Page in progress";
+pub const PAGE_RECEIVING: &str = "Page from";
+pub const PAGE_SENDING: &str = "Paging";
+pub const PAGE_BLOCKED: &str = "Page waiting";
+pub const PAGE_STOP: &str = "Stop";
+pub const NO_PAGE_GROUPS: &str = "No page groups";
 
 // Volume.
 pub const VOL_HANDSET: &str = "Handset";
