@@ -33,7 +33,12 @@ pub struct FakeServer {
     /// Request types in arrival order.
     pub log: Vec<String>,
     pub user_agent: String,
-    tokens: Vec<Vec<u8>>,
+    /// Per phone (named by its extension): the MAC of its last accepted
+    /// token request or token presentation, spelled as that request
+    /// spelled it.
+    pub last_mac: HashMap<String, Vec<u8>>,
+    /// `X-Digium-AppServer-MACAddress` of every request, in arrival order.
+    pub macs: Vec<Vec<u8>>,
 }
 
 impl FakeServer {
@@ -51,8 +56,36 @@ impl FakeServer {
             md5: None,
             log: Vec::new(),
             user_agent: String::new(),
-            tokens: Vec::new(),
+            last_mac: HashMap::new(),
+            macs: Vec::new(),
         }
+    }
+
+    /// Issues a token as the real server does (`<phone>/<MAC>/<hash>/<hash>`,
+    /// the MAC spelled as the request spelled it) and records the MAC.
+    /// Public so that a test can stand in for another client of the same
+    /// phone (stock firmware).
+    pub fn issue_token(&mut self, phone: &str, mac: &[u8]) -> Vec<u8> {
+        self.last_mac.insert(phone.to_string(), mac.to_vec());
+        format!("{phone}/{}/2090090897/2090090897", String::from_utf8_lossy(mac)).into_bytes()
+    }
+
+    /// The real server's token check: the token must begin with
+    /// `<phone>/<the phone's last MAC>`, byte for byte; a token that
+    /// passes moves the phone's last MAC to the presenting request's.
+    pub fn present_token(&mut self, token: &[u8], mac: &[u8]) -> bool {
+        let Some(slash) = token.iter().position(|&c| c == b'/').filter(|&i| i > 0) else { return false };
+        let phone = String::from_utf8_lossy(&token[..slash]).into_owned();
+        let Some(last) = self.last_mac.get(&phone) else { return false };
+        let mut candidate = token[..=slash].to_vec();
+        candidate.extend_from_slice(last);
+        if !token.starts_with(&candidate) {
+            return false;
+        }
+        if !mac.is_empty() {
+            self.last_mac.insert(phone, mac.to_vec());
+        }
+        true
     }
 
     pub fn count(&self, request_type: &str) -> usize {
@@ -136,6 +169,7 @@ impl FakeServer {
         if let Some(ua) = request.first.header(headers::DIGIUM_USER_AGENT) {
             self.user_agent = String::from_utf8_lossy(ua).into_owned();
         }
+        self.macs.push(request.mac.clone());
         let mut reply = Outgoing::new();
         reply.id = request.id.clone();
         reply.response_type = types::response_type_for(&request_type).unwrap_or("Error").into();
@@ -162,7 +196,8 @@ impl FakeServer {
             return out;
         }
 
-        let token_ok = self.tokens.contains(&request.config_token);
+        let carries_token = [types::VERIFY_REQUEST, types::CONFIG_REQUEST].contains(&request_type.as_str());
+        let token_ok = carries_token && self.present_token(&request.config_token, &request.mac);
         match request_type.as_str() {
             types::USERLIST_REQUEST => {
                 let users: Vec<String> = self
@@ -175,16 +210,15 @@ impl FakeServer {
             types::TOKEN_REQUEST => {
                 let user = String::from_utf8_lossy(&request.username).into_owned();
                 let by_mac = !self.token_reqs.contains("user");
-                match self.users.iter().find(|(e, _, _)| *e == user || by_mac) {
+                let found = self.users.iter().find(|(e, _, _)| *e == user || by_mac).cloned();
+                match found {
                     None => reply.error = errors::msg::USER_NOT_FOUND,
                     Some((_, _, pin)) if self.token_reqs.contains("pass") && request.password != pin.as_bytes() => {
                         reply.error = errors::msg::INVALID_PASSWORD
                     }
                     Some((ext, _, _)) => {
-                        let token = format!("tok-{ext}-{}", self.tokens.len()).into_bytes();
-                        self.tokens.push(token.clone());
-                        reply.config_token = token;
-                        reply.username = ext.clone().into_bytes();
+                        reply.config_token = self.issue_token(&ext, &request.mac);
+                        reply.username = ext.into_bytes();
                     }
                 }
             }

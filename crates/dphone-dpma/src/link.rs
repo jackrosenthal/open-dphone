@@ -46,6 +46,22 @@ pub struct AppResponse {
     pub body: Vec<u8>,
 }
 
+/// The MAC address as `X-Digium-AppServer-MACAddress` carries it: twelve
+/// uppercase hex digits, the spelling of stock's `core` (it prints the
+/// address with `%.2X`, removes the colons, and uppercases the result).
+///
+/// The case matters.  A configuration token is `<phone>/<MAC>/...` with
+/// the MAC spelled as the TokenRequest spelled it, and the server accepts
+/// a token only while it begins with `<phone>/<the MAC of the phone's
+/// last accepted request>`, compared byte for byte; each accepted request
+/// replaces that MAC with its own spelling.  So a token saved by a client
+/// of the other spelling passes one request (the VerifyRequest) and is
+/// refused from then on with -192, and stock, which shares the saved token
+/// in `configurator.xml`, stops at "Token Error".
+pub(crate) fn wire_mac(mac: &str) -> String {
+    mac.to_ascii_uppercase()
+}
+
 struct State {
     session: Session,
     server: String,
@@ -62,7 +78,7 @@ pub(crate) struct Link {
 
 impl Link {
     pub fn new(cfg: DpmaConfig, transport: Arc<dyn Transport>, events: mpsc::UnboundedSender<Incoming>) -> Link {
-        let session = Session::new(cfg.mac.clone().into_bytes());
+        let session = Session::new(wire_mac(&cfg.mac).into_bytes());
         Link {
             cfg,
             transport,
@@ -286,5 +302,14 @@ mod tests {
         let r = split_http(b"{\"x\":1}", Some(500));
         assert_eq!((r.status, r.body.as_slice()), (500, &b"{\"x\":1}"[..]));
         assert!(split_http(b"empty body", None).body.is_empty());
+    }
+
+    #[test]
+    fn mac_header_spelling() {
+        // `DpmaConfig` normalizes to lowercase digits; the wire form is
+        // stock's uppercase.
+        let cfg = DpmaConfig::new("00:0f:d3:0a:7b:d8", "Digium D60 3_0_0");
+        assert_eq!(cfg.mac, "000fd30a7bd8");
+        assert_eq!(wire_mac(&cfg.mac), "000FD30A7BD8");
     }
 }

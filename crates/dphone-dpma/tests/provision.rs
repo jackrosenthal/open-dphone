@@ -106,7 +106,7 @@ async fn first_boot_user_token_config_and_pushes() {
     assert_eq!(c.get("config_server_url"), Some("sip:proxy@pbx.test:5060"));
     assert_eq!(c.get("config_server_user"), Some("100"));
     assert_eq!(c.get("config_user_password"), Some("1234"));
-    assert!(c.get("config_server_token").unwrap().starts_with("tok-100"));
+    assert!(c.get("config_server_token").unwrap().starts_with("100/000FD3AABBCC/"));
 
     // App requests ride the session.
     let doc = br#"{"request":{"method":"switchvox.users.voicemail.getList","parameters":{"account_id":"100"}}}"#;
@@ -301,4 +301,77 @@ async fn provisioned_firmware_is_checked_unless_ignored() {
     r.dpma.set_ignore_provisioned_firmware(false);
     r.store.send(Command::Reprovision).await.unwrap();
     wait("the check resumes", || (checks() == 2).then_some(())).await;
+}
+
+/// Stock and this firmware share the saved token in `configurator.xml`,
+/// and the server ties a token to the spelling of the MAC it was last
+/// presented with.  A token stock obtained must carry this client through
+/// a whole boot (verify, then download), and must still be good for stock
+/// afterward.
+#[tokio::test(flavor = "current_thread")]
+async fn a_token_saved_by_stock_stays_valid() {
+    const STOCK_MAC: &[u8] = b"000FD3AABBCC";
+    let mut s = FakeServer::new();
+    s.config = CONFIG.as_bytes().to_vec();
+    s.token_reqs = "mac".into();
+    s.userlist_reqs = "disabled".into();
+    // Stock provisioned the phone and left its state in nvdata.
+    let token = String::from_utf8(s.issue_token("100", STOCK_MAC)).unwrap();
+    let server = Arc::new(Mutex::new(s));
+    let (storage, sink) = (Arc::new(MemStorage::default()), Arc::new(MemSink::default()));
+    let mut c = Configurator::default();
+    c.set("config_server_type", "digium");
+    c.set("config_server_url", "sip:proxy@10.0.0.5:5060");
+    c.set("config_server_user", "");
+    c.set("config_server_token", &token);
+    *sink.configurator.lock().unwrap() = Some(c.render());
+
+    // Two boots of this firmware (a main-role restart and a reboot look
+    // the same to the server: a new handshake, then the saved token).
+    for boot in 1..=2 {
+        let r = rig_with(server.clone(), storage.clone(), sink.clone());
+        r.dpma.network(true, None, Vec::new());
+        until(&r.store, "provisioned with the saved token", ProvisionPhase::Provisioned).await;
+        let s = server.lock().unwrap();
+        assert_eq!(s.count("VerifyRequest"), boot);
+        assert_eq!(s.count("ConfigRequest"), boot, "the download follows the verification with the same token");
+        assert_eq!(s.count("TokenRequest"), 0, "the saved token was never refused");
+        assert!(s.macs.iter().all(|m| m == STOCK_MAC), "every request spells the MAC as stock does: {:?}", s.macs);
+        drop(s);
+        drop(r);
+    }
+    assert_eq!(sink.applied.lock().unwrap().len(), 2);
+    let saved = Configurator::parse(&sink.configurator.lock().unwrap().clone().unwrap());
+    assert_eq!(saved.get("config_server_token"), Some(token.as_str()), "the saved token is left as stock wrote it");
+
+    // Stock boots next: VerifyRequest, then ConfigRequest, both with the
+    // saved token and its own MAC spelling.
+    let mut s = server.lock().unwrap();
+    assert!(s.present_token(token.as_bytes(), STOCK_MAC), "stock's VerifyRequest");
+    assert!(s.present_token(token.as_bytes(), STOCK_MAC), "stock's ConfigRequest");
+}
+
+/// A token of our own is spelled so that stock can use it.
+#[tokio::test(flavor = "current_thread")]
+async fn a_token_we_save_is_good_for_stock() {
+    let mut s = FakeServer::new();
+    s.config = CONFIG.as_bytes().to_vec();
+    s.token_reqs = "mac".into();
+    s.userlist_reqs = "disabled".into();
+    let server = Arc::new(Mutex::new(s));
+    let (storage, sink) = (Arc::new(MemStorage::default()), Arc::new(MemSink::default()));
+    let r = rig_with(server.clone(), storage.clone(), sink.clone());
+    r.store.send(Command::StartProvisioning { server: Some("10.0.0.9:5060".into()) }).await.unwrap();
+    r.dpma.network(true, None, Vec::new());
+    until(&r.store, "provisioned", ProvisionPhase::Provisioned).await;
+    let saved = Configurator::parse(&sink.configurator.lock().unwrap().clone().unwrap());
+    let token = saved.get("config_server_token").unwrap().to_string();
+    assert!(token.starts_with("100/000FD3AABBCC/"), "{token}");
+    let mut s = server.lock().unwrap();
+    assert!(s.present_token(token.as_bytes(), b"000FD3AABBCC"), "stock's VerifyRequest");
+    assert!(s.present_token(token.as_bytes(), b"000FD3AABBCC"), "stock's ConfigRequest");
+    // The server's rule, for the record: the other spelling passes once
+    // and is refused from then on.
+    assert!(s.present_token(token.as_bytes(), b"000fd3aabbcc"));
+    assert!(!s.present_token(token.as_bytes(), b"000fd3aabbcc"));
 }
