@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package dphone.v1;
+
+// Screen mirror and key injection.
+service ScreenService {
+  rpc GetScreenLayout(GetScreenLayoutRequest) returns (GetScreenLayoutResponse);
+  // Sends the current picture, then a new one whenever the screen changes.
+  rpc WatchScreen(WatchScreenRequest) returns (stream WatchScreenResponse);
+  rpc PressKey(PressKeyRequest) returns (PressKeyResponse);
+  rpc SetHook(SetHookRequest) returns (SetHookResponse);
+}
+
+enum ScreenId {
+  SCREEN_ID_UNSPECIFIED = 0;
+  SCREEN_ID_MAIN = 1;
+  // The D70's rapid-dial display.
+  SCREEN_ID_SIDE = 2;
+}
+
+enum KeyAction {
+  KEY_ACTION_UNSPECIFIED = 0;
+  // Press and release.
+  KEY_ACTION_TAP = 1;
+  KEY_ACTION_DOWN = 2;
+  KEY_ACTION_UP = 3;
+}
+
+message ScreenInfo {
+  ScreenId id = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  bool color = 4;
+}
+
+message Lamp {
+  // Key name the lamp belongs to ("line1", "msgs", "mute", ...).
+  string key = 1;
+  // "off", "red", "green", or "amber".
+  string color = 2;
+  // "solid", "slow", "fast", or "wink".
+  string blink = 3;
+}
+
+message GetScreenLayoutRequest {}
+
+message GetScreenLayoutResponse {
+  string model = 1;
+  // "small_gray", "large_gray", or "color".
+  string skin = 2;
+  repeated ScreenInfo screens = 3;
+  // Names of the keys this model has ("1", "sk1", "line2", "vup", ...).
+  repeated string keys = 4;
+  uint32 softkey_bar_height = 5;
+  // False when no screen source is attached (no picture, keys still work).
+  bool mirror_available = 6;
+}
+
+message WatchScreenRequest {
+  ScreenId screen = 1;
+  // Fastest update rate wanted, in frames per second; 0 for the default.
+  uint32 max_fps = 2;
+}
+
+message WatchScreenResponse {
+  // A PNG image of the whole screen; empty when only lamps changed.
+  bytes png = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  repeated Lamp lamps = 4;
+  bool backlight_on = 5;
+  bool off_hook = 6;
+}
+
+message PressKeyRequest {
+  string key = 1;
+  KeyAction action = 2;
+}
+
+message PressKeyResponse {}
+
+message SetHookRequest {
+  bool off_hook = 1;
+}
+
+message SetHookResponse {}

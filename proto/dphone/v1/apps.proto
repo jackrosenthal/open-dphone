@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package dphone.v1;
+
+// Phone apps (WebAssembly packages).  A package is uploaded with a plain
+// authenticated HTTP POST to /upload/app, which answers with JSON carrying
+// the upload_id used by InstallApp.
+service AppsService {
+  rpc ListApps(ListAppsRequest) returns (ListAppsResponse);
+  rpc WatchApps(WatchAppsRequest) returns (stream WatchAppsResponse);
+  rpc LaunchApp(LaunchAppRequest) returns (LaunchAppResponse);
+  rpc CloseApp(CloseAppRequest) returns (CloseAppResponse);
+  rpc InstallApp(InstallAppRequest) returns (InstallAppResponse);
+  rpc RemoveApp(RemoveAppRequest) returns (RemoveAppResponse);
+}
+
+message App {
+  string name = 1;
+  string id = 2;
+  string display_name = 3;
+  string description = 4;
+  string kind = 5;
+  bool has_idle = 6;
+  bool hidden = 7;
+  bool builtin = 8;
+  bool running = 9;
+  bool foreground = 10;
+}
+
+message AppsSnapshot {
+  repeated App apps = 1;
+  string foreground = 2;
+  string idle_app = 3;
+}
+
+message ListAppsRequest {}
+
+message ListAppsResponse {
+  AppsSnapshot snapshot = 1;
+}
+
+message WatchAppsRequest {}
+
+message WatchAppsResponse {
+  AppsSnapshot snapshot = 1;
+}
+
+message LaunchAppRequest {
+  string name = 1;
+}
+
+message LaunchAppResponse {}
+
+message CloseAppRequest {
+  string name = 1;
+}
+
+message CloseAppResponse {}
+
+message InstallAppRequest {
+  string upload_id = 1;
+}
+
+message InstallAppResponse {}
+
+message RemoveAppRequest {
+  string name = 1;
+}
+
+message RemoveAppResponse {}

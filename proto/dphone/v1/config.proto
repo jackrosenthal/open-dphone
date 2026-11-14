@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package dphone.v1;
+
+// Generic access to the merged configuration by stock setting ID.
+service ConfigService {
+  rpc ListSettings(ListSettingsRequest) returns (ListSettingsResponse);
+  rpc SetSettings(SetSettingsRequest) returns (SetSettingsResponse);
+  // Drops local overrides so that provisioned or default values show again.
+  rpc UnsetSettings(UnsetSettingsRequest) returns (UnsetSettingsResponse);
+}
+
+message Setting {
+  string id = 1;
+  // Secret values (passwords) are returned empty with `secret` set.
+  string value = 2;
+  // Fixed by the base or factory layer; cannot be changed.
+  bool frozen = 3;
+  // Overridden locally (phone menu, web UI).
+  bool local = 4;
+  bool secret = 5;
+}
+
+message ListSettingsRequest {
+  // Only IDs with this prefix; empty for all.
+  string prefix = 1;
+}
+
+message ListSettingsResponse {
+  repeated Setting settings = 1;
+  uint64 generation = 2;
+}
+
+message SettingChange {
+  string id = 1;
+  string value = 2;
+}
+
+message SetSettingsRequest {
+  repeated SettingChange changes = 1;
+}
+
+message SetSettingsResponse {
+  uint64 generation = 1;
+}
+
+message UnsetSettingsRequest {
+  repeated string ids = 1;
+}
+
+message UnsetSettingsResponse {
+  uint64 generation = 1;
+}

@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package dphone.v1;
+
+service SystemService {
+  rpc Reboot(RebootRequest) returns (RebootResponse);
+  rpc FactoryReset(FactoryResetRequest) returns (FactoryResetResponse);
+  rpc SetTime(SetTimeRequest) returns (SetTimeResponse);
+  // A backup of the local configuration, as a gzip-compressed tar archive.
+  rpc CreateBackup(CreateBackupRequest) returns (CreateBackupResponse);
+  rpc RestoreBackup(RestoreBackupRequest) returns (RestoreBackupResponse);
+}
+
+message RebootRequest {}
+
+message RebootResponse {}
+
+message FactoryResetRequest {
+  // Must be the phone's model name (e.g., "D60"), as a guard.
+  string confirm = 1;
+}
+
+message FactoryResetResponse {}
+
+message SetTimeRequest {
+  uint64 unix_secs = 1;
+}
+
+message SetTimeResponse {}
+
+message CreateBackupRequest {}
+
+message CreateBackupResponse {
+  string filename = 1;
+  bytes archive = 2;
+}
+
+message RestoreBackupRequest {
+  bytes archive = 1;
+}
+
+message RestoreBackupResponse {
+  uint32 files = 1;
+  bool restart_needed = 2;
+}

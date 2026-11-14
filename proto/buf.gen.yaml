@@ -1,0 +1,12 @@
+# TypeScript for the web frontend; run `pnpm gen` in web/ (paths here are
+# relative to that directory).  The output, web/src/gen, is committed, so
+# building the frontend needs neither buf nor this plugin run.
+#
+# The Rust side needs no generation step: crates/dphone-web/build.rs
+# compiles these files with protox, prost-build, and pbjson-build.
+version: v2
+plugins:
+  - local: ["node", "node_modules/@bufbuild/protoc-gen-es/bin/protoc-gen-es"]
+    out: src/gen
+    opt:
+      - target=ts

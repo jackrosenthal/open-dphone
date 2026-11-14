@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package dphone.v1;
+
+service AccountsService {
+  rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse);
+  rpc WatchAccounts(WatchAccountsRequest) returns (stream WatchAccountsResponse);
+  // Replaces the locally configured accounts (which, as on stock, replace
+  // any provisioned accounts).
+  rpc SetAccounts(SetAccountsRequest) returns (SetAccountsResponse);
+  // Removes the local accounts so that provisioned accounts apply again.
+  rpc ClearLocalAccounts(ClearLocalAccountsRequest) returns (ClearLocalAccountsResponse);
+  rpc Reregister(ReregisterRequest) returns (ReregisterResponse);
+}
+
+enum SipTransport {
+  SIP_TRANSPORT_UNSPECIFIED = 0;
+  SIP_TRANSPORT_UDP = 1;
+  SIP_TRANSPORT_TCP = 2;
+  SIP_TRANSPORT_TLS = 3;
+}
+
+enum RegistrationState {
+  REGISTRATION_STATE_UNSPECIFIED = 0;
+  REGISTRATION_STATE_DISABLED = 1;
+  REGISTRATION_STATE_UNREGISTERED = 2;
+  REGISTRATION_STATE_REGISTERING = 3;
+  REGISTRATION_STATE_REGISTERED = 4;
+  REGISTRATION_STATE_FAILED = 5;
+}
+
+// A configured account.  The password is write-only: it is never returned,
+// and an empty password on write keeps the stored one.
+message AccountConfig {
+  uint32 index = 1;
+  string account_id = 2;
+  bool enabled = 3;
+  bool register = 4;
+  string username = 5;
+  string authname = 6;
+  string password = 7;
+  bool has_password = 8;
+  string display_name = 9;
+  string line_label = 10;
+  string server = 11;
+  uint32 port = 12;
+  SipTransport transport = 13;
+  string alternate_server = 14;
+  uint32 alternate_port = 15;
+  SipTransport alternate_transport = 16;
+  string outbound_proxy = 17;
+  uint32 outbound_port = 18;
+  string voicemail = 19;
+  bool srtp = 20;
+  uint32 reregister_secs = 21;
+}
+
+// Live registration state of an account.
+message AccountStatus {
+  uint32 index = 1;
+  string label = 2;
+  string user = 3;
+  string server = 4;
+  RegistrationState state = 5;
+  // SIP status and reason when failed.
+  uint32 code = 6;
+  string reason = 7;
+  bool on_alternate_host = 8;
+  uint32 expires_in_secs = 9;
+  uint32 retry_in_secs = 10;
+  bool dpma = 11;
+  SipTransport transport = 12;
+  bool is_default = 13;
+}
+
+message ListAccountsRequest {}
+
+message ListAccountsResponse {
+  repeated AccountConfig accounts = 1;
+  repeated AccountStatus status = 2;
+  uint32 max_accounts = 3;
+  // The accounts come from the local layer (else from provisioning).
+  bool local = 4;
+}
+
+message WatchAccountsRequest {}
+
+message WatchAccountsResponse {
+  repeated AccountStatus status = 1;
+}
+
+message SetAccountsRequest {
+  repeated AccountConfig accounts = 1;
+}
+
+message SetAccountsResponse {}
+
+message ClearLocalAccountsRequest {}
+
+message ClearLocalAccountsResponse {}
+
+message ReregisterRequest {
+  // Absent: every account.
+  optional uint32 index = 1;
+}
+
+message ReregisterResponse {}

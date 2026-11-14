@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package dphone.v1;
+
+// Contact lists under /nvdata/contact_lists, in the stock XML shape.
+service ContactsService {
+  rpc ListContactLists(ListContactListsRequest) returns (ListContactListsResponse);
+  rpc GetContactList(GetContactListRequest) returns (GetContactListResponse);
+  rpc PutContactList(PutContactListRequest) returns (PutContactListResponse);
+  rpc DeleteContactList(DeleteContactListRequest) returns (DeleteContactListResponse);
+  // The raw stock XML, for import and export.
+  rpc ExportContactList(ExportContactListRequest) returns (ExportContactListResponse);
+  rpc ImportContactList(ImportContactListRequest) returns (ImportContactListResponse);
+}
+
+message ContactNumber {
+  string dial = 1;
+  string label = 2;
+  bool primary = 3;
+}
+
+message Contact {
+  string id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string organization = 4;
+  string contact_type = 5;
+  string subscribe_to = 6;
+  repeated ContactNumber numbers = 7;
+}
+
+message ContactGroup {
+  string id = 1;
+  string name = 2;
+  repeated Contact contacts = 3;
+}
+
+message ContactListInfo {
+  // File name under /nvdata/contact_lists.
+  string name = 1;
+  uint32 groups = 2;
+  uint32 contacts = 3;
+  string error = 4;
+}
+
+message ListContactListsRequest {}
+
+message ListContactListsResponse {
+  repeated ContactListInfo lists = 1;
+}
+
+message GetContactListRequest {
+  string name = 1;
+}
+
+message GetContactListResponse {
+  repeated ContactGroup groups = 1;
+}
+
+message PutContactListRequest {
+  string name = 1;
+  repeated ContactGroup groups = 2;
+}
+
+message PutContactListResponse {}
+
+message DeleteContactListRequest {
+  string name = 1;
+}
+
+message DeleteContactListResponse {}
+
+message ExportContactListRequest {
+  string name = 1;
+}
+
+message ExportContactListResponse {
+  string xml = 1;
+}
+
+message ImportContactListRequest {
+  string name = 1;
+  string xml = 2;
+}
+
+message ImportContactListResponse {
+  uint32 contacts = 1;
+}

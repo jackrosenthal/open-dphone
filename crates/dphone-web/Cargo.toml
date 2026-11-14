@@ -1,0 +1,48 @@
+[package]
+name = "dphone-web"
+description = "Open DPhone: web server, Connect RPC services, and the embedded frontend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+build = "build.rs"
+
+[dependencies]
+dphone-state = { path = "../dphone-state" }
+dphone-config = { path = "../dphone-config" }
+log = "0.4"
+bytes = "1"
+http = "1"
+http-body = "1"
+http-body-util = "0.1"
+hyper = { version = "1", default-features = false, features = ["http1", "server"] }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
+tokio = { version = "1", default-features = false, features = ["rt", "net", "time", "sync", "macros", "io-util"] }
+prost = { version = "0.14", default-features = false, features = ["std", "derive"] }
+pbjson = "0.9"
+serde = "1"
+serde_json = "1"
+getrandom = "0.3"
+miniz_oxide = "0.8"
+crc32fast = { version = "1", default-features = false, features = ["std"] }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12"] }
+rustls-rustcrypto = { version = "0.0.2-alpha", default-features = false, features = ["std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"] }
+x509-cert = { version = "0.2", default-features = false, features = ["builder", "pem", "std"] }
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8", "pem", "std"] }
+sha2 = { version = "0.10", default-features = false }
+
+[build-dependencies]
+protox = "0.10"
+prost-build = "0.14"
+prost = "0.14"
+pbjson-build = "0.9"
+miniz_oxide = "0.8"
+brotli = { version = "8", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+dphone-hal = { path = "../dphone-hal" }
+tokio = { version = "1", features = ["rt", "net", "time", "sync", "macros", "io-util"] }
+prost = "0.14"
+serde_json = "1"
+getrandom = "0.3"

@@ -1,0 +1,505 @@
+//! End-to-end tests: the real server on a loopback port, driven over raw
+//! HTTP/1.1 so that the wire format itself is what is checked.
+
+use dphone_config::{ConfigStore, Nvdata};
+use dphone_state::{Command, Domain, Model, Reply, Store};
+use dphone_web::{pb, FileFirmwareSink, FirmwareInfo, WebOptions, WebServer};
+use prost::Message;
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+
+struct Phone {
+    addr: SocketAddr,
+    store: Store,
+    config: Arc<Mutex<ConfigStore>>,
+    dir: PathBuf,
+}
+
+impl Drop for Phone {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+async fn phone() -> Phone {
+    let mut id = [0u8; 8];
+    getrandom::fill(&mut id).unwrap();
+    let dir = std::env::temp_dir().join(format!("dphone-web-test-{}", id.map(|b| format!("{b:02x}")).concat()));
+    std::fs::create_dir_all(dir.join("nvdata")).unwrap();
+    let nv = Nvdata::new(dir.join("nvdata"));
+    nv.ensure_layout().unwrap();
+    let config = Arc::new(Mutex::new(ConfigStore::open(nv, dphone_config::Model::D60, dir.join("tmp")).unwrap()));
+    let store = Store::new(Model::D60);
+    let options = WebOptions {
+        http: Some("127.0.0.1:0".parse().unwrap()),
+        https: None,
+        upload_dir: dir.join("upload"),
+        max_firmware_bytes: 1 << 20,
+        ..Default::default()
+    };
+    let sink = FileFirmwareSink::new(dir.join("upload")).with_inspector(|path| {
+        let data = std::fs::read(path)?;
+        if data.starts_with(b"STOCK") {
+            Ok(FirmwareInfo { version: "2_9_28".into(), model: "D60".into(), is_stock: true })
+        } else if data.starts_with(b"OPEN") {
+            Ok(FirmwareInfo { version: "3_0_1".into(), model: "D60".into(), is_stock: false })
+        } else {
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "no label"))
+        }
+    });
+    let bound = WebServer::new(store.clone(), config.clone(), options)
+        .with_firmware_sink(Box::new(sink))
+        .bind()
+        .await
+        .unwrap();
+    let addr = bound.http_addr().unwrap();
+    tokio::spawn(bound.serve());
+    Phone { addr, store, config, dir }
+}
+
+struct Resp {
+    status: u16,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+impl Resp {
+    fn header(&self, name: &str) -> Option<&str> {
+        self.headers.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
+    }
+    fn json(&self) -> serde_json::Value {
+        serde_json::from_slice(&self.body).unwrap_or_else(|e| panic!("{e}: {:?}", String::from_utf8_lossy(&self.body)))
+    }
+}
+
+fn dechunk(mut data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    loop {
+        let Some(eol) = data.windows(2).position(|w| w == b"\r\n") else { break };
+        let Ok(len) = usize::from_str_radix(std::str::from_utf8(&data[..eol]).unwrap_or("").trim(), 16) else { break };
+        let start = eol + 2;
+        if len == 0 || data.len() < start + len {
+            break;
+        }
+        out.extend_from_slice(&data[start..start + len]);
+        data = &data[(start + len + 2).min(data.len())..];
+    }
+    out
+}
+
+/// Sends one request on a fresh connection.  With `want` set, returns as
+/// soon as that many body bytes have arrived (for streams that never end).
+async fn request(
+    addr: SocketAddr,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+    want: Option<usize>,
+) -> Resp {
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    let mut head = format!("{method} {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nContent-Length: {}\r\n", body.len());
+    for (n, v) in headers {
+        head.push_str(&format!("{n}: {v}\r\n"));
+    }
+    head.push_str("\r\n");
+    s.write_all(head.as_bytes()).await.unwrap();
+    s.write_all(body).await.unwrap();
+    let mut raw = Vec::new();
+    let mut buf = [0u8; 16384];
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let split = raw.windows(4).position(|w| w == b"\r\n\r\n");
+        if let (Some(split), Some(want)) = (split, want)
+            && dechunk(&raw[split + 4..]).len() >= want {
+                break;
+            }
+        match tokio::time::timeout_at(deadline, s.read(&mut buf)).await {
+            Ok(Ok(0)) => break,
+            Ok(Ok(n)) => raw.extend_from_slice(&buf[..n]),
+            Ok(Err(e)) => panic!("read: {e}"),
+            Err(_) => panic!("timed out; got {:?}", String::from_utf8_lossy(&raw)),
+        }
+    }
+    let split = raw.windows(4).position(|w| w == b"\r\n\r\n").expect("header end");
+    let head = String::from_utf8_lossy(&raw[..split]).into_owned();
+    let mut lines = head.split("\r\n");
+    let status = lines.next().unwrap().split(' ').nth(1).unwrap().parse().unwrap();
+    let headers: Vec<(String, String)> =
+        lines.filter_map(|l| l.split_once(':').map(|(n, v)| (n.trim().to_owned(), v.trim().to_owned()))).collect();
+    let chunked = headers.iter().any(|(n, v)| n.eq_ignore_ascii_case("transfer-encoding") && v.contains("chunked"));
+    let body = if chunked { dechunk(&raw[split + 4..]) } else { raw[split + 4..].to_vec() };
+    Resp { status, headers, body }
+}
+
+struct Session {
+    cookie: String,
+    csrf: String,
+}
+
+async fn login(addr: SocketAddr, password: &str) -> Result<Session, Resp> {
+    let body = format!(r#"{{"user":"admin","password":"{password}"}}"#);
+    let r = request(addr, "POST", "/dphone.v1.AuthService/Login", &[("Content-Type", "application/json")], body.as_bytes(), None).await;
+    if r.status != 200 {
+        return Err(r);
+    }
+    let cookie = r.header("set-cookie").unwrap().split(';').next().unwrap().to_owned();
+    assert!(r.header("set-cookie").unwrap().contains("HttpOnly"));
+    assert!(r.header("set-cookie").unwrap().contains("SameSite=Strict"));
+    let csrf = r.json()["session"]["csrfToken"].as_str().unwrap().to_owned();
+    Ok(Session { cookie, csrf })
+}
+
+async fn rpc_json(addr: SocketAddr, s: &Session, method: &str, body: &str) -> Resp {
+    request(
+        addr,
+        "POST",
+        &format!("/dphone.v1.{method}"),
+        &[("Content-Type", "application/json"), ("Cookie", &s.cookie), ("X-Csrf-Token", &s.csrf)],
+        body.as_bytes(),
+        None,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn static_files_and_authentication() {
+    let p = phone().await;
+    let r = request(p.addr, "GET", "/", &[], b"", None).await;
+    assert_eq!(r.status, 200);
+    assert!(r.header("content-type").unwrap().starts_with("text/html"));
+    assert!(r.header("content-security-policy").is_some());
+    assert_eq!(r.header("x-frame-options"), Some("DENY"));
+    let etag = r.header("etag").unwrap().to_owned();
+    let again = request(p.addr, "GET", "/", &[("If-None-Match", &etag)], b"", None).await;
+    assert_eq!(again.status, 304);
+    // Client-side routes get the shell; missing files do not.
+    assert_eq!(request(p.addr, "GET", "/accounts", &[], b"", None).await.status, 200);
+    assert_eq!(request(p.addr, "GET", "/missing.js", &[], b"", None).await.status, 404);
+    assert_eq!(request(p.addr, "PUT", "/", &[], b"", None).await.status, 405);
+
+    // No session: every service refuses, in the Connect error shape.
+    for method in ["StatusService/GetStatus", "ConfigService/ListSettings", "SystemService/Reboot", "AuthService/ChangePassword"] {
+        let r = request(p.addr, "POST", &format!("/dphone.v1.{method}"), &[("Content-Type", "application/json")], b"{}", None).await;
+        assert_eq!(r.status, 401, "{method}");
+        assert_eq!(r.json()["code"], "unauthenticated");
+    }
+    for path in ["/upload/firmware", "/upload/app"] {
+        assert_eq!(request(p.addr, "POST", path, &[], b"x", None).await.status, 401);
+    }
+    // GetSession works without one and says so.
+    let r = request(p.addr, "POST", "/dphone.v1.AuthService/GetSession", &[("Content-Type", "application/json")], b"{}", None).await;
+    assert_eq!(r.status, 200);
+    assert_eq!(r.json()["session"]["model"], "D60");
+    assert!(r.json()["session"].get("authenticated").is_none());
+
+    assert_eq!(login(p.addr, "wrong").await.err().unwrap().status, 401);
+    let s = login(p.addr, "789").await.ok().unwrap();
+
+    // The cookie alone is not enough, and a foreign Origin is refused.
+    let r = request(p.addr, "POST", "/dphone.v1.StatusService/GetStatus", &[("Content-Type", "application/json"), ("Cookie", &s.cookie)], b"{}", None).await;
+    assert_eq!(r.status, 403);
+    let r = request(
+        p.addr,
+        "POST",
+        "/dphone.v1.StatusService/GetStatus",
+        &[("Content-Type", "application/json"), ("Cookie", &s.cookie), ("X-Csrf-Token", &s.csrf), ("Origin", "http://evil.test")],
+        b"{}",
+        None,
+    )
+    .await;
+    assert_eq!(r.status, 403);
+    let origin = format!("http://{}", p.addr);
+    let r = request(
+        p.addr,
+        "POST",
+        "/dphone.v1.StatusService/GetStatus",
+        &[("Content-Type", "application/json"), ("Cookie", &s.cookie), ("X-Csrf-Token", &s.csrf), ("Origin", &origin)],
+        b"{}",
+        None,
+    )
+    .await;
+    assert_eq!(r.status, 200);
+
+    let r = rpc_json(p.addr, &s, "StatusService/GetStatus", "{}").await;
+    assert_eq!(r.status, 200);
+    assert_eq!(r.header("content-type"), Some("application/json"));
+    assert_eq!(r.json()["status"]["system"]["model"], "D60");
+    assert_eq!(r.json()["status"]["system"]["userAgent"], "Digium D60 3_0_0");
+
+    // Unknown methods, wrong content types, and bad messages.
+    assert_eq!(rpc_json(p.addr, &s, "StatusService/Nope", "{}").await.json()["code"], "unimplemented");
+    let r = request(p.addr, "POST", "/dphone.v1.StatusService/GetStatus", &[("Content-Type", "text/plain"), ("Cookie", &s.cookie), ("X-Csrf-Token", &s.csrf)], b"{}", None).await;
+    assert_eq!(r.status, 415);
+    let r = rpc_json(p.addr, &s, "CallsService/Dial", "{not json").await;
+    assert_eq!((r.status, r.json()["code"].as_str().unwrap().to_owned()), (400, "invalid_argument".to_owned()));
+
+    // Logout ends the session.
+    assert_eq!(rpc_json(p.addr, &s, "AuthService/Logout", "{}").await.status, 200);
+    assert_eq!(rpc_json(p.addr, &s, "StatusService/GetStatus", "{}").await.status, 401);
+}
+
+#[tokio::test]
+async fn protobuf_codec_and_streaming() {
+    let p = phone().await;
+    let s = login(p.addr, "789").await.ok().unwrap();
+    let auth = [("Cookie", s.cookie.as_str()), ("X-Csrf-Token", s.csrf.as_str())];
+
+    // Unary, binary codec.
+    let mut headers = vec![("Content-Type", "application/proto")];
+    headers.extend_from_slice(&auth);
+    let r = request(p.addr, "POST", "/dphone.v1.StatusService/GetStatus", &headers, &pb::GetStatusRequest {}.encode_to_vec(), None).await;
+    assert_eq!(r.status, 200);
+    assert_eq!(r.header("content-type"), Some("application/proto"));
+    let status = pb::GetStatusResponse::decode(&r.body[..]).unwrap().status.unwrap();
+    assert_eq!(status.system.unwrap().model, "D60");
+
+    // Server streaming, binary codec: enveloped request, enveloped messages.
+    p.store.log_line(dphone_state::Level::Warn, "test", "first line".into());
+    let msg = pb::TailLogsRequest { backlog: 10, min_level: 0 }.encode_to_vec();
+    let mut framed = vec![0u8];
+    framed.extend((msg.len() as u32).to_be_bytes());
+    framed.extend(&msg);
+    let mut headers = vec![("Content-Type", "application/connect+proto")];
+    headers.extend_from_slice(&auth);
+    let r = request(p.addr, "POST", "/dphone.v1.LogsService/TailLogs", &headers, &framed, Some(6)).await;
+    assert_eq!(r.status, 200);
+    assert_eq!(r.header("content-type"), Some("application/connect+proto"));
+    assert_eq!(r.body[0], 0, "a data frame");
+    let len = u32::from_be_bytes(r.body[1..5].try_into().unwrap()) as usize;
+    let first = pb::TailLogsResponse::decode(&r.body[5..5 + len]).unwrap();
+    assert!(first.entries.iter().any(|e| e.message == "first line" && e.level == pb::LogLevel::Warn as i32));
+
+    // Streaming, JSON codec.
+    let json = br#"{"backlog": 5}"#;
+    let mut framed = vec![0u8];
+    framed.extend((json.len() as u32).to_be_bytes());
+    framed.extend(json);
+    let mut headers = vec![("Content-Type", "application/connect+json")];
+    headers.extend_from_slice(&auth);
+    let r = request(p.addr, "POST", "/dphone.v1.LogsService/TailLogs", &headers, &framed, Some(6)).await;
+    let len = u32::from_be_bytes(r.body[1..5].try_into().unwrap()) as usize;
+    let v: serde_json::Value = serde_json::from_slice(&r.body[5..5 + len]).unwrap();
+    assert_eq!(v["entries"][0]["level"], "LOG_LEVEL_WARN");
+
+    // A stream that fails: HTTP 200, then only the end-of-stream frame
+    // (flag 2) carrying the error.
+    let json = br#"{"screen": "SCREEN_ID_SIDE"}"#;
+    let mut framed = vec![0u8];
+    framed.extend((json.len() as u32).to_be_bytes());
+    framed.extend(json);
+    let r = request(p.addr, "POST", "/dphone.v1.ScreenService/WatchScreen", &headers, &framed, None).await;
+    assert_eq!(r.status, 200);
+    assert_eq!(r.body[0], 2);
+    let v: serde_json::Value = serde_json::from_slice(&r.body[5..]).unwrap();
+    assert_eq!(v["error"]["code"], "not_found");
+
+    // A stream follows the store: a watch sends again when state changes.
+    let json = b"{}";
+    let mut framed = vec![0u8];
+    framed.extend((json.len() as u32).to_be_bytes());
+    framed.extend(json);
+    let store = p.store.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        store.update::<dphone_state::Features, _>(|f| f.dnd = true);
+    });
+    let r = request(p.addr, "POST", "/dphone.v1.CallsService/WatchCalls", &headers, &framed, Some(220)).await;
+    let text = String::from_utf8_lossy(&r.body);
+    assert!(text.contains(r#""dnd":true"#), "{text}");
+
+    // Unary and streaming framings are not interchangeable.
+    let r = rpc_json(p.addr, &s, "LogsService/TailLogs", "{}").await;
+    assert_eq!(r.json()["code"], "unimplemented");
+}
+
+#[tokio::test]
+async fn configuration_accounts_and_contacts() {
+    let p = phone().await;
+    let s = login(p.addr, "789").await.ok().unwrap();
+
+    let r = rpc_json(p.addr, &s, "ConfigService/SetSettings", r#"{"changes":[{"id":"ringer_volume","value":"9"}]}"#).await;
+    assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    assert_eq!(p.config.lock().unwrap().get("ringer_volume").as_deref(), Some("9"));
+    let v = rpc_json(p.addr, &s, "ConfigService/ListSettings", r#"{"prefix":"ringer_"}"#).await.json();
+    assert_eq!(v["settings"][0]["id"], "ringer_volume");
+    assert_eq!(v["settings"][0]["value"], "9");
+    assert_eq!(v["settings"][0]["local"], true);
+    // Secrets never leave the phone, and the password has its own RPC.
+    let v = rpc_json(p.addr, &s, "ConfigService/ListSettings", r#"{"prefix":"login_"}"#).await.json();
+    assert_eq!(v["settings"][0]["secret"], true);
+    assert!(v["settings"][0].get("value").is_none());
+    let r = rpc_json(p.addr, &s, "ConfigService/SetSettings", r#"{"changes":[{"id":"login_password","value":"x"}]}"#).await;
+    assert_eq!(r.status, 400);
+    let r = rpc_json(p.addr, &s, "ConfigService/SetSettings", r#"{"changes":[{"id":"bad id","value":"x"}]}"#).await;
+    assert_eq!(r.status, 400);
+    assert_eq!(rpc_json(p.addr, &s, "ConfigService/UnsetSettings", r#"{"ids":["ringer_volume"]}"#).await.status, 200);
+    assert_eq!(p.config.lock().unwrap().get("ringer_volume").as_deref(), Some("5"));
+
+    // Accounts: written in the stock shape; the password stays put.
+    let body = r#"{"accounts":[{"index":0,"enabled":true,"register":true,"username":"100","password":"pw1","server":"pbx.test","transport":"SIP_TRANSPORT_TLS","srtp":true,"lineLabel":"Desk"}]}"#;
+    let r = rpc_json(p.addr, &s, "AccountsService/SetAccounts", body).await;
+    assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    {
+        let cfg = p.config.lock().unwrap().config();
+        let a = &cfg.accounts()[0];
+        assert_eq!((a.username.as_str(), a.password.as_str(), a.line_label.as_str()), ("100", "pw1", "Desk"));
+        let h = a.primary.as_ref().unwrap();
+        assert_eq!((h.server.as_str(), h.port, h.media_encryption.as_deref()), ("pbx.test", 5061, Some("sdes")));
+    }
+    let v = rpc_json(p.addr, &s, "AccountsService/ListAccounts", "{}").await.json();
+    assert_eq!(v["accounts"][0]["hasPassword"], true);
+    assert!(v["accounts"][0].get("password").is_none());
+    assert_eq!(v["local"], true);
+    assert_eq!(v["maxAccounts"], 2);
+    // An edit without a password keeps the stored one.
+    let body = r#"{"accounts":[{"index":0,"enabled":true,"register":true,"username":"100","server":"pbx2.test"}]}"#;
+    assert_eq!(rpc_json(p.addr, &s, "AccountsService/SetAccounts", body).await.status, 200);
+    {
+        let cfg = p.config.lock().unwrap().config();
+        assert_eq!(cfg.accounts()[0].password, "pw1");
+        assert_eq!(cfg.accounts()[0].primary.as_ref().unwrap().server, "pbx2.test");
+    }
+    let body = r#"{"accounts":[{"index":5,"username":"1","server":"x"}]}"#;
+    assert_eq!(rpc_json(p.addr, &s, "AccountsService/SetAccounts", body).await.status, 400);
+
+    // Network settings validate before anything is stored.
+    let r = rpc_json(p.addr, &s, "NetworkService/SetNetworkSettings", r#"{"settings":{"dhcp":false,"staticIp":"10.0.0.5","subnetMask":"255.0.255.0","vlanDiscoveryMode":"NONE"}}"#).await;
+    assert_eq!(r.status, 400);
+    let r = rpc_json(p.addr, &s, "NetworkService/SetNetworkSettings", r#"{"settings":{"dhcp":false,"staticIp":"10.0.0.5","subnetMask":"255.255.255.0","gateway":"10.0.0.1","vlanDiscoveryMode":"MANUAL","vlanId":30,"sipDscp":26,"rtpDscp":46,"sipQos":3,"rtpQos":6,"pcQos":1}}"#).await;
+    assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    let net = p.config.lock().unwrap().config().network();
+    assert!(!net.dhcp);
+    assert_eq!(net.static_ip, Some("10.0.0.5".parse().unwrap()));
+    assert_eq!(net.vlan_id, Some(30));
+
+    // Contacts: write, read back, export in the stock XML, delete.
+    let body = r#"{"name":"local.xml","groups":[{"id":"g","name":"Office","contacts":[{"firstName":"Morgan","lastName":"Li","numbers":[{"dial":"104","label":"Ext","primary":true},{"dial":"5551230104"}]}]}]}"#;
+    let r = rpc_json(p.addr, &s, "ContactsService/PutContactList", body).await;
+    assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    let v = rpc_json(p.addr, &s, "ContactsService/GetContactList", r#"{"name":"local.xml"}"#).await.json();
+    assert_eq!(v["groups"][0]["contacts"][0]["numbers"][0]["dial"], "104");
+    assert_eq!(v["groups"][0]["contacts"][0]["numbers"][0]["primary"], true);
+    let v = rpc_json(p.addr, &s, "ContactsService/ExportContactList", r#"{"name":"local.xml"}"#).await.json();
+    let xml = v["xml"].as_str().unwrap();
+    assert!(xml.contains("<phonebooks>") && xml.contains("first_name=\"Morgan\""), "{xml}");
+    let v = rpc_json(p.addr, &s, "ContactsService/ListContactLists", "{}").await.json();
+    assert_eq!(v["lists"][0]["contacts"], 1);
+    for bad in ["../x", "a/b", ".hidden", ""] {
+        let r = rpc_json(p.addr, &s, "ContactsService/GetContactList", &format!(r#"{{"name":"{bad}"}}"#)).await;
+        assert_eq!(r.status, 400, "{bad}");
+    }
+    assert_eq!(rpc_json(p.addr, &s, "ContactsService/DeleteContactList", r#"{"name":"local.xml"}"#).await.status, 200);
+    assert_eq!(rpc_json(p.addr, &s, "ContactsService/GetContactList", r#"{"name":"local.xml"}"#).await.status, 404);
+}
+
+#[tokio::test]
+async fn commands_uploads_backup_and_password() {
+    let p = phone().await;
+    let s = login(p.addr, "789").await.ok().unwrap();
+
+    // No subsystem registered: unavailable, not a hang.
+    let r = rpc_json(p.addr, &s, "CallsService/Dial", r#"{"target":"100"}"#).await;
+    assert_eq!((r.status, r.json()["code"].as_str().unwrap().to_owned()), (503, "unavailable".to_owned()));
+
+    // With a handler, the command and its reply go through.
+    let rx = p.store.handle(Domain::Calls);
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let seen2 = seen.clone();
+    std::thread::spawn(move || {
+        while let Some(env) = rx.recv() {
+            seen2.lock().unwrap().push(env.command.clone());
+            env.reply(Ok(Reply::Call(dphone_state::CallId(7))));
+        }
+    });
+    let r = rpc_json(p.addr, &s, "CallsService/Dial", r#"{"target":"100","account":1}"#).await;
+    assert_eq!(r.json()["call"], 7);
+    assert_eq!(
+        seen.lock().unwrap()[0],
+        Command::Dial { target: "100".into(), account: Some(dphone_state::AccountId(1)), path: None }
+    );
+
+    // Firmware upload: streamed to the sink, described, then installed.
+    let up = |body: &'static [u8]| {
+        let (cookie, csrf) = (s.cookie.clone(), s.csrf.clone());
+        async move { request(p.addr, "POST", "/upload/firmware", &[("Cookie", &cookie), ("X-Csrf-Token", &csrf)], body, None).await }
+    };
+    assert_eq!(up(b"garbage").await.status, 400);
+    let r = up(b"STOCK image body").await;
+    assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    let v = r.json();
+    assert_eq!((v["isStock"].as_bool(), v["version"].as_str(), v["size"].as_str()), (Some(true), Some("2_9_28"), Some("16")));
+    let id = v["uploadId"].as_str().unwrap().to_owned();
+    let v = rpc_json(p.addr, &s, "FirmwareService/GetFirmware", "{}").await.json();
+    assert_eq!(v["status"]["uploaded"]["uploadId"], id.as_str());
+    // A stock image needs the explicit flag.
+    let r = rpc_json(p.addr, &s, "FirmwareService/InstallFirmware", &format!(r#"{{"uploadId":"{id}"}}"#)).await;
+    assert_eq!(r.status, 403);
+    let rx = p.store.handle(Domain::Update);
+    let got = Arc::new(Mutex::new(None));
+    let got2 = got.clone();
+    std::thread::spawn(move || {
+        while let Some(env) = rx.recv() {
+            *got2.lock().unwrap() = Some(env.command.clone());
+            env.done();
+        }
+    });
+    let r = rpc_json(p.addr, &s, "FirmwareService/InstallFirmware", &format!(r#"{{"uploadId":"{id}","allowStock":true}}"#)).await;
+    assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    match got.lock().unwrap().clone() {
+        Some(Command::InstallFirmware { path, allow_stock }) => {
+            assert!(allow_stock);
+            assert_eq!(std::fs::read(path).unwrap(), b"STOCK image body");
+        }
+        other => panic!("{other:?}"),
+    }
+    // Too large is refused from the declared length.
+    let big = vec![b'O'; (1 << 20) + 1];
+    let r = request(p.addr, "POST", "/upload/firmware", &[("Cookie", &s.cookie), ("X-Csrf-Token", &s.csrf)], &big, None).await;
+    assert_eq!(r.status, 429);
+
+    // Backup and restore.
+    rpc_json(p.addr, &s, "ConfigService/SetSettings", r#"{"changes":[{"id":"ringer_volume","value":"2"}]}"#).await;
+    let v = rpc_json(p.addr, &s, "SystemService/CreateBackup", "{}").await.json();
+    assert!(v["filename"].as_str().unwrap().ends_with("-backup.tar.gz"));
+    let archive = v["archive"].as_str().unwrap().to_owned();
+    rpc_json(p.addr, &s, "ConfigService/SetSettings", r#"{"changes":[{"id":"ringer_volume","value":"7"}]}"#).await;
+    let r = rpc_json(p.addr, &s, "SystemService/RestoreBackup", &format!(r#"{{"archive":"{archive}"}}"#)).await;
+    assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    assert_eq!(p.config.lock().unwrap().get("ringer_volume").as_deref(), Some("2"));
+    assert_eq!(rpc_json(p.addr, &s, "SystemService/RestoreBackup", r#"{"archive":"anVuaw=="}"#).await.status, 400);
+
+    // Factory reset needs the model typed.
+    assert_eq!(rpc_json(p.addr, &s, "SystemService/FactoryReset", r#"{"confirm":"yes"}"#).await.status, 400);
+
+    // Password change: stock digest file, other sessions end.
+    let other = login(p.addr, "789").await.ok().unwrap();
+    let r = rpc_json(p.addr, &s, "AuthService/ChangePassword", r#"{"currentPassword":"bad","newPassword":"hunter22"}"#).await;
+    assert_eq!(r.status, 403);
+    let r = rpc_json(p.addr, &s, "AuthService/ChangePassword", r#"{"currentPassword":"789","newPassword":"hunter22"}"#).await;
+    assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    let digest = std::fs::read_to_string(p.dir.join("nvdata/etc/.passwd")).unwrap();
+    assert!(digest.starts_with("admin:Digium Phone Admin Login:"), "{digest}");
+    assert_eq!(rpc_json(p.addr, &other, "StatusService/GetStatus", "{}").await.status, 401);
+    assert_eq!(rpc_json(p.addr, &s, "StatusService/GetStatus", "{}").await.status, 200);
+    assert!(login(p.addr, "789").await.is_err());
+    assert!(login(p.addr, "hunter22").await.is_ok());
+}
+
+#[tokio::test]
+async fn login_throttling() {
+    let p = phone().await;
+    for _ in 0..3 {
+        assert_eq!(login(p.addr, "nope").await.err().unwrap().status, 401);
+    }
+    // Locked out now, even with the right password.
+    let r = login(p.addr, "789").await.err().unwrap();
+    assert_eq!(r.status, 429);
+    assert_eq!(r.json()["code"], "resource_exhausted");
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    assert!(login(p.addr, "789").await.is_ok());
+}
