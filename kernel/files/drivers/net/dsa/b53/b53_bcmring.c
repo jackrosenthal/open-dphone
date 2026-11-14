@@ -59,9 +59,11 @@
  *     block is taken to be absent (inferred).  b53 claims EEE support for
  *     its BCM53115 entry and would write 92:00 from ethtool's set_eee and
  *     after a link-up with EEE negotiated; see b53_bcmring_support_eee().
- *   - Still unknown, because no vendor code touches them and they read
- *     zero: 00:21 bits 6 and 7, 00:22, 00:32/34/36, 00:3c, 02:00 bits 0 and
- *     5, and 42:20/28.  b53 writes all of them during setup; see
+ *   - No vendor code touches 00:21 bits 6 and 7, 00:22, 00:32/34/36,
+ *     00:3c, 02:00 bits 0 and 5, or 42:20/28, and they read zero under the
+ *     stock firmware.  b53 writes all of them during setup.  Under this
+ *     driver on a D60 all of them hold what b53 wrote, except 00:22 (stays
+ *     zero) and the EAP registers, which hold it in an unusual place; see
  *     b53_bcmring_report_unproven().
  */
 
@@ -235,6 +237,37 @@ static int b53_bcmring_read32(struct b53_device *dev, u8 page, u8 reg,
 	return 0;
 }
 
+/*
+ * The per-port EAP configuration registers (42:20 + 8 * port) are 64 bits
+ * wide in b53's register map: an address in bits 47:0 and the control
+ * fields, among them the EAP mode in bits 52:51, in the upper half.  On
+ * this core the slot does not behave like the other 64-bit registers (MIB
+ * counters and ARL entries, which are low word first in two words).
+ * Measured on a D60 under this driver (2026-11-14, read through /dev/mem):
+ *
+ *   - after b53 wrote 0 to word 0 and 0x00180000 (mode 3) to word 1, word 0
+ *     read 0x00180000 and word 1 read 0;
+ *   - after b53 then wrote 0x00180000 to word 0 and 0 to word 1 (mode 0,
+ *     with the value it had read back as the "low half"), both words read 0.
+ *
+ * So the last value written to word 1 is what word 0 returns, word 1 itself
+ * reads zero, and a value written to word 0 does not stay.  The slot is
+ * therefore treated as one 32-bit register that holds the upper half of
+ * b53's layout: written through word 1 (after a zero to word 0, the sequence
+ * the measurement covers) and read from word 0.  The address field is not
+ * representable and reads as zero; b53 never sets it.
+ *
+ * Not known: whether the core acts on the mode bits it stores.  Nothing in
+ * this driver depends on that: standalone ports are kept apart by their port
+ * masks, and 802.1X pass-through is done in software by the bridge (its
+ * group forwarding mask), on frames the switch hands to the CPU port.
+ */
+static bool b53_bcmring_is_eap_conf(u8 page, u8 reg)
+{
+	return page == B53_EAP_PAGE && reg >= B53_PORT_EAP_CONF(0) &&
+	       reg <= B53_PORT_EAP_CONF(B53_CPU_PORT) && !(reg & 7);
+}
+
 static int b53_bcmring_read64(struct b53_device *dev, u8 page, u8 reg,
 			      u64 *val)
 {
@@ -242,7 +275,10 @@ static int b53_bcmring_read64(struct b53_device *dev, u8 page, u8 reg,
 
 	lo = b53_bcmring_core_rd(dev, page, reg, 0);
 	hi = b53_bcmring_core_rd(dev, page, reg, 1);
-	*val = ((u64)hi << 32) | lo;
+	if (b53_bcmring_is_eap_conf(page, reg))
+		*val = (u64)(lo | hi) << 32;
+	else
+		*val = ((u64)hi << 32) | lo;
 	return 0;
 }
 
@@ -278,6 +314,8 @@ static int b53_bcmring_write32(struct b53_device *dev, u8 page, u8 reg,
 static int b53_bcmring_write64(struct b53_device *dev, u8 page, u8 reg,
 			       u64 val)
 {
+	if (b53_bcmring_is_eap_conf(page, reg))
+		val &= GENMASK_ULL(63, 32);
 	b53_bcmring_core_wr(dev, page, reg, 0, lower_32_bits(val));
 	b53_bcmring_core_wr(dev, page, reg, 1, upper_32_bits(val));
 	return 0;
@@ -525,8 +563,11 @@ static u32 b53_bcmring_get_phy_flags(struct dsa_switch *ds, int port)
  * this readback is the write experiment: a field that still reads zero is
  * absent on this core.  Expected after b53's setup: 00:21 = 0xc1, 00:22 with
  * bit 6 set, the three flood masks and the learning-disable mask with the
- * bits of the user and CPU ports, and mode 3 in bits 20:19 of the high word
- * of each user port's EAP register (42:20, 42:28).  02:00 is printed for
+ * bits of the user and CPU ports, and mode 3 in each user port's EAP
+ * register (42:20, 42:28; see b53_bcmring_is_eap_conf() for how this core
+ * presents it).  Seen on a D60: all as expected except 00:22, which stays
+ * zero (absent; its "dumb forwarding" bit only concerns unmanaged mode).
+ * 02:00 is printed for
  * its MIB bits (0 and 5), which b53 leaves clear, so its value proves
  * nothing about them.
  */
@@ -563,14 +604,19 @@ static void b53_bcmring_report_unproven(struct b53_device *bdev)
 		 val & 0xff);
 
 	for (i = 0; i < ESW_NUM_PHY_PORTS; i++) {
+		u64 eap;
+
 		if (!dsa_is_user_port(bdev->ds, i))
 			continue;
-		val = b53_bcmring_core_rd(bdev, B53_EAP_PAGE,
-					  B53_PORT_EAP_CONF(i), 1);
-		dev_info(dev, "after setup: 42:%02x (EAP, port %u) high word = %#010x%s\n",
-			 B53_PORT_EAP_CONF(i), i, val,
-			 upper_32_bits(EAP_MODE_MASK) & ~val ?
-			 ", mode bits missing: register absent?" : "");
+		/* Standalone user ports are in mode 3 after setup. */
+		b53_bcmring_read64(bdev, B53_EAP_PAGE, B53_PORT_EAP_CONF(i),
+				   &eap);
+		dev_info(dev, "after setup: 42:%02x (EAP, port %u) = %#010x, mode %llu%s
+",
+			 B53_PORT_EAP_CONF(i), i, upper_32_bits(eap),
+			 (eap & EAP_MODE_MASK) >> EAP_MODE_SHIFT,
+			 (eap & EAP_MODE_MASK) == EAP_MODE_MASK ? "" :
+			 ", expected mode 3");
 	}
 }
 
