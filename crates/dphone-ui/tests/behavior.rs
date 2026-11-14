@@ -120,6 +120,20 @@ fn off_hook_dialing_times_out_into_a_call() {
 }
 
 #[test]
+fn speaker_and_headset_keys_go_off_hook_on_their_path() {
+    for (key, path) in [(Key::Speaker, AudioPath::Speaker), (Key::Headset, AudioPath::Headset)] {
+        let mut r = Rig::new(Model::D60);
+        r.tap(key);
+        assert_eq!(r.screen(), "dialer", "{key:?}");
+        assert_eq!(
+            r.audio_cmds(),
+            vec![Command::SetAudioPath { path }, Command::PlayTone { tone: Tone::Dial, duration_ms: 0 }],
+            "{key:?}"
+        );
+    }
+}
+
+#[test]
 fn hanging_up_an_empty_dialer_closes_it() {
     let mut r = Rig::new(Model::D60);
     r.hook(true);

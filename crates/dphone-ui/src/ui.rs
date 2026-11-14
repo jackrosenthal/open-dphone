@@ -340,11 +340,15 @@ impl Stack {
                     } else {
                         cx.post(Command::SetAudioPath { path });
                     }
-                } else if key == Key::Headset {
-                    cx.post(Command::SetHeadsetMode { on: !st.audio.headset_mode });
                 } else if idle_base {
+                    // Either key alone goes off-hook on its path, as on
+                    // the stock firmware (observed on a D60: the Headset
+                    // key at idle opens New Call, attaches the headset,
+                    // and plays the dial tone there).
                     let d = Dialer::off_hook(cx, path, None);
                     self.push(cx, Box::new(d));
+                } else if key == Key::Headset {
+                    cx.post(Command::SetHeadsetMode { on: !st.audio.headset_mode });
                 }
             }
             Key::Hold | Key::Transfer | Key::Conference if live => {
