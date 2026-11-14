@@ -1,8 +1,10 @@
 //! Electronic hook switch (EHS) adapter on the serial port.
 //!
 //! The port (`/dev/ttyAMA0`) is shared with the serial console, so EHS and
-//! the console are mutually exclusive.  This trait is only the byte
-//! transport plus line settings, shared by both backends.
+//! the console are mutually exclusive.  The traits here are the byte
+//! transport plus line settings, shared by both backends; the two adapter
+//! protocols are in [`jabra`] and [`pehs`], and [`run`] is the detection
+//! loop over them.
 
 use crate::Result;
 use std::time::Duration;
@@ -64,8 +66,7 @@ impl SerialConfig {
 /// length = n + 6; total frame = n + 8 bytes
 /// ```
 ///
-/// Only the transport is here.  The meaning of headers and payloads beyond
-/// the detection packet ([`plantronics::DETECT`]) is not recovered.
+/// Only the framing is here; what the packets mean is in [`pehs`].
 pub mod plantronics {
     pub const STX: u8 = 0x02;
     pub const ETX: u8 = 0x03;
@@ -235,3 +236,11 @@ pub mod plantronics {
         }
     }
 }
+
+mod link;
+pub mod jabra;
+pub mod pehs;
+pub use link::{run, Adapter, EhsHost, EhsMode, HeadsetAction, Identity, PhoneStatus, Timing};
+
+#[cfg(test)]
+mod engine_tests;

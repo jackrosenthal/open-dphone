@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# SKETCH -- not validated with dt-schema, not submitted anywhere.
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/sound/brcm,bcm11107-pcm.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Broadcom BCMRING (BCM11107 family) PCM/TDM interface
+
+description: |
+  Serial PCM/TDM interface of the BCM11107 family (BCM11109, BCM11170,
+  BCM11188, BCM11189), in the register window of the APM audio front end.
+  The SoC drives the bit clock (1.024 MHz) and the frame sync (8 or 16 kHz);
+  one 16-bit channel in time slot 0 is exposed as a mono DAI.  Samples move
+  through two FIFOs serviced by the SoC DesignWare DMA controller.
+
+maintainers:
+  - Open DPhone contributors
+
+allOf:
+  - $ref: dai-common.yaml#
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - brcm,bcm11109-pcm
+          - brcm,bcm11170-pcm
+          - brcm,bcm11188-pcm
+          - brcm,bcm11189-pcm
+      - const: brcm,bcm11107-pcm
+
+  reg:
+    items:
+      - description: control registers
+      - description: receive FIFO
+      - description: transmit FIFO
+
+  reg-names:
+    items:
+      - const: core
+      - const: rx
+      - const: tx
+
+  clocks:
+    items:
+      - description: 100 MHz audio clock
+      - description: its 200 MHz parent
+
+  clock-names:
+    items:
+      - const: apm100
+      - const: apm200
+
+  resets:
+    maxItems: 1
+
+  dmas:
+    items:
+      - description: receive
+      - description: transmit
+
+  dma-names:
+    items:
+      - const: rx
+      - const: tx
+
+  brcm,chipc:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: chip-control syscon holding the audio clock enables
+
+  "#sound-dai-cells":
+    const: 0
+
+required:
+  - compatible
+  - reg
+  - reg-names
+  - clocks
+  - clock-names
+  - resets
+  - dmas
+  - dma-names
+  - brcm,chipc
+  - "#sound-dai-cells"
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    pcm@30600600 {
+        compatible = "brcm,bcm11188-pcm", "brcm,bcm11107-pcm";
+        reg = <0x30600600 0x100>, <0x306c0000 0x4>, <0x306d0000 0x4>;
+        reg-names = "core", "rx", "tx";
+        clocks = <&chipc 15>, <&chipc 20>;
+        clock-names = "apm100", "apm200";
+        resets = <&chipc 33>;
+        dmas = <&dma0 12 0 1 0x02>, <&dma0 13 0 1 0x40>;
+        dma-names = "rx", "tx";
+        brcm,chipc = <&chipc>;
+        #sound-dai-cells = <0>;
+    };

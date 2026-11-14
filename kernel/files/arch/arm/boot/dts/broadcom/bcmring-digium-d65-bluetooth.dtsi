@@ -1,0 +1,109 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * Bluetooth of the Digium/Sangoma D65: a Broadcom BCM20702 on UART B, with
+ * its voice (SCO) pins on the SoC PCM/TDM interface.  NEVER RUN: no D65 has
+ * been examined on hardware.  Everything is from the D65 stock firmware
+ * (release 2_9_28): the vendor kernel's board tables and PcmHw_* functions,
+ * halaudio_pcm.ko, and the bsa_server start script.
+ *
+ * Only the D65 has the part.  The D60 and D62 board tables name GPIOs 2, 3,
+ * and 4 for it, which are lamp columns there, and the vendor driver backs
+ * out.
+ *
+ * Include after bcmring-digium-common.dtsi.
+ */
+
+/ {
+	soc {
+		/*
+		 * PCM/TDM interface 0, in the APM's window, with its two
+		 * FIFOs.  DMA: vendor devices "pcm0_rx" and "pcm0_tx" are
+		 * request lines 12 and 13 of controller 0, peripheral on
+		 * master 1 as for the APM.  Channels 1 and 6 are the two
+		 * that neither the APM (2 to 5) nor the DSP (0) uses.
+		 */
+		pcm: pcm@30600600 {
+			compatible = "brcm,bcm11188-pcm", "brcm,bcm11107-pcm";
+			reg = <0x30600600 0x100>,
+			      <0x306c0000 0x4>, <0x306d0000 0x4>;
+			reg-names = "core", "rx", "tx";
+			clocks = <&chipc BCMRING_CLK_APM100>,
+				 <&chipc BCMRING_CLK_APM>;
+			clock-names = "apm100", "apm200";
+			resets = <&chipc BCMRING_RST_PCM>;
+			dmas = <&dma0 12 0 1 0x02>, <&dma0 13 0 1 0x40>;
+			dma-names = "rx", "tx";
+			/* audio clock enables at chipc 0x7c */
+			brcm,chipc = <&chipc>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcm0_pins>;
+			#sound-dai-cells = <0>;
+		};
+	};
+
+	bt_sco: bt-sco {
+		compatible = "linux,bt-sco";
+		#sound-dai-cells = <1>;
+	};
+
+	/*
+	 * A second sound card beside "Digium Phone": one mono PCM device,
+	 * 8 or 16 kHz, to and from the Bluetooth controller's PCM pins.  The
+	 * SoC drives the bit clock and the frame sync.
+	 */
+	sound-bluetooth {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "Digium Bluetooth";
+
+		simple-audio-card,cpu {
+			sound-dai = <&pcm>;
+		};
+
+		simple-audio-card,codec {
+			/* 1 = "bt-sco-pcm-wb": 8 and 16 kHz */
+			sound-dai = <&bt_sco 1>;
+		};
+	};
+};
+
+&pinmux {
+	/* Vendor pin group "BTUART": pads 12 and 13, function 4, no RTS/CTS */
+	btuart_pins: btuart-pins {
+		pinctrl-single,bits = <0x04 0x00440000 0x00ff0000>;
+	};
+
+	/* Vendor pin group "PCM0": pads 8, 9, 33, and 34, function 9 */
+	pcm0_pins: pcm0-pins {
+		pinctrl-single,bits = <0x04 0x00000099 0x000000ff>,
+				      <0x10 0x00000990 0x00000ff0>;
+	};
+};
+
+/*
+ * UART B.  H4 at 115200 baud, the only rate the vendor stack uses; there
+ * are no flow-control lines, so the rate is not raised.
+ */
+&uart1 {
+	pinctrl-0 = <&btuart_pins>;
+	status = "okay";
+
+	bluetooth {
+		compatible = "brcm,bcm20702a1";
+		/*
+		 * Vendor board table {RST_B 6, VREG_CTL 7, WAKE 10}.  The
+		 * vendor releases the part with WAKE high, VREG_CTL high,
+		 * then RST_B high.
+		 */
+		shutdown-gpios = <&gpio0 7 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio0 6 GPIO_ACTIVE_LOW>;
+		device-wakeup-gpios = <&gpio0 10 GPIO_ACTIVE_HIGH>;
+		/*
+		 * SCO over the PCM pins; the controller is the slave for
+		 * clock and frame sync at 1024 kbit/s with a short frame
+		 * sync.  The driver applies this only after loading a patch
+		 * file, and none is shipped (the vendor does not load one
+		 * either), so userspace sends the same command.
+		 */
+		brcm,bt-pcm-int-params = [00 03 00 00 00];
+	};
+};

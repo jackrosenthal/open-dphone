@@ -1,0 +1,26 @@
+--- a/sound/soc/bcm/Kconfig
++++ b/sound/soc/bcm/Kconfig
+@@ -49,4 +49,14 @@
+ 	  D50, D60, D62, D65, and D70 desk phones: handset, headset, and
+ 	  speakerphone PCM devices on the on-chip APM audio front end.
+ 
++config SND_SOC_BCMRING_PCM
++	tristate "SoC audio support for the Broadcom BCMRING PCM/TDM interface"
++	depends on ARCH_BCMRING || COMPILE_TEST
++	depends on HAS_IOMEM
++	select MFD_SYSCON
++	help
++	  Say Y or M to support the PCM/TDM interface of the Broadcom BCMRING
++	  SoCs (BCM11107 family) as a mono DAI.  The Digium D65 carries
++	  Bluetooth voice over it.
++
+ endmenu
+--- a/sound/soc/bcm/Makefile
++++ b/sound/soc/bcm/Makefile
+@@ -21,3 +21,6 @@
+ 
+ snd-soc-bcmring-digium-card-y := bcmring-digium-card.o
+ obj-$(CONFIG_SND_SOC_BCMRING_DIGIUM) += snd-soc-bcmring-digium-card.o
++
++snd-soc-bcmring-pcm-y := bcmring-pcm.o
++obj-$(CONFIG_SND_SOC_BCMRING_PCM) += snd-soc-bcmring-pcm.o
