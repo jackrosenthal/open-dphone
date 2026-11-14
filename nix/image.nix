@@ -12,6 +12,7 @@
   applets,
   sed,
   dspFirmware,
+  cacert,
   apps ? null,
   version, # e.g., "3.0.0"
 }:
@@ -96,6 +97,11 @@ let
     ${lib.optionalString (
       apps != null
     ) "cp -r ${apps}/. $out/usr/share/dphone/apps/ && chmod -R u+w $out/usr/share/dphone/apps"}
+
+    # The base trust bundle (Mozilla's certificate authorities), at the path
+    # stock keeps its own.  `dphone` builds `/nvdata/certs/certs.crt` from it
+    # and the provisioned certificates.
+    install -D -m 0644 ${cacert}/etc/ssl/certs/ca-bundle.crt $out/usr/share/ssl/certs/cacert.pem
 
     printf 'root:x:0:0:root:/nvdata/root:/bin/brush\n' > $out/etc/passwd
     printf 'root:x:0:\ntty:x:5:\n' > $out/etc/group
