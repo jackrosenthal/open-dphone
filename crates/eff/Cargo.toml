@@ -1,0 +1,11 @@
+[package]
+name = "eff"
+description = "Digium EFF firmware envelope, OTA container, and ctrl record formats"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+aes = "0.8"
+md-5 = "0.10"
