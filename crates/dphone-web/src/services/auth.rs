@@ -1,7 +1,7 @@
 //! `AuthService`.
 
 use crate::auth as sess;
-use crate::connect::{Code, ConnectError};
+use crate::rpc::{Code, ConnectError};
 use crate::http::Ctx;
 use crate::pb;
 use dphone_config::nvdata::WEB_USER;
@@ -25,7 +25,7 @@ fn session_message(ctx: &Ctx, session: Option<&sess::Session>, default_password:
 }
 
 async fn check_password(ctx: &Ctx, user: String, password: String) -> Result<bool, ConnectError> {
-    super::with_config(&ctx.app, false, move |c| Ok(c.verify_web_password(&user, &password)?)).await
+    super::with_config(&ctx.app, false, move |c| c.verify_web_password(&user, &password).map_err(crate::services::config_error)).await
 }
 
 pub async fn login(ctx: Ctx, req: pb::LoginRequest) -> Result<pb::LoginResponse, ConnectError> {
@@ -57,7 +57,7 @@ pub async fn login(ctx: Ctx, req: pb::LoginRequest) -> Result<pb::LoginResponse,
     }
     log::info!("web login by {user:?} from {}", ctx.peer);
     Ok(pb::LoginResponse {
-        session: Some(session_message(&ctx, Some(&session), req.password == DEFAULT_PASSWORD)),
+        session: Some(session_message(&ctx, Some(&session), req.password == DEFAULT_PASSWORD)).into(),
     })
 }
 
@@ -74,7 +74,7 @@ pub async fn get_session(ctx: Ctx, _req: pb::GetSessionRequest) -> Result<pb::Ge
         Some(s) => check_password(&ctx, s.user.clone(), DEFAULT_PASSWORD.to_owned()).await.unwrap_or(false),
         None => false,
     };
-    Ok(pb::GetSessionResponse { session: Some(session_message(&ctx, ctx.session.as_ref(), default_password)) })
+    Ok(pb::GetSessionResponse { session: Some(session_message(&ctx, ctx.session.as_ref(), default_password)).into() })
 }
 
 pub async fn change_password(
@@ -83,12 +83,12 @@ pub async fn change_password(
 ) -> Result<pb::ChangePasswordResponse, ConnectError> {
     let session = ctx.session.clone().ok_or_else(|| ConnectError::new(Code::Unauthenticated, "log in first"))?;
     if req.new_password.len() < 4 || req.new_password.len() > 128 {
-        return Err(ConnectError::invalid("the new password must be 4 to 128 characters"));
+        return Err(ConnectError::invalid_argument("the new password must be 4 to 128 characters"));
     }
     // The stock digest file is `user:realm:hash` lines, so these cannot be
     // stored; refuse rather than write a file stock would misread.
     if req.new_password.chars().any(|c| c.is_control()) {
-        return Err(ConnectError::invalid("the new password contains a control character"));
+        return Err(ConnectError::invalid_argument("the new password contains a control character"));
     }
     if !check_password(&ctx, session.user.clone(), req.current_password.clone()).await? {
         tokio::time::sleep(Duration::from_millis(400)).await;
@@ -96,7 +96,7 @@ pub async fn change_password(
     }
     let new = req.new_password.clone();
     super::with_config(&ctx.app, true, move |c| {
-        c.set_web_password(&new)?;
+        c.set_web_password(&new).map_err(crate::services::config_error)?;
         Ok(())
     })
     .await?;

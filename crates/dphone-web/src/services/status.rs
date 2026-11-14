@@ -2,7 +2,7 @@
 //! `AccountsService`, and `ProvisioningService`.
 
 use super::{command, watch};
-use crate::connect::{ConnectError, Sink};
+use crate::rpc::{ConnectError, Sink};
 use crate::http::Ctx;
 use crate::{convert, pb, App};
 use dphone_state::{self as st, Command, Topic, TopicSet};
@@ -12,19 +12,19 @@ pub(crate) fn firmware_status(app: &App) -> pb::FirmwareStatus {
     let uploads = app.uploads.lock().unwrap();
     f.uploaded = uploads
         .iter()
-        .find_map(|(id, u)| u.firmware.as_ref().map(|info| super::uploaded_firmware(app, id, u.size, info)));
+        .find_map(|(id, u)| u.firmware.as_ref().map(|info| super::uploaded_firmware(app, id, u.size, info))).into();
     f
 }
 
 fn snapshot(app: &App) -> pb::StatusSnapshot {
     let s = app.store.snapshot();
     pb::StatusSnapshot {
-        system: Some(convert::system(&s.system, app.started.elapsed().as_secs())),
-        network: Some(convert::network(&s.network, s.system.mac_string())),
-        provisioning: Some(convert::provisioning(&s.provisioning)),
+        system: Some(convert::system(&s.system, app.started.elapsed().as_secs())).into(),
+        network: Some(convert::network(&s.network, s.system.mac_string())).into(),
+        provisioning: Some(convert::provisioning(&s.provisioning)).into(),
         accounts: convert::accounts(&s.accounts),
-        calls: Some(convert::calls_snapshot(&s)),
-        firmware: Some(firmware_status(app)),
+        calls: Some(convert::calls_snapshot(&s)).into(),
+        firmware: Some(firmware_status(app)).into(),
         health: convert::health(&s.health),
         healthy: s.health.healthy,
         config_generation: s.config.generation,
@@ -34,7 +34,7 @@ fn snapshot(app: &App) -> pb::StatusSnapshot {
 }
 
 pub async fn get_status(ctx: Ctx, _req: pb::GetStatusRequest) -> Result<pb::GetStatusResponse, ConnectError> {
-    Ok(pb::GetStatusResponse { status: Some(snapshot(&ctx.app)) })
+    Ok(pb::GetStatusResponse { status: Some(snapshot(&ctx.app)).into() })
 }
 
 pub async fn watch_status(
@@ -43,7 +43,7 @@ pub async fn watch_status(
     sink: Sink<pb::WatchStatusResponse>,
 ) -> Result<(), ConnectError> {
     let topics = TopicSet::ALL.without(Topic::Log).without(Topic::Ui).without(Topic::Keys);
-    watch(ctx, topics, sink, true, |app| pb::WatchStatusResponse { status: Some(snapshot(app)) }).await
+    watch(ctx, topics, sink, true, |app| pb::WatchStatusResponse { status: Some(snapshot(app)).into() }).await
 }
 
 // --------------------------------------------------------------- network
@@ -54,7 +54,7 @@ fn network_status(app: &App) -> pb::NetworkStatus {
 
 pub async fn get_network(ctx: Ctx, _req: pb::GetNetworkRequest) -> Result<pb::GetNetworkResponse, ConnectError> {
     let settings = super::config::network_settings(&ctx.app);
-    Ok(pb::GetNetworkResponse { status: Some(network_status(&ctx.app)), settings: Some(settings) })
+    Ok(pb::GetNetworkResponse { status: Some(network_status(&ctx.app)).into(), settings: Some(settings).into() })
 }
 
 pub async fn watch_network(
@@ -63,7 +63,7 @@ pub async fn watch_network(
     sink: Sink<pb::WatchNetworkResponse>,
 ) -> Result<(), ConnectError> {
     watch(ctx, [Topic::Network, Topic::System], sink, false, |app| pb::WatchNetworkResponse {
-        status: Some(network_status(app)),
+        status: Some(network_status(app)).into(),
     })
     .await
 }
@@ -88,7 +88,7 @@ pub async fn get_provisioning(
     ctx: Ctx,
     _req: pb::GetProvisioningRequest,
 ) -> Result<pb::GetProvisioningResponse, ConnectError> {
-    Ok(pb::GetProvisioningResponse { status: Some(provisioning(&ctx.app)) })
+    Ok(pb::GetProvisioningResponse { status: Some(provisioning(&ctx.app)).into() })
 }
 
 pub async fn watch_provisioning(
@@ -97,7 +97,7 @@ pub async fn watch_provisioning(
     sink: Sink<pb::WatchProvisioningResponse>,
 ) -> Result<(), ConnectError> {
     watch(ctx, Topic::Provisioning, sink, false, |app| pb::WatchProvisioningResponse {
-        status: Some(provisioning(app)),
+        status: Some(provisioning(app)).into(),
     })
     .await
 }
@@ -152,7 +152,7 @@ pub async fn watch_accounts(
 
 pub async fn reregister(ctx: Ctx, req: pb::ReregisterRequest) -> Result<pb::ReregisterResponse, ConnectError> {
     let account = match req.index {
-        Some(i) => Some(st::AccountId(u8::try_from(i).map_err(|_| ConnectError::invalid("no such account"))?)),
+        Some(i) => Some(st::AccountId(u8::try_from(i).map_err(|_| ConnectError::invalid_argument("no such account"))?)),
         None => None,
     };
     command(&ctx.app.store, Command::Reregister { account }).await?;

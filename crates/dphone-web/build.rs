@@ -1,8 +1,8 @@
 //! Build script, Rust only:
 //!
 //! 1. Compiles `proto/dphone/v1/*.proto` with protox (a pure-Rust protobuf
-//!    compiler, so no `protoc` is needed), generating prost types and
-//!    pbjson serde implementations (proto3 canonical JSON).
+//!    compiler, so no `protoc` is needed), and generates buffa message types and the
+//!    Connect service traits with connectrpc-build.
 //! 2. Embeds the built frontend (`web/dist`) precompressed with gzip and
 //!    brotli.  Without `web/dist`, a placeholder page is embedded, so the
 //!    crate builds on machines without node.
@@ -35,18 +35,38 @@ fn protos(root: &Path, out: &Path) {
         .filter(|p| p.extension().is_some_and(|x| x == "proto"))
         .collect();
     files.sort();
-    let fds = protox::compile(&files, [root]).expect("compiling proto/");
-    let mut cfg = prost_build::Config::new();
-    cfg.out_dir(out);
-    cfg.compile_fds(fds.clone()).expect("prost-build");
-    let bytes = prost::Message::encode_to_vec(&fds);
-    pbjson_build::Builder::new()
-        .register_descriptors(&bytes)
-        .expect("descriptors")
-        .out_dir(out)
-        .ignore_unknown_fields()
-        .build(&[".dphone.v1"])
-        .expect("pbjson-build");
+    // protox (pure Rust) produces the descriptor set, so the build needs no
+    // `protoc`; connectrpc-build generates buffa message types and the
+    // Connect service traits from it.
+    let fds = protox::Compiler::new([root])
+        .expect("proto include path")
+        .include_source_info(true)
+        .include_imports(true)
+        .open_files(&files)
+        .expect("compiling proto/")
+        .file_descriptor_set();
+    let set = out.join("dphone.fds.bin");
+    fs::write(&set, prost::Message::encode_to_vec(&fds)).expect("writing descriptor set");
+    let names: Vec<String> = files
+        .iter()
+        .map(|f| f.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"))
+        .collect();
+    // No unknown-field storage: the server never re-emits a message it
+    // received, and plain struct literals then stay complete.
+    let mut buffa = buffa_codegen::CodeGenConfig::default();
+    buffa.preserve_unknown_fields = false;
+    connectrpc_build::Config::new()
+        .buffa_config(buffa)
+        .generate_json(true)
+        // The firmware is a server only; the generated clients compile
+        // only under the (never enabled) `client` feature.
+        .gate_client_feature(true)
+        .descriptor_set(&set)
+        .files(&names)
+        .emit_rerun_directives(false)
+        .include_file("_connectrpc.rs")
+        .compile()
+        .expect("connectrpc-build");
 }
 
 fn walk(dir: &Path, base: &Path, into: &mut Vec<(String, PathBuf)>) {

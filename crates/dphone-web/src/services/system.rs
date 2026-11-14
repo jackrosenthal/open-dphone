@@ -2,7 +2,7 @@
 //! `SystemService`.
 
 use super::{command, watch};
-use crate::connect::{Code, ConnectError, Sink};
+use crate::rpc::{Code, ConnectError, Sink};
 use crate::http::Ctx;
 use crate::{convert, pb, App, MirrorScreen};
 use dphone_state::{self as st, Command, CommandError, Key, Topic};
@@ -16,7 +16,7 @@ fn apps_snapshot(app: &App) -> pb::AppsSnapshot {
 }
 
 pub async fn list_apps(ctx: Ctx, _req: pb::ListAppsRequest) -> Result<pb::ListAppsResponse, ConnectError> {
-    Ok(pb::ListAppsResponse { snapshot: Some(apps_snapshot(&ctx.app)) })
+    Ok(pb::ListAppsResponse { snapshot: Some(apps_snapshot(&ctx.app)).into() })
 }
 
 pub async fn watch_apps(
@@ -24,7 +24,7 @@ pub async fn watch_apps(
     _req: pb::WatchAppsRequest,
     sink: Sink<pb::WatchAppsResponse>,
 ) -> Result<(), ConnectError> {
-    watch(ctx, Topic::Apps, sink, false, |app| pb::WatchAppsResponse { snapshot: Some(apps_snapshot(app)) }).await
+    watch(ctx, Topic::Apps, sink, false, |app| pb::WatchAppsResponse { snapshot: Some(apps_snapshot(app)).into() }).await
 }
 
 pub async fn launch_app(ctx: Ctx, req: pb::LaunchAppRequest) -> Result<pb::LaunchAppResponse, ConnectError> {
@@ -61,7 +61,7 @@ pub async fn remove_app(ctx: Ctx, req: pb::RemoveAppRequest) -> Result<pb::Remov
 // -------------------------------------------------------------- firmware
 
 pub async fn get_firmware(ctx: Ctx, _req: pb::GetFirmwareRequest) -> Result<pb::GetFirmwareResponse, ConnectError> {
-    Ok(pb::GetFirmwareResponse { status: Some(super::status::firmware_status(&ctx.app)) })
+    Ok(pb::GetFirmwareResponse { status: Some(super::status::firmware_status(&ctx.app)).into() })
 }
 
 pub async fn watch_firmware(
@@ -70,7 +70,7 @@ pub async fn watch_firmware(
     sink: Sink<pb::WatchFirmwareResponse>,
 ) -> Result<(), ConnectError> {
     watch(ctx, Topic::Update, sink, false, |app| pb::WatchFirmwareResponse {
-        status: Some(super::status::firmware_status(app)),
+        status: Some(super::status::firmware_status(app)).into(),
     })
     .await
 }
@@ -88,7 +88,7 @@ pub async fn install_firmware(
             .ok_or_else(|| ConnectError::not_found("no such upload; upload the image again"))?;
         let info = u.firmware.as_ref().expect("filtered");
         if !info.model.is_empty() && !info.model.eq_ignore_ascii_case(model.name()) {
-            return Err(ConnectError::precondition(format!(
+            return Err(ConnectError::failed_precondition(format!(
                 "this image is for the {}, and this phone is a {}",
                 info.model,
                 model.name()
@@ -112,9 +112,9 @@ pub async fn install_firmware(
     // minutes; progress then shows through WatchFirmware.
     match tokio::time::timeout(Duration::from_secs(5), sent).await {
         Ok(Ok(_)) | Err(_) => {}
-        Ok(Err(e @ CommandError::NoHandler(_))) => return Err(e.into()),
+        Ok(Err(e @ CommandError::NoHandler(_))) => return Err(super::command_error(e)),
         Ok(Err(e)) => {
-            return Err(e.into());
+            return Err(super::command_error(e));
         }
     }
     // The image now belongs to the updater.
@@ -146,8 +146,8 @@ pub async fn rollback(ctx: Ctx, _req: pb::RollbackRequest) -> Result<pb::Rollbac
 
 // ------------------------------------------------------------------ logs
 
-fn level_from(l: i32) -> st::Level {
-    match pb::LogLevel::try_from(l).unwrap_or(pb::LogLevel::Unspecified) {
+fn level_from(l: buffa::EnumValue<pb::LogLevel>) -> st::Level {
+    match l.as_known().unwrap_or(pb::LogLevel::Unspecified) {
         pb::LogLevel::Error => st::Level::Error,
         pb::LogLevel::Warn => st::Level::Warn,
         pb::LogLevel::Info => st::Level::Info,
@@ -257,14 +257,14 @@ pub async fn get_screen_layout(
     let model = ctx.app.store.model();
     let main = model.main_screen();
     let mut screens = vec![pb::ScreenInfo {
-        id: pb::ScreenId::Main as i32,
+        id: pb::ScreenId::Main.into(),
         width: main.width as u32,
         height: main.height as u32,
         color: model.is_color(),
     }];
     if let Some(side) = model.side_screen() {
         screens.push(pb::ScreenInfo {
-            id: pb::ScreenId::Side as i32,
+            id: pb::ScreenId::Side.into(),
             width: side.width as u32,
             height: side.height as u32,
             color: false,
@@ -310,7 +310,7 @@ pub async fn watch_screen(
 ) -> Result<(), ConnectError> {
     let app = ctx.app.clone();
     let token = ctx.session.as_ref().map(|s| s.token.clone());
-    let which = match pb::ScreenId::try_from(req.screen).unwrap_or(pb::ScreenId::Main) {
+    let which = match req.screen.as_known().unwrap_or(pb::ScreenId::Main) {
         pb::ScreenId::Side => MirrorScreen::Side,
         _ => MirrorScreen::Main,
     };
@@ -373,9 +373,9 @@ pub async fn watch_screen(
 }
 
 pub async fn press_key(ctx: Ctx, req: pb::PressKeyRequest) -> Result<pb::PressKeyResponse, ConnectError> {
-    let key = Key::from_name(&req.key).ok_or_else(|| ConnectError::invalid(format!("unknown key {:?}", req.key)))?;
+    let key = Key::from_name(&req.key).ok_or_else(|| ConnectError::invalid_argument(format!("unknown key {:?}", req.key)))?;
     let store = &ctx.app.store;
-    match pb::KeyAction::try_from(req.action).unwrap_or(pb::KeyAction::Tap) {
+    match req.action.as_known().unwrap_or(pb::KeyAction::Tap) {
         pb::KeyAction::Down => {
             command(store, Command::InjectKey { key, down: true }).await?;
         }
@@ -407,7 +407,7 @@ pub async fn reboot(ctx: Ctx, _req: pb::RebootRequest) -> Result<pb::RebootRespo
 pub async fn factory_reset(ctx: Ctx, req: pb::FactoryResetRequest) -> Result<pb::FactoryResetResponse, ConnectError> {
     let model = ctx.app.store.model();
     if !req.confirm.trim().eq_ignore_ascii_case(model.name()) {
-        return Err(ConnectError::invalid(format!("type {} to confirm the factory reset", model.name())));
+        return Err(ConnectError::invalid_argument(format!("type {} to confirm the factory reset", model.name())));
     }
     log::warn!("factory reset requested from {}", ctx.peer);
     command(&ctx.app.store, Command::FactoryReset).await?;
@@ -417,7 +417,7 @@ pub async fn factory_reset(ctx: Ctx, req: pb::FactoryResetRequest) -> Result<pb:
 pub async fn set_time(ctx: Ctx, req: pb::SetTimeRequest) -> Result<pb::SetTimeResponse, ConnectError> {
     // 2020-01-01 to 2100-01-01: anything else is a mistake.
     if !(1_577_836_800..4_102_444_800).contains(&req.unix_secs) {
-        return Err(ConnectError::invalid("implausible time"));
+        return Err(ConnectError::invalid_argument("implausible time"));
     }
     command(&ctx.app.store, Command::SetTime { unix_secs: req.unix_secs }).await?;
     Ok(pb::SetTimeResponse {})
@@ -454,7 +454,7 @@ pub async fn create_backup(ctx: Ctx, _req: pb::CreateBackupRequest) -> Result<pb
 
 pub async fn restore_backup(ctx: Ctx, req: pb::RestoreBackupRequest) -> Result<pb::RestoreBackupResponse, ConnectError> {
     if req.archive.is_empty() {
-        return Err(ConnectError::invalid("no archive"));
+        return Err(ConnectError::invalid_argument("no archive"));
     }
     let archive = req.archive;
     let files = blocking(&ctx.app, move |app| {
@@ -465,7 +465,7 @@ pub async fn restore_backup(ctx: Ctx, req: pb::RestoreBackupRequest) -> Result<p
         Ok(n)
     })
     .await?
-    .map_err(|e| ConnectError::invalid(format!("restoring the backup: {e}")))?;
+    .map_err(|e| ConnectError::invalid_argument(format!("restoring the backup: {e}")))?;
     log::warn!("configuration restored from a backup ({files} files) by {}", ctx.peer);
     ctx.app.store.post(Command::ReloadConfig);
     ctx.app.store.post(Command::ReloadContacts);

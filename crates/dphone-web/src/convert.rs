@@ -27,7 +27,7 @@ pub fn system(s: &st::System, uptime_secs: u64) -> pb::SystemInfo {
             st::Phase::Running => pb::SystemPhase::Running,
             st::Phase::Recovery => pb::SystemPhase::Recovery,
             st::Phase::ShuttingDown => pb::SystemPhase::ShuttingDown,
-        } as i32,
+        }.into(),
         mac: s.mac_string(),
         hostname: s.hostname.clone(),
         time_synced: s.time_synced,
@@ -56,10 +56,10 @@ pub fn network(n: &st::Network, mac: String) -> pb::NetworkStatus {
             st::NetPhase::Configuring => pb::NetPhase::Configuring,
             st::NetPhase::Up => pb::NetPhase::Up,
             st::NetPhase::Failed => pb::NetPhase::Failed,
-        } as i32,
+        }.into(),
         detail: n.detail.clone(),
-        lan: Some(link(&n.lan)),
-        pc: Some(link(&n.pc)),
+        lan: Some(link(&n.lan)).into(),
+        pc: Some(link(&n.pc)).into(),
         pc_port_enabled: n.pc_port_enabled,
         mac,
         ipv4_source: match n.ipv4.source {
@@ -128,11 +128,11 @@ pub fn provisioning(p: &st::Provisioning) -> pb::ProvisioningStatus {
         st::ProvisionPhase::Failed { reason, code } => (P::Failed, reason.clone(), *code),
     };
     pb::ProvisioningStatus {
-        phase: phase as i32,
+        phase: phase.into(),
         failure_reason,
         failure_code,
         discovered: p.discovered.iter().map(server).collect(),
-        server: p.server.as_ref().map(server),
+        server: p.server.as_ref().map(server).into(),
         server_user_agent: p.server_user_agent.clone(),
         users: p
             .users
@@ -166,7 +166,7 @@ pub fn accounts(a: &st::Accounts) -> Vec<pb::AccountStatus> {
                 user: acc.user.clone(),
                 server: acc.server.clone(),
                 dpma: acc.dpma,
-                transport: transport(acc.transport) as i32,
+                transport: transport(acc.transport).into(),
                 is_default: a.default_account == Some(acc.id),
                 ..Default::default()
             };
@@ -185,7 +185,7 @@ pub fn accounts(a: &st::Accounts) -> Vec<pb::AccountStatus> {
                     out.retry_in_secs = secs_until(*retry_mono_ms);
                     R::Failed
                 }
-            } as i32;
+            }.into();
             out
         })
         .collect()
@@ -204,8 +204,8 @@ pub fn audio_path(p: st::AudioPath) -> pb::AudioPath {
     }
 }
 
-pub fn audio_path_from(p: i32) -> Option<st::AudioPath> {
-    match pb::AudioPath::try_from(p).ok()? {
+pub fn audio_path_from(p: buffa::EnumValue<pb::AudioPath>) -> Option<st::AudioPath> {
+    match p.as_known()? {
         pb::AudioPath::Unspecified => None,
         pb::AudioPath::None => Some(st::AudioPath::None),
         pb::AudioPath::Handset => Some(st::AudioPath::Handset),
@@ -255,9 +255,9 @@ pub fn call(c: &st::Call, focused: bool) -> pb::Call {
         direction: match c.direction {
             st::Direction::Incoming => pb::CallDirection::Incoming,
             st::Direction::Outgoing => pb::CallDirection::Outgoing,
-        } as i32,
-        state: state as i32,
-        remote: Some(party(&c.remote)),
+        }.into(),
+        state: state.into(),
+        remote: Some(party(&c.remote)).into(),
         started_unix: c.started_unix,
         duration_secs: c.duration_secs(mono_ms()),
         codec: c.codec.map(|c| c.name().to_owned()).unwrap_or_default(),
@@ -284,7 +284,7 @@ pub fn audio(a: &st::Audio) -> pb::AudioStatus {
         st::DspStatus::Failed(e) => ("failed", e.clone()),
     };
     pb::AudioStatus {
-        path: audio_path(a.path) as i32,
+        path: audio_path(a.path).into(),
         off_hook: a.off_hook,
         headset_mode: a.headset_mode,
         muted: a.muted,
@@ -301,14 +301,14 @@ pub fn audio(a: &st::Audio) -> pb::AudioStatus {
 pub fn calls_snapshot(s: &st::State) -> pb::CallsSnapshot {
     pb::CallsSnapshot {
         calls: s.calls.calls.iter().map(|c| call(c, s.calls.focused == Some(c.id))).collect(),
-        audio: Some(audio(&s.audio)),
+        audio: Some(audio(&s.audio)).into(),
         features: Some(pb::FeatureStatus {
             dnd: s.features.dnd,
             forward_always: s.features.forward.always.clone(),
             forward_busy: s.features.forward.busy.clone(),
             forward_no_answer: s.features.forward.no_answer.clone(),
             forward_no_answer_secs: s.features.forward.no_answer_secs as u32,
-        }),
+        }).into(),
         mwi: s
             .mwi
             .accounts
@@ -333,8 +333,8 @@ pub fn call_log(l: &st::CallLog) -> Vec<pb::CallLogEntry> {
                 st::CallLogKind::Missed => pb::CallLogKind::Missed,
                 st::CallLogKind::Received => pb::CallLogKind::Received,
                 st::CallLogKind::Placed => pb::CallLogKind::Placed,
-            } as i32,
-            party: Some(party(&e.party)),
+            }.into(),
+            party: Some(party(&e.party)).into(),
             account: e.account.0 as u32,
             start_unix: e.start_unix,
             duration_secs: e.duration_secs,
@@ -362,7 +362,7 @@ pub fn firmware(u: &st::Update, version: &st::FirmwareVersion) -> pb::FirmwareSt
         st::TrialBoot::RolledBack { reason } => ("rolled_back", 0, reason.clone()),
     };
     pb::FirmwareStatus {
-        phase: phase as i32,
+        phase: phase.into(),
         percent: percent as u32,
         error,
         running_version: version.dotted(),
@@ -377,7 +377,7 @@ pub fn firmware(u: &st::Update, version: &st::FirmwareVersion) -> pb::FirmwareSt
         rollback_reason,
         incoming_version: u.incoming_version.clone(),
         incoming_is_stock: u.incoming_is_stock,
-        uploaded: None,
+        uploaded: None.into(),
     }
 }
 
@@ -393,7 +393,7 @@ pub fn health(h: &st::Health) -> Vec<pb::SubsystemHealth> {
                 st::HealthStatus::Degraded(d) => (H::Degraded, d.clone()),
                 st::HealthStatus::Failed(d) => (H::Failed, d.clone()),
             };
-            pb::SubsystemHealth { subsystem: format!("{s:?}").to_lowercase(), state: state as i32, detail }
+            pb::SubsystemHealth { subsystem: format!("{s:?}").to_lowercase(), state: state.into(), detail }
         })
         .collect()
 }
@@ -436,7 +436,7 @@ pub fn log_entry(e: &st::LogEntry) -> pb::LogEntry {
         seq: e.seq,
         unix_ms: e.unix_ms,
         mono_ms: e.mono_ms,
-        level: log_level(e.level) as i32,
+        level: log_level(e.level).into(),
         target: e.target.clone(),
         message: e.message.clone(),
     }

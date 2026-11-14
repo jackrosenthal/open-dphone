@@ -2,7 +2,7 @@
 //! of `AccountsService` and `NetworkService`.
 
 use super::with_config;
-use crate::connect::ConnectError;
+use crate::rpc::ConnectError;
 use crate::http::Ctx;
 use crate::{convert, pb, App};
 use dphone_config::contacts::parse_contacts;
@@ -22,10 +22,10 @@ fn flag(b: bool) -> &'static str {
 
 fn clean(what: &str, s: &str, max: usize) -> Result<(), ConnectError> {
     if s.len() > max {
-        return Err(ConnectError::invalid(format!("{what} is too long")));
+        return Err(ConnectError::invalid_argument(format!("{what} is too long")));
     }
     if s.chars().any(char::is_control) {
-        return Err(ConnectError::invalid(format!("{what} contains a control character")));
+        return Err(ConnectError::invalid_argument(format!("{what} contains a control character")));
     }
     Ok(())
 }
@@ -80,20 +80,20 @@ pub async fn list_settings(ctx: Ctx, req: pb::ListSettingsRequest) -> Result<pb:
 
 pub async fn set_settings(ctx: Ctx, req: pb::SetSettingsRequest) -> Result<pb::SetSettingsResponse, ConnectError> {
     if req.changes.is_empty() {
-        return Err(ConnectError::invalid("no changes"));
+        return Err(ConnectError::invalid_argument("no changes"));
     }
     for ch in &req.changes {
         if !valid_setting_id(&ch.id) {
-            return Err(ConnectError::invalid(format!("not a setting ID: {:?}", ch.id)));
+            return Err(ConnectError::invalid_argument(format!("not a setting ID: {:?}", ch.id)));
         }
         if ch.id == "login_password" {
-            return Err(ConnectError::invalid("use ChangePassword to change the web password"));
+            return Err(ConnectError::invalid_argument("use ChangePassword to change the web password"));
         }
         clean(&ch.id, &ch.value, 4096)?;
     }
     with_config(&ctx.app, true, move |c| {
         let changes: Vec<(&str, &str)> = req.changes.iter().map(|ch| (ch.id.as_str(), ch.value.as_str())).collect();
-        let cfg = c.set_many(&changes)?;
+        let cfg = c.set_many(&changes).map_err(crate::services::config_error)?;
         Ok(pb::SetSettingsResponse { generation: cfg.generation() })
     })
     .await
@@ -104,15 +104,15 @@ pub async fn unset_settings(
     req: pb::UnsetSettingsRequest,
 ) -> Result<pb::UnsetSettingsResponse, ConnectError> {
     if req.ids.is_empty() {
-        return Err(ConnectError::invalid("no settings named"));
+        return Err(ConnectError::invalid_argument("no settings named"));
     }
     if let Some(bad) = req.ids.iter().find(|id| !valid_setting_id(id) || *id == "login_password") {
-        return Err(ConnectError::invalid(format!("cannot unset {bad:?}")));
+        return Err(ConnectError::invalid_argument(format!("cannot unset {bad:?}")));
     }
     with_config(&ctx.app, true, move |c| {
         let mut generation = c.config().generation();
         for id in &req.ids {
-            generation = c.unset(id)?.generation();
+            generation = c.unset(id).map_err(crate::services::config_error)?.generation();
         }
         Ok(pb::UnsetSettingsResponse { generation })
     })
@@ -155,12 +155,12 @@ pub async fn set_network_settings(
     ctx: Ctx,
     req: pb::SetNetworkSettingsRequest,
 ) -> Result<pb::SetNetworkSettingsResponse, ConnectError> {
-    let s = req.settings.ok_or_else(|| ConnectError::invalid("no settings"))?;
+    let s = req.settings.ok_or_else(|| ConnectError::invalid_argument("no settings"))?;
     let ip = |what: &str, v: &str| -> Result<(), ConnectError> {
         if v.is_empty() || v.parse::<Ipv4Addr>().is_ok() {
             Ok(())
         } else {
-            Err(ConnectError::invalid(format!("{what} is not an IPv4 address")))
+            Err(ConnectError::invalid_argument(format!("{what} is not an IPv4 address")))
         }
     };
     ip("The address", &s.static_ip)?;
@@ -170,31 +170,31 @@ pub async fn set_network_settings(
     ip("The secondary DNS server", &s.secondary_dns)?;
     if !s.dhcp {
         if s.static_ip.is_empty() || s.subnet_mask.is_empty() {
-            return Err(ConnectError::invalid("a static configuration needs an address and a subnet mask"));
+            return Err(ConnectError::invalid_argument("a static configuration needs an address and a subnet mask"));
         }
         let mask = u32::from(s.subnet_mask.parse::<Ipv4Addr>().expect("checked"));
         if mask == 0 || mask.leading_ones() + mask.trailing_zeros() != 32 {
-            return Err(ConnectError::invalid("the subnet mask is not contiguous"));
+            return Err(ConnectError::invalid_argument("the subnet mask is not contiguous"));
         }
     }
     let vlan = |what: &str, v: Option<u32>| match v {
-        Some(id) if !(1..=4094).contains(&id) => Err(ConnectError::invalid(format!("{what} must be 1 to 4094"))),
+        Some(id) if !(1..=4094).contains(&id) => Err(ConnectError::invalid_argument(format!("{what} must be 1 to 4094"))),
         _ => Ok(()),
     };
     vlan("The VLAN ID", s.vlan_id)?;
     vlan("The PC port VLAN ID", s.pc_vlan_id)?;
     if s.sip_dscp > 63 || s.rtp_dscp > 63 {
-        return Err(ConnectError::invalid("DSCP values run 0 to 63"));
+        return Err(ConnectError::invalid_argument("DSCP values run 0 to 63"));
     }
     if s.sip_qos > 7 || s.rtp_qos > 7 || s.pc_qos > 7 {
-        return Err(ConnectError::invalid("802.1p priorities run 0 to 7"));
+        return Err(ConnectError::invalid_argument("802.1p priorities run 0 to 7"));
     }
     let mode = s.vlan_discovery_mode.to_ascii_uppercase();
     if !matches!(mode.as_str(), "NONE" | "MANUAL" | "LLDP") {
-        return Err(ConnectError::invalid("VLAN discovery is NONE, MANUAL, or LLDP"));
+        return Err(ConnectError::invalid_argument("VLAN discovery is NONE, MANUAL, or LLDP"));
     }
     if mode == "MANUAL" && s.vlan_id.is_none() {
-        return Err(ConnectError::invalid("manual VLAN needs a VLAN ID"));
+        return Err(ConnectError::invalid_argument("manual VLAN needs a VLAN ID"));
     }
     for (what, v) in [
         ("The domain", &s.domain),
@@ -246,7 +246,7 @@ pub async fn set_network_settings(
             .map(|(id, v)| (*id, v.as_str()))
             .collect();
         if !diff.is_empty() {
-            c.set_many(&diff)?;
+            c.set_many(&diff).map_err(crate::services::config_error)?;
         }
         Ok(())
     })
@@ -260,16 +260,17 @@ pub async fn set_network_settings(
 
 // -------------------------------------------------------------- accounts
 
-fn pb_transport(t: Transport) -> i32 {
+fn pb_transport(t: Transport) -> buffa::EnumValue<pb::SipTransport> {
     (match t {
         Transport::Udp => pb::SipTransport::Udp,
         Transport::Tcp => pb::SipTransport::Tcp,
         Transport::Tls => pb::SipTransport::Tls,
-    }) as i32
+    })
+    .into()
 }
 
-fn transport_name(t: i32) -> &'static str {
-    match pb::SipTransport::try_from(t).unwrap_or(pb::SipTransport::Udp) {
+fn transport_name(t: buffa::EnumValue<pb::SipTransport>) -> &'static str {
+    match t.as_known().unwrap_or(pb::SipTransport::Udp) {
         pb::SipTransport::Tcp => "tcp",
         pb::SipTransport::Tls => "tls",
         _ => "udp",
@@ -295,7 +296,7 @@ fn account_config(a: &dphone_config::view::Account) -> pb::AccountConfig {
         transport: pb_transport(primary.transport),
         alternate_server: alt.as_ref().map(|h| h.server.clone()).unwrap_or_default(),
         alternate_port: alt.as_ref().map(|h| h.port as u32).unwrap_or(0),
-        alternate_transport: alt.as_ref().map(|h| pb_transport(h.transport)).unwrap_or(0),
+        alternate_transport: alt.as_ref().map(|h| pb_transport(h.transport)).unwrap_or_default(),
         outbound_proxy: a.outbound_proxy.clone().unwrap_or_default(),
         outbound_port: a.outbound_port.map(u32::from).unwrap_or(0),
         voicemail: a.voicemail.clone().unwrap_or_default(),
@@ -324,7 +325,7 @@ fn set_or_remove(e: &mut Element, name: &str, value: &str) {
 }
 
 fn port(what: &str, p: u32) -> Result<u32, ConnectError> {
-    if p > 65535 { Err(ConnectError::invalid(format!("{what} is not a port number"))) } else { Ok(p) }
+    if p > 65535 { Err(ConnectError::invalid_argument(format!("{what} is not a port number"))) } else { Ok(p) }
 }
 
 /// Builds the stock `<account>` element for an edited account, starting
@@ -345,10 +346,10 @@ fn account_element(a: &pb::AccountConfig, existing: Option<&dphone_config::view:
         clean(what, v, 255)?;
     }
     if a.username.is_empty() {
-        return Err(ConnectError::invalid(format!("account {} needs a user name", a.index + 1)));
+        return Err(ConnectError::invalid_argument(format!("account {} needs a user name", a.index + 1)));
     }
     if a.server.is_empty() {
-        return Err(ConnectError::invalid(format!("account {} needs a server", a.index + 1)));
+        return Err(ConnectError::invalid_argument(format!("account {} needs a server", a.index + 1)));
     }
     let mut e = existing.map(|x| x.raw.clone()).unwrap_or_else(|| Element::new("account"));
     e.set_attr("index", &a.index.to_string());
@@ -420,14 +421,14 @@ pub async fn set_accounts(ctx: Ctx, req: pb::SetAccountsRequest) -> Result<pb::S
         accounts.sort_by_key(|a| a.index);
         for a in &accounts {
             if a.index >= max {
-                return Err(ConnectError::invalid(format!("this model has {max} accounts")));
+                return Err(ConnectError::invalid_argument(format!("this model has {max} accounts")));
             }
             if !seen.insert(a.index) {
-                return Err(ConnectError::invalid(format!("account {} is given twice", a.index + 1)));
+                return Err(ConnectError::invalid_argument(format!("account {} is given twice", a.index + 1)));
             }
             elements.push(account_element(a, existing.iter().find(|e| e.index == a.index))?);
         }
-        c.set_local_accounts(&elements)?;
+        c.set_local_accounts(&elements).map_err(crate::services::config_error)?;
         Ok(pb::SetAccountsResponse {})
     })
     .await
@@ -438,7 +439,7 @@ pub async fn clear_local_accounts(
     _req: pb::ClearLocalAccountsRequest,
 ) -> Result<pb::ClearLocalAccountsResponse, ConnectError> {
     with_config(&ctx.app, true, |c| {
-        c.clear_local_accounts()?;
+        c.clear_local_accounts().map_err(crate::services::config_error)?;
         Ok(pb::ClearLocalAccountsResponse {})
     })
     .await
@@ -452,7 +453,7 @@ fn list_name(name: &str) -> Result<(), ConnectError> {
         && !name.starts_with('.')
         && !name.ends_with(".tmp")
         && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'));
-    if ok { Ok(()) } else { Err(ConnectError::invalid("list names use letters, digits, '-', '_', and '.'")) }
+    if ok { Ok(()) } else { Err(ConnectError::invalid_argument("list names use letters, digits, '-', '_', and '.'")) }
 }
 
 fn read_list(c: &ConfigStore, name: &str) -> Result<String, ConnectError> {
@@ -461,7 +462,7 @@ fn read_list(c: &ConfigStore, name: &str) -> Result<String, ConnectError> {
         .contact_list(name)
         .map_err(|e| ConnectError::internal(e.to_string()))?
         .ok_or_else(|| ConnectError::not_found(format!("no contact list named {name}")))?;
-    String::from_utf8(data).map_err(|_| ConnectError::new(crate::connect::Code::DataLoss, "the list is not text"))
+    String::from_utf8(data).map_err(|_| ConnectError::new(crate::rpc::Code::DataLoss, "the list is not text"))
 }
 
 pub async fn list_contact_lists(
@@ -474,14 +475,14 @@ pub async fn list_contact_lists(
         names.sort();
         let lists = names
             .into_iter()
-            .map(|name| match read_list(c, &name).and_then(|t| parse_contacts(&t).map_err(|e| ConnectError::invalid(e.to_string()))) {
+            .map(|name| match read_list(c, &name).and_then(|t| parse_contacts(&t).map_err(|e| ConnectError::invalid_argument(e.to_string()))) {
                 Ok(groups) => pb::ContactListInfo {
                     name,
                     groups: groups.len() as u32,
                     contacts: groups.iter().map(|g| g.contacts.len() as u32).sum(),
                     error: String::new(),
                 },
-                Err(e) => pb::ContactListInfo { name, groups: 0, contacts: 0, error: e.message },
+                Err(e) => pb::ContactListInfo { name, groups: 0, contacts: 0, error: e.message.unwrap_or_default() },
             })
             .collect();
         Ok(pb::ListContactListsResponse { lists })
@@ -496,7 +497,7 @@ pub async fn get_contact_list(
     list_name(&req.name)?;
     with_config(&ctx.app, false, move |c| {
         let text = read_list(c, &req.name)?;
-        let groups = parse_contacts(&text).map_err(|e| ConnectError::new(crate::connect::Code::DataLoss, e.to_string()))?;
+        let groups = parse_contacts(&text).map_err(|e| ConnectError::new(crate::rpc::Code::DataLoss, e.to_string()))?;
         Ok(pb::GetContactListResponse {
             groups: groups
                 .into_iter()
@@ -552,7 +553,7 @@ fn contacts_document(groups: &[pb::ContactGroup], old: &[dphone_config::contacts
                 clean(what, v, 255)?;
             }
             if k.first_name.is_empty() && k.last_name.is_empty() && k.organization.is_empty() {
-                return Err(ConnectError::invalid("a contact needs a name or an organization"));
+                return Err(ConnectError::invalid_argument("a contact needs a name or an organization"));
             }
             let old_contact =
                 old_group.and_then(|og| og.contacts.iter().find(|oc| !k.id.is_empty() && oc.id == k.id));
@@ -644,9 +645,9 @@ pub async fn import_contact_list(
     req: pb::ImportContactListRequest,
 ) -> Result<pb::ImportContactListResponse, ConnectError> {
     list_name(&req.name)?;
-    let groups = parse_contacts(&req.xml).map_err(|e| ConnectError::invalid(format!("not a contact list: {e}")))?;
+    let groups = parse_contacts(&req.xml).map_err(|e| ConnectError::invalid_argument(format!("not a contact list: {e}")))?;
     if groups.is_empty() {
-        return Err(ConnectError::invalid("the document holds no <contacts> group"));
+        return Err(ConnectError::invalid_argument("the document holds no <contacts> group"));
     }
     let contacts = groups.iter().map(|g| g.contacts.len() as u32).sum();
     let app = ctx.app.clone();

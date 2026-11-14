@@ -3,11 +3,11 @@
 
 use crate::assets;
 use crate::auth::{self, Session};
-use crate::connect::{self, Body, Code, ConnectError, ResponseHeaders, RpcRequest};
+use crate::rpc::{self, Body, Code, ConnectError, ResponseHeaders};
 use crate::{pb, App, FirmwareUpload, PendingUpload};
 use bytes::Bytes;
 use http::{header, HeaderValue, Method, Request, Response, StatusCode};
-use http_body_util::{BodyExt, Limited};
+use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioIo, TokioTimer};
 use std::convert::Infallible;
@@ -20,7 +20,7 @@ use tokio::sync::Semaphore;
 
 /// Largest buffered RPC request (backup restore and contact import are the
 /// big ones).
-const MAX_RPC_BODY: usize = 8 << 20;
+pub(crate) const MAX_RPC_BODY: usize = 8 << 20;
 const HEADER_TIMEOUT: Duration = Duration::from_secs(20);
 const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -140,10 +140,10 @@ async fn route(app: Arc<App>, peer: IpAddr, secure: bool, req: Request<Incoming>
         Method::GET | Method::HEAD => static_file(&req, &path),
         Method::POST => {
             if !same_origin(&req) {
-                return connect::error_response(&ConnectError::new(
-                    Code::PermissionDenied,
-                    "cross-origin request refused",
-                ));
+                return rpc::error_response(
+                    ConnectError::permission_denied("cross-origin request refused"),
+                    req.headers(),
+                );
             }
             let session = req
                 .headers()
@@ -157,7 +157,7 @@ async fn route(app: Arc<App>, peer: IpAddr, secure: bool, req: Request<Incoming>
             } else if path == "/upload/firmware" || path == "/upload/app" {
                 match authorize(&ctx, &req) {
                     Ok(()) => upload(ctx, path == "/upload/firmware", req).await,
-                    Err(e) => connect::error_response(&e),
+                    Err(e) => rpc::error_response(e, req.headers()),
                 }
             } else {
                 plain(StatusCode::NOT_FOUND, "not found\n")
@@ -205,35 +205,27 @@ fn is_public(path: &str) -> bool {
     )
 }
 
-async fn rpc(ctx: Ctx, path: &str, req: Request<Incoming>) -> Response<Body> {
-    let ct = req.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
-    let Some((codec, streaming)) = connect::parse_content_type(ct) else {
-        let mut r = plain(StatusCode::UNSUPPORTED_MEDIA_TYPE, "unsupported content type\n");
-        r.headers_mut().insert(
-            "accept-post",
-            HeaderValue::from_static(
-                "application/proto, application/json, application/connect+proto, application/connect+json",
-            ),
-        );
-        return r;
-    };
-    let fail = |e: ConnectError| {
-        if streaming { connect::stream_error_response(codec, &e) } else { connect::error_response(&e) }
-    };
-    if let Some(enc) = req.headers().get(header::CONTENT_ENCODING).and_then(|v| v.to_str().ok())
-        && !enc.eq_ignore_ascii_case("identity") {
-            return fail(ConnectError::new(Code::Unimplemented, "request compression is not supported"));
-        }
+async fn rpc(ctx: Ctx, path: &str, mut req: Request<Incoming>) -> Response<Body> {
+    // Refuse before the body is read: an unauthenticated caller costs no
+    // more than its request head.
     if !is_public(path)
         && let Err(e) = authorize(&ctx, &req) {
-            return fail(e);
+            return rpc::error_response(e, req.headers());
         }
-    let body = match Limited::new(req.into_body(), MAX_RPC_BODY).collect().await {
-        Ok(b) => b.to_bytes(),
-        Err(_) => return fail(ConnectError::new(Code::ResourceExhausted, "request too large or interrupted")),
-    };
-    let request = RpcRequest { codec, streaming, body, headers: ctx.headers.clone() };
-    crate::services::dispatch(ctx, path, request).await
+    let mut service = ctx.app.rpc.clone();
+    req.extensions_mut().insert(ctx);
+    let Ok(resp) = tower_service::Service::call(&mut service, req).await;
+    let streaming = resp
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .is_some_and(|v| v.as_bytes().starts_with(b"application/connect+"));
+    let mut resp = resp.map(Body::Rpc);
+    if streaming {
+        // Proxies and browsers must not buffer or transform the stream.
+        resp.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store, no-transform"));
+        resp.headers_mut().insert("x-accel-buffering", HeaderValue::from_static("no"));
+    }
+    resp
 }
 
 // ---------------------------------------------------------------- static
@@ -335,9 +327,9 @@ async fn upload(ctx: Ctx, firmware: bool, req: Request<Incoming>) -> Response<Bo
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<u64>().ok());
     if declared.is_some_and(|n| n > max) {
-        return connect::error_response(&ConnectError::new(Code::ResourceExhausted, "upload too large"));
+        return rpc::plain_error(ConnectError::new(Code::ResourceExhausted, "upload too large"));
     }
-    let io_err = |e: io::Error| connect::error_response(&ConnectError::internal(format!("storing upload: {e}")));
+    let io_err = |e: io::Error| rpc::plain_error(ConnectError::internal(format!("storing upload: {e}")));
 
     let mut target = if firmware {
         match app.firmware.begin(declared) {
@@ -369,13 +361,13 @@ async fn upload(ctx: Ctx, firmware: bool, req: Request<Incoming>) -> Response<Bo
             Some(Err(e)) => {
                 log::info!("upload from {} interrupted: {e}", ctx.peer);
                 abandon(target);
-                return connect::error_response(&ConnectError::new(Code::Aborted, "upload interrupted"));
+                return rpc::plain_error(ConnectError::new(Code::Aborted, "upload interrupted"));
             }
         };
         size += chunk.len() as u64;
         if size > max {
             abandon(target);
-            return connect::error_response(&ConnectError::new(Code::ResourceExhausted, "upload too large"));
+            return rpc::plain_error(ConnectError::new(Code::ResourceExhausted, "upload too large"));
         }
         // Off the reactor thread: a sink may write to flash.
         let written = tokio::task::spawn_blocking(move || {
@@ -398,7 +390,7 @@ async fn upload(ctx: Ctx, firmware: bool, req: Request<Incoming>) -> Response<Bo
     }
     if size == 0 {
         abandon(target);
-        return connect::error_response(&ConnectError::invalid("empty upload"));
+        return rpc::plain_error(ConnectError::invalid_argument("empty upload"));
     }
 
     let id = auth::random_token();
@@ -408,7 +400,7 @@ async fn upload(ctx: Ctx, firmware: bool, req: Request<Incoming>) -> Response<Bo
             let (path, info) = match finished {
                 Ok(Ok(x)) => x,
                 Ok(Err(e)) => {
-                    return connect::error_response(&ConnectError::invalid(format!("not a firmware image: {e}")));
+                    return rpc::plain_error(ConnectError::invalid_argument(format!("not a firmware image: {e}")));
                 }
                 Err(e) => return io_err(io::Error::other(e)),
             };

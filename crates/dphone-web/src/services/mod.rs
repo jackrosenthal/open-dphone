@@ -1,4 +1,8 @@
-//! The Connect services.  [`dispatch`] routes a path to its handler.
+//! The Connect services.  [`router`] registers every handler.
+
+// The generated traits declare `impl Encodable<Res>` return types; the
+// impls here name the concrete message, as the connectrpc guide directs.
+#![allow(refining_impl_trait_internal, refining_impl_trait_reachable)]
 
 mod auth;
 mod calls;
@@ -6,12 +10,13 @@ mod config;
 mod status;
 mod system;
 
-use crate::connect::{self, Body, Code, ConnectError, Message, RpcRequest, Sink};
+use crate::rpc::{self, Code, ConnectError, Sink};
+use connectrpc::{RequestContext, ServiceRequest, ServiceResult, ServiceStream};
+use std::sync::Arc;
 use crate::http::Ctx;
 use crate::{pb, App, FirmwareInfo};
 use dphone_config::{ConfigError, ConfigStore};
 use dphone_state::{Command, CommandError, Reply, Store, TopicSet};
-use http::Response;
 use std::time::Duration;
 
 /// How long a command may take before the RPC gives up.
@@ -22,106 +27,170 @@ const COALESCE: Duration = Duration::from_millis(120);
 /// session alive while a page is open, and gets past idle proxies).
 const REFRESH: Duration = Duration::from_secs(20);
 
-macro_rules! routes {
-    ($path:expr, $ctx:expr, $req:expr; $( $kind:ident $p:literal => $f:path, )*) => {
-        match $path {
-            $( concat!("/dphone.v1.", $p) => connect::$kind($ctx, $req, $f).await, )*
-            other => connect::error_for(
-                &$req,
-                &ConnectError::new(Code::Unimplemented, format!("no such method: {other}")),
-            ),
+/// The receiver of every generated service trait.  Handlers are plain
+/// functions; these impls only fetch the request context that the HTTP
+/// layer attached and hand over the owned request message.
+pub(crate) struct Rpc;
+
+fn ctx_of(rc: &RequestContext) -> Result<Ctx, ConnectError> {
+    rc.extensions().get::<Ctx>().cloned().ok_or_else(|| ConnectError::internal("request context missing"))
+}
+
+macro_rules! service {
+    ($trait:ident { $( $kind:ident $method:ident($Req:ident) -> $Res:ident = $f:path; )* }) => {
+        impl pb::$trait for Rpc { $( service!(@$kind $method $Req $Res $f); )* }
+    };
+    (@unary $method:ident $Req:ident $Res:ident $f:path) => {
+        async fn $method(&self, rc: RequestContext, req: ServiceRequest<'_, pb::$Req>) -> ServiceResult<pb::$Res> {
+            let ctx = ctx_of(&rc)?;
+            let headers = ctx.headers.clone();
+            let res = $f(ctx, req.to_owned_message()).await?;
+            Ok(headers.apply(connectrpc::Response::new(res)))
+        }
+    };
+    (@stream $method:ident $Req:ident $Res:ident $f:path) => {
+        async fn $method(
+            &self,
+            rc: RequestContext,
+            req: ServiceRequest<'_, pb::$Req>,
+        ) -> ServiceResult<ServiceStream<pb::$Res>> {
+            let ctx = ctx_of(&rc)?;
+            let msg = req.to_owned_message();
+            Ok(connectrpc::Response::new(rpc::stream(move |sink| $f(ctx, msg, sink))))
         }
     };
 }
 
-pub(crate) async fn dispatch(ctx: Ctx, path: &str, req: RpcRequest) -> Response<Body> {
-    routes!(path, ctx, req;
-        unary "AuthService/Login" => auth::login,
-        unary "AuthService/Logout" => auth::logout,
-        unary "AuthService/GetSession" => auth::get_session,
-        unary "AuthService/ChangePassword" => auth::change_password,
+service!(AuthService {
+    unary login(LoginRequest) -> LoginResponse = auth::login;
+    unary logout(LogoutRequest) -> LogoutResponse = auth::logout;
+    unary get_session(GetSessionRequest) -> GetSessionResponse = auth::get_session;
+    unary change_password(ChangePasswordRequest) -> ChangePasswordResponse = auth::change_password;
+});
 
-        unary "StatusService/GetStatus" => status::get_status,
-        stream "StatusService/WatchStatus" => status::watch_status,
+service!(StatusService {
+    unary get_status(GetStatusRequest) -> GetStatusResponse = status::get_status;
+    stream watch_status(WatchStatusRequest) -> WatchStatusResponse = status::watch_status;
+});
 
-        unary "NetworkService/GetNetwork" => status::get_network,
-        stream "NetworkService/WatchNetwork" => status::watch_network,
-        unary "NetworkService/SetNetworkSettings" => config::set_network_settings,
-        unary "NetworkService/RenewDhcp" => status::renew_dhcp,
-        unary "NetworkService/SyncTime" => status::sync_time,
+service!(NetworkService {
+    unary get_network(GetNetworkRequest) -> GetNetworkResponse = status::get_network;
+    stream watch_network(WatchNetworkRequest) -> WatchNetworkResponse = status::watch_network;
+    unary set_network_settings(SetNetworkSettingsRequest) -> SetNetworkSettingsResponse = config::set_network_settings;
+    unary renew_dhcp(RenewDhcpRequest) -> RenewDhcpResponse = status::renew_dhcp;
+    unary sync_time(SyncTimeRequest) -> SyncTimeResponse = status::sync_time;
+});
 
-        unary "ProvisioningService/GetProvisioning" => status::get_provisioning,
-        stream "ProvisioningService/WatchProvisioning" => status::watch_provisioning,
-        unary "ProvisioningService/StartProvisioning" => status::start_provisioning,
-        unary "ProvisioningService/SelectUser" => status::select_user,
-        unary "ProvisioningService/Reprovision" => status::reprovision,
-        unary "ProvisioningService/ForgetProvisioning" => status::forget_provisioning,
-        unary "ProvisioningService/SkipProvisioning" => status::skip_provisioning,
+service!(ProvisioningService {
+    unary get_provisioning(GetProvisioningRequest) -> GetProvisioningResponse = status::get_provisioning;
+    stream watch_provisioning(WatchProvisioningRequest) -> WatchProvisioningResponse = status::watch_provisioning;
+    unary start_provisioning(StartProvisioningRequest) -> StartProvisioningResponse = status::start_provisioning;
+    unary select_user(SelectUserRequest) -> SelectUserResponse = status::select_user;
+    unary reprovision(ReprovisionRequest) -> ReprovisionResponse = status::reprovision;
+    unary forget_provisioning(ForgetProvisioningRequest) -> ForgetProvisioningResponse = status::forget_provisioning;
+    unary skip_provisioning(SkipProvisioningRequest) -> SkipProvisioningResponse = status::skip_provisioning;
+});
 
-        unary "AccountsService/ListAccounts" => config::list_accounts,
-        stream "AccountsService/WatchAccounts" => status::watch_accounts,
-        unary "AccountsService/SetAccounts" => config::set_accounts,
-        unary "AccountsService/ClearLocalAccounts" => config::clear_local_accounts,
-        unary "AccountsService/Reregister" => status::reregister,
+service!(AccountsService {
+    unary list_accounts(ListAccountsRequest) -> ListAccountsResponse = config::list_accounts;
+    stream watch_accounts(WatchAccountsRequest) -> WatchAccountsResponse = status::watch_accounts;
+    unary set_accounts(SetAccountsRequest) -> SetAccountsResponse = config::set_accounts;
+    unary clear_local_accounts(ClearLocalAccountsRequest) -> ClearLocalAccountsResponse = config::clear_local_accounts;
+    unary reregister(ReregisterRequest) -> ReregisterResponse = status::reregister;
+});
 
-        unary "ConfigService/ListSettings" => config::list_settings,
-        unary "ConfigService/SetSettings" => config::set_settings,
-        unary "ConfigService/UnsetSettings" => config::unset_settings,
+service!(ConfigService {
+    unary list_settings(ListSettingsRequest) -> ListSettingsResponse = config::list_settings;
+    unary set_settings(SetSettingsRequest) -> SetSettingsResponse = config::set_settings;
+    unary unset_settings(UnsetSettingsRequest) -> UnsetSettingsResponse = config::unset_settings;
+});
 
-        unary "ContactsService/ListContactLists" => config::list_contact_lists,
-        unary "ContactsService/GetContactList" => config::get_contact_list,
-        unary "ContactsService/PutContactList" => config::put_contact_list,
-        unary "ContactsService/DeleteContactList" => config::delete_contact_list,
-        unary "ContactsService/ExportContactList" => config::export_contact_list,
-        unary "ContactsService/ImportContactList" => config::import_contact_list,
+service!(ContactsService {
+    unary list_contact_lists(ListContactListsRequest) -> ListContactListsResponse = config::list_contact_lists;
+    unary get_contact_list(GetContactListRequest) -> GetContactListResponse = config::get_contact_list;
+    unary put_contact_list(PutContactListRequest) -> PutContactListResponse = config::put_contact_list;
+    unary delete_contact_list(DeleteContactListRequest) -> DeleteContactListResponse = config::delete_contact_list;
+    unary export_contact_list(ExportContactListRequest) -> ExportContactListResponse = config::export_contact_list;
+    unary import_contact_list(ImportContactListRequest) -> ImportContactListResponse = config::import_contact_list;
+});
 
-        unary "CallsService/GetCalls" => calls::get_calls,
-        stream "CallsService/WatchCalls" => calls::watch_calls,
-        unary "CallsService/Dial" => calls::dial,
-        unary "CallsService/Answer" => calls::answer,
-        unary "CallsService/Hangup" => calls::hangup,
-        unary "CallsService/Hold" => calls::hold,
-        unary "CallsService/Resume" => calls::resume,
-        unary "CallsService/Transfer" => calls::transfer,
-        unary "CallsService/SendDtmf" => calls::send_dtmf,
-        unary "CallsService/SetMute" => calls::set_mute,
-        unary "CallsService/SetDnd" => calls::set_dnd,
-        unary "CallsService/SetForward" => calls::set_forward,
-        unary "CallsService/GetCallLog" => calls::get_call_log,
-        unary "CallsService/ClearCallLog" => calls::clear_call_log,
+service!(CallsService {
+    unary get_calls(GetCallsRequest) -> GetCallsResponse = calls::get_calls;
+    stream watch_calls(WatchCallsRequest) -> WatchCallsResponse = calls::watch_calls;
+    unary dial(DialRequest) -> DialResponse = calls::dial;
+    unary answer(AnswerRequest) -> AnswerResponse = calls::answer;
+    unary hangup(HangupRequest) -> HangupResponse = calls::hangup;
+    unary hold(HoldRequest) -> HoldResponse = calls::hold;
+    unary resume(ResumeRequest) -> ResumeResponse = calls::resume;
+    unary transfer(TransferRequest) -> TransferResponse = calls::transfer;
+    unary send_dtmf(SendDtmfRequest) -> SendDtmfResponse = calls::send_dtmf;
+    unary set_mute(SetMuteRequest) -> SetMuteResponse = calls::set_mute;
+    unary set_dnd(SetDndRequest) -> SetDndResponse = calls::set_dnd;
+    unary set_forward(SetForwardRequest) -> SetForwardResponse = calls::set_forward;
+    unary get_call_log(GetCallLogRequest) -> GetCallLogResponse = calls::get_call_log;
+    unary clear_call_log(ClearCallLogRequest) -> ClearCallLogResponse = calls::clear_call_log;
+});
 
-        unary "AppsService/ListApps" => system::list_apps,
-        stream "AppsService/WatchApps" => system::watch_apps,
-        unary "AppsService/LaunchApp" => system::launch_app,
-        unary "AppsService/CloseApp" => system::close_app,
-        unary "AppsService/InstallApp" => system::install_app,
-        unary "AppsService/RemoveApp" => system::remove_app,
+service!(AppsService {
+    unary list_apps(ListAppsRequest) -> ListAppsResponse = system::list_apps;
+    stream watch_apps(WatchAppsRequest) -> WatchAppsResponse = system::watch_apps;
+    unary launch_app(LaunchAppRequest) -> LaunchAppResponse = system::launch_app;
+    unary close_app(CloseAppRequest) -> CloseAppResponse = system::close_app;
+    unary install_app(InstallAppRequest) -> InstallAppResponse = system::install_app;
+    unary remove_app(RemoveAppRequest) -> RemoveAppResponse = system::remove_app;
+});
 
-        unary "FirmwareService/GetFirmware" => system::get_firmware,
-        stream "FirmwareService/WatchFirmware" => system::watch_firmware,
-        unary "FirmwareService/InstallFirmware" => system::install_firmware,
-        unary "FirmwareService/DiscardUpload" => system::discard_upload,
-        unary "FirmwareService/ConfirmTrial" => system::confirm_trial,
-        unary "FirmwareService/Rollback" => system::rollback,
+service!(FirmwareService {
+    unary get_firmware(GetFirmwareRequest) -> GetFirmwareResponse = system::get_firmware;
+    stream watch_firmware(WatchFirmwareRequest) -> WatchFirmwareResponse = system::watch_firmware;
+    unary install_firmware(InstallFirmwareRequest) -> InstallFirmwareResponse = system::install_firmware;
+    unary discard_upload(DiscardUploadRequest) -> DiscardUploadResponse = system::discard_upload;
+    unary confirm_trial(ConfirmTrialRequest) -> ConfirmTrialResponse = system::confirm_trial;
+    unary rollback(RollbackRequest) -> RollbackResponse = system::rollback;
+});
 
-        unary "LogsService/GetLogs" => system::get_logs,
-        stream "LogsService/TailLogs" => system::tail_logs,
+service!(LogsService {
+    unary get_logs(GetLogsRequest) -> GetLogsResponse = system::get_logs;
+    stream tail_logs(TailLogsRequest) -> TailLogsResponse = system::tail_logs;
+});
 
-        unary "ScreenService/GetScreenLayout" => system::get_screen_layout,
-        stream "ScreenService/WatchScreen" => system::watch_screen,
-        unary "ScreenService/PressKey" => system::press_key,
-        unary "ScreenService/SetHook" => system::set_hook,
+service!(ScreenService {
+    unary get_screen_layout(GetScreenLayoutRequest) -> GetScreenLayoutResponse = system::get_screen_layout;
+    stream watch_screen(WatchScreenRequest) -> WatchScreenResponse = system::watch_screen;
+    unary press_key(PressKeyRequest) -> PressKeyResponse = system::press_key;
+    unary set_hook(SetHookRequest) -> SetHookResponse = system::set_hook;
+});
 
-        unary "SystemService/Reboot" => system::reboot,
-        unary "SystemService/FactoryReset" => system::factory_reset,
-        unary "SystemService/SetTime" => system::set_time,
-        unary "SystemService/CreateBackup" => system::create_backup,
-        unary "SystemService/RestoreBackup" => system::restore_backup,
-    )
+service!(SystemService {
+    unary reboot(RebootRequest) -> RebootResponse = system::reboot;
+    unary factory_reset(FactoryResetRequest) -> FactoryResetResponse = system::factory_reset;
+    unary set_time(SetTimeRequest) -> SetTimeResponse = system::set_time;
+    unary create_backup(CreateBackupRequest) -> CreateBackupResponse = system::create_backup;
+    unary restore_backup(RestoreBackupRequest) -> RestoreBackupResponse = system::restore_backup;
+});
+
+/// The Connect router with every service registered.
+pub(crate) fn router() -> connectrpc::Router {
+    let rpc = Arc::new(Rpc);
+    connectrpc::Router::new()
+        .add_service::<Rpc, pb::AuthServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::StatusServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::NetworkServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::ProvisioningServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::AccountsServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::ConfigServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::ContactsServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::CallsServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::AppsServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::FirmwareServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::LogsServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::ScreenServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::SystemServiceRegisterMarker>(rpc.clone())
 }
 
-impl From<CommandError> for ConnectError {
-    fn from(e: CommandError) -> Self {
+/// A command failure as an RPC error.
+pub(crate) fn command_error(e: CommandError) -> ConnectError {
+    {
         let code = match &e {
             CommandError::NoHandler(_) | CommandError::Dropped => Code::Unavailable,
             CommandError::Timeout => Code::DeadlineExceeded,
@@ -138,8 +207,9 @@ impl From<CommandError> for ConnectError {
     }
 }
 
-impl From<ConfigError> for ConnectError {
-    fn from(e: ConfigError) -> Self {
+/// A configuration failure as an RPC error.
+pub(crate) fn config_error(e: ConfigError) -> ConnectError {
+    {
         let code = match &e {
             ConfigError::Io(_) => Code::Internal,
             ConfigError::Parse(_) | ConfigError::TooManyAccounts { .. } => Code::InvalidArgument,
@@ -152,8 +222,8 @@ impl From<ConfigError> for ConnectError {
 /// Sends a command to its subsystem and waits for the answer.
 pub(crate) async fn command(store: &Store, cmd: Command) -> Result<Reply, ConnectError> {
     match tokio::time::timeout(COMMAND_TIMEOUT, store.send(cmd)).await {
-        Ok(r) => Ok(r?),
-        Err(_) => Err(CommandError::Timeout.into()),
+        Ok(r) => r.map_err(command_error),
+        Err(_) => Err(command_error(CommandError::Timeout)),
     }
 }
 
@@ -190,7 +260,7 @@ pub(crate) async fn watch<Res, F>(
     make: F,
 ) -> Result<(), ConnectError>
 where
-    Res: Message + PartialEq,
+    Res: Clone + PartialEq + Send + 'static,
     F: Fn(&App) -> Res + Send + 'static,
 {
     let app = ctx.app.clone();

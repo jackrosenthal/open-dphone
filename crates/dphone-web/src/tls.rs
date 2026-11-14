@@ -89,6 +89,7 @@ fn self_signed(key: &SigningKey, hostname: &str) -> io::Result<Vec<u8>> {
         issuer: subject.clone(),
         enable_key_agreement: true,
         enable_key_encipherment: false,
+        include_subject_key_identifier: true,
     };
     let mut builder =
         CertificateBuilder::new(profile, SerialNumber::new(&serial).map_err(err)?, validity, subject, spki, key)

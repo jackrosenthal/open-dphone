@@ -1,7 +1,7 @@
 //! `CallsService`.
 
 use super::{command, watch};
-use crate::connect::{ConnectError, Sink};
+use crate::rpc::{ConnectError, Sink};
 use crate::http::Ctx;
 use crate::{convert, pb};
 use dphone_state::{self as st, CallId, Command, ForwardKind, Reply, Topic};
@@ -11,7 +11,7 @@ fn snapshot(app: &crate::App) -> pb::CallsSnapshot {
 }
 
 pub async fn get_calls(ctx: Ctx, _req: pb::GetCallsRequest) -> Result<pb::GetCallsResponse, ConnectError> {
-    Ok(pb::GetCallsResponse { snapshot: Some(snapshot(&ctx.app)) })
+    Ok(pb::GetCallsResponse { snapshot: Some(snapshot(&ctx.app)).into() })
 }
 
 pub async fn watch_calls(
@@ -20,19 +20,19 @@ pub async fn watch_calls(
     sink: Sink<pb::WatchCallsResponse>,
 ) -> Result<(), ConnectError> {
     let topics = [Topic::Calls, Topic::Audio, Topic::Features, Topic::Mwi, Topic::CallLog];
-    watch(ctx, topics, sink, false, |app| pb::WatchCallsResponse { snapshot: Some(snapshot(app)) }).await
+    watch(ctx, topics, sink, false, |app| pb::WatchCallsResponse { snapshot: Some(snapshot(app)).into() }).await
 }
 
 pub async fn dial(ctx: Ctx, req: pb::DialRequest) -> Result<pb::DialResponse, ConnectError> {
     let target = req.target.trim().to_owned();
     if target.is_empty() {
-        return Err(ConnectError::invalid("nothing to dial"));
+        return Err(ConnectError::invalid_argument("nothing to dial"));
     }
     if target.len() > 256 || target.chars().any(|c| c.is_control() || c.is_whitespace()) {
-        return Err(ConnectError::invalid("not a number or SIP address"));
+        return Err(ConnectError::invalid_argument("not a number or SIP address"));
     }
     let account = match req.account {
-        Some(i) => Some(st::AccountId(u8::try_from(i).map_err(|_| ConnectError::invalid("no such account"))?)),
+        Some(i) => Some(st::AccountId(u8::try_from(i).map_err(|_| ConnectError::invalid_argument("no such account"))?)),
         None => None,
     };
     let path = convert::audio_path_from(req.path);
@@ -70,7 +70,7 @@ pub async fn transfer(ctx: Ctx, req: pb::TransferRequest) -> Result<pb::Transfer
             Command::TransferBlind { call, target: t.trim().to_owned() }
         }
         Some(pb::transfer_request::To::ConsultCall(c)) => Command::TransferAttended { call, consult: CallId(c) },
-        _ => return Err(ConnectError::invalid("no transfer target")),
+        _ => return Err(ConnectError::invalid_argument("no transfer target")),
     };
     command(&ctx.app.store, cmd).await?;
     Ok(pb::TransferResponse {})
@@ -78,10 +78,10 @@ pub async fn transfer(ctx: Ctx, req: pb::TransferRequest) -> Result<pb::Transfer
 
 pub async fn send_dtmf(ctx: Ctx, req: pb::SendDtmfRequest) -> Result<pb::SendDtmfResponse, ConnectError> {
     if req.digits.is_empty() || req.digits.len() > 64 {
-        return Err(ConnectError::invalid("1 to 64 digits"));
+        return Err(ConnectError::invalid_argument("1 to 64 digits"));
     }
     if let Some(bad) = req.digits.chars().find(|c| !matches!(c, '0'..='9' | '*' | '#' | 'A'..='D')) {
-        return Err(ConnectError::invalid(format!("not a DTMF digit: {bad:?}")));
+        return Err(ConnectError::invalid_argument(format!("not a DTMF digit: {bad:?}")));
     }
     for digit in req.digits.chars() {
         command(&ctx.app.store, Command::Dtmf { call: CallId(req.call), digit }).await?;
@@ -104,7 +104,7 @@ pub async fn set_forward(ctx: Ctx, req: pb::SetForwardRequest) -> Result<pb::Set
         "always" => ForwardKind::Always,
         "busy" => ForwardKind::Busy,
         "no_answer" => ForwardKind::NoAnswer,
-        other => return Err(ConnectError::invalid(format!("unknown forward kind {other:?}"))),
+        other => return Err(ConnectError::invalid_argument(format!("unknown forward kind {other:?}"))),
     };
     let no_answer_secs = u16::try_from(req.no_answer_secs).ok().filter(|s| *s > 0);
     command(&ctx.app.store, Command::SetForward { kind, target: req.target.trim().to_owned(), no_answer_secs })

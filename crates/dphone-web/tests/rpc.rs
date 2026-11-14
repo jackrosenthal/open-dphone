@@ -4,7 +4,7 @@
 use dphone_config::{ConfigStore, Nvdata};
 use dphone_state::{Command, Domain, Model, Reply, Store};
 use dphone_web::{pb, FileFirmwareSink, FirmwareInfo, WebOptions, WebServer};
-use prost::Message;
+use buffa::Message;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -255,12 +255,12 @@ async fn protobuf_codec_and_streaming() {
     let r = request(p.addr, "POST", "/dphone.v1.StatusService/GetStatus", &headers, &pb::GetStatusRequest {}.encode_to_vec(), None).await;
     assert_eq!(r.status, 200);
     assert_eq!(r.header("content-type"), Some("application/proto"));
-    let status = pb::GetStatusResponse::decode(&r.body[..]).unwrap().status.unwrap();
+    let status = pb::GetStatusResponse::decode_from_slice(&r.body[..]).unwrap().status.unwrap();
     assert_eq!(status.system.unwrap().model, "D60");
 
     // Server streaming, binary codec: enveloped request, enveloped messages.
     p.store.log_line(dphone_state::Level::Warn, "test", "first line".into());
-    let msg = pb::TailLogsRequest { backlog: 10, min_level: 0 }.encode_to_vec();
+    let msg = pb::TailLogsRequest { backlog: 10, min_level: Default::default() }.encode_to_vec();
     let mut framed = vec![0u8];
     framed.extend((msg.len() as u32).to_be_bytes());
     framed.extend(&msg);
@@ -271,8 +271,8 @@ async fn protobuf_codec_and_streaming() {
     assert_eq!(r.header("content-type"), Some("application/connect+proto"));
     assert_eq!(r.body[0], 0, "a data frame");
     let len = u32::from_be_bytes(r.body[1..5].try_into().unwrap()) as usize;
-    let first = pb::TailLogsResponse::decode(&r.body[5..5 + len]).unwrap();
-    assert!(first.entries.iter().any(|e| e.message == "first line" && e.level == pb::LogLevel::Warn as i32));
+    let first = pb::TailLogsResponse::decode_from_slice(&r.body[5..5 + len]).unwrap();
+    assert!(first.entries.iter().any(|e| e.message == "first line" && e.level == pb::LogLevel::Warn));
 
     // Streaming, JSON codec.
     let json = br#"{"backlog": 5}"#;

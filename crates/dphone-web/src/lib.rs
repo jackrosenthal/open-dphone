@@ -42,19 +42,21 @@
 mod assets;
 mod auth;
 mod backup;
-pub mod connect;
+pub mod rpc;
 mod convert;
 mod http;
 mod png;
 mod services;
 mod tls;
 
-/// Generated protobuf types for `proto/dphone/v1`.
-#[allow(clippy::all, missing_docs)]
-pub mod pb {
-    include!(concat!(env!("OUT_DIR"), "/dphone.v1.rs"));
-    include!(concat!(env!("OUT_DIR"), "/dphone.v1.serde.rs"));
+/// Generated code for `proto/`: buffa message types and the Connect
+/// service traits.
+#[allow(clippy::all, missing_docs, unused_qualifications, dead_code)]
+pub mod proto {
+    connectrpc::include_generated!();
 }
+/// The `dphone.v1` package.
+pub use proto::dphone::v1 as pb;
 
 pub use backup::{Backup, NvdataBackup};
 pub use tls::{KeyStore, NvdataKeyStore};
@@ -257,6 +259,8 @@ pub(crate) struct App {
     pub backup: Box<dyn Backup>,
     pub uploads: Mutex<HashMap<String, PendingUpload>>,
     pub started: std::time::Instant,
+    /// The Connect services as a tower service.
+    pub rpc: connectrpc::ConnectRpcService,
 }
 
 /// The web server.  See the crate documentation.
@@ -326,6 +330,11 @@ impl WebServer {
             backup,
             uploads: Mutex::new(HashMap::new()),
             started: std::time::Instant::now(),
+            rpc: connectrpc::ConnectRpcService::new(services::router()).with_limits(
+                connectrpc::Limits::default()
+                    .with_max_request_body_size(http::MAX_RPC_BODY)
+                    .with_max_message_size(http::MAX_RPC_BODY),
+            ),
         });
         Ok(BoundServer { app, http, https, keys })
     }
