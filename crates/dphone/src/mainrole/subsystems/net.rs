@@ -52,9 +52,17 @@ enum Cmd {
 pub struct NetHandle {
     tx: mpsc::Sender<Cmd>,
     resolver: Arc<std::sync::Mutex<Option<dphone_net::Resolver>>>,
+    qos: Arc<std::sync::Mutex<dphone_net::QosMarks>>,
 }
 
 impl NetHandle {
+    /// The DSCP and 802.1p values for SIP and RTP sockets in force now
+    /// (configuration, overridden by the switch's LLDP-MED policy).  Apply
+    /// them with `dphone_net::qos::mark_socket`.
+    pub fn qos(&self) -> dphone_net::QosMarks {
+        *self.qos.lock().unwrap()
+    }
+
     /// Re-apply the network configuration from the current settings.
     pub fn reconfigure(&self) {
         let (reply, _) = oneshot::channel();
@@ -98,7 +106,11 @@ pub fn start(ctx: &Context, config: Option<SharedConfig>, hub: &super::system::C
 
     let (tx, rx) = mpsc::channel::<Cmd>(8);
     register_diag(ctx, tx.clone());
-    let handle = NetHandle { tx, resolver: Arc::new(std::sync::Mutex::new(None)) };
+    let handle = NetHandle {
+        tx,
+        resolver: Arc::new(std::sync::Mutex::new(None)),
+        qos: Arc::new(std::sync::Mutex::new(dphone_net::QosMarks::default())),
+    };
 
     if ctx.sim {
         info!("net: simulator; the host's network is left alone");
@@ -107,7 +119,7 @@ pub fn start(ctx: &Context, config: Option<SharedConfig>, hub: &super::system::C
         return handle;
     }
     ctx.health.require("net");
-    tokio::spawn(run(ctx.clone(), config, hub.clone(), mac, rx, handle.resolver.clone()));
+    tokio::spawn(run(ctx.clone(), config, hub.clone(), mac, rx, handle.resolver.clone(), handle.qos.clone()));
     handle
 }
 
@@ -166,7 +178,14 @@ fn configured(ctx: &Context, config: Option<&SharedConfig>, mac: Option<MacAddr>
     cfg.pc_port_mode = PortMode::parse(&n.pc_port_mode);
     cfg.pc_port = if bridged { PcPort::Bridged } else { PcPort::Disabled };
     cfg.pc_vlan_id = n.pc_vlan_id.filter(|v| (1..=4094).contains(v));
+    // Stock, new family only: an expansion module takes the PC VLAN away.
+    if ctx.model.family() == crate::model::Family::New && merged.setting_bool("expansion_enable", false) {
+        cfg.pc_vlan_id = None;
+    }
     cfg.eapol_passthrough = n.dot1x_passthrough;
+    // Stock enables the logoff together with pass-through, and has a
+    // setting of its own for it as well.
+    cfg.eapol_logoff = n.dot1x_passthrough || n.dot1x_eapol_on_disconnect;
     cfg.vlan = match n.vlan_discovery_mode.to_ascii_uppercase().as_str() {
         "MANUAL" => n.vlan_id.map(VlanDiscovery::Manual).unwrap_or(VlanDiscovery::None),
         "LLDP" => VlanDiscovery::Lldp,
@@ -190,7 +209,19 @@ fn configured(ctx: &Context, config: Option<&SharedConfig>, mac: Option<MacAddr>
         }
         (true, _, _) => Ipv4Config::Dhcp { arp_check: !n.disable_arping, requested_ip: last_address(ctx) },
     };
-    cfg.ipv6 = if n.ipv6_enabled { Ipv6Config::Auto } else { Ipv6Config::Disabled };
+    cfg.ipv6 = match (n.ipv6_enabled, n.dhcp) {
+        (false, _) => Ipv6Config::Disabled,
+        (true, true) => Ipv6Config::Auto,
+        // Static mode: the configured IPv6 address, if there is one.
+        (true, false) => match n.ipv6_static.as_deref().and_then(|a| a.trim().parse().ok()) {
+            Some(address) => Ipv6Config::Static {
+                address,
+                prefix_len: n.ipv6_mask.as_deref().and_then(|m| m.trim().trim_start_matches('/').parse().ok()).filter(|p| *p <= 128).unwrap_or(64),
+                gateway: n.ipv6_gateway.as_deref().and_then(|g| g.trim().parse().ok()),
+            },
+            None => Ipv6Config::Disabled,
+        },
+    };
     cfg.ipv6_preferred = n.ipv6_preferred;
     let t = merged.time();
     cfg.ntp.enabled = !t.time_source.eq_ignore_ascii_case("manual");
@@ -222,6 +253,7 @@ async fn run(
     mac: Option<MacAddr>,
     mut cmds: mpsc::Receiver<Cmd>,
     resolver_slot: Arc<std::sync::Mutex<Option<dphone_net::Resolver>>>,
+    qos_slot: Arc<std::sync::Mutex<dphone_net::QosMarks>>,
 ) {
     let plain = plain_config(&ctx, mac);
     let bridged_default = bridge_flag(&ctx).exists();
@@ -265,6 +297,7 @@ async fn run(
                     return;
                 }
                 let state = state_rx.borrow_and_update().clone();
+                *qos_slot.lock().unwrap() = state.qos;
                 publish(&ctx, &state, &active);
                 let up = state.has_address();
                 // The merge selects the network profile (and with it the
@@ -302,9 +335,14 @@ async fn run(
                 was_up = up;
             }
             _ = async { tokio::time::sleep_until(deadline.unwrap_or_else(Instant::now)).await }, if deadline.is_some() => {
+                deadline = None;
+                // A settings change that the manager applied without a new
+                // bring-up re-arms the timer while the address stays.
+                if manager.snapshot().has_address() {
+                    continue;
+                }
                 warn!("net: no address after {FALLBACK_SECS} s with {}; falling back to plain DHCP on lan", describe(&active));
                 active = plain.clone();
-                deadline = None;
                 manager.reconfigure(active.clone()).await;
             }
             cmd = cmds.recv() => {
@@ -331,9 +369,16 @@ async fn run(
                     Cmd::Changed => {
                         let now = configured(&ctx, config.as_ref(), mac, bridge_flag(&ctx).exists());
                         if now != active {
-                            info!("net: network settings changed; applying {}", describe(&now));
+                            let restart = active.needs_restart(&now);
+                            info!(
+                                "net: network settings changed; {} {}",
+                                if restart { "bringing the network up again with" } else { "applying in place:" },
+                                describe(&now)
+                            );
                             active = now;
-                            deadline = (active != plain).then(|| Instant::now() + Duration::from_secs(FALLBACK_SECS));
+                            if restart {
+                                deadline = (active != plain).then(|| Instant::now() + Duration::from_secs(FALLBACK_SECS));
+                            }
                             manager.reconfigure(active.clone()).await;
                         }
                     }

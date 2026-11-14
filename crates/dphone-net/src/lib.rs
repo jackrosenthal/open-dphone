@@ -11,6 +11,7 @@
 //! * [`sntp`]: the clock.
 //! * [`lldp`]: LLDP with LLDP-MED, and the stock voice-VLAN selection rule.
 //! * [`mdns`]: discovery of `_digiumproxy._udp` provisioning servers.
+//! * [`eapol`]: EAPOL logoff for a PC unplugged from the PC jack.
 //! * [`qos`]: DSCP and 802.1p marking for sockets.
 //! * [`manager`]: [`NetManager`], which runs all of the above from one
 //!   [`NetConfig`] and publishes a [`NetState`].
@@ -24,6 +25,7 @@ pub mod config;
 pub mod dhcp4;
 pub mod dhcp6;
 pub mod dns;
+pub mod eapol;
 pub mod ethtool;
 pub mod lldp;
 pub mod manager;

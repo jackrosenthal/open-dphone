@@ -200,6 +200,11 @@ pub struct NetConfig {
     pub pc_vlan_id: Option<u16>,
     /// `8021x_passthrough`: forward EAPOL between the PC and LAN jacks.
     pub eapol_passthrough: bool,
+    /// With pass-through and a bridged PC jack: when the PC jack loses
+    /// link, send an EAPOL-Logoff for the device that was behind it.  Stock
+    /// turns this on together with pass-through (`eapLogoffEnable`), and
+    /// has `8021x_eapol_on_disconnect` for it besides.
+    pub eapol_logoff: bool,
     pub vlan: VlanDiscovery,
     pub qos: QosConfig,
     pub ipv4: Ipv4Config,
@@ -239,6 +244,7 @@ impl NetConfig {
             pc_port: PcPort::Bridged,
             pc_vlan_id: None,
             eapol_passthrough: false,
+            eapol_logoff: false,
             vlan: VlanDiscovery::None,
             qos: QosConfig::default(),
             ipv4: Ipv4Config::default(),
@@ -257,6 +263,25 @@ impl NetConfig {
             link_wait: Duration::from_secs(20),
             lldp_wait: Duration::from_secs(5),
         }
+    }
+
+    /// Whether changing from `self` to `new` needs the network brought up
+    /// again.  Markings, time settings, resolver order, the fallback
+    /// resolvers, and the address to ask DHCP for first can all change
+    /// under a running session; everything else decides how interfaces are
+    /// arranged or addressed.
+    pub fn needs_restart(&self, new: &NetConfig) -> bool {
+        let mut a = self.clone();
+        a.qos = new.qos;
+        a.ntp = new.ntp.clone();
+        a.ipv6_preferred = new.ipv6_preferred;
+        a.dns_fallback = new.dns_fallback.clone();
+        if let (Ipv4Config::Dhcp { requested_ip, .. }, Ipv4Config::Dhcp { requested_ip: wanted, .. }) =
+            (&mut a.ipv4, &new.ipv4)
+        {
+            *requested_ip = *wanted;
+        }
+        a != *new
     }
 
     /// The stock DHCP vendor class, e.g., `digium_D60_3_0_0`.

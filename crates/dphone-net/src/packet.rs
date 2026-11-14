@@ -242,6 +242,66 @@ pub fn parse_udp4(p: &[u8]) -> Option<Udp4<'_>> {
     })
 }
 
+/// A raw packet socket bound to one interface: whole Ethernet frames in
+/// both directions, limited to one EtherType by a kernel filter.  Unlike
+/// [`PacketSocket`], it sees frames that a bridge above the interface
+/// consumes, and it can send with any source address.
+pub struct RawSocket {
+    fd: Fd,
+    ethertype: u16,
+}
+
+impl RawSocket {
+    pub fn new(ifindex: u32, ethertype: u16) -> io::Result<Self> {
+        const ETH_P_ALL: u16 = 0x0003;
+        let fd = sys::socket(libc::AF_PACKET, libc::SOCK_RAW, ETH_P_ALL.to_be() as i32)?;
+        // Accept only frames whose EtherType field matches.
+        let program = [
+            libc::sock_filter { code: 0x28, jt: 0, jf: 0, k: 12 }, // load the half-word at offset 12
+            libc::sock_filter { code: 0x15, jt: 0, jf: 1, k: ethertype as u32 }, // equal?
+            libc::sock_filter { code: 0x06, jt: 0, jf: 0, k: 0xffff }, // accept
+            libc::sock_filter { code: 0x06, jt: 0, jf: 0, k: 0 }, // drop
+        ];
+        let fprog = libc::sock_fprog { len: program.len() as u16, filter: program.as_ptr() as *mut libc::sock_filter };
+        sys::setsockopt(fd.as_raw_fd(), libc::SOL_SOCKET, libc::SO_ATTACH_FILTER, &fprog)?;
+        let sa = sockaddr_ll(ifindex, ETH_P_ALL, None);
+        // SAFETY: `sa` is a valid `sockaddr_ll` of the length passed.
+        sys::cvt(unsafe {
+            libc::bind(fd.as_raw_fd(), &sa as *const _ as *const libc::sockaddr, mem::size_of::<libc::sockaddr_ll>() as libc::socklen_t)
+        })?;
+        Ok(Self { fd: Fd::new(fd)?, ethertype })
+    }
+
+    /// Receive one frame, Ethernet header included.  Frames this host sent,
+    /// and frames that slipped in before the filter was attached, are skipped.
+    pub async fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
+        loop {
+            let (n, pkttype) = self
+                .fd
+                .read_with(|fd| {
+                    // SAFETY: zero is a valid bit pattern for `sockaddr_ll`.
+                    let mut sa: libc::sockaddr_ll = unsafe { mem::zeroed() };
+                    let mut len = mem::size_of::<libc::sockaddr_ll>() as libc::socklen_t;
+                    // SAFETY: the buffer and address pointers are valid for the lengths passed.
+                    let n = sys::cvt_size(unsafe {
+                        libc::recvfrom(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len(), 0, &mut sa as *mut _ as *mut libc::sockaddr, &mut len)
+                    })?;
+                    Ok((n, sa.sll_pkttype))
+                })
+                .await?;
+            if pkttype == PACKET_OUTGOING || n < 14 || buf[12..14] != self.ethertype.to_be_bytes() {
+                continue;
+            }
+            return Ok(n);
+        }
+    }
+
+    /// Send one complete Ethernet frame.
+    pub async fn send(&self, frame: &[u8]) -> io::Result<usize> {
+        self.fd.send(frame).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -22,7 +22,7 @@ use crate::netlink::{self, Link, Monitor, Netlink, RTPROT_DHCP, RTPROT_STATIC};
 use crate::qos::{QosMarks, SKB_PRIORITY_RTP, SKB_PRIORITY_SIP};
 use crate::state::{AddressSource, Ipv4State, NetState, Phase, PortState, VlanSource};
 use crate::sys::MacAddr;
-use crate::{dhcp4, dhcp6, mdns, sntp, topology};
+use crate::{dhcp4, dhcp6, eapol, mdns, sntp, topology};
 
 const IFA_F_TENTATIVE: u32 = 0x40;
 const IFA_F_DEPRECATED: u32 = 0x20;
@@ -66,6 +66,8 @@ impl NetManager {
             nl,
             monitor,
             cmd: crx,
+            live_pending: false,
+            live_ntp: false,
         };
         let task = tokio::spawn(runner.run());
         Ok(Self {
@@ -215,6 +217,12 @@ struct Session {
     sntp_due: Option<Instant>,
     sntp_running: bool,
     local_info: Option<LocalInfo>,
+    pc_link: bool,
+    logoff: Option<eapol::LogoffProxy>,
+    /// The voice VLAN in use, if any.
+    voice_vid: Option<u16>,
+    /// The LLDP-MED policy the markings came from, if any.
+    voice_policy: Option<lldp::VoicePolicy>,
 }
 
 struct Runner {
@@ -224,6 +232,11 @@ struct Runner {
     nl: Netlink,
     monitor: Monitor,
     cmd: mpsc::Receiver<Cmd>,
+    /// `cfg` was replaced by one that differs only in settings that apply
+    /// to a running session; the session has yet to pick them up.
+    live_pending: bool,
+    /// The pending live change includes the time settings.
+    live_ntp: bool,
 }
 
 impl Runner {
@@ -265,10 +278,24 @@ impl Runner {
     }
 
     /// Turn a command into the reason to stop the current session, if it is one.
-    fn interrupt(&self, c: Option<Cmd>) -> Option<Next> {
+    ///
+    /// A new configuration that differs only in settings a running session
+    /// can adopt (markings, time, resolver order) does not interrupt: it
+    /// replaces `cfg` and is applied by [`Runner::apply_live`].  This
+    /// matters at every boot, because selecting the network profile by the
+    /// leased address changes such settings just after the lease arrives.
+    fn interrupt(&mut self, c: Option<Cmd>) -> Option<Next> {
         match c {
-            Some(Cmd::Reconfigure(cfg)) if *cfg != self.cfg => Some(Next::Reconfigure(cfg)),
-            Some(Cmd::Reconfigure(_)) | Some(Cmd::SyncTime) => None,
+            Some(Cmd::Reconfigure(cfg)) if *cfg == self.cfg => None,
+            Some(Cmd::Reconfigure(cfg)) if !self.cfg.needs_restart(&cfg) => {
+                log::info!("net: settings changed that apply without a restart");
+                self.live_ntp |= cfg.ntp != self.cfg.ntp;
+                self.cfg = *cfg;
+                self.live_pending = true;
+                None
+            }
+            Some(Cmd::Reconfigure(cfg)) => Some(Next::Reconfigure(cfg)),
+            Some(Cmd::SyncTime) => None,
             Some(Cmd::Shutdown(ack)) => Some(Next::Shutdown(Some(ack))),
             None => Some(Next::Shutdown(None)),
         }
@@ -494,6 +521,7 @@ impl Runner {
         // LLDP runs on the LAN port itself: a bridge hands LLDP frames to
         // the port they arrived on, not to the bridge device.
         let mut qos = effective_qos(&cfg, None);
+        let mut voice_policy = None;
         let mut voice_vid = known_vid.filter(|v| (1..=4094).contains(v));
         let mut vlan_source = voice_vid.map(|_| VlanSource::Manual);
         let mut local_info = None;
@@ -545,6 +573,7 @@ impl Runner {
             if found {
                 if let Some(policy) = lldp::select_voice_policy(&neighbors) {
                     qos = effective_qos(&cfg, Some(&policy));
+                    voice_policy = Some(policy);
                     if (1..=4094).contains(&policy.vlan_id) {
                         voice_vid = Some(policy.vlan_id);
                         vlan_source = Some(VlanSource::Lldp);
@@ -669,7 +698,17 @@ impl Runner {
             sntp_due: None,
             sntp_running: false,
             local_info,
+            pc_link: false,
+            logoff: None,
+            voice_vid,
+            voice_policy,
         };
+        if let (true, true, true, Some(pc)) = (cfg.eapol_passthrough, cfg.eapol_logoff, plan.bridge.is_some(), pc.as_ref()) {
+            match eapol::LogoffProxy::spawn(pc.index, lan.index) {
+                Ok(p) => session.logoff = Some(p),
+                Err(e) => self.fail("starting the EAPOL logoff watch on the PC jack", &e),
+            }
+        }
         self.update(|s| {
             s.interface = ip_if.clone();
             s.vlan_id = voice_vid;
@@ -1028,6 +1067,12 @@ impl Runner {
             netlink::Event::Link(l) if Some(l.index) == s.pc => {
                 let st = Self::port_state_of(&l);
                 self.update(|state| state.pc = st);
+                if s.pc_link && !st.link {
+                    if let Some(p) = &s.logoff {
+                        p.pc_link_down().await;
+                    }
+                }
+                s.pc_link = st.link;
             }
             netlink::Event::AddrAdded(a) | netlink::Event::AddrRemoved(a)
                 if a.index == s.ip_index && a.addr.is_ipv6() =>
@@ -1109,6 +1154,7 @@ impl Runner {
         let lan = self.port_state(Some(s.lan)).await;
         let pc = self.port_state(s.pc).await;
         s.lan_link = lan.link;
+        s.pc_link = pc.link;
         self.update(|st| {
             st.lan = lan;
             st.pc = pc;
@@ -1119,6 +1165,11 @@ impl Runner {
             }
         }
         loop {
+            if self.live_pending {
+                if let Some(next) = self.apply_live(s).await {
+                    return next;
+                }
+            }
             let sntp_wake = async {
                 match s.sntp_due {
                     Some(t) if !s.sntp_running && self.cfg.ntp.enabled => sleep_until(t).await,
@@ -1207,6 +1258,32 @@ impl Runner {
                 }
             }
         }
+    }
+
+    /// Adopt a configuration change that needs no new bring-up.  Returns
+    /// the reason to restart after all in the one case that cannot be done
+    /// in place: new 802.1p values while a voice VLAN device carries the
+    /// old ones in its priority map.
+    async fn apply_live(&mut self, s: &mut Session) -> Option<Next> {
+        self.live_pending = false;
+        let qos = effective_qos(&self.cfg, s.voice_policy.as_ref());
+        let old = self.state.borrow().qos;
+        if qos != old {
+            if s.voice_vid.is_some() && (qos.rtp_pcp != old.rtp_pcp || qos.sip_pcp != old.sip_pcp) {
+                return Some(Next::Reconfigure(Box::new(self.cfg.clone())));
+            }
+            self.update(|st| st.qos = qos);
+            if let (Some(agent), Some(info)) = (s.lldp.as_ref(), s.local_info.as_mut()) {
+                info.policies =
+                    LocalInfo::decided_policies(s.voice_vid, qos.rtp_pcp, qos.rtp_dscp, qos.sip_pcp, qos.sip_dscp);
+                agent.set_local(info.clone()).await;
+            }
+        }
+        self.refresh_dns(s);
+        if std::mem::take(&mut self.live_ntp) && self.state.borrow().has_address() {
+            s.sntp_due = Some(Instant::now());
+        }
+        None
     }
 
     async fn tear_down(&mut self, session: Option<Session>, release: bool) {

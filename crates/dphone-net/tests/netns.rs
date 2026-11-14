@@ -767,9 +767,58 @@ async fn manager_end_to_end() {
     assert_eq!(mgr.snapshot().ipv4.map(|v| v.address), Some(LEASED_IP));
     println!("netns: link flap ok");
 
+    // --- Settings that apply in place -------------------------------------
+    // Selecting the network profile by the leased address changes the time
+    // server and the DSCP values on every boot.  That must not cost a new
+    // bring-up: the address stays, and no DHCP exchange happens.
+    let exchanges = |l: &ServerLog| (l.discovers, l.requests);
+    let before = exchanges(&dhcp_log.lock().unwrap());
+    let ntp_before = *ntp_hits.lock().unwrap();
+    let mut live = cfg.clone();
+    live.ntp.server = Some("pool.ntp.org".into());
+    live.ntp.prefer_option42 = true;
+    live.qos.rtp_dscp = Some(0);
+    live.qos.sip_dscp = Some(0);
+    live.ipv4 = Ipv4Config::Dhcp { arp_check: true, requested_ip: Some(LEASED_IP) };
+    assert!(!cfg.needs_restart(&live));
+    let mut watch = mgr.state();
+    watch.borrow_and_update();
+    let started = std::time::Instant::now();
+    mgr.reconfigure(live.clone()).await;
+    timeout(Duration::from_secs(5), async {
+        while *ntp_hits.lock().unwrap() == ntp_before {
+            sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("the new time settings did not trigger a synchronization");
+    let live_time = started.elapsed();
+    // Every state published since the change still has the address.
+    while watch.has_changed().unwrap() {
+        let st = watch.borrow_and_update().clone();
+        assert_eq!(st.ipv4.as_ref().map(|v| v.address), Some(LEASED_IP), "the address was dropped");
+        assert_eq!(st.phase, Phase::Up);
+    }
+    assert_eq!(exchanges(&dhcp_log.lock().unwrap()), before, "a live change must not restart DHCP");
+    assert!(nl.link_by_name("br0.100").await.unwrap().is_some());
+    // For comparison: a change that does rearrange the network.
+    let mut hard = live.clone();
+    hard.eapol_passthrough = true;
+    assert!(live.needs_restart(&hard));
+    let started = std::time::Instant::now();
+    mgr.reconfigure(hard).await;
+    wait_for(&mgr, "address loss", Duration::from_secs(5), |s| s.ipv4.is_none()).await;
+    wait_for(&mgr, "the address after a restart", Duration::from_secs(25), |s| s.phase == Phase::Up && s.ipv4.is_some()).await;
+    println!(
+        "netns: live settings change ok ({} ms with the address kept; a full bring-up took {} ms)",
+        live_time.as_millis(),
+        started.elapsed().as_millis()
+    );
+
     // --- Reconfigure: static address, no VLAN, 802.1X pass-through --------
     let mut cfg2 = test_config();
     cfg2.eapol_passthrough = true;
+    cfg2.eapol_logoff = true;
     cfg2.lldp.enabled = false;
     cfg2.link_wait = Duration::from_secs(2);
     cfg2.ipv4 = Ipv4Config::Static {
@@ -822,7 +871,28 @@ async fn manager_end_to_end() {
         frame_crosses(sw, pcpeer, 0x888e, pae).await,
         "EAPOL should cross with pass-through"
     );
-    println!("netns: static reconfiguration and 802.1X pass-through ok");
+    // The PC authenticates through the phone, then is unplugged: the phone
+    // logs it off the upstream port.
+    {
+        use dphone_net::eapol;
+        use dphone_net::packet::RawSocket;
+        let pc_mac = MacAddr::parse("02:00:00:00:00:77").unwrap();
+        let pc_side = RawSocket::new(pcpeer, eapol::ETH_P_PAE).unwrap();
+        let upstream = RawSocket::new(sw, eapol::ETH_P_PAE).unwrap();
+        let mut start = eapol::logoff_frame(pc_mac);
+        start[15] = 1; // EAPOL-Start
+        pc_side.send(&start).await.unwrap();
+        let mut buf = [0u8; 128];
+        let n = timeout(Duration::from_secs(2), upstream.recv(&mut buf)).await.expect("EAPOL-Start did not cross").unwrap();
+        assert_eq!(eapol::classify(&buf[..n]), Some(eapol::Seen::Supplicant(pc_mac)));
+        wait_for(&mgr, "PC link", Duration::from_secs(3), |s| s.pc.link).await;
+        nl.set_up(pcpeer, false).await.unwrap();
+        let n = timeout(Duration::from_secs(3), upstream.recv(&mut buf)).await.expect("no EAPOL-Logoff after the PC went away").unwrap();
+        assert_eq!(buf[..n], eapol::logoff_frame(pc_mac)[..n]);
+        nl.set_up(pcpeer, true).await.unwrap();
+        wait_for(&mgr, "PC link again", Duration::from_secs(3), |s| s.pc.link).await;
+    }
+    println!("netns: static reconfiguration, 802.1X pass-through, and logoff on PC disconnect ok");
 
     // --- Reconfigure: manual VLAN, PC port disabled, DHCP -----------------
     let mut cfg3 = test_config();

@@ -169,6 +169,16 @@ impl AudioService {
         let start = inner.next_port;
         let pair = dphone_media::net::bind_rtp_pair(IpAddr::V4(Ipv4Addr::UNSPECIFIED), (RTP_PORT_BASE, RTP_PORT_BASE + 2000), start)
             .map_err(|e| format!("no RTP port: {e}"))?;
+        // Mark media as the network asks (configuration or the switch's
+        // LLDP-MED policy): DSCP, and the socket priority that the voice
+        // VLAN maps to its 802.1p value.
+        let (dscp, pcp) = self.store.read::<dphone_state::Network, _>(|n| (n.vlan.dscp, n.vlan.voice_priority));
+        let marks = dphone_net::QosMarks { rtp_dscp: dscp, rtp_pcp: pcp, ..Default::default() };
+        for sock in [&pair.rtp, &pair.rtcp] {
+            if let Err(e) = dphone_net::qos::mark_socket(sock, dphone_net::TrafficClass::Rtp, &marks) {
+                log::warn!("audio: marking the RTP socket: {e}");
+            }
+        }
         let port = pair.port();
         inner.next_port = if port + 2 >= RTP_PORT_BASE + 2000 { RTP_PORT_BASE } else { port + 2 };
         inner.reserved.insert(call, Sockets { rtp: pair.rtp, rtcp: Some(pair.rtcp), port });
