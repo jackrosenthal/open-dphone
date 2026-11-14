@@ -1,0 +1,50 @@
+//! Open DPhone's phone UI: a small retained-mode toolkit with integer-only
+//! rendering, three skins, the native screens, and the view API that WASM
+//! apps draw through (plan section 10).
+//!
+//! - [`Ui`] owns the display, backlight, keypad, and lamps.  The
+//!   integrator builds one with [`Ui::from_hal`] and calls [`Ui::run`] on
+//!   a dedicated thread.  It watches the [`dphone_state::Store`], draws the
+//!   screen that the state calls for, turns keys into
+//!   [`dphone_state::Command`]s, re-emits input as
+//!   [`dphone_state::Event`]s, handles the `Domain::Ui` commands, and
+//!   drives lamps from `Keys` state.
+//! - [`UiHandle`] is the thread-safe way in: open and close app views,
+//!   change [`UiConfig`], stop the loop.
+//! - [`appview`] is the widget-tree API for apps; see its module docs.
+//! - [`gfx`], [`font`], [`skin`], and [`widgets`] are the toolkit, public
+//!   for tools and tests.
+//!
+//! Fonts and artwork are rasterized at build time (`build.rs`) from
+//! `assets/`; nothing at run time uses floating point.
+
+#![allow(clippy::type_complexity, clippy::too_many_arguments)]
+
+pub mod appview;
+mod appview_impl;
+pub mod font;
+pub mod gfx;
+pub mod icons;
+pub mod multitap;
+mod screens;
+pub mod skin;
+pub mod strings;
+pub mod time;
+mod ui;
+pub mod widgets;
+
+#[allow(clippy::all)]
+mod atlas {
+    include!(concat!(env!("OUT_DIR"), "/assets_gen.rs"));
+}
+
+pub use appview::{AppEvent, AppEvents, AppView};
+pub use ui::{Ui, UiConfig, UiHandle};
+
+/// Size in pixels of the area on the idle screen offered to an app's idle
+/// view ([`UiHandle::set_idle_view`]).  Widget rectangles in that view are
+/// relative to this area, not to the app content area.
+pub fn idle_app_area(model: dphone_state::Model) -> dphone_state::Size {
+    let th = skin::Theme::for_model(model);
+    dphone_state::Size::new((th.width - screens::idle::tab_width(th)) as u16, (2 * th.line_h) as u16)
+}
