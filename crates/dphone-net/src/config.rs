@@ -281,17 +281,50 @@ impl NetConfig {
     /// under a running session; everything else decides how interfaces are
     /// arranged or addressed.
     pub fn needs_restart(&self, new: &NetConfig) -> bool {
-        let mut a = self.clone();
-        a.qos = new.qos;
-        a.ntp = new.ntp.clone();
-        a.ipv6_preferred = new.ipv6_preferred;
-        a.dns_fallback = new.dns_fallback.clone();
-        if let (Ipv4Config::Dhcp { requested_ip, .. }, Ipv4Config::Dhcp { requested_ip: wanted, .. }) =
-            (&mut a.ipv4, &new.ipv4)
-        {
-            *requested_ip = *wanted;
-        }
-        a != *new
+        !self.restart_reasons(new).is_empty()
+    }
+
+    /// The settings whose change from `self` to `new` needs the network
+    /// brought up again, by name; empty when `new` can be adopted in place.
+    ///
+    /// Settings that have no effect in either configuration do not count:
+    /// `pc_qos` only applies together with a PC VLAN.
+    pub fn restart_reasons(&self, new: &NetConfig) -> Vec<&'static str> {
+        let pc_vlan = |c: &NetConfig| c.pc_vlan_id.filter(|v| (1..=4094).contains(v));
+        let ipv4_same = match (&self.ipv4, &new.ipv4) {
+            (Ipv4Config::Dhcp { arp_check: a, .. }, Ipv4Config::Dhcp { arp_check: b, .. }) => a == b,
+            (a, b) => a == b,
+        };
+        let checks = [
+            ("interface names", self.ifaces == new.ifaces),
+            ("MAC address", self.mac == new.mac),
+            ("model", self.model == new.model),
+            ("version", self.version == new.version),
+            ("host name", self.hostname == new.hostname),
+            ("lan_port_mode", self.lan_port_mode == new.lan_port_mode),
+            ("pc_port_mode", self.pc_port_mode == new.pc_port_mode),
+            ("PC port bridging", self.pc_port == new.pc_port),
+            ("pc_vlan_id", pc_vlan(self) == pc_vlan(new)),
+            ("pc_qos", self.pc_qos.min(7) == new.pc_qos.min(7) || (pc_vlan(self).is_none() && pc_vlan(new).is_none())),
+            ("802.1X pass-through", self.eapol_passthrough == new.eapol_passthrough),
+            ("EAPOL logoff", self.eapol_logoff == new.eapol_logoff),
+            ("expansion modules", self.expansion_address == new.expansion_address),
+            ("voice VLAN", self.vlan == new.vlan),
+            ("IPv4 addressing", ipv4_same),
+            ("IPv6 addressing", self.ipv6 == new.ipv6),
+            ("LLDP", self.lldp == new.lldp),
+            ("link wait", self.link_wait == new.link_wait && self.lldp_wait == new.lldp_wait),
+        ];
+        // Not listed, because a running session adopts them: `qos`, `ntp`,
+        // `ipv6_preferred`, `dns_fallback`, and the DHCP `requested_ip`.
+        // The destructuring makes a new field a compile error here until
+        // it is put on one side or the other.
+        let NetConfig {
+            ifaces: _, mac: _, model: _, version: _, hostname: _, lan_port_mode: _, pc_port_mode: _, pc_port: _,
+            pc_vlan_id: _, pc_qos: _, eapol_passthrough: _, eapol_logoff: _, expansion_address: _, vlan: _, qos: _,
+            ipv4: _, ipv6: _, ipv6_preferred: _, dns_fallback: _, ntp: _, lldp: _, link_wait: _, lldp_wait: _,
+        } = self;
+        checks.into_iter().filter(|(_, same)| !same).map(|(name, _)| name).collect()
     }
 
     /// The stock DHCP vendor class, e.g., `digium_D60_3_0_0`.
@@ -319,6 +352,36 @@ pub fn netmask_to_prefix(mask: Ipv4Addr) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_needs_a_restart() {
+        let base = NetConfig::new("D60", "3_0_0", MacAddr::parse("00:0f:d3:01:02:03"));
+        // Adopted in place.
+        let mut live = base.clone();
+        live.qos.rtp_dscp = Some(0);
+        live.ntp.server = Some("0.pool.ntp.org".into());
+        live.ipv6_preferred = true;
+        live.dns_fallback = vec!["192.0.2.53".parse().unwrap()];
+        live.ipv4 = Ipv4Config::Dhcp { arp_check: true, requested_ip: Some(Ipv4Addr::new(10, 0, 0, 9)) };
+        // pc_qos without a PC VLAN has no effect, whatever its value.
+        live.pc_qos = 0;
+        live.pc_vlan_id = Some(0);
+        assert_eq!(base.restart_reasons(&live), Vec::<&str>::new());
+        assert!(!base.needs_restart(&live));
+        // With a PC VLAN on either side, pc_qos counts.
+        let mut with_vlan = base.clone();
+        with_vlan.pc_vlan_id = Some(20);
+        let mut other_prio = with_vlan.clone();
+        other_prio.pc_qos = 5;
+        assert_eq!(with_vlan.restart_reasons(&other_prio), ["pc_qos"]);
+        assert_eq!(base.restart_reasons(&with_vlan), ["pc_vlan_id"]);
+        // Arrangement and addressing changes.
+        let mut hard = base.clone();
+        hard.expansion_address = Some(Ipv4Addr::new(172, 20, 2, 3));
+        hard.vlan = VlanDiscovery::Manual(100);
+        hard.ipv4 = Ipv4Config::Dhcp { arp_check: false, requested_ip: None };
+        assert_eq!(base.restart_reasons(&hard), ["expansion modules", "voice VLAN", "IPv4 addressing"]);
+    }
 
     #[test]
     fn netmasks() {

@@ -59,8 +59,8 @@ pub async fn start(ctx: &Context, opts: &Options) {
     start_state(ctx);
 
     // 2. dphone-config: load and merge the nvdata XML layers.
-    let config = start_config(ctx);
     let hub = system::ConfigHub::default();
+    let config = start_config(ctx, &hub);
 
     // 3. dphone-net: `NetManager` on this runtime.  Before the hardware, so
     //    that nothing there can delay the way in.
@@ -287,7 +287,7 @@ pub fn stock_writes_allowed(ctx: &Context) -> bool {
     ctx.sim || crate::paths::stock_writes_allowed()
 }
 
-fn start_config(ctx: &Context) -> Option<SharedConfig> {
+fn start_config(ctx: &Context, hub: &system::ConfigHub) -> Option<SharedConfig> {
     ctx.store.set_health(Subsystem::Config, HealthStatus::Starting);
     let nv = Nvdata::new(ctx.paths.nvdata.clone());
     let read_only = !stock_writes_allowed(ctx);
@@ -335,14 +335,21 @@ fn start_config(ctx: &Context) -> Option<SharedConfig> {
     let shared: SharedConfig = Arc::new(Mutex::new(store));
     let handle = shared.clone();
     let state = ctx.store.clone();
+    let hub = hub.clone();
     ctx.diag.register(
         "config",
         "config get ID | config list [SUBSTRING] | config set ID VALUE | config reload",
         move |args: Vec<String>, out: Output| {
             let handle = handle.clone();
             let state = state.clone();
+            let hub = hub.clone();
             async move {
-                let (code, text, err) = config_command(&handle, &state, read_only, &args);
+                let (code, text, err, changed) = config_command(&handle, read_only, &args);
+                // A change made here is a change like any other: every
+                // subsystem that follows the configuration hears of it.
+                if let Some(cfg) = changed {
+                    hub.changed(&state, &cfg);
+                }
                 if !text.is_empty() {
                     out.out(&text).await;
                 }
@@ -356,11 +363,23 @@ fn start_config(ctx: &Context) -> Option<SharedConfig> {
     Some(shared)
 }
 
+/// Run a `dphone config` command.  Returns the exit code, the output, the
+/// error text, and the new merged configuration when the command changed it.
 fn config_command(
     handle: &SharedConfig,
-    state: &dphone_state::Store,
     read_only: bool,
     args: &[String],
+) -> (i32, String, String, Option<Arc<dphone_config::Config>>) {
+    let mut changed = None;
+    let (code, text, err) = config_command_inner(handle, read_only, args, &mut changed);
+    (code, text, err, changed)
+}
+
+fn config_command_inner(
+    handle: &SharedConfig,
+    read_only: bool,
+    args: &[String],
+    changed: &mut Option<Arc<dphone_config::Config>>,
 ) -> (i32, String, String) {
     let Ok(mut store) = handle.lock() else {
         return (1, String::new(), "dphone config: store poisoned\n".into());
@@ -395,17 +414,18 @@ fn config_command(
             }
             match store.set(id, value) {
                 Ok(cfg) => {
-                    state.update::<dphone_state::ConfigInfo, _>(|c| {
-                        c.generation = cfg.generation();
-                        c.last_merge_unix = dphone_state::clock::unix_secs();
-                    });
+                    *changed = Some(cfg);
                     (0, String::new(), String::new())
                 }
                 Err(e) => (1, String::new(), format!("dphone config: {e}\n")),
             }
         }
         ["reload"] => match store.reload() {
-            Ok(cfg) => (0, format!("generation {}\n", cfg.generation()), String::new()),
+            Ok(cfg) => {
+                let text = format!("generation {}\n", cfg.generation());
+                *changed = Some(cfg);
+                (0, text, String::new())
+            }
             Err(e) => (1, String::new(), format!("dphone config: {e}\n")),
         },
         _ => (

@@ -169,10 +169,24 @@ fn plain_config(ctx: &Context, mac: Option<MacAddr>) -> NetConfig {
 /// The configured network: the merged phone configuration mapped onto the
 /// manager's input.
 fn configured(ctx: &Context, config: Option<&SharedConfig>, mac: Option<MacAddr>, bridged: bool) -> NetConfig {
-    let mut cfg = plain_config(ctx, mac);
+    let cfg = plain_config(ctx, mac);
     let Some(merged) = config.and_then(|c| c.lock().ok().map(|s| s.config())) else {
         return cfg;
     };
+    let new_family = ctx.model.family() == crate::model::Family::New;
+    map_config(cfg, &merged, new_family, mac, bridged, last_address(ctx))
+}
+
+/// Map the merged phone configuration onto `cfg` (the plain configuration
+/// for this phone).
+fn map_config(
+    mut cfg: NetConfig,
+    merged: &dphone_config::Config,
+    new_family: bool,
+    mac: Option<MacAddr>,
+    bridged: bool,
+    last_address: Option<Ipv4Addr>,
+) -> NetConfig {
     let n = merged.network();
     cfg.lan_port_mode = PortMode::parse(&n.lan_port_mode);
     cfg.pc_port_mode = PortMode::parse(&n.pc_port_mode);
@@ -181,7 +195,7 @@ fn configured(ctx: &Context, config: Option<&SharedConfig>, mac: Option<MacAddr>
     cfg.pc_qos = n.pc_qos.min(7);
     // Stock, new family only: an expansion module takes the PC VLAN away,
     // and the phone joins the modules' private VLAN.
-    if ctx.model.family() == crate::model::Family::New && merged.setting_bool("expansion_enable", false) {
+    if new_family && merged.setting_bool("expansion_enable", false) {
         cfg.pc_vlan_id = None;
         cfg.expansion_address = Some(dphone_hal::expansion::private_address(mac.map(|m| m.0).unwrap_or([0; 6])));
     }
@@ -210,7 +224,7 @@ fn configured(ctx: &Context, config: Option<&SharedConfig>, mac: Option<MacAddr>
             warn!("net: static addressing configured without a usable address and mask; using DHCP");
             Ipv4Config::Dhcp { arp_check: !n.disable_arping, requested_ip: None }
         }
-        (true, _, _) => Ipv4Config::Dhcp { arp_check: !n.disable_arping, requested_ip: last_address(ctx) },
+        (true, _, _) => Ipv4Config::Dhcp { arp_check: !n.disable_arping, requested_ip: last_address },
     };
     cfg.ipv6 = match (n.ipv6_enabled, n.dhcp) {
         (false, _) => Ipv6Config::Disabled,
@@ -372,12 +386,17 @@ async fn run(
                     Cmd::Changed => {
                         let now = configured(&ctx, config.as_ref(), mac, bridge_flag(&ctx).exists());
                         if now != active {
-                            let restart = active.needs_restart(&now);
-                            info!(
-                                "net: network settings changed; {} {}",
-                                if restart { "bringing the network up again with" } else { "applying in place:" },
-                                describe(&now)
-                            );
+                            let reasons = active.restart_reasons(&now);
+                            let restart = !reasons.is_empty();
+                            if restart {
+                                info!(
+                                    "net: network settings changed ({}); bringing the network up again with {}",
+                                    reasons.join(", "),
+                                    describe(&now)
+                                );
+                            } else {
+                                info!("net: network settings changed; applying in place: {}", describe(&now));
+                            }
                             active = now;
                             if restart {
                                 deadline = (active != plain).then(|| Instant::now() + Duration::from_secs(FALLBACK_SECS));
@@ -661,4 +680,85 @@ fn words(value: &impl std::fmt::Debug) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dphone_config::{ConfigStore, Model, Nvdata};
+
+    /// The layout a D60 gets from its DPMA server: one network profile
+    /// selected by address, and settings that only count on that network.
+    /// (The ids and the `network_id` attributes are the ones on the
+    /// bring-up phone; the addresses are examples.)
+    const FETCHED: &str = r#"<config>
+<networks>
+<network id="lan" display_name="LAN" cidr="10.10.14.0/23" />
+</networks>
+<setting id="config_server_url" value="sip:proxy@10.10.14.3:5060;transport=udp" network_id="lan" />
+<setting id="enable_logging" value="0" network_id="lan" />
+<setting id="ntp_server" value="0.pool.ntp.org" network_id="lan" />
+<setting id="pc_qos" value="0" network_id="lan" />
+<setting id="pc_vlan_id" value="0" network_id="lan" />
+<setting id="rtp_dscp" value="0" network_id="lan" />
+<setting id="sip_dscp" value="0" network_id="lan" />
+<setting id="udp_ka_interval" value="0" network_id="lan" />
+<setting id="network_enable_dhcp" value="1" />
+<setting id="network_vlan_discovery_mode" value="LLDP" />
+<setting id="time_source" value="ntp" />
+</config>"#;
+
+    fn store() -> (tempfile::TempDir, ConfigStore) {
+        let dir = tempfile::tempdir().unwrap();
+        let nv = Nvdata::new(dir.path().join("nvdata"));
+        nv.ensure_layout().unwrap();
+        let mut store = ConfigStore::open(nv, Model::D60, dir.path().join("tmp")).unwrap();
+        store.apply_fetched(FETCHED).unwrap();
+        (dir, store)
+    }
+
+    fn mapped(store: &ConfigStore) -> NetConfig {
+        let mac = MacAddr::parse("00:0f:d3:01:02:03");
+        let mut plain = NetConfig::new("D60", "3_0_0", mac);
+        plain.pc_port = PcPort::Disabled;
+        map_config(plain, &store.config(), true, mac, false, None)
+    }
+
+    /// What the phone does at every boot: bring-up starts before there is
+    /// an address, the lease selects the network profile, and the settings
+    /// tied to that profile change.  None of that may restart bring-up.
+    #[test]
+    fn profile_selection_after_the_lease_applies_in_place() {
+        let (_dir, mut store) = store();
+        let before = mapped(&store);
+        let generation = store.config().generation();
+        let selected = store.set_ip(Some(Ipv4Addr::new(10, 10, 15, 87))).unwrap();
+        assert_ne!(selected.generation(), generation, "the lease should select the profile");
+        let after = mapped(&store);
+        // The profile's settings took effect...
+        assert_eq!(after.ntp.server.as_deref(), Some("0.pool.ntp.org"));
+        assert_eq!((after.qos.rtp_dscp, after.qos.sip_dscp), (Some(0), Some(0)));
+        // pc_qos is the one that used to force a restart: it changes from
+        // the default to the profile's value, with no PC VLAN to apply to.
+        assert_eq!((before.pc_qos, after.pc_qos, after.pc_vlan_id), (1, 0, None));
+        assert_ne!(before, after);
+        // ...and all of them are ones a running session adopts.
+        assert_eq!(before.restart_reasons(&after), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn expansion_enable_asks_for_the_interface() {
+        let (_dir, mut store) = store();
+        store.set_ip(Some(Ipv4Addr::new(10, 10, 15, 87))).unwrap();
+        let before = mapped(&store);
+        assert_eq!(before.expansion_address, None);
+        store.set("expansion_enable", "1").unwrap();
+        let after = mapped(&store);
+        assert_eq!(after.expansion_address, Some(Ipv4Addr::new(172, 20, 2, 3)));
+        assert_eq!(before.restart_reasons(&after), ["expansion modules"]);
+        // Old-family phones have no expansion modules.
+        let mac = MacAddr::parse("00:0f:d3:01:02:03");
+        let old = map_config(NetConfig::new("D40", "3_0_0", mac), &store.config(), false, mac, false, None);
+        assert_eq!(old.expansion_address, None);
+    }
 }
