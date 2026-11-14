@@ -36,6 +36,9 @@ export type PanelKey = {
   w: number;
   h: number;
   shape: KeyShape;
+  /// Half of one bar shared with the neighboring key (volume; the D6x
+  /// check/X bar): which end of the bar this key is.
+  half?: "left" | "right";
   /// Lamp in the key, by the lamp's key name in the stream.
   lamp?: string;
 };
@@ -120,8 +123,8 @@ function build(v: Variant): Panel {
   );
   // Volume: one bar under the dial pad, down on the left.
   const volY = y1 + 4 * 44 + 6;
-  add("vdn", "−", DX + 76, volY, 80, 18, "pill");
-  add("vup", "+", DX + 76 + 80, volY, 80, 18, "pill");
+  add("vdn", "−", DX + 76, volY, 80, 18, "pill", { half: "left" });
+  add("vup", "+", DX + 76 + 80, volY, 80, 18, "pill", { half: "right" });
 
   // Right of the dial pad: navigation, then the feature keys.
   const cols = Math.max(...v.features.map((r) => r.length), v.topFeatures?.length ?? 0);
@@ -134,9 +137,11 @@ function build(v: Variant): Panel {
   }
   const cx = fx + (cols * fpitch - 8) / 2 - (v.nav === "center-check" ? 12 : 0);
   if (v.nav === "check-bar") {
-    // D6x: one bar above the pad, check on the left, X on the right.
-    add("select", "✓", cx - 44, y, 44, 18, "pill");
-    add("cancel", "✕", cx, y, 44, 18, "pill");
+    // New family (D60, D62, D65): no center key.  The check key is above
+    // the pad, as the left end of one bar whose right end is the X key
+    // (Quick Start Guide item 10, "Confirmation").
+    add("select", "✓", cx - 44, y, 44, 18, "pill", { half: "left" });
+    add("cancel", "✕", cx, y, 44, 18, "pill", { half: "right" });
     y += 28;
     add("up", "▲", cx - 15, y, 30, 26, "round");
     add("left", "◀", cx - 49, y + 26, 30, 26, "round");
@@ -144,7 +149,8 @@ function build(v: Variant): Panel {
     add("down", "▼", cx - 15, y + 52, 30, 26, "round");
     y += 88;
   } else {
-    // Old family: check in the middle of the pad, X above and to the right.
+    // Old family (D40, D45, D50, D70): the check key is the center of the
+    // pad; the X key is above and to the right of it.
     add("up", "▲", cx - 15, y, 30, 26, "round");
     add("cancel", "✕", cx + 28, y, 30, 26, "round");
     add("left", "◀", cx - 49, y + 30, 30, 26, "round");

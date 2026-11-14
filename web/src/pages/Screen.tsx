@@ -126,7 +126,7 @@ export function Screen() {
         style={style}
         className={cx(
           "flex select-none flex-col items-center justify-center text-[11px] font-medium leading-none text-slate-100 active:brightness-125",
-          k.shape === "rect" ? "rounded-md" : "rounded-full",
+          k.shape === "rect" ? "rounded-md" : k.half === "left" ? "rounded-l-full" : k.half === "right" ? "rounded-r-full" : "rounded-full",
           // An unprinted key with a lamp lights as a whole.
           l && !k.label ? cx(lampColor[l.color], l.blink !== "solid" && `lamp-${l.blink}`) : "bg-slate-600 ring-1 ring-inset ring-slate-500",
           className,
