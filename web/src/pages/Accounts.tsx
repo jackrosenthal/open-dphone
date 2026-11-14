@@ -121,11 +121,11 @@ export function Accounts() {
       <div className="space-y-5">
         {!editing && <ErrorNote error={error} />}
         {!local && accounts.length > 0 && (
-          <Alert tone="blue" title="These accounts come from the provisioning server. Saving a change stores all of them on the phone, and the stored accounts then replace the provisioned ones." />
+          <Alert tone="blue" title="Provisioned by the server." />
         )}
         {local && (
-          <Alert tone="blue" title="These accounts are stored on the phone and replace any provisioned accounts.">
-            <ConfirmButton size="sm" variant="secondary" label="Use provisioned accounts" title="Remove the stored accounts?" message="The provisioning server's accounts apply again." confirmLabel="Remove" onConfirm={() => clear.mutateAsync({})} />
+          <Alert tone="blue" title="Stored on the phone, replacing any provisioned accounts.">
+            <ConfirmButton size="sm" variant="secondary" label="Use provisioned accounts" title="Use provisioned accounts?" confirmLabel="Use provisioned accounts" onConfirm={() => clear.mutateAsync({})} />
           </Alert>
         )}
         <Card>

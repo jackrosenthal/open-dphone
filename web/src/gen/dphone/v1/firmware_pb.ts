@@ -4,13 +4,15 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { BoolSetting } from "./config_pb";
+import { file_dphone_v1_config } from "./config_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file dphone/v1/firmware.proto.
  */
 export const file_dphone_v1_firmware: GenFile = /*@__PURE__*/
-  fileDesc("ChhkcGhvbmUvdjEvZmlybXdhcmUucHJvdG8SCWRwaG9uZS52MSJ8ChBVcGxvYWRlZEZpcm13YXJlEhEKCXVwbG9hZF9pZBgBIAEoCRIMCgRzaXplGAIgASgEEg8KB3ZlcnNpb24YAyABKAkSDQoFbW9kZWwYBCABKAkSEAoIaXNfc3RvY2sYBSABKAgSFQoNbW9kZWxfbWF0Y2hlcxgGIAEoCCKsAgoORmlybXdhcmVTdGF0dXMSJQoFcGhhc2UYASABKA4yFi5kcGhvbmUudjEuVXBkYXRlUGhhc2USDwoHcGVyY2VudBgCIAEoDRINCgVlcnJvchgDIAEoCRIXCg9ydW5uaW5nX3ZlcnNpb24YBCABKAkSFAoMcnVubmluZ19iYW5rGAUgASgJEg0KBXRyaWFsGAYgASgJEhgKEHRyaWFsX2Jvb3RzX2xlZnQYByABKA0SFwoPcm9sbGJhY2tfcmVhc29uGAggASgJEhgKEGluY29taW5nX3ZlcnNpb24YCSABKAkSGQoRaW5jb21pbmdfaXNfc3RvY2sYCiABKAgSLQoIdXBsb2FkZWQYCyABKAsyGy5kcGhvbmUudjEuVXBsb2FkZWRGaXJtd2FyZSIUChJHZXRGaXJtd2FyZVJlcXVlc3QiQAoTR2V0RmlybXdhcmVSZXNwb25zZRIpCgZzdGF0dXMYASABKAsyGS5kcGhvbmUudjEuRmlybXdhcmVTdGF0dXMiFgoUV2F0Y2hGaXJtd2FyZVJlcXVlc3QiQgoVV2F0Y2hGaXJtd2FyZVJlc3BvbnNlEikKBnN0YXR1cxgBIAEoCzIZLmRwaG9uZS52MS5GaXJtd2FyZVN0YXR1cyJAChZJbnN0YWxsRmlybXdhcmVSZXF1ZXN0EhEKCXVwbG9hZF9pZBgBIAEoCRITCgthbGxvd19zdG9jaxgCIAEoCCIZChdJbnN0YWxsRmlybXdhcmVSZXNwb25zZSIpChREaXNjYXJkVXBsb2FkUmVxdWVzdBIRCgl1cGxvYWRfaWQYASABKAkiFwoVRGlzY2FyZFVwbG9hZFJlc3BvbnNlIhUKE0NvbmZpcm1UcmlhbFJlcXVlc3QiFgoUQ29uZmlybVRyaWFsUmVzcG9uc2UiEQoPUm9sbGJhY2tSZXF1ZXN0IhIKEFJvbGxiYWNrUmVzcG9uc2UqwgIKC1VwZGF0ZVBoYXNlEhwKGFVQREFURV9QSEFTRV9VTlNQRUNJRklFRBAAEhUKEVVQREFURV9QSEFTRV9JRExFEAESGgoWVVBEQVRFX1BIQVNFX1JFQ0VJVklORxACEhkKFVVQREFURV9QSEFTRV9DSEVDS0lORxADEhgKFFVQREFURV9QSEFTRV9FUkFTSU5HEAQSHwobVVBEQVRFX1BIQVNFX1dSSVRJTkdfS0VSTkVMEAUSHwobVVBEQVRFX1BIQVNFX1dSSVRJTkdfUk9PVEZTEAYSGgoWVVBEQVRFX1BIQVNFX1ZFUklGWUlORxAHEhsKF1VQREFURV9QSEFTRV9DT01NSVRUSU5HEAgSGQoVVVBEQVRFX1BIQVNFX0NPTVBMRVRFEAkSFwoTVVBEQVRFX1BIQVNFX0ZBSUxFRBAKMvkDCg9GaXJtd2FyZVNlcnZpY2USTAoLR2V0RmlybXdhcmUSHS5kcGhvbmUudjEuR2V0RmlybXdhcmVSZXF1ZXN0Gh4uZHBob25lLnYxLkdldEZpcm13YXJlUmVzcG9uc2USVAoNV2F0Y2hGaXJtd2FyZRIfLmRwaG9uZS52MS5XYXRjaEZpcm13YXJlUmVxdWVzdBogLmRwaG9uZS52MS5XYXRjaEZpcm13YXJlUmVzcG9uc2UwARJYCg9JbnN0YWxsRmlybXdhcmUSIS5kcGhvbmUudjEuSW5zdGFsbEZpcm13YXJlUmVxdWVzdBoiLmRwaG9uZS52MS5JbnN0YWxsRmlybXdhcmVSZXNwb25zZRJSCg1EaXNjYXJkVXBsb2FkEh8uZHBob25lLnYxLkRpc2NhcmRVcGxvYWRSZXF1ZXN0GiAuZHBob25lLnYxLkRpc2NhcmRVcGxvYWRSZXNwb25zZRJPCgxDb25maXJtVHJpYWwSHi5kcGhvbmUudjEuQ29uZmlybVRyaWFsUmVxdWVzdBofLmRwaG9uZS52MS5Db25maXJtVHJpYWxSZXNwb25zZRJDCghSb2xsYmFjaxIaLmRwaG9uZS52MS5Sb2xsYmFja1JlcXVlc3QaGy5kcGhvbmUudjEuUm9sbGJhY2tSZXNwb25zZWIGcHJvdG8z");
+  fileDesc("ChhkcGhvbmUvdjEvZmlybXdhcmUucHJvdG8SCWRwaG9uZS52MSJ8ChBVcGxvYWRlZEZpcm13YXJlEhEKCXVwbG9hZF9pZBgBIAEoCRIMCgRzaXplGAIgASgEEg8KB3ZlcnNpb24YAyABKAkSDQoFbW9kZWwYBCABKAkSEAoIaXNfc3RvY2sYBSABKAgSFQoNbW9kZWxfbWF0Y2hlcxgGIAEoCCKsAgoORmlybXdhcmVTdGF0dXMSJQoFcGhhc2UYASABKA4yFi5kcGhvbmUudjEuVXBkYXRlUGhhc2USDwoHcGVyY2VudBgCIAEoDRINCgVlcnJvchgDIAEoCRIXCg9ydW5uaW5nX3ZlcnNpb24YBCABKAkSFAoMcnVubmluZ19iYW5rGAUgASgJEg0KBXRyaWFsGAYgASgJEhgKEHRyaWFsX2Jvb3RzX2xlZnQYByABKA0SFwoPcm9sbGJhY2tfcmVhc29uGAggASgJEhgKEGluY29taW5nX3ZlcnNpb24YCSABKAkSGQoRaW5jb21pbmdfaXNfc3RvY2sYCiABKAgSLQoIdXBsb2FkZWQYCyABKAsyGy5kcGhvbmUudjEuVXBsb2FkZWRGaXJtd2FyZSIUChJHZXRGaXJtd2FyZVJlcXVlc3QiQAoTR2V0RmlybXdhcmVSZXNwb25zZRIpCgZzdGF0dXMYASABKAsyGS5kcGhvbmUudjEuRmlybXdhcmVTdGF0dXMiFgoUV2F0Y2hGaXJtd2FyZVJlcXVlc3QiQgoVV2F0Y2hGaXJtd2FyZVJlc3BvbnNlEikKBnN0YXR1cxgBIAEoCzIZLmRwaG9uZS52MS5GaXJtd2FyZVN0YXR1cyJAChZJbnN0YWxsRmlybXdhcmVSZXF1ZXN0EhEKCXVwbG9hZF9pZBgBIAEoCRITCgthbGxvd19zdG9jaxgCIAEoCCIZChdJbnN0YWxsRmlybXdhcmVSZXNwb25zZSIpChREaXNjYXJkVXBsb2FkUmVxdWVzdBIRCgl1cGxvYWRfaWQYASABKAkiFwoVRGlzY2FyZFVwbG9hZFJlc3BvbnNlIhUKE0NvbmZpcm1UcmlhbFJlcXVlc3QiFgoUQ29uZmlybVRyaWFsUmVzcG9uc2UiEQoPUm9sbGJhY2tSZXF1ZXN0IhIKEFJvbGxiYWNrUmVzcG9uc2UiJQojR2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlcXVlc3QiTgokR2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlc3BvbnNlEiYKBmlnbm9yZRgBIAEoCzIWLmRwaG9uZS52MS5Cb29sU2V0dGluZyI1CiNTZXRQcm92aXNpb25lZEZpcm13YXJlUG9saWN5UmVxdWVzdBIOCgZpZ25vcmUYASABKAgiTgokU2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlc3BvbnNlEiYKBmlnbm9yZRgBIAEoCzIWLmRwaG9uZS52MS5Cb29sU2V0dGluZyrCAgoLVXBkYXRlUGhhc2USHAoYVVBEQVRFX1BIQVNFX1VOU1BFQ0lGSUVEEAASFQoRVVBEQVRFX1BIQVNFX0lETEUQARIaChZVUERBVEVfUEhBU0VfUkVDRUlWSU5HEAISGQoVVVBEQVRFX1BIQVNFX0NIRUNLSU5HEAMSGAoUVVBEQVRFX1BIQVNFX0VSQVNJTkcQBBIfChtVUERBVEVfUEhBU0VfV1JJVElOR19LRVJORUwQBRIfChtVUERBVEVfUEhBU0VfV1JJVElOR19ST09URlMQBhIaChZVUERBVEVfUEhBU0VfVkVSSUZZSU5HEAcSGwoXVVBEQVRFX1BIQVNFX0NPTU1JVFRJTkcQCBIZChVVUERBVEVfUEhBU0VfQ09NUExFVEUQCRIXChNVUERBVEVfUEhBU0VfRkFJTEVEEAoy+wUKD0Zpcm13YXJlU2VydmljZRJMCgtHZXRGaXJtd2FyZRIdLmRwaG9uZS52MS5HZXRGaXJtd2FyZVJlcXVlc3QaHi5kcGhvbmUudjEuR2V0RmlybXdhcmVSZXNwb25zZRJUCg1XYXRjaEZpcm13YXJlEh8uZHBob25lLnYxLldhdGNoRmlybXdhcmVSZXF1ZXN0GiAuZHBob25lLnYxLldhdGNoRmlybXdhcmVSZXNwb25zZTABElgKD0luc3RhbGxGaXJtd2FyZRIhLmRwaG9uZS52MS5JbnN0YWxsRmlybXdhcmVSZXF1ZXN0GiIuZHBob25lLnYxLkluc3RhbGxGaXJtd2FyZVJlc3BvbnNlElIKDURpc2NhcmRVcGxvYWQSHy5kcGhvbmUudjEuRGlzY2FyZFVwbG9hZFJlcXVlc3QaIC5kcGhvbmUudjEuRGlzY2FyZFVwbG9hZFJlc3BvbnNlEk8KDENvbmZpcm1UcmlhbBIeLmRwaG9uZS52MS5Db25maXJtVHJpYWxSZXF1ZXN0Gh8uZHBob25lLnYxLkNvbmZpcm1UcmlhbFJlc3BvbnNlEkMKCFJvbGxiYWNrEhouZHBob25lLnYxLlJvbGxiYWNrUmVxdWVzdBobLmRwaG9uZS52MS5Sb2xsYmFja1Jlc3BvbnNlEn8KHEdldFByb3Zpc2lvbmVkRmlybXdhcmVQb2xpY3kSLi5kcGhvbmUudjEuR2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlcXVlc3QaLy5kcGhvbmUudjEuR2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlc3BvbnNlEn8KHFNldFByb3Zpc2lvbmVkRmlybXdhcmVQb2xpY3kSLi5kcGhvbmUudjEuU2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlcXVlc3QaLy5kcGhvbmUudjEuU2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlc3BvbnNlYgZwcm90bzM", [file_dphone_v1_config]);
 
 /**
  * @generated from message dphone.v1.UploadedFirmware
@@ -311,6 +313,72 @@ export const RollbackResponseSchema: GenMessage<RollbackResponse> = /*@__PURE__*
   messageDesc(file_dphone_v1_firmware, 13);
 
 /**
+ * @generated from message dphone.v1.GetProvisionedFirmwarePolicyRequest
+ */
+export type GetProvisionedFirmwarePolicyRequest = Message<"dphone.v1.GetProvisionedFirmwarePolicyRequest"> & {
+};
+
+/**
+ * Describes the message dphone.v1.GetProvisionedFirmwarePolicyRequest.
+ * Use `create(GetProvisionedFirmwarePolicyRequestSchema)` to create a new message.
+ */
+export const GetProvisionedFirmwarePolicyRequestSchema: GenMessage<GetProvisionedFirmwarePolicyRequest> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_firmware, 14);
+
+/**
+ * @generated from message dphone.v1.GetProvisionedFirmwarePolicyResponse
+ */
+export type GetProvisionedFirmwarePolicyResponse = Message<"dphone.v1.GetProvisionedFirmwarePolicyResponse"> & {
+  /**
+   * Ignore the firmware the provisioning server asks for.
+   *
+   * @generated from field: dphone.v1.BoolSetting ignore = 1;
+   */
+  ignore?: BoolSetting | undefined;
+};
+
+/**
+ * Describes the message dphone.v1.GetProvisionedFirmwarePolicyResponse.
+ * Use `create(GetProvisionedFirmwarePolicyResponseSchema)` to create a new message.
+ */
+export const GetProvisionedFirmwarePolicyResponseSchema: GenMessage<GetProvisionedFirmwarePolicyResponse> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_firmware, 15);
+
+/**
+ * @generated from message dphone.v1.SetProvisionedFirmwarePolicyRequest
+ */
+export type SetProvisionedFirmwarePolicyRequest = Message<"dphone.v1.SetProvisionedFirmwarePolicyRequest"> & {
+  /**
+   * @generated from field: bool ignore = 1;
+   */
+  ignore: boolean;
+};
+
+/**
+ * Describes the message dphone.v1.SetProvisionedFirmwarePolicyRequest.
+ * Use `create(SetProvisionedFirmwarePolicyRequestSchema)` to create a new message.
+ */
+export const SetProvisionedFirmwarePolicyRequestSchema: GenMessage<SetProvisionedFirmwarePolicyRequest> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_firmware, 16);
+
+/**
+ * @generated from message dphone.v1.SetProvisionedFirmwarePolicyResponse
+ */
+export type SetProvisionedFirmwarePolicyResponse = Message<"dphone.v1.SetProvisionedFirmwarePolicyResponse"> & {
+  /**
+   * @generated from field: dphone.v1.BoolSetting ignore = 1;
+   */
+  ignore?: BoolSetting | undefined;
+};
+
+/**
+ * Describes the message dphone.v1.SetProvisionedFirmwarePolicyResponse.
+ * Use `create(SetProvisionedFirmwarePolicyResponseSchema)` to create a new message.
+ */
+export const SetProvisionedFirmwarePolicyResponseSchema: GenMessage<SetProvisionedFirmwarePolicyResponse> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_firmware, 17);
+
+/**
  * @generated from enum dphone.v1.UpdatePhase
  */
 export enum UpdatePhase {
@@ -431,6 +499,22 @@ export const FirmwareService: GenService<{
     methodKind: "unary";
     input: typeof RollbackRequestSchema;
     output: typeof RollbackResponseSchema;
+  },
+  /**
+   * @generated from rpc dphone.v1.FirmwareService.GetProvisionedFirmwarePolicy
+   */
+  getProvisionedFirmwarePolicy: {
+    methodKind: "unary";
+    input: typeof GetProvisionedFirmwarePolicyRequestSchema;
+    output: typeof GetProvisionedFirmwarePolicyResponseSchema;
+  },
+  /**
+   * @generated from rpc dphone.v1.FirmwareService.SetProvisionedFirmwarePolicy
+   */
+  setProvisionedFirmwarePolicy: {
+    methodKind: "unary";
+    input: typeof SetProvisionedFirmwarePolicyRequestSchema;
+    output: typeof SetProvisionedFirmwarePolicyResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_dphone_v1_firmware, 0);

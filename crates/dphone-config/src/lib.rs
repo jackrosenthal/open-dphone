@@ -30,7 +30,7 @@ pub mod xml;
 
 pub use merge::NetContext;
 pub use model::Model;
-pub use nvdata::{EnetCfg, Nvdata, SavedTime};
+pub use nvdata::{parse_authorized_key, AuthorizedKey, EnetCfg, Nvdata, SavedTime};
 pub use settings::{DphoneSettings, Resolved, SettingSource, SettingsDocument};
 pub use store::{ConfigError, ConfigStore, Layer};
 pub use view::Config;

@@ -7,6 +7,7 @@ import { dateTime, duration } from "../lib/format";
 import { getSession, setSession } from "../lib/session";
 import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
+import { SshCard } from "./Ssh";
 
 function Password() {
   const [current, setCurrent] = useState("");
@@ -42,7 +43,7 @@ function Password() {
           <Input type="password" autoComplete="new-password" required value={again} onChange={(e) => setAgain(e.target.value)} />
         </Field>
         <ErrorNote error={change.error} />
-        {done && <Alert tone="green" title="Password changed. Other sessions were logged out." />}
+        {done && <Alert tone="green" title="Password changed." />}
         <Button type="submit" variant="primary" busy={change.isPending} disabled={mismatch}>
           Change password
         </Button>
@@ -58,7 +59,6 @@ export function System() {
   const [note, setNote] = useState("");
   const file = useRef<HTMLInputElement>(null);
   const opts = { onError: setError };
-  const reboot = useMutation(SystemService.method.reboot, opts);
   const reset = useMutation(SystemService.method.factoryReset, opts);
   const setTime = useMutation(SystemService.method.setTime, opts);
   const backup = useMutation(SystemService.method.createBackup, opts);
@@ -79,7 +79,7 @@ export function System() {
     setNote("");
     const archive = new Uint8Array(await f.arrayBuffer());
     const r = await restore.mutateAsync({ archive });
-    setNote(`Restored ${r.files} ${r.files === 1 ? "file" : "files"}. Restart the phone to apply everything.`);
+    setNote(`Restored ${r.files} ${r.files === 1 ? "file" : "files"}. A reboot is needed to apply them.`);
   }
 
   return (
@@ -89,22 +89,8 @@ export function System() {
         <ErrorNote error={error} />
         {note && <Alert tone="green" title={note} />}
         <div className="grid gap-5 lg:grid-cols-2">
-          <Card title="Restart and reset">
+          <Card title="Backup, restore, and reset">
             <div className="space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <p className="text-sm text-slate-600 dark:text-slate-300">Calls in progress end.</p>
-                <ConfirmButton variant="secondary" label="Restart" title="Restart the phone?" message="Calls in progress end." confirmLabel="Restart" onConfirm={() => reboot.mutateAsync({}).then(() => setNote("The phone is restarting."))} />
-              </div>
-              <div className="flex items-center justify-between gap-4 border-t border-slate-100 pt-4 dark:border-slate-800">
-                <p className="text-sm text-slate-600 dark:text-slate-300">Erases all settings, accounts, contacts, and the administrator password, then restarts.</p>
-                <ConfirmButton label="Factory reset" title="Erase everything?" message="The MAC address is kept. Everything else stored on the phone is deleted." confirmLabel="Erase and restart" requireText={sys?.model ?? "RESET"} onConfirm={() => reset.mutateAsync({ confirm: sys?.model ?? "" }).then(() => setNote("The phone is resetting."))} />
-              </div>
-            </div>
-          </Card>
-
-          <Card title="Backup and restore">
-            <div className="space-y-4">
-              <p className="text-sm text-slate-600 dark:text-slate-300">Holds locally changed settings, stored accounts, and contact lists. Leaves out identity keys and provisioned configuration.</p>
               <div className="flex gap-2">
                 <Button onClick={download} busy={backup.isPending}>
                   Download backup
@@ -113,6 +99,8 @@ export function System() {
                 <Button onClick={() => file.current?.click()} busy={restore.isPending}>
                   Restore from backup
                 </Button>
+                <div className="flex-1" />
+                <ConfirmButton label="Factory reset" title="Factory reset" confirmLabel="Factory reset" requireText={sys?.model ?? "RESET"} onConfirm={() => reset.mutateAsync({ confirm: sys?.model ?? "" })} />
               </div>
             </div>
           </Card>
@@ -134,6 +122,8 @@ export function System() {
               </Button>
             </div>
           </Card>
+
+          <SshCard />
         </div>
       </div>
     </>

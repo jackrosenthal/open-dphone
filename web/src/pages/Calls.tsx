@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button, Card, ConfirmButton, Empty, Field, Input, PageHeader, Select, Toggle, td, th } from "../components/ui";
 import { CallDirection, CallLogKind, CallState, CallsService, type Call } from "../gen/dphone/v1/calls_pb";
 import { dateTime, duration } from "../lib/format";
+import { codecNames, label } from "../lib/labels";
 import { useStatus } from "../lib/status";
 import { ErrorNote, callStateLabel } from "./common";
 
@@ -26,7 +27,7 @@ function CallRow({ call, onError, elapsed }: { call: Call; onError: (e: unknown)
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {call.remote?.name ? `${call.remote.number} · ` : ""}
             {call.direction === CallDirection.INCOMING ? "Incoming" : "Outgoing"} on line {call.account + 1}
-            {call.codec ? ` · ${call.codec}` : ""}
+            {call.codec && <> · {label(codecNames, call.codec)}</>}
             {call.srtp ? " · encrypted" : ""}
             {call.durationSecs !== undefined && call.state !== CallState.ENDED ? ` · ${duration(Number(call.durationSecs) + elapsed)}` : ""}
             {call.endCause ? ` · ${call.endCause}` : ""}

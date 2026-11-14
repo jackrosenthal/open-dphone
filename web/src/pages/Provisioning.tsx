@@ -2,7 +2,8 @@ import { useMutation } from "@connectrpc/connect-query";
 import { useState } from "react";
 import { Alert, Badge, Button, Card, ConfirmButton, Empty, Field, Input, KeyValue, PageHeader, Spinner } from "../components/ui";
 import { ProvisionPhase, ProvisioningService } from "../gen/dphone/v1/provisioning_pb";
-import { dateTime, enumLabel } from "../lib/format";
+import { dateTime } from "../lib/format";
+import { discoverySourceNames, label, provisionPhaseNames } from "../lib/labels";
 import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
 
@@ -30,7 +31,7 @@ export function Provisioning() {
             <Button onClick={() => again.mutate({})} busy={again.isPending} disabled={!p.server}>
               Fetch configuration again
             </Button>
-            <ConfirmButton variant="secondary" label="Forget server" title="Forget the provisioning server?" message="The saved server is dropped and discovery starts over. Accounts from the server stop applying." confirmLabel="Forget" onConfirm={() => forget.mutateAsync({})} />
+            <ConfirmButton variant="secondary" label="Forget server" title="Forget the provisioning server?" confirmLabel="Forget server" onConfirm={() => forget.mutateAsync({})} />
           </>
         }
       />
@@ -42,17 +43,17 @@ export function Provisioning() {
             {p.failureCode !== undefined ? ` (code ${p.failureCode})` : ""}
           </Alert>
         )}
-        {p.offeredFirmware && <Alert tone="blue" title={`The server offers firmware ${p.offeredFirmware}.`}>Server-pushed firmware is ignored unless enabled in the phone settings.</Alert>}
+        {p.offeredFirmware && <Alert tone="blue" title={`The server offers firmware ${p.offeredFirmware}.`} />}
         <div className="grid gap-5 lg:grid-cols-2">
-          <Card title="Status" actions={<Badge tone={tone}>{enumLabel(ProvisionPhase[p.phase], "")}</Badge>}>
+          <Card title="Status" actions={<Badge tone={tone}>{label(provisionPhaseNames, p.phase, ProvisionPhase[p.phase])}</Badge>}>
             <KeyValue
               rows={[
                 ["Server", p.server ? `${p.server.name}` : ""],
                 ["Address", p.server?.address],
-                ["Found by", p.server?.source],
+                ["Found by", label(discoverySourceNames, p.server?.source)],
                 ["Server software", p.serverUserAgent],
                 ["Assigned to", p.assignedUser],
-                ["Session", p.attached ? "Attached (pushes can arrive)" : "Not attached"],
+                ["Session", p.attached ? "Attached" : "Not attached"],
                 ["Configuration MD5", p.configMd5 && <code className="text-xs">{p.configMd5}</code>],
                 ["Last success", dateTime(p.lastSuccessUnix)],
               ]}
@@ -84,7 +85,7 @@ export function Provisioning() {
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{d.name}</p>
                       <p className="truncate text-xs text-slate-500">
-                        {d.address} · {d.source}
+                        {d.address} · {label(discoverySourceNames, d.source)}
                       </p>
                     </div>
                     <Button size="sm" onClick={() => start.mutate({ server: d.address })}>
@@ -103,7 +104,7 @@ export function Provisioning() {
         {p.phase === ProvisionPhase.AWAITING_USER && (
           <Card title="Choose who uses this phone">
             <div className="mb-4 max-w-xs">
-              <Field label="PIN (if the server asks for one)">
+              <Field label="PIN">
                 <Input type="password" value={pin} onChange={(e) => setPin(e.target.value)} autoComplete="off" />
               </Field>
             </div>

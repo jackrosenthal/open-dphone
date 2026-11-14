@@ -43,7 +43,6 @@ message SystemInfo {
   bool time_synced = 6;
   string timezone = 7;
   string last_reboot_reason = 8;
-  bool dev_mode = 9;
   bool simulated = 10;
   uint32 mem_total_kib = 11;
   uint64 uptime_secs = 12;

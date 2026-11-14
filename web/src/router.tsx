@@ -1,4 +1,5 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 import { Layout } from "./components/Layout";
 import { Accounts } from "./pages/Accounts";
 import { Apps } from "./pages/Apps";
@@ -12,6 +13,16 @@ import { Provisioning } from "./pages/Provisioning";
 import { Screen } from "./pages/Screen";
 import { Settings } from "./pages/Settings";
 import { System } from "./pages/System";
+
+// The terminal emulator is large; it loads only when the Shell page opens.
+const LazyShell = lazy(() => import("./pages/Shell"));
+function Shell() {
+  return (
+    <Suspense fallback={null}>
+      <LazyShell />
+    </Suspense>
+  );
+}
 
 const root = createRootRoute({ component: Layout });
 const page = <P extends string>(path: P, component: () => React.JSX.Element) => createRoute({ getParentRoute: () => root, path, component });
@@ -28,6 +39,7 @@ const routeTree = root.addChildren([
   page("/firmware", Firmware),
   page("/logs", Logs),
   page("/screen", Screen),
+  page("/shell", Shell),
   page("/system", System),
 ]);
 

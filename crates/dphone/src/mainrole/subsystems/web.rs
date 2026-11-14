@@ -7,13 +7,27 @@ use std::time::Duration;
 use dphone_hal::{PixelFormat, Screen};
 use dphone_state::{HealthStatus, Subsystem};
 use dphone_web::{
-    FileFirmwareSink, FirmwareInfo, MirrorFormat, MirrorFrame, MirrorScreen, ScreenSource, WebOptions, WebServer,
+    FileFirmwareSink, FirmwareInfo, MirrorFormat, MirrorFrame, MirrorScreen, PtyShellHost, ScreenSource, WebOptions,
+    WebServer,
 };
 use log::{error, info, warn};
 
 use super::SharedConfig;
 use super::ui::ScreenTap;
 use crate::mainrole::{Context, Options};
+
+/// The web terminal's shell: the same program, environment, and working
+/// directory an SSH session gets.
+fn shell_host(ctx: &Context) -> PtyShellHost {
+    let shell = crate::ssh::session::find_shell().unwrap_or_else(|| "/bin/sh".to_string());
+    let mut host = PtyShellHost::new(&shell)
+        .env(crate::paths::DIAG_SOCKET_ENV, ctx.paths.diag_socket())
+        .current_dir(ctx.paths.home());
+    if !ctx.sim {
+        host = host.env_clear().envs(crate::init::shell_environment(&ctx.paths, &shell));
+    }
+    host
+}
 
 struct Mirror(Arc<ScreenTap>);
 
@@ -80,9 +94,9 @@ pub fn start(ctx: &Context, opts: &Options, config: Option<SharedConfig>, tap: O
     let ctx = ctx.clone();
     tokio::spawn(async move {
         loop {
-            let mut server = WebServer::new(ctx.store.clone(), config.clone(), options.clone()).with_firmware_sink(Box::new(
-                FileFirmwareSink::new(options.upload_dir.clone()).with_inspector(inspect),
-            ));
+            let mut server = WebServer::new(ctx.store.clone(), config.clone(), options.clone())
+                .with_firmware_sink(Box::new(FileFirmwareSink::new(options.upload_dir.clone()).with_inspector(inspect)))
+                .with_shell(Arc::new(shell_host(&ctx)));
             if let Some(tap) = &tap {
                 server = server.with_screen(Arc::new(Mirror(tap.clone())));
             }

@@ -2,9 +2,31 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* JetBrains Mono 2.304 (SIL Open Font License 1.1, assets/fonts/OFL.txt),
+   cut down by scripts/subset-fonts.mjs.  Fetched only when monospace text
+   is on the page and the viewer has no JetBrains Mono Nerd Font. */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/JetBrainsMono-Bold.woff2") format("woff2");
+}
+
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  /* One monospace family for the whole UI, the terminal included: the
+     viewer's own JetBrains Mono Nerd Font when installed (it is registered
+     under either spelling, depending on the Nerd Fonts release), else the
+     JetBrains Mono embedded below. */
+  --font-mono: "JetBrains Mono Nerd Font", "JetBrainsMono Nerd Font", "JetBrains Mono", ui-monospace, monospace;
   --color-brand-50: #f0fdfa;
   --color-brand-100: #ccfbf1;
   --color-brand-200: #99f6e4;

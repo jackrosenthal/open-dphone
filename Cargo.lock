@@ -1183,6 +1183,7 @@ dependencies = [
 name = "dphone-web"
 version = "3.0.0"
 dependencies = [
+ "base64 0.22.1",
  "brotli",
  "buffa",
  "buffa-codegen",
@@ -1200,6 +1201,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "libc",
  "log",
  "miniz_oxide 0.8.9",
  "p256",

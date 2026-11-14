@@ -1,12 +1,14 @@
-import { Link, Outlet } from "@tanstack/react-router";
+import { useMutation } from "@connectrpc/connect-query";
+import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
 import { Logo } from "../App";
 import { AuthService } from "../gen/dphone/v1/auth_pb";
+import { SystemService } from "../gen/dphone/v1/system_pb";
 import { setSession, useSession } from "../lib/session";
 import { StatusProvider, useStatus } from "../lib/status";
 import { client } from "../lib/transport";
 import { Icons } from "./icons";
-import { Alert, cx } from "./ui";
+import { Alert, ConfirmButton, cx } from "./ui";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: Icons.dashboard },
@@ -20,6 +22,7 @@ const nav = [
   { to: "/firmware", label: "Firmware", icon: Icons.chip },
   { to: "/logs", label: "Logs", icon: Icons.logs },
   { to: "/screen", label: "Screen", icon: Icons.screen },
+  { to: "/shell", label: "Shell", icon: Icons.terminal },
   { to: "/system", label: "System", icon: Icons.power },
 ] as const;
 
@@ -48,6 +51,11 @@ function Shell() {
   const [open, setOpen] = useState(false);
   const sys = status?.system;
   const defaultPassword = session.status === "authenticated" && session.info.defaultPassword;
+  const path = useRouterState({ select: (s) => s.location.pathname });
+  const page = nav.find((n) => (n.to === "/" ? path === "/" : path.startsWith(n.to)));
+  // The terminal takes the whole content area: no padding and no notices.
+  const fill = path.startsWith("/shell");
+  const reboot = useMutation(SystemService.method.reboot);
 
   async function logout() {
     try {
@@ -58,7 +66,7 @@ function Shell() {
   }
 
   return (
-    <div className="min-h-screen lg:pl-60">
+    <div className={cx("lg:pl-60", fill ? "flex h-dvh flex-col" : "min-h-screen")}>
       <aside
         className={cx(
           "fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-slate-200 bg-white transition-transform dark:border-slate-800 dark:bg-slate-900 lg:translate-x-0",
@@ -101,26 +109,34 @@ function Shell() {
           <Icons.menu />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{sys?.hostname}</p>
+          {/* With the navigation collapsed, the header names the page. */}
+          <p className="truncate text-sm font-semibold lg:hidden">{page?.label}</p>
+          <p className="hidden truncate text-sm font-medium lg:block">{sys?.hostname}</p>
           <p className="truncate text-xs text-slate-500 dark:text-slate-400">{status?.network?.ipv4Address || " "}</p>
         </div>
+        <ConfirmButton size="sm" variant="secondary" label="Reboot" title="Reboot" confirmLabel="Reboot" onConfirm={() => reboot.mutateAsync({})} />
+        <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
         <ThemeToggle />
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-6 lg:px-8">
-        <div className="mb-4 space-y-3 empty:hidden">
-          {stream === "reconnecting" && <Alert tone="red" title="Connection to the phone lost. What is shown may be out of date." />}
-          {defaultPassword && (
-            <Alert title="The administrator password is still the factory default.">
-              Change it under <Link to="/system" className="font-medium underline">System</Link>.
-            </Alert>
-          )}
-          {status?.configError && <Alert tone="red" title="The last configuration merge failed.">{status.configError}</Alert>}
-          {status?.restartNeeded && <Alert tone="blue" title="A changed setting takes effect after a restart." />}
-          {sys?.simulated && <Alert tone="blue" title="This is the workstation simulator, not a phone." />}
-        </div>
-        <Outlet />
-      </main>
+      {fill ? (
+        <main className="min-h-0 flex-1">
+          <Outlet />
+        </main>
+      ) : (
+        <main className="mx-auto max-w-6xl px-4 py-6 lg:px-8">
+          <div className="mb-4 space-y-3 empty:hidden">
+            {stream === "reconnecting" && <Alert tone="red" title="Connection to the phone lost." />}
+            {defaultPassword && (
+              <Alert title="The administrator password is still the factory default." />
+            )}
+            {status?.configError && <Alert tone="red" title="The last configuration merge failed.">{status.configError}</Alert>}
+            {status?.restartNeeded && <Alert tone="blue" title="A changed setting takes effect after a reboot." />}
+            {sys?.simulated && <Alert tone="blue" title="This is the workstation simulator, not a phone." />}
+          </div>
+          <Outlet />
+        </main>
+      )}
     </div>
   );
 }

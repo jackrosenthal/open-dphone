@@ -2,15 +2,15 @@
 // @generated from file dphone/v1/config.proto (package dphone.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file dphone/v1/config.proto.
  */
 export const file_dphone_v1_config: GenFile = /*@__PURE__*/
-  fileDesc("ChZkcGhvbmUvdjEvY29uZmlnLnByb3RvEglkcGhvbmUudjEiUwoHU2V0dGluZxIKCgJpZBgBIAEoCRINCgV2YWx1ZRgCIAEoCRIOCgZmcm96ZW4YAyABKAgSDQoFbG9jYWwYBCABKAgSDgoGc2VjcmV0GAUgASgIIiUKE0xpc3RTZXR0aW5nc1JlcXVlc3QSDgoGcHJlZml4GAEgASgJIlAKFExpc3RTZXR0aW5nc1Jlc3BvbnNlEiQKCHNldHRpbmdzGAEgAygLMhIuZHBob25lLnYxLlNldHRpbmcSEgoKZ2VuZXJhdGlvbhgCIAEoBCIqCg1TZXR0aW5nQ2hhbmdlEgoKAmlkGAEgASgJEg0KBXZhbHVlGAIgASgJIj8KElNldFNldHRpbmdzUmVxdWVzdBIpCgdjaGFuZ2VzGAEgAygLMhguZHBob25lLnYxLlNldHRpbmdDaGFuZ2UiKQoTU2V0U2V0dGluZ3NSZXNwb25zZRISCgpnZW5lcmF0aW9uGAEgASgEIiMKFFVuc2V0U2V0dGluZ3NSZXF1ZXN0EgsKA2lkcxgBIAMoCSIrChVVbnNldFNldHRpbmdzUmVzcG9uc2USEgoKZ2VuZXJhdGlvbhgBIAEoBDKCAgoNQ29uZmlnU2VydmljZRJPCgxMaXN0U2V0dGluZ3MSHi5kcGhvbmUudjEuTGlzdFNldHRpbmdzUmVxdWVzdBofLmRwaG9uZS52MS5MaXN0U2V0dGluZ3NSZXNwb25zZRJMCgtTZXRTZXR0aW5ncxIdLmRwaG9uZS52MS5TZXRTZXR0aW5nc1JlcXVlc3QaHi5kcGhvbmUudjEuU2V0U2V0dGluZ3NSZXNwb25zZRJSCg1VbnNldFNldHRpbmdzEh8uZHBob25lLnYxLlVuc2V0U2V0dGluZ3NSZXF1ZXN0GiAuZHBob25lLnYxLlVuc2V0U2V0dGluZ3NSZXNwb25zZWIGcHJvdG8z");
+  fileDesc("ChZkcGhvbmUvdjEvY29uZmlnLnByb3RvEglkcGhvbmUudjEiUwoHU2V0dGluZxIKCgJpZBgBIAEoCRINCgV2YWx1ZRgCIAEoCRIOCgZmcm96ZW4YAyABKAgSDQoFbG9jYWwYBCABKAgSDgoGc2VjcmV0GAUgASgIIiUKE0xpc3RTZXR0aW5nc1JlcXVlc3QSDgoGcHJlZml4GAEgASgJIlAKFExpc3RTZXR0aW5nc1Jlc3BvbnNlEiQKCHNldHRpbmdzGAEgAygLMhIuZHBob25lLnYxLlNldHRpbmcSEgoKZ2VuZXJhdGlvbhgCIAEoBCIqCg1TZXR0aW5nQ2hhbmdlEgoKAmlkGAEgASgJEg0KBXZhbHVlGAIgASgJIj8KElNldFNldHRpbmdzUmVxdWVzdBIpCgdjaGFuZ2VzGAEgAygLMhguZHBob25lLnYxLlNldHRpbmdDaGFuZ2UiKQoTU2V0U2V0dGluZ3NSZXNwb25zZRISCgpnZW5lcmF0aW9uGAEgASgEIiMKFFVuc2V0U2V0dGluZ3NSZXF1ZXN0EgsKA2lkcxgBIAMoCSIrChVVbnNldFNldHRpbmdzUmVzcG9uc2USEgoKZ2VuZXJhdGlvbhgBIAEoBCJWCgtCb29sU2V0dGluZxINCgV2YWx1ZRgBIAEoCBIoCgZzb3VyY2UYAiABKA4yGC5kcGhvbmUudjEuU2V0dGluZ1NvdXJjZRIOCgZsb2NrZWQYAyABKAgqhQEKDVNldHRpbmdTb3VyY2USHgoaU0VUVElOR19TT1VSQ0VfVU5TUEVDSUZJRUQQABIaChZTRVRUSU5HX1NPVVJDRV9ERUZBVUxUEAESGAoUU0VUVElOR19TT1VSQ0VfTE9DQUwQAhIeChpTRVRUSU5HX1NPVVJDRV9QUk9WSVNJT05FRBADMoICCg1Db25maWdTZXJ2aWNlEk8KDExpc3RTZXR0aW5ncxIeLmRwaG9uZS52MS5MaXN0U2V0dGluZ3NSZXF1ZXN0Gh8uZHBob25lLnYxLkxpc3RTZXR0aW5nc1Jlc3BvbnNlEkwKC1NldFNldHRpbmdzEh0uZHBob25lLnYxLlNldFNldHRpbmdzUmVxdWVzdBoeLmRwaG9uZS52MS5TZXRTZXR0aW5nc1Jlc3BvbnNlElIKDVVuc2V0U2V0dGluZ3MSHy5kcGhvbmUudjEuVW5zZXRTZXR0aW5nc1JlcXVlc3QaIC5kcGhvbmUudjEuVW5zZXRTZXR0aW5nc1Jlc3BvbnNlYgZwcm90bzM");
 
 /**
  * @generated from message dphone.v1.Setting
@@ -185,6 +185,74 @@ export type UnsetSettingsResponse = Message<"dphone.v1.UnsetSettingsResponse"> &
  */
 export const UnsetSettingsResponseSchema: GenMessage<UnsetSettingsResponse> = /*@__PURE__*/
   messageDesc(file_dphone_v1_config, 7);
+
+/**
+ * The effective value of one of Open DPhone's own on/off settings.
+ *
+ * @generated from message dphone.v1.BoolSetting
+ */
+export type BoolSetting = Message<"dphone.v1.BoolSetting"> & {
+  /**
+   * @generated from field: bool value = 1;
+   */
+  value: boolean;
+
+  /**
+   * @generated from field: dphone.v1.SettingSource source = 2;
+   */
+  source: SettingSource;
+
+  /**
+   * The provisioning server fixed the value; it cannot be changed here.
+   *
+   * @generated from field: bool locked = 3;
+   */
+  locked: boolean;
+};
+
+/**
+ * Describes the message dphone.v1.BoolSetting.
+ * Use `create(BoolSettingSchema)` to create a new message.
+ */
+export const BoolSettingSchema: GenMessage<BoolSetting> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_config, 8);
+
+/**
+ * Where the value of one of Open DPhone's own settings came from.
+ *
+ * @generated from enum dphone.v1.SettingSource
+ */
+export enum SettingSource {
+  /**
+   * @generated from enum value: SETTING_SOURCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SETTING_SOURCE_DEFAULT = 1;
+   */
+  DEFAULT = 1,
+
+  /**
+   * Set on the phone.
+   *
+   * @generated from enum value: SETTING_SOURCE_LOCAL = 2;
+   */
+  LOCAL = 2,
+
+  /**
+   * Supplied by the provisioning server.
+   *
+   * @generated from enum value: SETTING_SOURCE_PROVISIONED = 3;
+   */
+  PROVISIONED = 3,
+}
+
+/**
+ * Describes the enum dphone.v1.SettingSource.
+ */
+export const SettingSourceSchema: GenEnum<SettingSource> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_config, 0);
 
 /**
  * Generic access to the merged configuration by stock setting ID.

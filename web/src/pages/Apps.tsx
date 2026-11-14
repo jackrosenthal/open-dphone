@@ -75,7 +75,7 @@ export function Apps() {
                         Open on phone
                       </Button>
                     )}
-                    {!a.builtin && <ConfirmButton size="sm" variant="secondary" label="Remove" title={`Remove ${a.displayName}?`} message="The app and its package data are deleted from the phone." confirmLabel="Remove" onConfirm={() => remove.mutateAsync({ name: a.name })} />}
+                    {!a.builtin && <ConfirmButton size="sm" variant="secondary" label="Remove" title={`Remove ${a.displayName}?`} confirmLabel="Remove" onConfirm={() => remove.mutateAsync({ name: a.name })} />}
                   </div>
                 </li>
               ))}

@@ -71,7 +71,7 @@ export function Logs() {
       <PageHeader title="Logs" />
       {status === "reconnecting" && (
         <div className="mb-4">
-          <Alert tone="red" title="Connection lost. New lines are not arriving." />
+          <Alert tone="red" title="Connection lost." />
         </div>
       )}
       <Card>

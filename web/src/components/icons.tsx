@@ -88,6 +88,12 @@ export const Icons = {
       <path d="M5 4h14M5 9h14M5 14h9M5 19h6" />
     </Icon>
   ),
+  terminal: (p: P) => (
+    <Icon {...p}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M7 9l3 3-3 3M13 15h4" />
+    </Icon>
+  ),
   screen: (p: P) => (
     <Icon {...p}>
       <rect x="3" y="4" width="18" height="12" rx="2" />

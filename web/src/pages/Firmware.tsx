@@ -1,13 +1,15 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
-import { useRef, useState } from "react";
-import { Alert, Badge, Button, Card, ConfirmButton, KeyValue, PageHeader, Spinner } from "../components/ui";
+import { useRef, useState, type ReactNode } from "react";
+import { Alert, Badge, Button, Card, ConfirmButton, KeyValue, PageHeader, Spinner, Toggle } from "../components/ui";
 import { FirmwareService, UpdatePhase } from "../gen/dphone/v1/firmware_pb";
-import { bytes, enumLabel } from "../lib/format";
+import { bytes } from "../lib/format";
+import { label, updatePhaseNames } from "../lib/labels";
 import { useStatus } from "../lib/status";
 import { upload } from "../lib/upload";
 import { ErrorNote } from "./common";
+import { settingOrigin } from "./Ssh";
 
-function Bar({ fraction, label }: { fraction: number; label: string }) {
+function Bar({ fraction, label }: { fraction: number; label: ReactNode }) {
   return (
     <div>
       <div className="mb-1 flex justify-between text-sm">
@@ -30,6 +32,29 @@ const span: Partial<Record<UpdatePhase, [number, number]>> = {
   [UpdatePhase.VERIFYING]: [0.75, 0.98],
   [UpdatePhase.COMMITTING]: [0.98, 1],
 };
+
+function ProvisionedFirmware() {
+  const [error, setError] = useState<unknown>();
+  const policy = useQuery(FirmwareService.method.getProvisionedFirmwarePolicy, {});
+  const set = useMutation(FirmwareService.method.setProvisionedFirmwarePolicy, {
+    onError: setError,
+    onSuccess: () => {
+      setError(undefined);
+      policy.refetch();
+    },
+  });
+  const ignore = policy.data?.ignore;
+  const origin = settingOrigin(ignore);
+  return (
+    <Card title="Provisioned firmware">
+      <div className="space-y-2">
+        <ErrorNote error={error ?? policy.error} />
+        <Toggle label="Ignore firmware provisioned from DPMA" checked={ignore?.value ?? false} disabled={!ignore || ignore.locked || set.isPending} onChange={(v) => set.mutate({ ignore: v })} />
+        {origin && <p className="text-xs text-slate-500 dark:text-slate-400">{origin}</p>}
+      </div>
+    </Card>
+  );
+}
 
 export function Firmware() {
   const { status } = useStatus();
@@ -77,13 +102,12 @@ export function Firmware() {
       <div className="space-y-5">
         <ErrorNote error={error} />
         {fw.trial === "pending" && (
-          <Alert tone="blue" title="This firmware is on trial.">
-            If the phone does not come up healthy within {fw.trialBootsLeft} more {fw.trialBootsLeft === 1 ? "start" : "starts"}, it returns to the previous firmware.
+          <Alert tone="blue" title={`This firmware is on trial. Starts left: ${fw.trialBootsLeft}.`}>
             <div className="mt-2 flex gap-2">
               <Button size="sm" onClick={() => confirm.mutate({})}>
                 Keep this firmware
               </Button>
-              <ConfirmButton size="sm" variant="secondary" label="Go back now" title="Return to the previous firmware?" message="The phone switches to the other bank and restarts." confirmLabel="Go back" onConfirm={() => rollback.mutateAsync({})} />
+              <ConfirmButton size="sm" variant="secondary" label="Return to the previous firmware" title="Return to the previous firmware" confirmLabel="Return" onConfirm={() => rollback.mutateAsync({})} />
             </div>
           </Alert>
         )}
@@ -96,7 +120,7 @@ export function Firmware() {
                 ["Version", `Open DPhone ${fw.runningVersion}`],
                 ["Model", status?.system?.model],
                 ["Running bank", fw.runningBank ? `${fw.runningBank} (${fw.runningBank === "A" ? "k0 + root0" : "k1 + root1"})` : ""],
-                ["State", <Badge tone={fw.phase === UpdatePhase.FAILED ? "red" : working ? "blue" : "gray"}>{enumLabel(UpdatePhase[fw.phase], "")}</Badge>],
+                ["State", <Badge tone={fw.phase === UpdatePhase.FAILED ? "red" : working ? "blue" : "gray"}>{label(updatePhaseNames, fw.phase, UpdatePhase[fw.phase])}</Badge>],
               ]}
             />
           </Card>
@@ -104,13 +128,10 @@ export function Firmware() {
           <Card title="Install firmware">
             {working ? (
               <div className="space-y-3">
-                <Bar fraction={overall} label={`${enumLabel(UpdatePhase[fw.phase], "")}${fw.incomingVersion ? ` · ${fw.incomingVersion.replace(/_/g, ".")}` : ""}`} />
-                <Alert>Do not unplug the phone.</Alert>
+                <Bar fraction={overall} label={<>{label(updatePhaseNames, fw.phase, UpdatePhase[fw.phase])}{fw.incomingVersion && ` · ${fw.incomingVersion.replace(/_/g, ".")}`}</>} />
               </div>
             ) : fw.phase === UpdatePhase.COMPLETE ? (
-              <Alert tone="green" title={`Firmware ${fw.incomingVersion.replace(/_/g, ".")} is installed.`}>
-                Restart the phone (System page) to start it{fw.incomingIsStock ? ". This is stock firmware: Open DPhone will be gone after the restart." : " on trial."}
-              </Alert>
+              <Alert tone="green" title={`Firmware ${fw.incomingVersion.replace(/_/g, ".")} is installed and starts at the next reboot.`} />
             ) : sending !== undefined ? (
               <Bar fraction={sending} label="Uploading" />
             ) : up ? (
@@ -124,14 +145,9 @@ export function Firmware() {
                   ]}
                 />
                 {!up.modelMatches && <Alert tone="red" title={`This image is for the ${up.model}, not this phone.`} />}
-                {up.isStock && (
-                  <Alert tone="red" title="This is stock Digium firmware.">
-                    Installing it replaces Open DPhone, including this web interface, SSH access, and the trial-boot rollback. Coming back needs the stock updater.
-                  </Alert>
-                )}
                 <div className="flex gap-2">
                   {up.isStock ? (
-                    <ConfirmButton label="Install stock firmware" title="Replace Open DPhone with stock firmware?" message="The stock image is written to the other bank and becomes the active firmware at the next restart." confirmLabel="Install stock firmware" requireText="STOCK" onConfirm={() => install.mutateAsync({ uploadId: up.uploadId, allowStock: true })} />
+                    <ConfirmButton label="Install" title="Install stock firmware?" confirmLabel="Install" onConfirm={() => install.mutateAsync({ uploadId: up.uploadId, allowStock: true })} />
                   ) : (
                     <Button variant="primary" disabled={!up.modelMatches} busy={install.isPending} onClick={() => install.mutate({ uploadId: up.uploadId, allowStock: false })}>
                       Install
@@ -143,9 +159,6 @@ export function Firmware() {
             ) : (
               <div className="space-y-3">
                 {fw.phase === UpdatePhase.FAILED && <Alert tone="red" title="The last install failed.">{fw.error}</Alert>}
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  Accepts Open DPhone and stock Digium <code>.eff</code> images. Nothing is written until you confirm.
-                </p>
                 <input ref={file} type="file" accept=".eff" className="hidden" onChange={(e) => e.target.files?.[0] && send(e.target.files[0]).then(() => (e.target.value = ""))} />
                 <Button variant="primary" onClick={() => file.current?.click()}>
                   Choose image
@@ -153,6 +166,8 @@ export function Firmware() {
               </div>
             )}
           </Card>
+
+          <ProvisionedFirmware />
         </div>
       </div>
     </>

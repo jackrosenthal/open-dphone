@@ -405,7 +405,7 @@ impl Nvdata {
     /// Lines of `root/.ssh/authorized_keys`, without blanks and comments.
     pub fn authorized_keys(&self) -> io::Result<Vec<String>> {
         Ok(self
-            .read_string("root/.ssh/authorized_keys")?
+            .read_string(AUTHORIZED_KEYS)?
             .unwrap_or_default()
             .lines()
             .map(str::trim)
@@ -419,17 +419,63 @@ impl Nvdata {
         if !text.is_empty() {
             text.push('\n');
         }
-        self.write("root/.ssh/authorized_keys", text.as_bytes())?;
+        self.write_authorized_keys_text(&text)
+    }
+
+    /// Writes the whole of `root/.ssh/authorized_keys` (atomically), with
+    /// the modes OpenSSH and Dropbear insist on: 0700 for the directory and
+    /// 0600 for the file.
+    fn write_authorized_keys_text(&self, text: &str) -> io::Result<()> {
+        self.write(AUTHORIZED_KEYS, text.as_bytes())?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(self.path("root/.ssh"), fs::Permissions::from_mode(0o700))?;
-            fs::set_permissions(
-                self.path("root/.ssh/authorized_keys"),
-                fs::Permissions::from_mode(0o600),
-            )?;
+            fs::set_permissions(self.path(AUTHORIZED_KEYS), fs::Permissions::from_mode(0o600))?;
         }
         Ok(())
+    }
+
+    /// Appends one line to `root/.ssh/authorized_keys`, leaving every
+    /// existing line (comments, options, blank lines) exactly as it is.
+    /// Returns `false`, writing nothing, when a line with the same key is
+    /// already there.  `line` must be a key line
+    /// ([`parse_authorized_key`] accepts it).
+    pub fn add_authorized_key(&self, line: &str) -> io::Result<bool> {
+        let line = line.trim();
+        let key = parse_authorized_key(line)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "not an authorized_keys line"))?;
+        let mut text = self.read_string(AUTHORIZED_KEYS)?.unwrap_or_default();
+        if text.lines().filter_map(parse_authorized_key).any(|k| k.blob == key.blob) {
+            return Ok(false);
+        }
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(line);
+        text.push('\n');
+        self.write_authorized_keys_text(&text)?;
+        Ok(true)
+    }
+
+    /// Removes the line (or lines) of `root/.ssh/authorized_keys` holding
+    /// the key with this base64 blob; every other line is kept exactly as
+    /// it is.  Returns whether a line was removed.
+    pub fn remove_authorized_key(&self, blob: &str) -> io::Result<bool> {
+        let Some(text) = self.read_string(AUTHORIZED_KEYS)? else { return Ok(false) };
+        let mut kept = String::with_capacity(text.len());
+        let mut removed = false;
+        for line in text.split_inclusive('\n') {
+            if parse_authorized_key(line).is_some_and(|k| k.blob == blob) {
+                removed = true;
+            } else {
+                kept.push_str(line);
+            }
+        }
+        if removed {
+            self.write_authorized_keys_text(&kept)?;
+        }
+        Ok(removed)
     }
 
     // ---- md5 cache, contacts, BLF, ringtones -----------------------------
@@ -591,4 +637,119 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
         let _ = fs::remove_file(&tmp);
     }
     result
+}
+
+const AUTHORIZED_KEYS: &str = "root/.ssh/authorized_keys";
+
+/// The parts of one `authorized_keys` line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AuthorizedKey<'a> {
+    /// Login options before the key type (`from="..."`, `no-pty`), or empty.
+    pub options: &'a str,
+    /// `ssh-ed25519`, `ssh-rsa`, `ecdsa-sha2-nistp256`, and so on.
+    pub key_type: &'a str,
+    /// The key itself, base64, as written.
+    pub blob: &'a str,
+    pub comment: &'a str,
+}
+
+fn looks_like_key_type(token: &str) -> bool {
+    (token.starts_with("ssh-") || token.starts_with("ecdsa-sha2-") || token.starts_with("sk-"))
+        && token.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'@' | b'.'))
+}
+
+/// Splits an `authorized_keys` line into its parts.  `None` for blank
+/// lines, comments, and anything that is not a key line.  The key itself is
+/// not decoded here.
+pub fn parse_authorized_key(line: &str) -> Option<AuthorizedKey<'_>> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    let first = line.split_ascii_whitespace().next()?;
+    let (options, rest) = if looks_like_key_type(first) {
+        ("", line)
+    } else {
+        // Options run to the first whitespace outside double quotes.
+        let mut quoted = false;
+        let mut escaped = false;
+        let mut end = None;
+        for (i, c) in line.char_indices() {
+            match c {
+                _ if escaped => escaped = false,
+                '\\' if quoted => escaped = true,
+                '"' => quoted = !quoted,
+                c if c.is_ascii_whitespace() && !quoted => {
+                    end = Some(i);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        let end = end?;
+        (&line[..end], line[end..].trim_start())
+    };
+    let (key_type, rest) = rest.split_once(|c: char| c.is_ascii_whitespace())?;
+    let rest = rest.trim_start();
+    if !looks_like_key_type(key_type) {
+        return None;
+    }
+    let (blob, comment) = match rest.split_once(|c: char| c.is_ascii_whitespace()) {
+        Some((b, c)) => (b, c.trim()),
+        None => (rest, ""),
+    };
+    if blob.is_empty() || !blob.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'=')) {
+        return None;
+    }
+    Some(AuthorizedKey { options, key_type, blob, comment })
+}
+
+#[cfg(test)]
+mod authorized_keys_tests {
+    use super::*;
+
+    const ED: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGtq1fDCKW2XS1T4BqRrJ2tR5Yx0b6Hq0c9cJm0C1b2D a@b";
+    const RSA: &str = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQC7 old key";
+
+    #[test]
+    fn line_parts() {
+        let k = parse_authorized_key(ED).unwrap();
+        assert_eq!((k.options, k.key_type, k.comment), ("", "ssh-ed25519", "a@b"));
+        let with_options = format!("from=\"10.0.0.1, 10.0.0.2\",no-pty {RSA}");
+        let k = parse_authorized_key(&with_options).unwrap();
+        assert_eq!(k.options, "from=\"10.0.0.1, 10.0.0.2\",no-pty");
+        assert_eq!((k.key_type, k.blob, k.comment), ("ssh-rsa", "AAAAB3NzaC1yc2EAAAADAQABAAAAgQC7", "old key"));
+        assert!(parse_authorized_key("# comment").is_none());
+        assert!(parse_authorized_key("").is_none());
+        assert!(parse_authorized_key("ssh-ed25519").is_none());
+        assert!(parse_authorized_key("hello world").is_none());
+    }
+
+    #[test]
+    fn add_and_remove_keep_other_lines_verbatim() {
+        let dir = std::env::temp_dir().join(format!("dphone-ak-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let nv = Nvdata::new(&dir);
+        let original = format!("# my keys\n\nfrom=\"10.0.0.1\",no-pty   {RSA}\n");
+        fs::create_dir_all(dir.join("root/.ssh")).unwrap();
+        fs::write(dir.join("root/.ssh/authorized_keys"), &original).unwrap();
+
+        assert!(nv.add_authorized_key(ED).unwrap());
+        assert!(!nv.add_authorized_key(ED).unwrap(), "a duplicate is not added");
+        let text = fs::read_to_string(dir.join("root/.ssh/authorized_keys")).unwrap();
+        assert_eq!(text, format!("{original}{ED}\n"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = |p: &str| fs::metadata(dir.join(p)).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode("root/.ssh"), 0o700);
+            assert_eq!(mode("root/.ssh/authorized_keys"), 0o600);
+        }
+
+        let blob = parse_authorized_key(ED).unwrap().blob;
+        assert!(nv.remove_authorized_key(blob).unwrap());
+        assert!(!nv.remove_authorized_key(blob).unwrap());
+        assert_eq!(fs::read_to_string(dir.join("root/.ssh/authorized_keys")).unwrap(), original);
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package dphone.v1;
 
+import "dphone/v1/config.proto";
+
 // Firmware update.  The image itself is uploaded with a plain authenticated
 // HTTP POST to /upload/firmware (streamed to the phone, not buffered); that
 // answers with JSON carrying the upload_id used here.
@@ -12,6 +14,8 @@ service FirmwareService {
   rpc DiscardUpload(DiscardUploadRequest) returns (DiscardUploadResponse);
   rpc ConfirmTrial(ConfirmTrialRequest) returns (ConfirmTrialResponse);
   rpc Rollback(RollbackRequest) returns (RollbackResponse);
+  rpc GetProvisionedFirmwarePolicy(GetProvisionedFirmwarePolicyRequest) returns (GetProvisionedFirmwarePolicyResponse);
+  rpc SetProvisionedFirmwarePolicy(SetProvisionedFirmwarePolicyRequest) returns (SetProvisionedFirmwarePolicyResponse);
 }
 
 enum UpdatePhase {
@@ -89,3 +93,18 @@ message ConfirmTrialResponse {}
 message RollbackRequest {}
 
 message RollbackResponse {}
+
+message GetProvisionedFirmwarePolicyRequest {}
+
+message GetProvisionedFirmwarePolicyResponse {
+  // Ignore the firmware the provisioning server asks for.
+  BoolSetting ignore = 1;
+}
+
+message SetProvisionedFirmwarePolicyRequest {
+  bool ignore = 1;
+}
+
+message SetProvisionedFirmwarePolicyResponse {
+  BoolSetting ignore = 1;
+}

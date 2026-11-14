@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useState } from "react";
 import { Alert, Badge, Button, Card, Field, Input, KeyValue, PageHeader, Select, Spinner, Toggle } from "../components/ui";
 import { NetPhase, NetworkService, type NetworkSettings } from "../gen/dphone/v1/network_pb";
-import { enumLabel } from "../lib/format";
+import { addressSourceNames, label, netPhaseNames, vlanSourceNames } from "../lib/labels";
 import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
 
@@ -65,13 +65,13 @@ export function Network() {
       />
       <div className="space-y-5">
         <ErrorNote error={error} />
-        {saved && <Alert tone="green" title="Saved and applied." />}
+        {saved && <Alert tone="green" title="Saved." />}
         <div className="grid gap-5 lg:grid-cols-2">
-          <Card title="Status" actions={<Badge tone={net.phase === NetPhase.UP ? "green" : net.phase === NetPhase.FAILED ? "red" : "amber"}>{enumLabel(NetPhase[net.phase], "")}</Badge>}>
+          <Card title="Status" actions={<Badge tone={net.phase === NetPhase.UP ? "green" : net.phase === NetPhase.FAILED ? "red" : "amber"}>{label(netPhaseNames, net.phase, NetPhase[net.phase])}</Badge>}>
             <KeyValue
               rows={[
                 ["Address", net.ipv4Address ? `${net.ipv4Address}/${net.ipv4PrefixLen}` : ""],
-                ["Source", net.ipv4Source],
+                ["Source", label(addressSourceNames, net.ipv4Source)],
                 ["Gateway", net.ipv4Gateway],
                 ["DHCP server", net.dhcpServer],
                 ["Lease", net.leaseSecs ? `${net.leaseSecs} s` : ""],
@@ -91,7 +91,7 @@ export function Network() {
                 ["MAC address", net.mac],
                 ["LAN port", net.lan?.up ? `${net.lan.speed} Mb/s, ${net.lan.fullDuplex ? "full" : "half"} duplex` : "No link"],
                 ["PC port", !net.pcPortEnabled ? "Disabled" : net.pc?.up ? `${net.pc.speed} Mb/s, ${net.pc.fullDuplex ? "full" : "half"} duplex` : "No link"],
-                ["Voice VLAN", net.voiceVlan !== undefined ? `${net.voiceVlan}, priority ${net.vlanPriority} (from ${net.vlanSource})` : "Untagged"],
+                ["Voice VLAN", net.voiceVlan !== undefined ? <>{net.voiceVlan}, priority {net.vlanPriority}{net.vlanSource && <> ({label(vlanSourceNames, net.vlanSource)})</>}</> : "Untagged"],
                 ["PC port VLAN", net.pcVlan !== undefined ? String(net.pcVlan) : ""],
                 ["DSCP", String(net.dscp)],
                 ["LLDP neighbor", net.lldpPresent ? net.lldpSystemName : "None seen"],
@@ -114,7 +114,6 @@ export function Network() {
           }
         >
           <div className="space-y-6">
-            {draft && !s.dhcp && <Alert>Changing the address disconnects this page; reopen it at the new address.</Alert>}
             <section className="space-y-4">
               <Toggle label="Get an address automatically (DHCP)" checked={s.dhcp} onChange={(v) => set("dhcp", v)} />
               <div className="grid gap-4 sm:grid-cols-3">

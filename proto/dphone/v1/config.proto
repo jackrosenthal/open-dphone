@@ -51,3 +51,21 @@ message UnsetSettingsRequest {
 message UnsetSettingsResponse {
   uint64 generation = 1;
 }
+
+// Where the value of one of Open DPhone's own settings came from.
+enum SettingSource {
+  SETTING_SOURCE_UNSPECIFIED = 0;
+  SETTING_SOURCE_DEFAULT = 1;
+  // Set on the phone.
+  SETTING_SOURCE_LOCAL = 2;
+  // Supplied by the provisioning server.
+  SETTING_SOURCE_PROVISIONED = 3;
+}
+
+// The effective value of one of Open DPhone's own on/off settings.
+message BoolSetting {
+  bool value = 1;
+  SettingSource source = 2;
+  // The provisioning server fixed the value; it cannot be changed here.
+  bool locked = 3;
+}

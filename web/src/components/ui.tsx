@@ -1,4 +1,5 @@
 import { useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { createPortal } from "react-dom";
 import { Icons } from "./icons";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
@@ -60,15 +61,22 @@ export function Card({ title, actions, children, className }: { title?: ReactNod
   );
 }
 
-export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
+/// The top of a page.  The page's name is not shown (the highlighted
+/// navigation entry says it; the narrow layout's header shows it): it
+/// becomes the document title and a heading for screen readers.  Page-level
+/// buttons, if any, form a right-aligned row.
+export function PageHeader({ title, actions }: { title: string; actions?: ReactNode }) {
+  useEffect(() => {
+    document.title = `${title} · Open DPhone`;
+    return () => {
+      document.title = "Open DPhone";
+    };
+  }, [title]);
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">{actions}</div>
-    </div>
+    <>
+      <h1 className="sr-only">{title}</h1>
+      {actions && <div className="mb-5 flex flex-wrap items-center justify-end gap-2 empty:hidden">{actions}</div>}
+    </>
   );
 }
 
@@ -183,7 +191,9 @@ export function Modal({ title, children, onClose, footer }: { title: string; chi
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
+  // In the body, not where the opener is: an ancestor with a backdrop
+  // filter (the top bar) would otherwise confine the fixed overlay.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div role="dialog" aria-modal="true" aria-label={title} className="max-h-full w-full max-w-xl overflow-y-auto rounded-xl bg-white shadow-xl ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
         <header className="flex items-center justify-between border-b border-slate-100 px-5 py-3 dark:border-slate-800">
@@ -192,10 +202,11 @@ export function Modal({ title, children, onClose, footer }: { title: string; chi
             <Icons.x />
           </button>
         </header>
-        <div className="p-5">{children}</div>
+        {children && <div className="p-5">{children}</div>}
         {footer && <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3 dark:border-slate-800">{footer}</footer>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -262,15 +273,17 @@ export function ConfirmButton({
             </>
           }
         >
-          <div className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
-            {message && <div>{message}</div>}
-            {requireText !== undefined && (
-              <Field label={`Type ${requireText} to confirm`}>
-                <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
-              </Field>
-            )}
-            {error && <Alert tone="red">{error}</Alert>}
-          </div>
+          {(message || requireText !== undefined || error) && (
+            <div className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
+              {message && <div>{message}</div>}
+              {requireText !== undefined && (
+                <Field label={`Type ${requireText} to confirm`}>
+                  <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
+                </Field>
+              )}
+              {error && <Alert tone="red">{error}</Alert>}
+            </div>
+          )}
         </Modal>
       )}
     </>

@@ -35,6 +35,11 @@
 //!   ([`NvdataBackup`] is the default).
 //! - [`KeyStore`] keeps the HTTPS key and certificate (the default is
 //!   `/nvdata/open/`).
+//! - [`ShellHost`] starts the web terminal's shell ([`PtyShellHost`] is the
+//!   default: `/bin/brush`, else `/bin/sh`, on a pseudo-terminal).
+//! - [`SshControl`] applies the SSH server's switch.  Without one the
+//!   setting is only stored (`ssh_enabled` in the settings file) and the
+//!   configuration owner is told to reload.
 //!
 //! Every RPC and upload endpoint needs a session, except logging in.  The
 //! static frontend files are served without one (they hold no data).
@@ -47,6 +52,8 @@ mod convert;
 mod http;
 mod png;
 mod services;
+mod shell;
+mod sshkeys;
 mod tls;
 
 /// Generated code for `proto/`: buffa message types and the Connect
@@ -59,6 +66,7 @@ pub mod proto {
 pub use proto::dphone::v1 as pb;
 
 pub use backup::{Backup, NvdataBackup};
+pub use shell::{PtyShellHost, ShellHost, ShellProcess, ShellSize};
 pub use tls::{KeyStore, NvdataKeyStore};
 
 use dphone_config::ConfigStore;
@@ -207,6 +215,18 @@ impl Drop for FileUpload {
     }
 }
 
+/// The SSH server's switch, for the integrator that owns the SSH server.
+pub trait SshControl: Send + Sync {
+    /// Stores the setting (`ssh_enabled` in `/nvdata/dphone_settings.txtpb`)
+    /// and starts or stops the listener.  Called off the reactor thread,
+    /// with the configuration store unlocked.
+    fn set_enabled(&self, enabled: bool) -> io::Result<()>;
+    /// Whether the server is accepting connections right now, when known.
+    fn listening(&self) -> Option<bool> {
+        None
+    }
+}
+
 /// Server settings.
 #[derive(Clone, Debug)]
 pub struct WebOptions {
@@ -257,6 +277,8 @@ pub(crate) struct App {
     pub screen: Option<Arc<dyn ScreenSource>>,
     pub firmware: Box<dyn FirmwareSink>,
     pub backup: Box<dyn Backup>,
+    pub shells: shell::Shells,
+    pub ssh: Option<Arc<dyn SshControl>>,
     pub uploads: Mutex<HashMap<String, PendingUpload>>,
     pub started: std::time::Instant,
     /// The Connect services as a tower service.
@@ -272,11 +294,13 @@ pub struct WebServer {
     firmware: Option<Box<dyn FirmwareSink>>,
     backup: Option<Box<dyn Backup>>,
     keys: Option<Box<dyn KeyStore>>,
+    shell: Option<Arc<dyn ShellHost>>,
+    ssh: Option<Arc<dyn SshControl>>,
 }
 
 impl WebServer {
     pub fn new(store: Store, config: Arc<Mutex<ConfigStore>>, options: WebOptions) -> Self {
-        WebServer { store, config, options, screen: None, firmware: None, backup: None, keys: None }
+        WebServer { store, config, options, screen: None, firmware: None, backup: None, keys: None, shell: None, ssh: None }
     }
 
     /// Attaches the screen mirror's picture source.
@@ -304,6 +328,19 @@ impl WebServer {
         self
     }
 
+    /// Replaces how the web terminal's shell is started ([`PtyShellHost`]'s
+    /// default by default).
+    pub fn with_shell(mut self, host: Arc<dyn ShellHost>) -> Self {
+        self.shell = Some(host);
+        self
+    }
+
+    /// Attaches the SSH server's switch.
+    pub fn with_ssh_control(mut self, ssh: Arc<dyn SshControl>) -> Self {
+        self.ssh = Some(ssh);
+        self
+    }
+
     /// Binds the listeners.  Fails if a configured port cannot be bound.
     pub async fn bind(self) -> io::Result<BoundServer> {
         let nv = self.config.lock().unwrap().nvdata().clone();
@@ -328,6 +365,8 @@ impl WebServer {
             screen: self.screen,
             firmware,
             backup,
+            shells: shell::Shells::new(self.shell.unwrap_or_else(|| Arc::new(PtyShellHost::default()))),
+            ssh: self.ssh,
             uploads: Mutex::new(HashMap::new()),
             started: std::time::Instant::now(),
             rpc: connectrpc::ConnectRpcService::new(services::router()).with_limits(

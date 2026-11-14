@@ -4,7 +4,8 @@ import { CallDirection } from "../gen/dphone/v1/calls_pb";
 import { NetPhase } from "../gen/dphone/v1/network_pb";
 import { ProvisionPhase } from "../gen/dphone/v1/provisioning_pb";
 import { HealthState, SystemPhase } from "../gen/dphone/v1/status_pb";
-import { dateTime, duration, enumLabel } from "../lib/format";
+import { dateTime, duration } from "../lib/format";
+import { addressSourceNames, codecNames, discoverySourceNames, label, netPhaseNames, provisionPhaseNames, subsystemNames, systemPhaseNames, vlanSourceNames } from "../lib/labels";
 import { useStatus } from "../lib/status";
 import { RegistrationBadge, callStateLabel } from "./common";
 
@@ -36,7 +37,7 @@ export function Dashboard() {
     <>
       <PageHeader
         title="Dashboard"
-        actions={sys.phase !== SystemPhase.RUNNING && <Badge tone={sys.phase === SystemPhase.RECOVERY ? "red" : "amber"}>{enumLabel(SystemPhase[sys.phase], "")}</Badge>}
+        actions={sys.phase !== SystemPhase.RUNNING && <Badge tone={sys.phase === SystemPhase.RECOVERY ? "red" : "amber"}>{label(systemPhaseNames, sys.phase, SystemPhase[sys.phase])}</Badge>}
       />
       <div className="grid gap-5 lg:grid-cols-2">
         <Card title="Lines" actions={<Link to="/accounts" className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">Manage</Link>}>
@@ -74,7 +75,7 @@ export function Dashboard() {
                     <p className="truncate text-sm font-medium">{c.remote?.name || c.remote?.number}</p>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       {c.direction === CallDirection.INCOMING ? "Incoming" : "Outgoing"}
-                      {c.codec ? ` · ${c.codec}` : ""}
+                      {c.codec && <> · {label(codecNames, c.codec)}</>}
                       {c.durationSecs !== undefined ? ` · ${duration(Number(c.durationSecs) + elapsed)}` : ""}
                     </p>
                   </div>
@@ -91,25 +92,25 @@ export function Dashboard() {
           </div>
         </Card>
 
-        <Card title="Network" actions={<Badge tone={net.phase === NetPhase.UP ? "green" : net.phase === NetPhase.FAILED ? "red" : "amber"}>{enumLabel(NetPhase[net.phase], "")}</Badge>}>
+        <Card title="Network" actions={<Badge tone={net.phase === NetPhase.UP ? "green" : net.phase === NetPhase.FAILED ? "red" : "amber"}>{label(netPhaseNames, net.phase, NetPhase[net.phase])}</Badge>}>
           <KeyValue
             rows={[
-              ["Address", net.ipv4Address ? `${net.ipv4Address}/${net.ipv4PrefixLen} (${net.ipv4Source || "none"})` : ""],
+              ["Address", net.ipv4Address && <>{net.ipv4Address}/{net.ipv4PrefixLen}{net.ipv4Source && <> ({label(addressSourceNames, net.ipv4Source)})</>}</>],
               ["Gateway", net.ipv4Gateway],
               ["DNS", net.dns.join(", ")],
               ["LAN port", net.lan?.up ? `${net.lan.speed} Mb/s ${net.lan.fullDuplex ? "full" : "half"} duplex` : "No link"],
               ["PC port", !net.pcPortEnabled ? "Disabled" : net.pc?.up ? `${net.pc.speed} Mb/s` : "No link"],
-              ["Voice VLAN", net.voiceVlan !== undefined ? `${net.voiceVlan} (${net.vlanSource})` : "Untagged"],
+              ["Voice VLAN", net.voiceVlan !== undefined ? <>{net.voiceVlan}{net.vlanSource && <> ({label(vlanSourceNames, net.vlanSource)})</>}</> : "Untagged"],
               ["Switch", net.lldpPresent ? `${net.lldpSystemName} ${net.lldpPortId}` : ""],
               ["MAC", net.mac],
             ]}
           />
         </Card>
 
-        <Card title="Provisioning" actions={<Badge tone={prov.phase === ProvisionPhase.PROVISIONED ? "green" : prov.phase === ProvisionPhase.FAILED ? "red" : "gray"}>{enumLabel(ProvisionPhase[prov.phase], "")}</Badge>}>
+        <Card title="Provisioning" actions={<Badge tone={prov.phase === ProvisionPhase.PROVISIONED ? "green" : prov.phase === ProvisionPhase.FAILED ? "red" : "gray"}>{label(provisionPhaseNames, prov.phase, ProvisionPhase[prov.phase])}</Badge>}>
           <KeyValue
             rows={[
-              ["Server", prov.server ? `${prov.server.name} (${prov.server.source})` : ""],
+              ["Server", prov.server && <>{prov.server.name} ({label(discoverySourceNames, prov.server.source)})</>],
               ["Server software", prov.serverUserAgent],
               ["Assigned to", prov.assignedUser],
               ["Session", prov.attached ? "Attached" : "Not attached"],
@@ -127,7 +128,7 @@ export function Dashboard() {
               ["Phone time", `${dateTime(Number(sys.unixTime) + elapsed)}${sys.timeSynced ? "" : " (not synchronized)"}`],
               ["Time zone", sys.timezone],
               ["Memory", `${Math.round(sys.memTotalKib / 1024)} MiB usable`],
-              ["Last restart", sys.lastRebootReason],
+              ["Last reboot", sys.lastRebootReason],
               ["Firmware bank", status.firmware?.runningBank],
               ["User agent", sys.userAgent],
             ]}
@@ -139,7 +140,7 @@ export function Dashboard() {
             {status.health.map((h) => (
               <li key={h.subsystem} className="flex items-center gap-2" title={h.detail}>
                 <Dot tone={healthTone[h.state]} />
-                <span className="capitalize">{h.subsystem}</span>
+                <span>{label(subsystemNames, h.subsystem)}</span>
                 {h.detail && <span className="truncate text-xs text-slate-400">{h.detail}</span>}
               </li>
             ))}

@@ -143,7 +143,6 @@ fn fabricate(store: &Store, model: Model) {
         s.time_synced = true;
         s.timezone = "America/Los_Angeles".into();
         s.last_reboot_reason = "web interface".into();
-        s.dev_mode = true;
         s.simulated = true;
         s.boot_rev = Some(3);
         s.mem_total_kib = model.ram_mib() as u32 * 1024 - 15_000;

@@ -33,7 +33,6 @@ pub fn system(s: &st::System, uptime_secs: u64) -> pb::SystemInfo {
         time_synced: s.time_synced,
         timezone: s.timezone.clone(),
         last_reboot_reason: s.last_reboot_reason.clone(),
-        dev_mode: s.dev_mode,
         simulated: s.simulated,
         mem_total_kib: s.mem_total_kib,
         uptime_secs,

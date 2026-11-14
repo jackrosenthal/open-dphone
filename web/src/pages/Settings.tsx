@@ -2,10 +2,12 @@ import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useMemo, useState } from "react";
 import { Badge, Button, Card, Field, Input, PageHeader, Select, Spinner, Toggle, td, th } from "../components/ui";
 import { ConfigService, type Setting } from "../gen/dphone/v1/config_pb";
+import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
 
 type Kind = { type: "bool" } | { type: "number"; min: number; max: number } | { type: "text" } | { type: "choice"; options: [string, string][] };
-type Item = { id: string; label: string; hint?: string } & Kind;
+/// `grayOnly`: the setting exists only on the gray-display models.
+type Item = { id: string; label: string; hint?: string; grayOnly?: boolean } & Kind;
 
 // Settings with a proper form.  Everything else stays reachable in the
 // table below by its stock setting ID.
@@ -30,7 +32,7 @@ const groups: { title: string; items: Item[] }[] = [
     title: "Display",
     items: [
       { id: "brightness", label: "Brightness", type: "number", min: 0, max: 10 },
-      { id: "contrast", label: "Contrast", type: "number", min: 0, max: 31, hint: "Gray displays only." },
+      { id: "contrast", label: "Contrast", type: "number", min: 0, max: 31, grayOnly: true },
       { id: "backlight_timeout", label: "Backlight timeout (seconds)", type: "number", min: 0, max: 86400, hint: "0 keeps it on." },
       { id: "dim_backlight", label: "Dim the backlight when idle", type: "bool" },
       { id: "small_clock", label: "Small clock on the idle screen", type: "bool" },
@@ -75,11 +77,7 @@ const groups: { title: string; items: Item[] }[] = [
   {
     title: "Access",
     items: [
-      { id: "web_ui_enabled", label: "Web interface", type: "bool", hint: "Turning this off locks you out of this page." },
-      { id: "open_https_enabled", label: "HTTPS", type: "bool" },
-      { id: "open_ssh_enabled", label: "SSH server", type: "bool" },
-      { id: "open_dev_mode", label: "Development mode", type: "bool" },
-      { id: "open_allow_provisioned_firmware", label: "Let the provisioning server install firmware", type: "bool", hint: "A stock server would put stock firmware back." },
+      { id: "web_ui_enabled", label: "Web interface", type: "bool" },
       { id: "allow_app_dev", label: "Allow app development", type: "bool" },
     ],
   },
@@ -131,6 +129,7 @@ export function Settings() {
   const [filter, setFilter] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [error, setError] = useState<unknown>();
+  const skin = useStatus().status?.system?.skin;
   const done = () => {
     setDraft({});
     setError(undefined);
@@ -158,7 +157,6 @@ export function Settings() {
     <>
       <PageHeader
         title="Phone settings"
-        description="Values saved here override provisioned ones."
         actions={
           <>
             {changes.length > 0 && <Badge tone="amber">{changes.length} unsaved</Badge>}
@@ -175,7 +173,7 @@ export function Settings() {
           {groups.map((g) => (
             <Card key={g.title} title={g.title}>
               <div className="grid gap-4 sm:grid-cols-2">
-                {g.items.map((item) => (
+                {g.items.filter((item) => !item.grayOnly || skin !== "color").map((item) => (
                   <div key={item.id} className={item.type === "bool" || item.id === "default_dial_plan" ? "sm:col-span-2" : ""}>
                     <Control item={item} setting={byId.get(item.id)} value={value(item.id)} onChange={(v) => change(item.id, v)} />
                   </div>

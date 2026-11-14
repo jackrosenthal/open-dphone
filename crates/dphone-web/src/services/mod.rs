@@ -7,6 +7,8 @@
 mod auth;
 mod calls;
 mod config;
+mod shell;
+mod ssh;
 mod status;
 mod system;
 
@@ -147,6 +149,8 @@ service!(FirmwareService {
     unary discard_upload(DiscardUploadRequest) -> DiscardUploadResponse = system::discard_upload;
     unary confirm_trial(ConfirmTrialRequest) -> ConfirmTrialResponse = system::confirm_trial;
     unary rollback(RollbackRequest) -> RollbackResponse = system::rollback;
+    unary get_provisioned_firmware_policy(GetProvisionedFirmwarePolicyRequest) -> GetProvisionedFirmwarePolicyResponse = ssh::get_provisioned_firmware_policy;
+    unary set_provisioned_firmware_policy(SetProvisionedFirmwarePolicyRequest) -> SetProvisionedFirmwarePolicyResponse = ssh::set_provisioned_firmware_policy;
 });
 
 service!(LogsService {
@@ -169,6 +173,20 @@ service!(SystemService {
     unary restore_backup(RestoreBackupRequest) -> RestoreBackupResponse = system::restore_backup;
 });
 
+service!(ShellService {
+    stream open_shell(OpenShellRequest) -> OpenShellResponse = shell::open_shell;
+    unary write_shell(WriteShellRequest) -> WriteShellResponse = shell::write_shell;
+    unary resize_shell(ResizeShellRequest) -> ResizeShellResponse = shell::resize_shell;
+    unary close_shell(CloseShellRequest) -> CloseShellResponse = shell::close_shell;
+});
+
+service!(SshService {
+    unary get_ssh(GetSshRequest) -> GetSshResponse = ssh::get_ssh;
+    unary set_ssh_enabled(SetSshEnabledRequest) -> SetSshEnabledResponse = ssh::set_ssh_enabled;
+    unary add_ssh_key(AddSshKeyRequest) -> AddSshKeyResponse = ssh::add_ssh_key;
+    unary remove_ssh_key(RemoveSshKeyRequest) -> RemoveSshKeyResponse = ssh::remove_ssh_key;
+});
+
 /// The Connect router with every service registered.
 pub(crate) fn router() -> connectrpc::Router {
     let rpc = Arc::new(Rpc);
@@ -186,6 +204,8 @@ pub(crate) fn router() -> connectrpc::Router {
         .add_service::<Rpc, pb::LogsServiceRegisterMarker>(rpc.clone())
         .add_service::<Rpc, pb::ScreenServiceRegisterMarker>(rpc.clone())
         .add_service::<Rpc, pb::SystemServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::ShellServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::SshServiceRegisterMarker>(rpc.clone())
 }
 
 /// A command failure as an RPC error.

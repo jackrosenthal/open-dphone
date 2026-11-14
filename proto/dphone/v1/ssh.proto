@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package dphone.v1;
+
+import "dphone/v1/config.proto";
+
+// The SSH server's switch and the public keys allowed to log in.
+service SshService {
+  rpc GetSsh(GetSshRequest) returns (GetSshResponse);
+  rpc SetSshEnabled(SetSshEnabledRequest) returns (SetSshEnabledResponse);
+  rpc AddSshKey(AddSshKeyRequest) returns (AddSshKeyResponse);
+  rpc RemoveSshKey(RemoveSshKeyRequest) returns (RemoveSshKeyResponse);
+}
+
+message SshKey {
+  // "ssh-ed25519", "ssh-rsa", or "ecdsa-sha2-nistp256" and so on.
+  string type = 1;
+  // "SHA256:..." as `ssh-keygen -l` prints it.
+  string fingerprint = 2;
+  string comment = 3;
+  // Key size in bits, as `ssh-keygen -l` prints it.
+  uint32 bits = 4;
+  // Supplied by the provisioning server; cannot be removed here.
+  bool provisioned = 5;
+}
+
+message SshStatus {
+  BoolSetting enabled = 1;
+  repeated SshKey keys = 2;
+  // Whether the server is accepting connections right now, when known.
+  optional bool listening = 3;
+}
+
+message GetSshRequest {}
+
+message GetSshResponse {
+  SshStatus status = 1;
+}
+
+message SetSshEnabledRequest {
+  bool enabled = 1;
+}
+
+message SetSshEnabledResponse {
+  SshStatus status = 1;
+}
+
+message AddSshKeyRequest {
+  // One public key line, as in a `.pub` file or `authorized_keys`.
+  string key = 1;
+}
+
+message AddSshKeyResponse {
+  SshStatus status = 1;
+}
+
+message RemoveSshKeyRequest {
+  // The fingerprint of the key to remove.
+  string fingerprint = 1;
+}
+
+message RemoveSshKeyResponse {
+  SshStatus status = 1;
+}

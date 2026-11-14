@@ -24,11 +24,3 @@ export function bytes(n: number | bigint): string {
   if (v >= 1 << 10) return `${(v / (1 << 10)).toFixed(1)} KiB`;
   return `${v} B`;
 }
-
-/// "SYSTEM_PHASE_NETWORK_WAIT" -> "Network wait"
-export function enumLabel(name: string | undefined, prefix: string): string {
-  if (!name) return "Unknown";
-  const s = name.startsWith(prefix) ? name.slice(prefix.length) : name;
-  const t = s.replace(/_/g, " ").toLowerCase();
-  return t.charAt(0).toUpperCase() + t.slice(1);
-}
