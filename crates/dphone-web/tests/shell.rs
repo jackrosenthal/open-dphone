@@ -439,7 +439,8 @@ async fn ssh_keys() {
 
     let (status, v) = call(p.addr, &l, "SshService/GetSsh", serde_json::json!({})).await;
     assert_eq!(status, 200);
-    assert_eq!(v["status"]["enabled"], serde_json::json!({ "value": true, "source": "SETTING_SOURCE_DEFAULT" }));
+    // SSH is off until someone turns it on.
+    assert_eq!(v["status"]["enabled"], serde_json::json!({ "source": "SETTING_SOURCE_DEFAULT" }));
     // The existing line's data is not a real RSA key, so it is not listed
     // (and not touched).
     assert_eq!(v["status"]["keys"], serde_json::Value::Null);
