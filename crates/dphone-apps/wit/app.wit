@@ -1,0 +1,413 @@
+/// The Open DPhone application interface.
+///
+/// An app is a WebAssembly component targeting the `app` world.  The host
+/// calls `guest.start` once and then `guest.handle` for every event; all
+/// host services that take time (PBX requests, HTTP, timers) return an id
+/// at once and deliver their result later as an event, so an app never
+/// blocks the phone.  An app receives only the imports its manifest
+/// declares under `capabilities`.
+package dphone:app@3.0.0;
+
+interface types {
+  /// A widget handle.  Handle 0 is the app's root window (the app content
+  /// area of the skin, e.g., 480x243 on color models).
+  type widget = u32;
+  type timer-id = u32;
+  type request-id = u32;
+  type call-id = u32;
+
+  enum skin { small-gray, large-gray, color }
+
+  record size { width: u16, height: u16 }
+
+  /// Sizes an app lays out with: the content area and the stock text
+  /// metrics of the skin.
+  record metrics {
+    skin: skin,
+    /// App content area (240x102, 320x140, or 480x243).
+    width: u16,
+    height: u16,
+    line-height: u16,
+    title-height: u16,
+    title-offset: u16,
+    row-height: u16,
+    scroll-bar-width: u16,
+    color: bool,
+  }
+  record rect { x: s16, y: s16, width: u16, height: u16 }
+
+  enum widget-kind { group, text, text-list, scroll, input, image }
+
+  enum align { left, center, right }
+  enum font { small, normal, large, bold, title }
+  enum input-mode { text, numeric, dial, password, pin }
+
+  record list-item {
+    /// Main text.
+    text: string,
+    /// Secondary text at the right edge (may be empty).
+    detail: string,
+    /// Icon resource name from the app package (may be empty).
+    icon: string,
+  }
+
+  record softkey {
+    /// App-chosen identifier reported in `event.softkey`.
+    id: u32,
+    label: string,
+  }
+
+  variant widget-event {
+    /// The highlighted row of a list changed.
+    highlighted(u32),
+    /// Select was pressed on a list row.
+    activated(u32),
+    /// The text of an input changed.
+    changed(string),
+    /// Select was pressed in an input.
+    submitted(string),
+  }
+
+  /// Storage locations, with the stock names and rules.
+  enum location {
+    /// Read-only files of the app package.
+    app,
+    /// `/nvdata/appdata/<name>`.
+    nv,
+    /// `/nvdata/appdata/@shared`.
+    nvshared,
+    /// `/tmp/appdata/<name>`.
+    tmp,
+    /// `/tmp/appdata/@shared`.
+    tmpshared,
+    /// Read-only data shared by all apps (artwork, sounds).
+    data,
+  }
+
+  variant error {
+    /// The manifest does not grant this.
+    denied,
+    not-found,
+    /// Bad argument (e.g., a path separator in a file name).
+    invalid(string),
+    /// No space left (the 2 MiB reserve counts as used).
+    no-space,
+    failed(string),
+  }
+
+  record header { name: string, value: string }
+
+  record http-response {
+    status: u16,
+    headers: list<header>,
+    body: list<u8>,
+  }
+
+  /// Result of a PBX request: the JSON text of `response.result`, or the
+  /// JSON text of `response.errors` / a transport error description.
+  variant pbx-outcome {
+    ok(string),
+    errors(string),
+    transport(string),
+  }
+
+  enum call-state {
+    dialing, proceeding, ringback, ringing, active, held, transferring, ended,
+  }
+
+  record call-info {
+    id: call-id,
+    /// Account slot (0-based).
+    account: u8,
+    incoming: bool,
+    state: call-state,
+    remote-name: string,
+    remote-number: string,
+    /// Seconds since the call was answered (0 before).
+    duration: u32,
+  }
+
+  record account-info {
+    slot: u8,
+    /// Stock `account id` attribute.
+    id: string,
+    label: string,
+    user: string,
+    server: string,
+    registered: bool,
+  }
+
+  record mwi { account: u8, new-messages: u32, old-messages: u32 }
+
+  record presence {
+    /// Subscription target (extension or URI).
+    target: string,
+    /// `available`, `chat`, `away`, `dnd`, `xa`, `unavailable`, `unknown`.
+    status: string,
+    text: string,
+    /// `idle`, `ringing`, `busy`, `hold`, `unknown`.
+    line-state: string,
+  }
+
+  record push {
+    /// Event name (`X-Digium-Event-Name` / `X-Event-Name`).
+    name: string,
+    /// `X-Event-Type` (may be empty).
+    kind: string,
+    /// `X-Event-Data` or the body, as text (JSON where the server sent JSON).
+    data: string,
+    /// SIP method that carried it (`MESSAGE`, `INFO`, `INVITE`, ...).
+    method: string,
+    /// The call it arrived with, for INVITE pushes (e.g.,
+    /// `digium.incomingCall.voicemail`); the app may answer or reject it.
+    call: option<call-id>,
+  }
+
+  variant event {
+    /// The app is on screen.
+    foreground,
+    /// The app left the screen (it keeps running unless it asked to exit).
+    background,
+    /// Last event before the instance is dropped.
+    exit,
+    idle-screen-show,
+    idle-screen-hide,
+    /// A key claimed with `ui.claim-keys`.  Names follow the phone's
+    /// key vocabulary: `0`..`9`, `*`, `#`, `up`, `down`, `left`, `right`,
+    /// `select`, `cancel`, `sk1`.., `line1`.., and so on.
+    key(string),
+    softkey(u32),
+    widget(tuple<widget, widget-event>),
+    timer(timer-id),
+    pbx(tuple<request-id, pbx-outcome>),
+    http(tuple<request-id, result<http-response, string>>),
+    /// A call changed state (after `calls.observe(true)`).
+    call(call-info),
+    push(push),
+    mwi(mwi),
+    presence(presence),
+    /// New merged configuration; re-read `config`.
+    new-config,
+    /// The PBX server changed (failover).
+    server-change,
+    /// Sound playback finished or stopped; position in seconds.
+    playback-stopped(u32),
+    /// An event from another app or the phone, addressed to this app.
+    message(tuple<string, string>),
+  }
+}
+
+/// Lifecycle requests and logging.  Always available.
+interface runtime {
+  /// Leave the screen.
+  background: func();
+  /// Stop the app after the current handler returns.
+  exit: func();
+  /// Restart the app (fresh instance).
+  restart: func();
+  /// Keep running when backgrounded (stock `exitAfterBackground = false`).
+  set-exit-after-background: func(exit: bool);
+  /// Show another app.
+  show-app: func(name: string) -> result<_, string>;
+  /// Reset the phone's idle (screen-saver / return-to-idle) timer.
+  reset-idle-timer: func();
+  /// 0 error, 1 warn, 2 info, 3 debug.
+  log: func(level: u8, message: string);
+  in-foreground: func() -> bool;
+}
+
+/// Widgets and softkeys.  Capability `ui`.
+interface ui {
+  use types.{widget, widget-kind, rect, size, metrics, align, font, input-mode, list-item, softkey};
+
+  get-metrics: func() -> metrics;
+  /// Size of the idle-screen area offered to apps with `hasIdle`.
+  idle-size: func() -> size;
+  /// The idle window's root widget (apps with `hasIdle` only).
+  idle-root: func() -> option<widget>;
+
+  create: func(kind: widget-kind, parent: widget, bounds: rect) -> widget;
+  /// Destroys the widget and its children.
+  destroy: func(w: widget);
+  /// Destroys every child of the widget.
+  clear: func(w: widget);
+  set-bounds: func(w: widget, bounds: rect);
+  set-visible: func(w: widget, visible: bool);
+  set-focus: func(w: widget);
+
+  set-text: func(w: widget, text: string);
+  set-align: func(w: widget, align: align);
+  set-font: func(w: widget, font: font);
+  /// Wrap long text onto several lines (text widgets).
+  set-wrap: func(w: widget, wrap: bool);
+
+  set-items: func(w: widget, items: list<list-item>);
+  set-selected: func(w: widget, index: u32);
+  selected: func(w: widget) -> u32;
+
+  set-value: func(w: widget, value: string);
+  value: func(w: widget) -> string;
+  set-input-mode: func(w: widget, mode: input-mode);
+  set-max-length: func(w: widget, max: u32);
+
+  /// Image by name: an icon of the phone's icon set.
+  set-image: func(w: widget, name: string);
+
+  /// Keys this widget wants as `event.key` instead of the built-in
+  /// behavior.  For each press the phone walks from the focused widget up
+  /// to the root (widget 0, the window); the first claimant gets the key.
+  /// An unclaimed `cancel` backgrounds the app.
+  claim-keys: func(w: widget, keys: list<string>);
+
+  /// Softkeys attached to a widget; the bar shows the keys of the focused
+  /// widget or its nearest ancestor that has any.  More than four become a
+  /// "More" page.
+  set-softkeys: func(w: widget, keys: list<softkey>);
+}
+
+/// Capability `timers`.
+interface timers {
+  use types.{timer-id};
+  set: func(delay-ms: u32, repeat: bool) -> timer-id;
+  cancel: func(id: timer-id);
+  /// Monotonic milliseconds.
+  now-ms: func() -> u64;
+  /// Seconds since the Unix epoch.
+  wall-time: func() -> u64;
+}
+
+/// Capability `storage`.
+interface storage {
+  use types.{location, error};
+  read: func(loc: location, name: string) -> result<list<u8>, error>;
+  write: func(loc: location, name: string, data: list<u8>) -> result<_, error>;
+  remove: func(loc: location, name: string) -> result<_, error>;
+  exists: func(loc: location, name: string) -> bool;
+  %list: func(loc: location) -> result<list<string>, error>;
+}
+
+/// Capability `config`.
+interface config {
+  use types.{account-info};
+  /// This app's provisioned `<application>` element as XML ("" if none).
+  app-config: func() -> string;
+  /// One attribute of this app's `<application>`/`<account>`/`<setting>`s.
+  app-setting: func(name: string) -> option<string>;
+  /// A phone setting by its stock id (read-only; a fixed allowlist).
+  setting: func(id: string) -> option<string>;
+  accounts: func() -> list<account-info>;
+  model: func() -> string;
+  firmware-version: func() -> string;
+  mac-address: func() -> string;
+  /// Contact-list files provisioned to the phone: (file name, XML text).
+  contact-lists: func() -> list<tuple<string, string>>;
+}
+
+/// Capability `pbx`: requests to the PBX application server, over the
+/// transport the provisioned account names (`dasp://` through DPMA, or
+/// HTTP).  The host adds the envelope and the credentials.
+interface pbx {
+  use types.{request-id};
+  /// `parameters` is a JSON object text.  Result arrives as `event.pbx`.
+  request: func(method: string, parameters: string) -> request-id;
+  cancel: func(id: request-id);
+}
+
+/// Capability `http`.
+interface http {
+  use types.{request-id, header};
+  request: func(method: string, url: string, headers: list<header>, body: list<u8>) -> request-id;
+  cancel: func(id: request-id);
+}
+
+/// Capability `calls`.
+interface calls {
+  use types.{call-id, call-info, error, header, mwi};
+  dial: func(number: string, account: option<u8>, headers: list<header>) -> result<call-id, error>;
+  answer: func(call: call-id) -> result<_, error>;
+  reject: func(call: call-id) -> result<_, error>;
+  hangup: func(call: call-id) -> result<_, error>;
+  send-dtmf: func(call: call-id, digits: string) -> result<_, error>;
+  %list: func() -> list<call-info>;
+  /// Deliver `event.call` for every call change.
+  observe: func(on: bool);
+  get-mwi: func() -> list<mwi>;
+  dial-voicemail: func(account: option<u8>) -> result<_, error>;
+}
+
+/// Capability `presence`.
+interface presence {
+  use types.{presence, error};
+  /// Watch an extension; changes arrive as `event.presence`.
+  subscribe: func(target: string);
+  unsubscribe: func(target: string);
+  get: func(target: string) -> option<presence>;
+  /// Set this user's own presence on the phone (line display and SIP
+  /// PUBLISH where configured).
+  set-own: func(status: string, text: string) -> result<_, error>;
+  get-own: func() -> presence;
+}
+
+/// Capability `events`.
+interface events {
+  /// Receive pushes with this event name as `event.push`.
+  observe: func(name: string);
+  stop-observing: func(name: string);
+  /// Send `event.message(name, payload)` to another running app.
+  send: func(app: string, name: string, payload: string) -> result<_, string>;
+}
+
+/// Capability `audio`.
+interface audio {
+  use types.{location, error};
+  /// Play a sound file from a storage location, from `start` seconds.
+  play-file: func(loc: location, name: string, start: u32) -> result<_, error>;
+  stop: func();
+}
+
+/// Capability `l10n`.
+interface l10n {
+  /// Current locale (`en_US` for now).
+  locale: func() -> string;
+  /// Host-provided common strings (`ok`, `cancel`, `back`, ...).
+  common: func(key: string) -> string;
+  /// Local date and time text for a Unix time: style 0 time, 1 date,
+  /// 2 date and time.
+  format-time: func(unix: u64, style: u8) -> string;
+}
+
+/// Capability `hotdesk`: change which user this phone is provisioned
+/// for.  Built-in apps only; a package declaring it is refused.
+interface hotdesk {
+  use types.{error};
+  /// Log a user in with their extension and PIN; the phone reprovisions.
+  login: func(extension: string, pin: string) -> result<_, error>;
+  /// Return the phone to its unassigned configuration.
+  logout: func() -> result<_, error>;
+  /// The user the phone is assigned to ("" if none).
+  current-user: func() -> string;
+}
+
+interface guest {
+  use types.{event};
+  /// Called once after instantiation.
+  start: func();
+  handle: func(e: event);
+}
+
+world app {
+  import runtime;
+  import ui;
+  import timers;
+  import storage;
+  import config;
+  import pbx;
+  import http;
+  import calls;
+  import presence;
+  import events;
+  import audio;
+  import l10n;
+  import hotdesk;
+  export guest;
+}

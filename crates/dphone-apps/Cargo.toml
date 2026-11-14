@@ -1,0 +1,43 @@
+[package]
+name = "dphone-apps"
+description = "Open DPhone: WebAssembly app runtime, host API, packages, and the app manager"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+# Compile WebAssembly to Pulley bytecode (Cranelift).  Used on the build
+# host to precompile apps (`dphone-apps-build`) and by host tests; the
+# phone links it too only if the image is built with it (see README).
+compile = ["wasmtime/cranelift", "wasmtime/pulley"]
+# The host tool that componentizes, precompiles, and packs apps.
+build-tool = ["compile", "dep:wit-component"]
+# Fake view and services for tests.
+test-util = []
+# `UiShell`: the adapter from the phone UI toolkit to this crate's `Shell`.
+ui = ["dep:dphone-ui"]
+
+[dependencies]
+dphone-state = { path = "../dphone-state" }
+dphone-ui = { path = "../dphone-ui", optional = true }
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rustix = { version = "1", features = ["fs"] }
+wasmtime = { version = "50", default-features = false, features = ["runtime", "component-model", "std"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
+wit-component = { version = "0.263", optional = true }
+
+[[bin]]
+name = "dphone-apps-build"
+required-features = ["build-tool"]
+
+# Spike S1 measurement (see README): run on the phone or under qemu-arm.
+[[bin]]
+name = "dphone-apps-s1"
+required-features = ["test-util"]
+
+[dev-dependencies]
+dphone-apps = { path = ".", features = ["build-tool", "test-util"] }

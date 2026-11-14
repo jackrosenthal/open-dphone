@@ -1,0 +1,10 @@
+[package]
+name = "app-sdk"
+description = "Guest-side SDK for Open DPhone WebAssembly apps"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+wit-bindgen = { version = "0.63", default-features = false, features = ["macros", "realloc"] }

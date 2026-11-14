@@ -1,0 +1,282 @@
+//! [`Shell`] and [`AppWindow`] over the phone UI toolkit (`dphone-ui`'s
+//! app view).  Enabled by the `ui` feature.
+//!
+//! ```ignore
+//! let shell = UiShell::new(ui_handle.clone(), store.model());
+//! let apps = AppManager::new(ManagerConfig::phone(), store, Box::new(shell), services)?;
+//! ```
+
+use crate::view::*;
+use dphone_state::{Key, Model};
+use dphone_ui::appview as tk;
+use dphone_ui::{AppEvent, AppEvents, AppView, UiHandle};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+pub struct UiShell {
+    ui: UiHandle,
+    model: Model,
+    views: HashMap<String, AppView>,
+}
+
+impl UiShell {
+    pub fn new(ui: UiHandle, model: Model) -> UiShell {
+        UiShell {
+            ui,
+            model,
+            views: HashMap::new(),
+        }
+    }
+}
+
+struct UiWindow {
+    view: AppView,
+    events: AppEvents,
+    /// An idle view gets no events from the toolkit; report it shown once.
+    announce: bool,
+}
+
+fn id(w: u32) -> tk::WidgetId {
+    tk::WidgetId(w)
+}
+
+fn rect(r: Rect) -> tk::Rect {
+    tk::Rect::new(r.x, r.y, r.width, r.height)
+}
+
+impl AppWindow for UiWindow {
+    fn metrics(&self) -> Metrics {
+        let m = self.view.metrics();
+        Metrics {
+            skin: match m.skin {
+                dphone_state::Skin::SmallGray => Skin::SmallGray,
+                dphone_state::Skin::LargeGray => Skin::LargeGray,
+                dphone_state::Skin::Color => Skin::Color,
+            },
+            width: m.width,
+            height: m.height,
+            line_height: m.line_height,
+            title_height: m.title_height,
+            title_offset: m.title_offset,
+            row_height: m.row_height,
+            scroll_bar_width: m.scroll_bar_width,
+            color: m.color,
+        }
+    }
+    fn create(&mut self, kind: WidgetKind, parent: Option<u32>, bounds: Rect) -> u32 {
+        let kind = match kind {
+            WidgetKind::Group => tk::WidgetKind::Group,
+            WidgetKind::Text => tk::WidgetKind::Text,
+            WidgetKind::TextList => tk::WidgetKind::List,
+            WidgetKind::Scroll => tk::WidgetKind::Scroll,
+            WidgetKind::Input => tk::WidgetKind::Input,
+            WidgetKind::Image => tk::WidgetKind::Image,
+        };
+        self.view.create(kind, parent.map(id), rect(bounds)).0
+    }
+    fn destroy(&mut self, w: u32) {
+        self.view.destroy(id(w));
+    }
+    fn clear(&mut self, w: Option<u32>) {
+        match w {
+            Some(w) => self.view.clear_children(id(w)),
+            None => {
+                let mut b = self.view.batch();
+                b.clear();
+                b.set_softkeys(None, Vec::new());
+                b.set_window_key_claims(tk::KeyClaims::none());
+            }
+        }
+    }
+    fn set_bounds(&mut self, w: u32, bounds: Rect) {
+        self.view.set_rect(id(w), rect(bounds));
+    }
+    fn set_visible(&mut self, w: u32, visible: bool) {
+        self.view.set_visible(id(w), visible);
+    }
+    fn set_focus(&mut self, w: Option<u32>) {
+        self.view.focus(w.map(id));
+    }
+    fn set_text(&mut self, w: u32, text: &str) {
+        self.view.set_text(id(w), text);
+    }
+    fn set_align(&mut self, w: u32, align: Align) {
+        let a = match align {
+            Align::Left => tk::Align::Left,
+            Align::Center => tk::Align::Center,
+            Align::Right => tk::Align::Right,
+        };
+        self.view.set_align(id(w), a, tk::VAlign::Middle);
+    }
+    fn set_font(&mut self, w: u32, font: Font) {
+        let f = match font {
+            Font::Small => tk::Font::Small,
+            Font::Normal => tk::Font::Normal,
+            Font::Large => tk::Font::Large,
+            Font::Bold => tk::Font::Bold,
+            Font::Title => tk::Font::Title,
+        };
+        self.view.set_font(id(w), f);
+    }
+    fn set_wrap(&mut self, w: u32, wrap: bool) {
+        self.view.set_wrap(id(w), wrap);
+    }
+    fn set_items(&mut self, w: u32, items: &[ListItem]) {
+        let icons = items.iter().any(|i| !i.icon.is_empty());
+        let details = items.iter().any(|i| !i.detail.is_empty());
+        let m = self.view.metrics();
+        let mut columns = Vec::new();
+        if icons {
+            columns.push(tk::Column::px(m.row_height));
+        }
+        columns.push(tk::Column::rest());
+        if details {
+            columns.push(tk::Column::percent(40).align(tk::Align::Right));
+        }
+        let rows = items
+            .iter()
+            .map(|i| {
+                let mut cells = Vec::new();
+                if icons {
+                    cells.push(if i.icon.is_empty() {
+                        tk::Cell::Empty
+                    } else {
+                        tk::Cell::icon(i.icon.clone())
+                    });
+                }
+                cells.push(tk::Cell::text(i.text.clone()));
+                if details {
+                    cells.push(tk::Cell::text(i.detail.clone()));
+                }
+                cells
+            })
+            .collect();
+        let mut b = self.view.batch();
+        let keep = b.list_selected(id(w)).unwrap_or(0);
+        b.list_set_columns(id(w), &columns);
+        b.list_set_rows(id(w), rows);
+        b.list_select(id(w), keep.min(items.len().saturating_sub(1) as u32));
+    }
+    fn set_selected(&mut self, w: u32, index: u32) {
+        self.view.list_select(id(w), index);
+    }
+    fn selected(&self, w: u32) -> u32 {
+        self.view.list_selected(id(w)).unwrap_or(0)
+    }
+    fn set_value(&mut self, w: u32, value: &str) {
+        self.view.set_text(id(w), value);
+    }
+    fn value(&self, w: u32) -> String {
+        self.view.text(id(w)).unwrap_or_default()
+    }
+    fn set_input_mode(&mut self, w: u32, mode: InputMode) {
+        let m = match mode {
+            InputMode::Text => tk::InputMode::Text,
+            InputMode::Numeric => tk::InputMode::Numeric,
+            InputMode::Dial => tk::InputMode::Dial,
+            InputMode::Password => tk::InputMode::Password,
+            InputMode::Pin => tk::InputMode::Pin,
+        };
+        self.view.input_set_mode(id(w), m);
+    }
+    fn set_max_length(&mut self, w: u32, max: u32) {
+        self.view
+            .input_set_max_len(id(w), max.min(u16::MAX as u32) as u16);
+    }
+    fn set_image(&mut self, w: u32, name: &str) {
+        self.view
+            .set_image(id(w), tk::ImageSource::Icon(name.to_string()));
+    }
+    fn set_softkeys(&mut self, w: Option<u32>, keys: &[Softkey]) {
+        let keys = keys
+            .iter()
+            .map(|k| tk::Softkey::new(k.id, k.label.clone()))
+            .collect();
+        self.view.set_softkeys(w.map(id), keys);
+    }
+    fn claim_keys(&mut self, w: Option<u32>, keys: &[Key]) {
+        let claims = tk::KeyClaims::keys(keys.iter().copied());
+        match w {
+            Some(w) => self.view.set_key_claims(id(w), claims),
+            None => self.view.set_window_key_claims(claims),
+        }
+    }
+    fn poll_event(&mut self) -> Option<WindowEvent> {
+        if std::mem::take(&mut self.announce) {
+            return Some(WindowEvent::Foreground);
+        }
+        loop {
+            return Some(match self.events.try_recv()? {
+                AppEvent::Foreground => WindowEvent::Foreground,
+                AppEvent::Background => WindowEvent::Background,
+                AppEvent::Key { key, .. } => WindowEvent::Key(key),
+                AppEvent::Softkey { id } => WindowEvent::Softkey(id),
+                AppEvent::ListSelected { widget, row } => WindowEvent::Highlighted {
+                    widget: widget.0,
+                    row,
+                },
+                AppEvent::ListActivated { widget, row } => WindowEvent::Activated {
+                    widget: widget.0,
+                    row,
+                },
+                AppEvent::InputChanged { widget, value } => WindowEvent::Changed {
+                    widget: widget.0,
+                    value,
+                },
+                AppEvent::InputSubmitted { widget, value } => WindowEvent::Submitted {
+                    widget: widget.0,
+                    value,
+                },
+                AppEvent::CloseRequested => WindowEvent::CloseRequested,
+                AppEvent::Focused { .. } => continue,
+            });
+        }
+    }
+}
+
+impl Shell for UiShell {
+    fn open(
+        &mut self,
+        app: &str,
+        kind: WindowKind,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> Box<dyn AppWindow> {
+        let (view, events) = AppView::new(app, self.model);
+        events.set_waker(move || wake());
+        match kind {
+            WindowKind::App => {
+                self.views.insert(app.to_string(), view.clone());
+            }
+            WindowKind::Idle => self.ui.set_idle_view(Some(view.clone())),
+        }
+        Box::new(UiWindow {
+            view,
+            events,
+            announce: kind == WindowKind::Idle,
+        })
+    }
+    fn show(&mut self, app: &str) {
+        if let Some(v) = self.views.get(app) {
+            self.ui.open_app(v.clone());
+        }
+    }
+    fn hide(&mut self, app: &str) {
+        self.ui.close_app(app);
+    }
+    fn close(&mut self, app: &str, kind: WindowKind) {
+        match kind {
+            WindowKind::App => {
+                self.ui.close_app(app);
+                self.views.remove(app);
+            }
+            WindowKind::Idle => self.ui.set_idle_view(None),
+        }
+    }
+    fn idle_size(&self) -> Size {
+        let s = dphone_ui::idle_app_area(self.model);
+        Size {
+            width: s.width,
+            height: s.height,
+        }
+    }
+}

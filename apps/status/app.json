@@ -1,0 +1,10 @@
+{
+  "name": "status",
+  "id": "org.opendphone.status",
+  "displayName": { "fallback": "Status" },
+  "description": { "fallback": "Set your presence status" },
+  "type": "foreground",
+  "iconFile": "app_status",
+  "wasm": "status.wasm",
+  "capabilities": ["ui", "config", "pbx", "presence"]
+}

@@ -1,0 +1,101 @@
+//! The window an app draws into, as the app host sees it.  The UI toolkit
+//! (`dphone-ui`'s `appview`) is adapted to these traits by the integrator;
+//! the semantics follow that module: widgets are handles within one window,
+//! `None` is the window itself (the app content area), keys reach the app
+//! only when claimed, and softkeys belong to widgets.
+
+pub use crate::host::bindings::dphone::app::types::{
+    Align, Font, InputMode, ListItem, Metrics, Rect, Size, Skin, Softkey, WidgetKind,
+};
+use dphone_state::Key;
+use std::sync::Arc;
+
+/// Which of an app's two possible windows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum WindowKind {
+    /// The full app screen.
+    App,
+    /// The app's area on the idle screen (`hasIdle`).
+    Idle,
+}
+
+/// Something the user did in a window.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WindowEvent {
+    /// The window became the top screen.
+    Foreground,
+    /// The window stopped being the top screen.
+    Background,
+    /// A claimed key was pressed.
+    Key(Key),
+    Softkey(u32),
+    Highlighted {
+        widget: u32,
+        row: u32,
+    },
+    Activated {
+        widget: u32,
+        row: u32,
+    },
+    Changed {
+        widget: u32,
+        value: String,
+    },
+    Submitted {
+        widget: u32,
+        value: String,
+    },
+    /// Cancel was pressed and nothing claimed it.
+    CloseRequested,
+}
+
+/// One window of one app.  Calls on dead handles are ignored.
+pub trait AppWindow: Send {
+    fn metrics(&self) -> Metrics;
+    fn create(&mut self, kind: WidgetKind, parent: Option<u32>, bounds: Rect) -> u32;
+    fn destroy(&mut self, w: u32);
+    /// Destroys the children of `w` (`None`: everything in the window, and
+    /// resets the window's softkeys and key claims).
+    fn clear(&mut self, w: Option<u32>);
+    fn set_bounds(&mut self, w: u32, bounds: Rect);
+    fn set_visible(&mut self, w: u32, visible: bool);
+    fn set_focus(&mut self, w: Option<u32>);
+    fn set_text(&mut self, w: u32, text: &str);
+    fn set_align(&mut self, w: u32, align: Align);
+    fn set_font(&mut self, w: u32, font: Font);
+    fn set_wrap(&mut self, w: u32, wrap: bool);
+    fn set_items(&mut self, w: u32, items: &[ListItem]);
+    fn set_selected(&mut self, w: u32, index: u32);
+    fn selected(&self, w: u32) -> u32;
+    fn set_value(&mut self, w: u32, value: &str);
+    fn value(&self, w: u32) -> String;
+    fn set_input_mode(&mut self, w: u32, mode: InputMode);
+    fn set_max_length(&mut self, w: u32, max: u32);
+    fn set_image(&mut self, w: u32, name: &str);
+    fn set_softkeys(&mut self, w: Option<u32>, keys: &[Softkey]);
+    fn claim_keys(&mut self, w: Option<u32>, keys: &[Key]);
+    /// Next pending user event, if any.
+    fn poll_event(&mut self) -> Option<WindowEvent>;
+}
+
+/// The screen manager side: creates windows and moves them on and off the
+/// navigation stack.
+pub trait Shell: Send {
+    /// Creates a window for `app`.  It is not on screen until [`Shell::show`].
+    /// `wake` must be called (from any thread) whenever the window has a
+    /// new event to poll.
+    fn open(
+        &mut self,
+        app: &str,
+        kind: WindowKind,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> Box<dyn AppWindow>;
+    /// Puts the app's window on top of the navigation stack.
+    fn show(&mut self, app: &str);
+    /// Takes the app's window off the screen (the previous screen shows).
+    fn hide(&mut self, app: &str);
+    /// The window is gone for good.
+    fn close(&mut self, app: &str, kind: WindowKind);
+    /// Size of the idle-screen area offered to apps.
+    fn idle_size(&self) -> Size;
+}

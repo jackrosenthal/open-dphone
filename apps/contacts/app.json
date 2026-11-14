@@ -1,0 +1,10 @@
+{
+  "name": "contacts",
+  "id": "org.opendphone.contacts",
+  "displayName": { "fallback": "Contacts" },
+  "description": { "fallback": "Browse, search, and call your contacts" },
+  "type": "foreground",
+  "iconFile": "app_contacts",
+  "wasm": "contacts.wasm",
+  "capabilities": ["ui", "config", "calls", "presence"]
+}

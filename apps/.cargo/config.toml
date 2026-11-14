@@ -1,0 +1,7 @@
+# A 64 KiB stack instead of the 1 MiB default: each app instance's linear
+# memory starts around 200 KiB instead of 1.1 MiB.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=-zstack-size=65536"]
+
+[build]
+target = "wasm32-unknown-unknown"

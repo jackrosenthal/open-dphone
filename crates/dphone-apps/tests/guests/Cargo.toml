@@ -1,0 +1,16 @@
+# Guests used only by the host tests; never shipped.
+[workspace]
+resolver = "3"
+members = ["faulty"]
+
+[workspace.package]
+version = "3.0.0"
+edition = "2024"
+license = "GPL-2.0-or-later"
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

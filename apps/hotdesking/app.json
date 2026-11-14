@@ -1,0 +1,10 @@
+{
+  "name": "hotdesking",
+  "id": "org.opendphone.hotdesking",
+  "displayName": { "fallback": "Hot Desking" },
+  "description": { "fallback": "Log in to or out of this phone" },
+  "type": "foreground",
+  "iconFile": "app_hotdesking",
+  "wasm": "hotdesking.wasm",
+  "capabilities": ["ui", "hotdesk"]
+}
