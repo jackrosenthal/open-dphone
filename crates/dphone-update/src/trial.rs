@@ -116,6 +116,88 @@ pub fn begin(open_dir: &Path, installed: &Installed) -> io::Result<bool> {
     Ok(true)
 }
 
+/// Records a pending trial for an image that something else installed and
+/// selected (`dphone update arm-trial`).  Nothing in flash is changed.
+///
+/// What the record must say follows from what will happen, not from what
+/// is mounted now.  boot2 boots the bank `ctrl` selects, so that bank is
+/// the one on trial, and the bank to return to is the other one.  The
+/// bank named by `root=` on the kernel command line is evidence for which
+/// bank that is only when it differs from the selected one: a system
+/// booted from flash runs the bank it would return to.  When `root=` names
+/// the selected bank itself there are two readings that nothing here can
+/// tell apart: the phone was booted from flash and runs the selected bank
+/// (nothing is on trial), or its kernel was started from RAM with the root
+/// file system of the bank that is about to get its first boot through
+/// boot2 (the other bank is the one to return to).  The same holds when
+/// `root=` names neither bank.  Those cases are refused unless the caller
+/// names the bank to return to in `return_to`.
+///
+/// Also refused, because the record could then never do its work: no valid
+/// `ctrl` record, a `return_to` equal to the selected bank, either bank not
+/// bootable by boot2's rules, and stock firmware in the bank on trial
+/// (stock does not count trial boots; see [`begin`]).
+pub fn arm(mtd: &mut dyn Mtd, cmdline: &str, open_dir: &Path, return_to: Option<Bank>) -> Result<TrialRecord> {
+    let refused = |m: String| Err(UpdateError::Refused(m));
+    let st = crate::inspect::inspect(mtd, cmdline, None)?;
+    if !st.ctrl_valid {
+        return refused("ctrl holds no valid record, so the bank boot2 boots next is not a recorded choice".into());
+    }
+    let on_trial = st.next_boot;
+    let previous = match (return_to, st.running) {
+        (Some(p), _) if p == on_trial => {
+            return refused(format!(
+                "ctrl selects bank {on_trial:?} for the next boot, so that is the bank that would be on trial;                  it cannot also be the bank to return to (select the bank to try with 'dphone update switch-bank'                  first, which also removes any trial record, then arm the trial)"
+            ));
+        }
+        (Some(p), _) => p,
+        (None, Some(r)) if r != on_trial => r,
+        (None, Some(r)) => {
+            return refused(format!(
+                "ctrl selects bank {r:?} for the next boot, and root= on the kernel command line names the same                  bank.  If this system was booted from flash, it runs the selected bank and nothing is on trial:                  select the bank to try with 'dphone update switch-bank' first.  If this kernel was started from                  RAM and bank {r:?} gets its first boot through boot2 next, name the bank to return to:                  'dphone update arm-trial --return-to {}'",
+                bank_letter(r.other())
+            ));
+        }
+        (None, None) => {
+            return refused(format!(
+                "root= on the kernel command line names neither bank, so the bank to return to is not known;                  ctrl selects bank {on_trial:?} for the next boot: if that is the bank to try,                  'dphone update arm-trial --return-to {}'",
+                bank_letter(on_trial.other())
+            ));
+        }
+    };
+    for (bank, role) in [(on_trial, "on trial"), (previous, "to return to")] {
+        let b = &st.banks[bank::index(bank)];
+        if b.header.is_none() {
+            return refused(format!("bank {bank:?} ({role}) has no valid header in ctrl"));
+        }
+        if let Err(p) = &b.kernel {
+            return refused(format!("bank {bank:?} ({role}) is not bootable: {p}"));
+        }
+    }
+    if let Some(v) = &st.banks[bank::index(on_trial)].version
+        && crate::install::is_stock_version(v)
+    {
+        return refused(format!(
+            "bank {on_trial:?} holds stock firmware {v}, which does not count trial boots;              the record would be left for whatever image runs next"
+        ));
+    }
+    let record = TrialRecord {
+        previous_bank: previous,
+        trial_bank: Some(on_trial),
+        boots: 0,
+        max_boots: DEFAULT_MAX_BOOTS,
+    };
+    write_atomic(&record_path(open_dir), record.to_text().as_bytes())?;
+    Ok(record)
+}
+
+fn bank_letter(b: Bank) -> char {
+    match b {
+        Bank::A => 'a',
+        Bank::B => 'b',
+    }
+}
+
 /// Removes the record: the trial is confirmed (the main role is healthy),
 /// or abandoned.
 pub fn clear(open_dir: &Path) -> io::Result<()> {

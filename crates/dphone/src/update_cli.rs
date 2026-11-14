@@ -6,7 +6,7 @@
 //! accepts a stock EFF.
 
 use std::fs::File;
-use std::io::{BufReader, Read, Write};
+use std::io::{BufReader, Read};
 use std::path::Path;
 
 use dphone_hal::Mtd;
@@ -20,17 +20,22 @@ usage: dphone update status
        dphone update FILE.eff [--bank a|b] [--allow-unbootable-other]
        dphone update switch-bank a|b
        dphone update write-userdata IMAGE.jffs2
-       dphone update arm-trial
+       dphone update arm-trial [--return-to a|b]
   status       show both banks, the ctrl record, and what boot2 will boot next
   FILE.eff     install an image (Open DPhone or stock) into the bank that is
                not running, verify it, and select it for the next boot;
                reboot afterwards with 'dphone reboot'
   switch-bank  select a bank for the next boot without writing an image
                (refused unless that bank holds a bootable image)
-  arm-trial    record a trial boot of the bank that is not running, for an
-               image installed there by other means (e.g., by the stock
-               updater): Open DPhone returns to the running bank by itself
-               if it does not come up healthy within a few boots
+  arm-trial    record a trial boot of the bank 'ctrl' selects for the next
+               boot, for an image installed and selected by other means
+               (e.g., by the stock updater, or with switch-bank, which
+               must come first because it removes a trial record): Open
+               DPhone returns to the other bank by itself if the image
+               does not come up healthy within a few boots.  The bank to
+               return to is the running one (root= on the kernel command
+               line); when that is the selected bank itself or neither
+               bank (a kernel started from RAM), name it with --return-to
   write-userdata
                erase the unused 'userdata' partition and write a root file
                system image there, for booting a test kernel from RAM with
@@ -86,7 +91,11 @@ pub fn run(args: &[String]) -> i32 {
             None => Err(format!("unknown bank '{bank}' (a or b)")),
         },
         ["write-userdata", file] => write_userdata(file),
-        ["arm-trial"] => arm_trial(),
+        ["arm-trial"] => arm_trial(None),
+        ["arm-trial", "--return-to", bank] => match parse_bank(bank) {
+            Some(b) => arm_trial(Some(b)),
+            None => Err(format!("unknown bank '{bank}' (a or b)")),
+        },
         [file, rest @ ..] if !file.starts_with('-') && *file != "help" => install(file, rest),
         _ => {
             crate::err!("{USAGE}");
@@ -147,38 +156,15 @@ fn switch_bank(bank: Bank) -> Result<(), String> {
     Ok(())
 }
 
-fn arm_trial() -> Result<(), String> {
-    let mtd = open_mtd()?;
-    let parts = mtd.partitions().map_err(|e| e.to_string())?;
-    let running = dphone_update::bank::running_bank(&cmdline(), &parts)
-        .ok_or("cannot tell the running bank from root= on the kernel command line")?;
-    let other = match running {
-        Bank::A => Bank::B,
-        Bank::B => Bank::A,
-    };
-    let record = trial::TrialRecord {
-        previous_bank: running,
-        trial_bank: Some(other),
-        boots: 0,
-        max_boots: trial::DEFAULT_MAX_BOOTS,
-    };
-    let dir = open_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let path = trial::record_path(&dir);
-    let tmp = path.with_extension("tmp");
-    let write = || -> std::io::Result<()> {
-        let mut f = File::create(&tmp)?;
-        f.write_all(record.to_text().as_bytes())?;
-        f.sync_all()?;
-        std::fs::rename(&tmp, &path)?;
-        File::open(&dir)?.sync_all()
-    };
-    write().map_err(|e| format!("{}: {e}", path.display()))?;
+fn arm_trial(return_to: Option<Bank>) -> Result<(), String> {
+    let mut mtd = open_mtd()?;
+    let record = trial::arm(&mut mtd, &cmdline(), &open_dir(), return_to).map_err(|e| e.to_string())?;
+    let on_trial = record.trial_bank.unwrap_or(record.previous_bank.other());
     crate::outln!(
-        "trial recorded: bank {} must come up healthy within {} boots, or the phone returns to bank {}",
-        bank_name(other),
+        "trial recorded: boot2 boots bank {} next; it must come up healthy within {} boots, or the phone returns to bank {}",
+        bank_name(on_trial),
         record.max_boots,
-        bank_name(running)
+        bank_name(record.previous_bank)
     );
     Ok(())
 }

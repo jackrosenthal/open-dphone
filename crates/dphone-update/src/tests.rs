@@ -635,6 +635,87 @@ fn trial_and_rollback() {
     }
 }
 
+/// `arm-trial`: the bank on trial is the one `ctrl` selects, and the bank
+/// to return to is the other one; `root=` only confirms it.
+#[test]
+fn arm_trial_follows_ctrl_and_refuses_what_it_cannot_tell() {
+    let (kl, rl) = sizes();
+    let stock = image("D40", "2_9_26", 1, kl, rl);
+    let open = image("D40", "3_0_0", 3, kl, rl);
+    let refused = |r: crate::Result<trial::TrialRecord>| match r {
+        Err(UpdateError::Refused(m)) => m,
+        other => panic!("expected a refusal, got {other:?}"),
+    };
+    let armed = |nand: &MemNand, cmdline: &str, return_to: Option<Bank>| {
+        let dir = tempfile::tempdir().unwrap();
+        let mut m = nand.clone();
+        let before = nand.snapshot();
+        let r = trial::arm(&mut m, cmdline, dir.path(), return_to);
+        assert_eq!(nand.snapshot(), before, "arming never writes flash");
+        // What is returned is what is stored, or nothing is stored.
+        assert_eq!(trial::load(dir.path()), r.as_ref().ok().cloned());
+        r
+    };
+
+    // Booted from flash in A (stock there in this fixture is only a
+    // bootable image), B installed and selected by other means.
+    let nand = phone(Model::D40, &stock, &open, Bank::B);
+    let r = armed(&nand, CMD_A, None).unwrap();
+    assert_eq!((r.previous_bank, r.trial_bank, r.boots, r.max_boots), (Bank::A, Some(Bank::B), 0, 3));
+    // Saying the same thing explicitly changes nothing.
+    assert_eq!(armed(&nand, CMD_A, Some(Bank::A)).unwrap(), r);
+    // The selected bank cannot be the one to return to.
+    let m = refused(armed(&nand, CMD_A, Some(Bank::B)));
+    assert!(m.contains("cannot also be the bank to return to"), "{m}");
+
+    // The D40 bring-up: the kernel was started from RAM with root1 as its
+    // root, and ctrl then selected B.  root= names the bank on trial, so
+    // the old rule ("the running bank is the one to return to") would have
+    // recorded a return to B and a trial of A.
+    let m = refused(armed(&nand, CMD_B, None));
+    assert!(m.contains("--return-to a"), "{m}");
+    let r = armed(&nand, CMD_B, Some(Bank::A)).unwrap();
+    assert_eq!((r.previous_bank, r.trial_bank), (Bank::A, Some(Bank::B)));
+    // The record then does its work on the boot through boot2: the state
+    // shows the trial, and the rollback goes to A.
+    let dir = tempfile::tempdir().unwrap();
+    let mut m2 = nand.clone();
+    trial::arm(&mut m2, CMD_B, dir.path(), Some(Bank::A)).unwrap();
+    let store = Store::new(Model::D40);
+    trial::seed_state(&store, dir.path(), CMD_B, &m2);
+    assert_eq!(store.get::<Update>().trial, dphone_state::TrialBoot::Pending { boots_left: 3 });
+    trial::rollback(&mut m2, Model::D40, CMD_B, r.previous_bank).unwrap();
+    assert_eq!(boot2::simulate(&mut m2).unwrap().side, Bank::A);
+
+    // The same RAM boot before ctrl was switched: boot2 boots A next, which
+    // holds stock, and stock does not count trial boots.
+    let nand = phone(Model::D40, &stock, &open, Bank::A);
+    let m = refused(armed(&nand, CMD_B, None));
+    assert!(m.contains("stock firmware 2_9_26"), "{m}");
+
+    // Booted from flash in the selected bank: nothing is on trial.
+    let nand = phone(Model::D40, &open, &open, Bank::A);
+    let m = refused(armed(&nand, CMD_A, None));
+    assert!(m.contains("nothing is on trial") && m.contains("--return-to b"), "{m}");
+
+    // Root in neither bank (e.g., userdata): the bank to return to must be named.
+    let m = refused(armed(&nand, "root=/dev/mtdblock8 ro", None));
+    assert!(m.contains("names neither bank") && m.contains("--return-to b"), "{m}");
+    let r = armed(&nand, "root=/dev/mtdblock8 ro", Some(Bank::B)).unwrap();
+    assert_eq!((r.previous_bank, r.trial_bank), (Bank::B, Some(Bank::A)));
+
+    // A bank to return to that boot2 could not boot is no way back.
+    let nand = phone(Model::D40, &open, &open, Bank::B);
+    nand.load("k0", &[]);
+    let m = refused(armed(&nand, CMD_A, None));
+    assert!(m.contains("bank A (to return to) is not bootable"), "{m}");
+
+    // No valid ctrl record: nothing was selected.
+    let empty = MemNand::new();
+    let m = refused(armed(&empty, CMD_A, Some(Bank::B)));
+    assert!(m.contains("no valid record"), "{m}");
+}
+
 #[test]
 fn select_bank_refuses_an_unbootable_bank() {
     let (kl, rl) = sizes();
