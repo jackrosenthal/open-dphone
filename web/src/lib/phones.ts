@@ -320,22 +320,15 @@ function oldFamily(v: Old): Panel {
   // Bottom edge: one quadratic from (xl, yb) to (xr, yb), bowed by `bow`.
   // The curve runs between the rounded bottom corners.
   const cl = xl + 20;
-  const cr = xr - 20;
-  const bottomY = (x: number) => {
-    const t = (x - cl) / (cr - cl);
-    return yb + 4 * bow * t * (1 - t);
-  };
-  // The same curve from `xa` back to `xl` (de Casteljau split), for the
-  // body, which ends where the rapid-dial section begins.
+  // On the D50 and D70 the curve belongs to the main body alone and ends
+  // where the rapid-dial section begins.
+  const cr = v.wing ? hr : xr - 20;
+  // The bottom edge from `xa` back to the left corner: a quadratic bowed
+  // by `bow` between the corners.
   const bottomTo = (xa: number) => {
     const t = (xa - cl) / (cr - cl);
     const cy = yb + 2 * bow * t;
     return `Q${(cl + xa) / 2} ${cy} ${cl} ${yb}Q${xl} ${yb} ${xl + 1.3} ${yb - 20}`;
-  };
-  const bottomFrom = (xa: number) => {
-    const t = (xa - cl) / (cr - cl);
-    const cy = yb + 2 * bow * (1 - t);
-    return `Q${xr} ${yb} ${cr} ${yb}Q${(xa + cr) / 2} ${cy} ${xa} ${bottomY(xa)}`;
   };
   const shapes: Shape[] = [
     // Cradle wing under the handset.
@@ -348,19 +341,22 @@ function oldFamily(v: Old): Panel {
     // Body.
     {
       d: v.wing
-        ? `M306 212H${hr}V${bottomY(hr)}${bottomTo(hr)}L284 236Q286 212 306 212Z`
+        ? `M306 212H${hr}V${yb}${bottomTo(hr)}L284 236Q286 212 306 212Z`
         : `M306 212H${right - 40}Q${right - 20} 212 ${right - 18} 236L${xr - 1.3} ${yb - 20}Q${xr} ${yb} ${cr} ${yb}${bottomTo(cr)}L284 236Q286 212 306 212Z`,
       fill: CHARCOAL,
     },
   ];
-  // Rapid-dial section: one black surface joined edge to edge to the
-  // right of the silver housing, holding ten keys beside a label window
-  // (D50) or a second display (D70).
+  // Rapid-dial section: part of the body's own surface (same color),
+  // joined edge to edge to the right of the silver housing, holding ten
+  // keys beside a label window (D50) or a second display (D70).  Its
+  // bottom edge is straight: from the end of the body's curve it rises
+  // to the right, to a rounded bottom-right corner.
   let side: Panel["side"];
   let vbRight = right + 28;
   if (v.wing) {
     const wx = hr;
-    shapes.push({ d: `M${wx} 212H${xr - 24}Q${xr - 2} 212 ${xr - 2} 236L${xr - 1.3} ${yb - 20}${bottomFrom(wx)}Z`, fill: "#17181a", gloss: true });
+    const rise = 16;
+    shapes.push({ d: `M${wx} 212H${xr - 24}Q${xr - 2} 212 ${xr - 2} 236L${xr - 1.3} ${yb - rise - 22}Q${xr} ${yb - rise} ${xr - 22} ${yb - rise + 2}L${wx} ${yb}Z`, fill: CHARCOAL });
     const kx = wx + 160;
     if (v.wing === "paper") {
       // D50: ten label rows behind a window, a key beside each row.
