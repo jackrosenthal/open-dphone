@@ -38,7 +38,7 @@ const LEASED_IP: Ipv4Addr = Ipv4Addr::new(10, 99, 0, 50);
 /// phone).  Longer than any bring-up here takes: with the default settings
 /// that is the wait for LLDP-MED, the active discovery after it, and the
 /// address check, about 20 s.
-const FALLBACK: Duration = Duration::from_secs(32);
+const FALLBACK: Duration = Duration::from_secs(24);
 /// An experimental EtherType, for frames that are nobody's protocol.
 const ETH_TEST: u16 = 0x88b5;
 const ETH_PAE: u16 = 0x888e;
@@ -349,40 +349,84 @@ async fn run(mut nl: Netlink) {
     assert!(frame_crosses(pcpeer, sw, ETH_TEST, pc_dst).await);
     println!("pcport: the hold file and 'dphone net bridge' ok");
 
-    // --- The address is lost while bridged: back to the plain arrangement -
-    // The fault to survive: the bridged arrangement passes nothing, the
-    // plain one works.  Here the DHCP server stops answering for as long as
-    // the bridge exists.
+    // --- An outage, then the network comes back ---------------------------
+    // Nothing answers for longer than the fallback time (a cable out, a
+    // DHCP server down); the settings are not at fault.
     lease_secs.store(6, Ordering::Relaxed);
     // A new bring-up, for a new (short) lease.
     dphone(&ctx, &["net", "plain"]).await;
     wait_kernel(&mut nl, "the plain arrangement by command", Duration::from_secs(30), standalone_up).await;
     dphone(&ctx, &["net", "configured"]).await;
     wait_kernel(&mut nl, "a short lease", Duration::from_secs(30), bridged_up).await;
+    deaf.store(true, Ordering::Relaxed);
+    let lost = Instant::now();
+    wait_kernel(&mut nl, "the lease to run out", Duration::from_secs(20), |k| k.address_on.is_none()).await;
+    assert!(kernel(&mut nl).await.bridge, "the bridge stays while the fallback time runs");
+    wait_kernel(&mut nl, "the fallback to the plain arrangement", FALLBACK + Duration::from_secs(40), |k| !k.bridge && !k.pc_up).await;
+    let took = lost.elapsed();
+    assert!(took >= FALLBACK, "fell back after {took:?}, before the fallback time");
+    let status = dphone(&ctx, &["net", "status"]).await;
+    assert!(status.contains("(plain)") && status.contains("tried once more"), "{status}");
+    // Without an address the plain arrangement stays.
+    sleep(Duration::from_secs(5)).await;
+    let k = kernel(&mut nl).await;
+    assert!(!k.bridge && k.address_on.is_none(), "{k:?}");
+    // The network answers again: the plain arrangement gets its address,
+    // and the phone returns to the settings by itself.
+    deaf.store(false, Ordering::Relaxed);
+    wait_kernel(&mut nl, "the return to the bridged arrangement", Duration::from_secs(40), bridged_up).await;
+    assert!(frame_crosses(pcpeer, sw, ETH_TEST, pc_dst).await, "PC to LAN after the outage");
+    assert!(frame_crosses(sw, pcpeer, ETH_TEST, pc_dst).await, "LAN to PC after the outage");
+    sleep(Duration::from_millis(500)).await;
+    let status = dphone(&ctx, &["net", "status"]).await;
+    assert!(status.contains("PC jack bridged") && !status.contains("fallback:"), "{status}");
+    println!("pcport: outage ({took:?} to the fallback), then back to the bridged arrangement by itself ok");
+
+    // --- Settings that are themselves at fault: one retry, then plain -----
+    // The bridged arrangement passes nothing and the plain one works: the
+    // DHCP server stops answering for as long as the bridge exists.
+    let bridges = Arc::new(AtomicU32::new(0));
     let watcher = {
-        let deaf = deaf.clone();
+        let (deaf, bridges) = (deaf.clone(), bridges.clone());
         tokio::spawn(async move {
             let mut nl = Netlink::new().unwrap();
+            let mut was = true;
             loop {
                 let bridge = nl.link_by_name("br0").await.unwrap().is_some();
                 deaf.store(bridge, Ordering::Relaxed);
+                if bridge && !was {
+                    bridges.fetch_add(1, Ordering::Relaxed);
+                }
+                was = bridge;
                 sleep(Duration::from_millis(50)).await;
             }
         })
     };
-    let lost = Instant::now();
-    wait_kernel(&mut nl, "the lease to run out", Duration::from_secs(20), |k| k.address_on.is_none()).await;
-    assert!(kernel(&mut nl).await.bridge, "the bridge stays while the fallback time runs");
-    wait_kernel(&mut nl, "the fallback to the plain arrangement", FALLBACK + Duration::from_secs(40), standalone_up).await;
-    let took = lost.elapsed();
-    assert!(took >= FALLBACK, "fell back after {took:?}, before the fallback time");
-    let status = dphone(&ctx, &["net", "status"]).await;
-    assert!(status.contains("(plain)") && status.contains("PC jack off"), "{status}");
-    assert!(!frame_crosses(pcpeer, sw, ETH_TEST, pc_dst).await);
-    // It stays there: no return to the arrangement that failed.
-    sleep(Duration::from_secs(8)).await;
+    wait_kernel(&mut nl, "the first fallback", FALLBACK + Duration::from_secs(40), |k| !k.bridge).await;
+    // The plain arrangement gets an address (for a moment), so the
+    // settings get their second try, which fails the same way.
+    let end = Instant::now() + Duration::from_secs(20);
+    while bridges.load(Ordering::Relaxed) == 0 {
+        assert!(Instant::now() < end, "the settings were not tried again; the kernel has {:?}", kernel(&mut nl).await);
+        sleep(Duration::from_millis(50)).await;
+    }
+    assert!(dphone(&ctx, &["net", "status"]).await.contains("second try"));
+    let second = Instant::now();
+    wait_kernel(&mut nl, "the second fallback", FALLBACK + Duration::from_secs(40), standalone_up).await;
+    assert!(second.elapsed() >= FALLBACK - Duration::from_secs(1), "the second try was cut short: {:?}", second.elapsed());
+    // This time it stays, address and all: no third try.
+    sleep(Duration::from_secs(12)).await;
     assert!(standalone_up(&kernel(&mut nl).await), "the plain arrangement should stay");
-    println!("pcport: fallback to the plain arrangement after {took:?} without an address ok");
+    assert_eq!(bridges.load(Ordering::Relaxed), 1, "the settings must be tried again exactly once");
+    let status = dphone(&ctx, &["net", "status"]).await;
+    assert!(status.contains("(plain)") && status.contains("twice"), "{status}");
+    assert!(!frame_crosses(pcpeer, sw, ETH_TEST, pc_dst).await);
+    // A settings change that leaves the network settings as they were
+    // does not end it either.
+    set(&[("time_zone", "America/Chicago")]);
+    sleep(Duration::from_secs(3)).await;
+    assert!(standalone_up(&kernel(&mut nl).await), "an unrelated settings change must not end the fallback");
+    println!("pcport: settings that get no address are tried again once, then the plain arrangement stays ok");
 
     // --- Told otherwise: the settings are applied again -------------------
     watcher.abort();
@@ -390,6 +434,7 @@ async fn run(mut nl: Netlink) {
     lease_secs.store(600, Ordering::Relaxed);
     dphone(&ctx, &["net", "configured"]).await;
     wait_kernel(&mut nl, "the bridge after 'dphone net configured'", Duration::from_secs(30), bridged_up).await;
+    assert!(!dphone(&ctx, &["net", "status"]).await.contains("fallback:"));
     println!("pcport: 'dphone net configured' returns to the settings");
     server.abort();
 }

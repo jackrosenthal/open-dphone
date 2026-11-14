@@ -12,8 +12,13 @@
 //! - Whatever configuration is in force, if the phone has no address
 //!   [`FALLBACK_SECS`] after it was applied (or after the address was
 //!   lost), the manager is switched to the plainest configuration
-//!   (standalone `lan`, DHCP, no VLAN, PC jack down) and stays there until
-//!   told otherwise.
+//!   (standalone `lan`, DHCP, no VLAN, PC jack down).  Once that one has an
+//!   address (the network answers again: a cable back in, a DHCP server
+//!   back up), the settings are tried once more.  If they go without an
+//!   address for the same time again, the plain configuration stays until
+//!   told otherwise (`dphone net configured`, a settings change, a restart
+//!   of the main role, or a reboot), so settings that are themselves at
+//!   fault cannot loop.
 
 use std::net::Ipv4Addr;
 use std::sync::Arc;
@@ -38,6 +43,22 @@ pub const FALLBACK_SECS: u64 = 150;
 /// Flag file: keep the PC jack off (not bridged), whatever the settings say.
 pub fn bridge_hold_flag(ctx: &Context) -> std::path::PathBuf {
     ctx.paths.open_dir().join("net-no-bridge")
+}
+
+/// Where the automatic fallback stands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Fallback {
+    /// The arrangement in force was applied on purpose (or the settings
+    /// have had an address since).
+    None,
+    /// Plain, after the settings got no address.  They are tried once more
+    /// when the plain arrangement has an address.
+    Waiting,
+    /// The settings, tried again after [`Fallback::Waiting`].
+    Retrying,
+    /// Plain, after the second try failed as well: stays until told
+    /// otherwise.
+    Final,
 }
 
 enum Cmd {
@@ -332,6 +353,9 @@ async fn run(
     *resolver_slot.lock().unwrap() = Some(manager.resolver());
     let mut state_rx = manager.state();
     let mut active = wanted;
+    // The arrangement the settings last gave, which a fallback leaves.
+    let mut last_configured = active.clone();
+    let mut fb = Fallback::None;
     let mut deadline = (active != plain).then(|| Instant::now() + fallback);
     let mut was_up = false;
     loop {
@@ -373,6 +397,30 @@ async fn run(
                     ctx.health.satisfy("net");
                     ctx.store.set_health(Subsystem::Net, HealthStatus::Ok);
                     deadline = None;
+                    match fb {
+                        Fallback::Waiting if !ctx.safe => {
+                            // The network answers: the outage may have
+                            // been its fault, not the settings'.
+                            active = configured(&ctx, config.as_ref(), mac);
+                            last_configured = active.clone();
+                            if active == plain {
+                                fb = Fallback::None;
+                            } else {
+                                fb = Fallback::Retrying;
+                                info!(
+                                    "net: the plain arrangement has an address, so the network answers; trying the settings once more ({})",
+                                    describe(&active)
+                                );
+                                deadline = Some(Instant::now() + fallback);
+                                manager.reconfigure(active.clone()).await;
+                            }
+                        }
+                        Fallback::Retrying if active != plain => {
+                            info!("net: the settings have an address again ({})", describe(&active));
+                            fb = Fallback::None;
+                        }
+                        _ => {}
+                    }
                 } else if !up && was_up {
                     warn!("net: address lost");
                     if active != plain {
@@ -388,7 +436,19 @@ async fn run(
                 if manager.snapshot().has_address() {
                     continue;
                 }
-                warn!("net: no address after {fallback_secs} s with {}; falling back to plain DHCP on lan", describe(&active));
+                if fb == Fallback::Retrying {
+                    fb = Fallback::Final;
+                    warn!(
+                        "net: no address after {fallback_secs} s with {} on the second try either; falling back to plain DHCP on lan and staying there until 'dphone net configured', a settings change, or a restart",
+                        describe(&active)
+                    );
+                } else {
+                    fb = Fallback::Waiting;
+                    warn!(
+                        "net: no address after {fallback_secs} s with {}; falling back to plain DHCP on lan (the settings are tried once more when that has an address)",
+                        describe(&active)
+                    );
+                }
                 active = plain.clone();
                 manager.reconfigure(active.clone()).await;
             }
@@ -396,7 +456,7 @@ async fn run(
                 let Some(cmd) = cmd else { return };
                 match cmd {
                     Cmd::Show(reply) => {
-                        let _ = reply.send(show(&manager.snapshot(), &active, &plain, deadline));
+                        let _ = reply.send(show(&manager.snapshot(), &active, &plain, deadline, fb));
                     }
                     Cmd::SyncTime => manager.sync_time().await,
                     Cmd::Browse(window, reply) => {
@@ -409,13 +469,25 @@ async fn run(
                     }
                     Cmd::Plain(reply) => {
                         active = plain.clone();
+                        fb = Fallback::None;
                         deadline = None;
                         manager.reconfigure(active.clone()).await;
                         let _ = reply.send("plain configuration applied\n".into());
                     }
                     Cmd::Changed => {
                         let now = configured(&ctx, config.as_ref(), mac);
-                        if now != active {
+                        // In a fallback the plain arrangement is in force
+                        // on purpose: only settings that differ from the
+                        // ones that failed end it.
+                        let differs = match fb {
+                            Fallback::Waiting | Fallback::Final => now != last_configured,
+                            Fallback::None | Fallback::Retrying => now != active,
+                        };
+                        if differs {
+                            if fb != Fallback::None {
+                                info!("net: the settings changed; the fallback ends");
+                                fb = Fallback::None;
+                            }
                             let reasons = active.restart_reasons(&now);
                             let restart = !reasons.is_empty();
                             if restart {
@@ -428,6 +500,7 @@ async fn run(
                                 info!("net: network settings changed; applying in place: {}", describe(&now));
                             }
                             active = now;
+                            last_configured = active.clone();
                             if restart {
                                 deadline = (active != plain).then(|| Instant::now() + fallback);
                             }
@@ -436,6 +509,8 @@ async fn run(
                     }
                     Cmd::Configured(reply) => {
                         active = configured(&ctx, config.as_ref(), mac);
+                        last_configured = active.clone();
+                        fb = Fallback::None;
                         deadline = (active != plain).then(|| Instant::now() + fallback);
                         manager.reconfigure(active.clone()).await;
                         let _ = reply.send(format!("applied: {}\n", describe(&active)));
@@ -468,6 +543,7 @@ async fn run(
                         };
                         next.pc_port = if on { PcPort::Bridged } else { PcPort::Disabled };
                         active = next;
+                        fb = Fallback::None;
                         deadline = (active != plain).then(|| Instant::now() + fallback);
                         manager.reconfigure(active.clone()).await;
                         text.push_str(&format!(
@@ -501,7 +577,7 @@ fn describe(cfg: &NetConfig) -> String {
     format!("{ip}, {vlan}, {pc}")
 }
 
-fn show(state: &NetState, active: &NetConfig, plain: &NetConfig, deadline: Option<Instant>) -> String {
+fn show(state: &NetState, active: &NetConfig, plain: &NetConfig, deadline: Option<Instant>, fb: Fallback) -> String {
     let mut t = String::new();
     t.push_str(&format!("config:    {}{}\n", describe(active), if active == plain { " (plain)" } else { "" }));
     if let Some(d) = deadline {
@@ -509,6 +585,12 @@ fn show(state: &NetState, active: &NetConfig, plain: &NetConfig, deadline: Optio
             "fallback:  to plain in {} s unless an address arrives\n",
             d.saturating_duration_since(Instant::now()).as_secs()
         ));
+    }
+    match fb {
+        Fallback::None => {}
+        Fallback::Waiting => t.push_str("fallback:  plain after the settings got no address; they are tried once more when this has an address\n"),
+        Fallback::Retrying => t.push_str("fallback:  the settings are on their second try\n"),
+        Fallback::Final => t.push_str("fallback:  plain after the settings got no address twice; stays until 'dphone net configured', a settings change, or a restart\n"),
     }
     t.push_str(&format!("phase:     {}\n", words(&state.phase)));
     t.push_str(&format!("hostname:  {}\n", active.hostname));
