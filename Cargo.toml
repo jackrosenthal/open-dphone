@@ -7,6 +7,7 @@ members = [
     "crates/app-sdk",
     "crates/dphone",
     "crates/dphone-apps",
+    "crates/dphone-bt",
     "crates/dphone-config",
     "crates/dphone-hal",
     "crates/dphone-image",

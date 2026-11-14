@@ -1046,6 +1046,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dphone-bt"
+version = "3.0.0"
+dependencies = [
+ "libc",
+ "log",
+]
+
+[[package]]
 name = "dphone-config"
 version = "3.0.0"
 dependencies = [
