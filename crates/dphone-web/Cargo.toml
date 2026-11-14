@@ -41,6 +41,9 @@ x509-cert = { version = "0.2", default-features = false, features = ["builder", 
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8", "pem", "std"] }
 sha2 = { version = "0.10", default-features = false }
 base64 = { version = "0.22", default-features = false, features = ["std"] }
+# `/metrics`: the Prometheus project's own client library, used for its
+# OpenMetrics text encoder (measured at about 12 KiB on the ARM target).
+prometheus-client = "0.24"
 # The web terminal: pseudo-terminals, and signals to the shell's process group.
 libc = "0.2"
 

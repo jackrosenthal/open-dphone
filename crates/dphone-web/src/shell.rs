@@ -381,6 +381,11 @@ impl Shells {
         Shells { host, sessions: Mutex::new(HashMap::new()) }
     }
 
+    /// Open terminals.
+    pub fn count(&self) -> usize {
+        self.sessions.lock().unwrap().len()
+    }
+
     /// Starts a shell for a web session.  Must run inside the tokio
     /// runtime (the terminal is registered with its reactor).
     pub fn open(&self, owner: &str, size: ShellSize) -> Result<Arc<Session>, OpenError> {

@@ -101,6 +101,13 @@ impl Sessions {
         }
     }
 
+    /// Sessions that have not idled out.
+    pub fn count(&self) -> usize {
+        let g = self.inner.lock().unwrap();
+        let now = Instant::now();
+        g.sessions.values().filter(|s| now.duration_since(s.last_seen) < self.idle).count()
+    }
+
     pub fn remove(&self, token: &str) {
         self.inner.lock().unwrap().sessions.remove(token);
     }

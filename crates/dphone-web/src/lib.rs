@@ -43,6 +43,16 @@
 //!
 //! Every RPC and upload endpoint needs a session, except logging in.  The
 //! static frontend files are served without one (they hold no data).
+//!
+//! `GET /metrics` is a Prometheus scrape endpoint, also served without a
+//! session, on both listeners.  It carries no names, numbers, addresses, or
+//! secrets, and it renders at most once a second however often it is
+//! asked.  The metric list is in the `metrics` module's source
+//! (`src/metrics.rs`); in brief: build information, uptime, health per
+//! subsystem, network link and address state, registration state per
+//! account index, calls in progress and ended, RTP totals, provisioning,
+//! configuration, firmware bank and trial state, apps, flash error
+//! counters, memory, load, and the usual `process_*` figures.
 
 mod assets;
 mod auth;
@@ -50,6 +60,7 @@ mod backup;
 pub mod rpc;
 mod convert;
 mod http;
+mod metrics;
 mod png;
 mod services;
 mod shell;
@@ -281,6 +292,8 @@ pub(crate) struct App {
     pub ssh: Option<Arc<dyn SshControl>>,
     pub uploads: Mutex<HashMap<String, PendingUpload>>,
     pub started: std::time::Instant,
+    /// What `/metrics` keeps between scrapes.
+    pub metrics: metrics::Metrics,
     /// The Connect services as a tower service.
     pub rpc: connectrpc::ConnectRpcService,
 }
@@ -348,6 +361,7 @@ impl WebServer {
             Box::new(FileFirmwareSink::new(self.options.upload_dir.clone()))
         });
         let backup = self.backup.unwrap_or_else(|| Box::new(NvdataBackup::new(nv.clone())));
+        let metrics = metrics::Metrics::new(&self.store, nv.root().to_path_buf());
         let keys = self.keys.unwrap_or_else(|| Box::new(NvdataKeyStore::new(nv)));
         let http = match self.options.http {
             Some(addr) => Some(http::listen(addr)?),
@@ -369,6 +383,7 @@ impl WebServer {
             ssh: self.ssh,
             uploads: Mutex::new(HashMap::new()),
             started: std::time::Instant::now(),
+            metrics,
             rpc: connectrpc::ConnectRpcService::new(services::router()).with_limits(
                 connectrpc::Limits::default()
                     .with_max_request_body_size(http::MAX_RPC_BODY)
@@ -461,6 +476,7 @@ impl BoundServer {
             r = plain => r,
             r = secure => r,
             _ = beat => Ok(()),
+            _ = app.metrics.run() => Ok(()),
         }
     }
 }

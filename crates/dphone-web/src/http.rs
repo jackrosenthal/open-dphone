@@ -137,6 +137,8 @@ async fn handle(app: Arc<App>, peer: IpAddr, secure: bool, req: Request<Incoming
 async fn route(app: Arc<App>, peer: IpAddr, secure: bool, req: Request<Incoming>) -> Response<Body> {
     let path = req.uri().path().to_owned();
     match *req.method() {
+        // Open to any scraper on the network by design: see `metrics`.
+        Method::GET | Method::HEAD if path == "/metrics" => crate::metrics::respond(&app, &req),
         Method::GET | Method::HEAD => static_file(&req, &path),
         Method::POST => {
             if !same_origin(&req) {
