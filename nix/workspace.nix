@@ -1,135 +1,137 @@
-# The cargo workspace: `dphone` for the phone, `dphone-image` for the build
-# machine, and the test and lint checks.
+# The cargo workspace: `dphone` for the phone, the two host tools
+# (`dphone-image`, `dphone-apps-build`), and the test and lint checks.
+#
+# Each product is built in two derivations (crane).  The first compiles only
+# the third-party dependencies, from Cargo.lock and the manifests alone, so
+# it is rebuilt only when those change.  The second compiles the workspace's
+# own crates on top of it.  A change to our code therefore recompiles our
+# crates and relinks; it does not recompile the dependencies.
 {
   lib,
-  rustPlatform,
+  craneLib,
   rust,
   protobuf,
   webDist ? null, # built frontend, embedded by dphone-web (DPHONE_WEB_DIST)
 }:
 let
   root = ../.;
-  optionalPath = p: lib.optional (builtins.pathExists p) p;
   src = lib.fileset.toSource {
     inherit root;
-    fileset = lib.fileset.unions (
-      [
-        (root + "/Cargo.toml")
-        (root + "/Cargo.lock")
-        (root + "/.cargo")
-        (root + "/crates")
-        (root + "/xtask")
-      ]
-      ++ optionalPath (root + "/proto")
+    fileset = lib.fileset.unions [
+      (root + "/Cargo.toml")
+      (root + "/Cargo.lock")
+      (root + "/.cargo")
+      (root + "/crates")
+      (root + "/xtask")
+      # Service definitions, read by the build scripts of dphone-config and
+      # dphone-web.
+      (root + "/proto")
       # Fonts and SVG artwork, rasterized by dphone-ui's build script.
-      ++ optionalPath (root + "/assets")
-    );
-  };
-  cargoDeps = rustPlatform.importCargoLock {
-    lockFile = root + "/Cargo.lock";
-    allowBuiltinFetchGit = true;
+      (root + "/assets")
+    ];
   };
   version = (lib.importTOML (root + "/Cargo.toml")).workspace.package.version;
-  hasCrate = name: builtins.pathExists (root + "/crates/${name}/Cargo.toml");
 
-  build =
+  common = {
+    inherit src version;
+    strictDeps = true;
+    doCheck = false;
+    nativeBuildInputs = [ protobuf ];
+    # The hardening wrapper flags are for the native C compiler; they must
+    # not leak into the ARM link, which rust-lld does by itself.
+    hardeningDisable = [ "all" ];
+  };
+
+  # The workspace profile (fat LTO, one codegen unit) is for the phone.  The
+  # host tools only run during the build, so they are built the quick way.
+  hostEnv = {
+    CARGO_PROFILE_RELEASE_LTO = "off";
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "16";
+    CARGO_PROFILE_RELEASE_OPT_LEVEL = "2";
+  };
+
+  # args.cargoExtraArgs selects the packages; the same selection is used for
+  # the dependency layer so that feature unification matches.
+  twoStage =
     args:
-    rust.buildCargo (
-      {
-        inherit src cargoDeps version;
-        nativeBuildInputs = [ protobuf ];
-        env = lib.optionalAttrs (webDist != null) { DPHONE_WEB_DIST = "${webDist}"; };
-      }
-      // args
-    );
+    let
+      full = common // args;
+      cargoArtifacts = craneLib.buildDepsOnly (full // { pname = "${args.pname}-deps"; });
+    in
+    {
+      deps = cargoArtifacts;
+      inherit full;
+      package = craneLib.buildPackage (full // { inherit cargoArtifacts; });
+    };
+
+  phone = twoStage (
+    {
+      pname = "dphone";
+      cargoExtraArgs = "--locked -p dphone";
+      dontStrip = true;
+      dontPatchELF = true;
+    }
+    // rust.armEnv
+    // lib.optionalAttrs (webDist != null) { DPHONE_WEB_DIST = "${webDist}"; }
+  );
+
+  imageTool = twoStage (
+    {
+      pname = "dphone-image";
+      cargoExtraArgs = "--locked -p dphone-image";
+    }
+    // hostEnv
+  );
+
+  appsTool = twoStage (
+    {
+      pname = "dphone-apps-build";
+      cargoExtraArgs = "--locked -p dphone-apps --features build-tool --bin dphone-apps-build";
+    }
+    // hostEnv
+  );
+
+  checksStage = twoStage ({
+    pname = "dphone-checks";
+    cargoExtraArgs = "--locked --workspace";
+    # Debug profile: the checks do not ship.
+    CARGO_PROFILE = "dev";
+  });
 in
 {
-  inherit
-    src
-    cargoDeps
-    version
-    hasCrate
-    ;
+  inherit src version;
 
   # The firmware binary: static, ARMv6 soft-float.
-  dphone = build {
-    pname = "dphone";
-    target = rust.armTarget;
-    commands = [
-      [
-        "build"
-        "--release"
-        "-p"
-        "dphone"
-      ]
-    ];
-    bins = [ "dphone" ];
-  };
+  dphone = phone.package;
 
-  # Host tool: componentizes and precompiles the WebAssembly apps.
-  dphone-apps-build = build {
-    pname = "dphone-apps-build";
-    commands = [
-      [
-        "build"
-        "--release"
-        "-p"
-        "dphone-apps"
-        "--features"
-        "build-tool"
-        "--bin"
-        "dphone-apps-build"
-      ]
-    ];
-    bins = [ "dphone-apps-build" ];
-  };
-
-  # Host tool: EFF, OTA, kernel image, and rootfs assembly.
-  dphone-image = build {
-    pname = "dphone-image";
-    commands = [
-      [
-        "build"
-        "--release"
-        "-p"
-        "dphone-image"
-      ]
-    ];
-    bins = [ "dphone-image" ];
-  };
+  # Host tools.  `dphone-image`: EFF, OTA, kernel image, and JFFS2.
+  # `dphone-apps-build`: componentizes and precompiles the WebAssembly apps.
+  dphone-image = imageTool.package;
+  dphone-apps-build = appsTool.package;
 
   # Unit and integration tests of every crate, on the build machine.
-  tests = build {
-    pname = "dphone-tests";
-    commands = [
-      [
-        "test"
-        "--workspace"
-      ]
-    ];
-  };
+  tests = craneLib.cargoTest (
+    checksStage.full
+    // {
+      cargoArtifacts = checksStage.deps;
+      doCheck = true;
+    }
+  );
 
-  clippy = build {
-    pname = "dphone-clippy";
-    commands = [
-      [
-        "clippy"
-        "--workspace"
-        "--all-targets"
-        "--"
-        "-D"
-        "warnings"
-      ]
-      [
-        "clippy"
-        "-p"
-        "dphone"
-        "--target"
-        rust.armTarget
-        "--"
-        "-D"
-        "warnings"
-      ]
-    ];
+  clippy = craneLib.cargoClippy (
+    checksStage.full
+    // {
+      cargoArtifacts = checksStage.deps;
+      cargoClippyExtraArgs = "--all-targets -- -D warnings";
+    }
+  );
+
+  # Dependency layers, exported so they can be kept alive across garbage
+  # collection.
+  deps = {
+    phone = phone.deps;
+    image-tool = imageTool.deps;
+    apps-tool = appsTool.deps;
+    checks = checksStage.deps;
   };
 }

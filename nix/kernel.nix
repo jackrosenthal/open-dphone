@@ -5,7 +5,8 @@
 # Output layout:
 #   zImage                       XZ-compressed kernel, no DTB appended
 #   dtbs/<board>.dtb             the seven board devicetrees
-#   lib/modules/<release>/...    stripped modules plus the depmod indexes
+#   lib/modules/<release>/...    stripped modules; no depmod indexes (the
+#                                init role carries its own load list)
 #   config                       the resolved .config
 {
   lib,
@@ -18,7 +19,6 @@
   flex,
   perl,
   xz,
-  kmod,
   openssl,
   kernelSrc, # path: the repository's kernel/ directory
   defconfig ? "bcmring_tiny_defconfig",
@@ -39,19 +39,39 @@ let
     "CROSS_COMPILE=arm-none-eabi-"
     "O=build"
     "HOSTCC=cc"
-    "KBUILD_BUILD_USER=open-dphone"
-    "KBUILD_BUILD_HOST=nix"
+    "KBUILD_BUILD_USER=dphone"
+    "KBUILD_BUILD_HOST=open-dphone"
+    # Fixed release string (7.3.0), so the module directory has one name.
+    "LOCALVERSION="
     "KBUILD_BUILD_TIMESTAMP=1970-01-01"
   ];
+  src = fetchurl {
+    url = "mirror://kernel/linux/kernel/v7.x/linux-${version}.tar.xz";
+    hash = "sha256-hzY8JPEOBjIes2J2VSEJTpRHH2v/i84taz5A858ASVM=";
+  };
+
+  applyPort = ''
+    cp -r --no-preserve=mode ${kernelSrc + "/files"}/. .
+    cp ${kernelSrc + "/configs"}/* arch/arm/configs/
+  '';
+
+  # The v7.3 tree with the port applied and nothing built: what a developer
+  # copies over a git checkout of v7.3 to work on the port (kernel/README.md).
+  source = stdenv.mkDerivation {
+    pname = "linux-bcmring-source";
+    inherit version src patches;
+    postPatch = applyPort;
+    dontConfigure = true;
+    dontBuild = true;
+    dontFixup = true;
+    installPhase = "cp -r . $out";
+  };
 in
 stdenv.mkDerivation {
   pname = "linux-bcmring";
   inherit version patches makeFlags;
 
-  src = fetchurl {
-    url = "mirror://kernel/linux/kernel/v7.x/linux-${version}.tar.xz";
-    hash = "sha256-hzY8JPEOBjIes2J2VSEJTpRHH2v/i84taz5A858ASVM=";
-  };
+  inherit src;
 
   depsBuildBuild = [ buildPackages.stdenv.cc ];
   nativeBuildInputs = [
@@ -62,7 +82,6 @@ stdenv.mkDerivation {
     flex
     perl
     xz
-    kmod
     openssl
   ];
 
@@ -70,9 +89,7 @@ stdenv.mkDerivation {
   hardeningDisable = [ "all" ];
   enableParallelBuilding = true;
 
-  postPatch = ''
-    cp -r --no-preserve=mode ${kernelSrc + "/files"}/. .
-    cp ${kernelSrc + "/configs"}/* arch/arm/configs/
+  postPatch = applyPort + ''
     patchShebangs scripts
   '';
 
@@ -94,7 +111,7 @@ stdenv.mkDerivation {
     cp build/arch/arm/boot/zImage $out/zImage
     cp build/arch/arm/boot/dts/broadcom/*-digium-*.dtb $out/dtbs/
     cp build/.config $out/config
-    make $makeFlags INSTALL_MOD_PATH=$out INSTALL_MOD_STRIP=1 DEPMOD=depmod modules_install
+    make $makeFlags INSTALL_MOD_PATH=$out INSTALL_MOD_STRIP=1 DEPMOD=true modules_install
     rm -f $out/lib/modules/*/build $out/lib/modules/*/source
     runHook postInstall
   '';
@@ -102,6 +119,7 @@ stdenv.mkDerivation {
   dontStrip = true;
   dontPatchELF = true;
 
+  passthru.source = source;
   passthru.boards = {
     d40 = "bcm11170-digium-d40";
     d45 = "bcm11109-digium-d45";

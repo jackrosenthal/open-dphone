@@ -7,6 +7,8 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Builds cargo dependencies in their own derivation (nix/workspace.nix).
+    crane.url = "github:ipetkov/crane";
   };
 
   outputs =
@@ -14,6 +16,7 @@
       self,
       nixpkgs,
       rust-overlay,
+      crane,
     }:
     let
       system = "x86_64-linux";
@@ -26,7 +29,7 @@
       };
       lib = pkgs.lib;
       od = import ./nix {
-        inherit pkgs lib;
+        inherit pkgs lib crane;
       };
     in
     {

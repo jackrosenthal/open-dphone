@@ -1,7 +1,7 @@
 //! Developer conveniences that are not builds.  Each subcommand lives in its
 //! own module; add new ones to the table in `main`.
 
-mod image;
+mod deploy;
 mod kernel;
 mod tz;
 
@@ -17,9 +17,9 @@ struct Command {
 
 const COMMANDS: &[Command] = &[
     Command {
-        name: "dev-image",
-        usage: "dev-image <model> --dsp-firmware <file> [options]   assemble a development EFF from host-built parts",
-        run: image::dev_image,
+        name: "deploy",
+        usage: "deploy <phone> [--no-build]   build dphone, push it to /tmp/dphone on a phone, restart the main role",
+        run: deploy::deploy,
     },
     Command {
         name: "tz-table",
@@ -30,16 +30,6 @@ const COMMANDS: &[Command] = &[
         name: "kernel-sync",
         usage: "kernel-sync <tree>            regenerate kernel/{patches,files,configs} from a v7.3 working tree",
         run: kernel::sync,
-    },
-    Command {
-        name: "kernel-prepare",
-        usage: "kernel-prepare <tree>         apply kernel/{patches,files,configs} to a pristine v7.3 tree",
-        run: kernel::prepare,
-    },
-    Command {
-        name: "kernel-build",
-        usage: "kernel-build <tree> <out>     build zImage, DTBs, and modules; collect per-model images in <out>",
-        run: kernel::build,
     },
 ];
 

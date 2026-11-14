@@ -10,52 +10,48 @@ Mainline Linux v7.3 plus the BCMRING port for the Digium D-series phones.
 
 ## Working on the port
 
-Develop in a normal git checkout of tag `v7.3`, then regenerate this directory from it.  All three commands live in `xtask/src/kernel.rs`.
+The port is developed in a normal git checkout of tag `v7.3`, outside this repository, and this directory is regenerated from it.  To get such a tree with the port applied:
 
 ```text
-cargo xtask kernel-prepare <pristine v7.3 tree>   # apply patches, files, and configs
-cargo xtask kernel-sync <working tree>            # regenerate patches/, files/, configs/
-cargo xtask kernel-build <tree> <out>             # build and collect the results
+git clone --depth 1 --branch v7.3 https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git ~/linux-bcmring
+cp -r --no-preserve=mode "$(nix build .#kernel-source --no-link --print-out-paths)"/. ~/linux-bcmring/
 ```
 
-`kernel-sync` reads `git diff HEAD` and the untracked files of the tree, so the tree must be a git checkout whose `HEAD` is v7.3.
+`.#kernel-source` is v7.3 with `patches/` applied and `files/` and `configs/` copied in, and nothing built.  With a rootless Nix whose store is not at `/nix/store`, prefix the printed path with the store's root directory.  `HEAD` stays at v7.3, so `git status` and `git diff` in the tree show exactly the port.
+
+After editing, regenerate this directory and build:
+
+```text
+cargo xtask kernel-sync ~/linux-bcmring           # rewrite patches/, files/, configs/
+nix build .#kernel                                # zImage, DTBs, modules
+nix build .#eff-d60                               # the whole image
+```
+
+`kernel-sync` reads `git diff HEAD` and the untracked files of the tree, so the tree must be a git checkout whose `HEAD` is v7.3.  It is the only kernel command in `xtask`; every build is a Nix derivation.
 
 ## Build
 
-`kernel-build` runs the following; the Nix derivation runs the same steps.
+`nix/kernel.nix` fetches the v7.3 tarball, applies the port, and runs:
 
 ```text
-make O=<out>/obj ARCH=arm CROSS_COMPILE=arm-none-eabi- LOCALVERSION= \
-     KBUILD_BUILD_USER=dphone KBUILD_BUILD_HOST=open-dphone \
+make O=build ARCH=arm CROSS_COMPILE=arm-none-eabi- LOCALVERSION= \
+     KBUILD_BUILD_USER=dphone KBUILD_BUILD_HOST=open-dphone KBUILD_BUILD_TIMESTAMP=1970-01-01 \
      bcmring_tiny_defconfig
 make ... zImage dtbs modules
-make ... modules_install INSTALL_MOD_PATH=<out>/modules INSTALL_MOD_STRIP=1 DEPMOD=true
+make ... modules_install INSTALL_MOD_PATH=$out INSTALL_MOD_STRIP=1 DEPMOD=true
 ```
 
-`LOCALVERSION=` (empty, on the command line) fixes the release string at `7.3.0`; without it a git checkout builds `7.3.0-dirty`.
+`LOCALVERSION=` (empty, on the command line) fixes the release string at `7.3.0`.  Any change under `kernel/` rebuilds the kernel from scratch (about a minute); a pure build cannot reuse objects from an earlier one.
 
-Output layout:
+Flake outputs:
 
-| Path | Contents |
+| Output | Contents |
 | --- | --- |
-| `<out>/images/<model>-zImage-dtb.raw` | zImage followed by that model's DTB, zero-padded to a multiple of 4 bytes.  **Not yet bootable from flash:** see "Boot image header" below. |
-| `<out>/images/<model>.dtb`, `<out>/images/zImage` | The parts. |
-| `<out>/modules/lib/modules/7.3.0/kernel/...` | Stripped modules.  There is no `modules.dep`; see "Module load order". |
-| `<out>/config` | The full `.config` used. |
+| `.#kernel` | `zImage` (no DTB appended), `dtbs/<board>.dtb` for the seven boards, `lib/modules/7.3.0/kernel/...` (stripped; there is no `modules.dep`, see "Module load order"), and `config` (the full `.config` used). |
+| `.#kernel-<model>` | `kernel.bin`: zImage followed by that model's DTB, zero-padded to a multiple of 4 bytes, with the header patched for boot2 (see "Boot image header").  This is what goes in the `k0`/`k1` slot. |
+| `.#kernel-source` | The patched tree, unbuilt. |
 
-The zImage is the same for all seven models; only the DTB differs.  The build fails if any image is larger than the 2 MiB slot less one 128 KiB bad block.
-
-| Model | DTB | Image bytes (2026-11-13) |
-| --- | --- | --- |
-| D40 | `bcm11170-digium-d40.dtb` | 1,759,612 |
-| D45 | `bcm11109-digium-d45.dtb` | 1,759,564 |
-| D50 | `bcm11170-digium-d50.dtb` | 1,761,644 |
-| D60 | `bcm11189-digium-d60.dtb` | 1,760,488 |
-| D62 | `bcm11188-digium-d62.dtb` | 1,761,408 |
-| D65 | `bcm11188-digium-d65.dtb` | 1,761,408 |
-| D70 | `bcm11109-digium-d70.dtb` | 1,762,132 |
-
-That leaves about 335 KiB in the slot: room for two bad blocks and about 73 KiB more.
+The zImage is the same for all seven models; only the DTB differs.  `dphone-image kernel-image` fails the build if an image does not fit the 2 MiB slot.  The D60 image is about 1.76 MB, which leaves about 335 KiB: room for two bad blocks and about 73 KiB more.
 
 ## Boot image header
 
@@ -125,7 +121,7 @@ All models:
 
 ## Testing a kernel without flashing it
 
-The RAM-boot loader in `~/d60-re/kernel-re/ramboot` (see its `NOTES.md`, section 6) starts a mainline image out of the running stock firmware.  It accepts `<out>/images/d60-zImage-dtb.raw` with the word `any-image` in `/var/ramboot/options`, and `/var/ramboot/cmdline` replaces the command line, so `root=` can point at any partition.  The stock watchdog is running at that hand-off; this kernel keeps it fed for 120 s (`CONFIG_WATCHDOG_OPEN_TIMEOUT`) and then stops unless userspace has opened `/dev/watchdog`, so a boot that never reaches a working init returns to stock by itself.  A panic reboots after 10 s through the kernel's own restart path, which has not been exercised yet.
+The RAM-boot loader in `~/d60-re/kernel-re/ramboot` (see its `NOTES.md`, section 6) starts a mainline image out of the running stock firmware.  It accepts an unpatched image (`zImage` from `.#kernel` followed by `dtbs/bcm11189-digium-d60.dtb`, zero-padded to a multiple of 4 bytes) with the word `any-image` in `/var/ramboot/options`, and `/var/ramboot/cmdline` replaces the command line, so `root=` can point at any partition.  The stock watchdog is running at that hand-off; this kernel keeps it fed for 120 s (`CONFIG_WATCHDOG_OPEN_TIMEOUT`) and then stops unless userspace has opened `/dev/watchdog`, so a boot that never reaches a working init returns to stock by itself.  A panic reboots after 10 s through the kernel's own restart path, which has not been exercised yet.
 
 ## Status
 

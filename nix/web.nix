@@ -31,7 +31,12 @@ stdenv.mkDerivation (finalAttrs: {
     pnpmConfigHook
   ];
   pnpmDeps = fetchPnpmDeps {
-    inherit (finalAttrs) pname version src sourceRoot;
+    inherit (finalAttrs)
+      pname
+      version
+      src
+      sourceRoot
+      ;
     fetcherVersion = 5;
     hash = pnpmDepsHash;
   };

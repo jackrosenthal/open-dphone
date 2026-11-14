@@ -8,8 +8,8 @@
 //! - `kernel/configs/`: the defconfigs (they belong in `arch/arm/configs/`).
 //!
 //! `kernel-sync` regenerates all three from a git checkout of v7.3 whose
-//! working tree holds the port.  `kernel-prepare` is the inverse, and
-//! `kernel-build` runs the kernel's own build and collects the results.
+//! working tree holds the port.  The build itself is the Nix derivation in
+//! `nix/kernel.nix`; `kernel/README.md` says how to get a tree to edit.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -19,25 +19,6 @@ use std::process::{Command, Stdio};
 use crate::{Result, repo_root};
 
 const CONFIG_DIR: &str = "arch/arm/configs/";
-const DTS_DIR: &str = "arch/arm/boot/dts/broadcom";
-const DEFCONFIG: &str = "bcmring_tiny_defconfig";
-
-/// The kernel slot is 2 MiB; every bad block in it costs 128 KiB.  The build
-/// fails unless the image leaves room for this many bad blocks.
-const SLOT: u64 = 0x20_0000;
-const BLOCK: u64 = 0x2_0000;
-const BAD_BLOCK_MARGIN: u64 = 1;
-
-/// Model, DTB base name.
-pub const MODELS: &[(&str, &str)] = &[
-    ("d40", "bcm11170-digium-d40"),
-    ("d45", "bcm11109-digium-d45"),
-    ("d50", "bcm11170-digium-d50"),
-    ("d60", "bcm11189-digium-d60"),
-    ("d62", "bcm11188-digium-d62"),
-    ("d65", "bcm11188-digium-d65"),
-    ("d70", "bcm11109-digium-d70"),
-];
 
 /// Path prefix to patch group, first match wins.  Paths that match nothing
 /// are grouped by their first two components.
@@ -121,28 +102,6 @@ fn copy_file(from: &Path, to: &Path) -> Result<()> {
 }
 
 /// All regular files under `dir`, as paths relative to it, sorted.
-fn walk(dir: &Path) -> Result<Vec<String>> {
-    fn rec(base: &Path, dir: &Path, out: &mut Vec<String>) -> Result<()> {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if entry.file_type()?.is_dir() {
-                rec(base, &path, out)?;
-            } else {
-                let rel = path.strip_prefix(base)?.to_str().ok_or("non-UTF-8 path")?;
-                out.push(rel.to_string());
-            }
-        }
-        Ok(())
-    }
-    let mut out = Vec::new();
-    if dir.exists() {
-        rec(dir, dir, &mut out)?;
-    }
-    out.sort();
-    Ok(out)
-}
-
 pub fn sync(args: &[String]) -> Result<()> {
     let tree = one_arg(args, "the kernel working tree")?;
     let kdir = kernel_dir();
@@ -198,130 +157,5 @@ pub fn sync(args: &[String]) -> Result<()> {
         copy_file(&tree.join(path), &dest)?;
     }
     println!("files/: {nfiles} file(s); configs/: {nconfigs} file(s)");
-    Ok(())
-}
-
-pub fn prepare(args: &[String]) -> Result<()> {
-    let tree = one_arg(args, "a pristine v7.3 tree")?;
-    let kdir = kernel_dir();
-
-    let mut patches: Vec<PathBuf> = fs::read_dir(kdir.join("patches"))?
-        .map(|e| e.map(|e| e.path()))
-        .collect::<std::io::Result<_>>()?;
-    patches.retain(|p| p.extension().is_some_and(|e| e == "patch"));
-    patches.sort();
-    for patch in &patches {
-        let status = Command::new("patch")
-            .args(["-p1", "--no-backup-if-mismatch", "-s", "-d"])
-            .arg(tree)
-            .arg("-i")
-            .arg(patch)
-            .status()?;
-        if !status.success() {
-            return Err(format!("{} did not apply", patch.display()).into());
-        }
-    }
-    let files_dir = kdir.join("files");
-    let files = walk(&files_dir)?;
-    for rel in &files {
-        copy_file(&files_dir.join(rel), &tree.join(rel))?;
-    }
-    let configs_dir = kdir.join("configs");
-    let configs = walk(&configs_dir)?;
-    for rel in &configs {
-        copy_file(&configs_dir.join(rel), &tree.join(CONFIG_DIR).join(rel))?;
-    }
-    println!(
-        "applied {} patch(es), {} file(s), {} config(s)",
-        patches.len(),
-        files.len(),
-        configs.len()
-    );
-    Ok(())
-}
-
-fn make(tree: &Path, obj: &Path, targets: &[&str]) -> Result<()> {
-    let jobs = std::thread::available_parallelism().map_or(4, |n| n.get());
-    let cross = std::env::var("CROSS_COMPILE").unwrap_or_else(|_| "arm-none-eabi-".to_string());
-    let status = Command::new("make")
-        .arg("-C")
-        .arg(tree)
-        .arg(format!("O={}", obj.display()))
-        .arg("ARCH=arm")
-        .arg(format!("CROSS_COMPILE={cross}"))
-        // Reproducible banner; the Nix build sets the same.
-        .arg("KBUILD_BUILD_USER=dphone")
-        .arg("KBUILD_BUILD_HOST=open-dphone")
-        // Fixed release string: without this the kernel appends "-dirty" or
-        // "+" depending on the state of a git checkout, and the module
-        // directory name would differ between a checkout and a tarball.
-        .arg("LOCALVERSION=")
-        .arg(format!("-j{jobs}"))
-        .args(targets)
-        .status()?;
-    if !status.success() {
-        return Err(format!("make {} failed", targets.join(" ")).into());
-    }
-    Ok(())
-}
-
-pub fn build(args: &[String]) -> Result<()> {
-    let [tree, out] = args else {
-        return Err("expected <tree> <out>".into());
-    };
-    let tree = fs::canonicalize(tree)?;
-    fs::create_dir_all(out)?;
-    let out = fs::canonicalize(out)?;
-    let obj = out.join("obj");
-    fs::create_dir_all(&obj)?;
-
-    make(&tree, &obj, &[DEFCONFIG])?;
-    make(&tree, &obj, &["zImage", "dtbs", "modules"])?;
-
-    // Modules: /lib/modules/<release>/... as depmod-free flat install.
-    let modroot = out.join("modules");
-    remove_dir_if_exists(&modroot)?;
-    let install = format!("INSTALL_MOD_PATH={}", modroot.display());
-    make(
-        &tree,
-        &obj,
-        &["modules_install", &install, "INSTALL_MOD_STRIP=1", "DEPMOD=true"],
-    )?;
-
-    // Per model: zImage followed by the DTB, zero-padded to a multiple of 4.
-    let zimage = fs::read(obj.join("arch/arm/boot/zImage"))?;
-    let images = out.join("images");
-    fs::create_dir_all(&images)?;
-    let limit = SLOT - BAD_BLOCK_MARGIN * BLOCK;
-    let mut too_big = Vec::new();
-    for (model, dtb_name) in MODELS {
-        let dtb_path = obj.join(DTS_DIR).join(format!("{dtb_name}.dtb"));
-        let dtb = fs::read(&dtb_path).map_err(|e| format!("{}: {e}", dtb_path.display()))?;
-        let mut image = zimage.clone();
-        image.extend_from_slice(&dtb);
-        while image.len() % 4 != 0 {
-            image.push(0);
-        }
-        let len = image.len() as u64;
-        fs::write(images.join(format!("{model}-zImage-dtb.raw")), &image)?;
-        fs::write(images.join(format!("{model}.dtb")), &dtb)?;
-        println!(
-            "{model}: {len} bytes, {} spare in the slot, {} with {BAD_BLOCK_MARGIN} bad block(s)",
-            SLOT as i64 - len as i64,
-            limit as i64 - len as i64
-        );
-        if len > limit {
-            too_big.push(*model);
-        }
-    }
-    fs::copy(obj.join("arch/arm/boot/zImage"), images.join("zImage"))?;
-    fs::copy(obj.join(".config"), out.join("config"))?;
-    if !too_big.is_empty() {
-        return Err(format!(
-            "image too large for the 2 MiB slot less {BAD_BLOCK_MARGIN} bad block(s): {}",
-            too_big.join(", ")
-        )
-        .into());
-    }
     Ok(())
 }

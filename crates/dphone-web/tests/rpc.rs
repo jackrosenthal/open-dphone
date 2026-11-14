@@ -78,8 +78,7 @@ impl Resp {
 
 fn dechunk(mut data: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
-    loop {
-        let Some(eol) = data.windows(2).position(|w| w == b"\r\n") else { break };
+    while let Some(eol) = data.windows(2).position(|w| w == b"\r\n") {
         let Ok(len) = usize::from_str_radix(std::str::from_utf8(&data[..eol]).unwrap_or("").trim(), 16) else { break };
         let start = eol + 2;
         if len == 0 || data.len() < start + len {

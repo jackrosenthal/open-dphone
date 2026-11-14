@@ -1,6 +1,7 @@
 # Everything the flake exports.  Each artifact is its own small derivation:
 #
 #   kernel             zImage, DTBs, modules (one build for all models)
+#   kernel-source      v7.3 with the port applied, unbuilt (for editing)
 #   kernel-<model>     boot image for the k0/k1 slot
 #   dphone             the firmware binary (ARMv6, static)
 #   dphone-image       host tool: EFF, OTA, kernel image, rootfs
@@ -11,12 +12,10 @@
 #   rootfs             the JFFS2 image
 #   eff-<model>        flashable image, one per model
 #   all                the seven EFFs in one directory
-#
-# Parts of the tree that do not exist yet (apps/, web/) are left out of the
-# outputs rather than failing evaluation.
 {
   pkgs,
   lib,
+  crane,
 }:
 let
   root = ../.;
@@ -39,6 +38,7 @@ let
     rustc = rustToolchain;
   };
   rust = pkgs.callPackage ./rust.nix { inherit rustToolchain rustPlatform; };
+  craneLib = (crane.mkLib pkgs).overrideToolchain (_: rustToolchain);
 
   userland = pkgs.callPackage ./userland.nix { inherit rustPlatform rust; };
   kernel = pkgs.callPackage ./kernel.nix { kernelSrc = root + "/kernel"; };
@@ -48,12 +48,12 @@ let
     if has "web/pnpm-lock.yaml" then
       # The hash of the fetched pnpm store; when web/pnpm-lock.yaml changes,
       # set it to lib.fakeHash, build, and copy the hash Nix reports.
-      pkgs.callPackage ./web.nix { pnpmDepsHash = "sha256-95kN11RWZZX7toWE8RD+RYruv58MfEVDC3VrxIwNws0="; }
+      pkgs.callPackage ./web.nix { pnpmDepsHash = "sha256-eKjJ675HiFF5dqpBcEQtN8emaPRtxpHTf2mMOXHcwFg="; }
     else
       null;
 
   workspace = pkgs.callPackage ./workspace.nix {
-    inherit rustPlatform rust;
+    inherit craneLib rust;
     webDist = web;
   };
   apps =
@@ -71,22 +71,13 @@ let
     inherit kernel dspFirmware apps;
   };
 
-  # Development images.  No SSH key is compiled in: keys are added on the
-  # phone (the web UI), as on any other image.
-  devImage = pkgs.callPackage ./image.nix {
-    inherit (workspace) dphone dphone-image version;
-    inherit (userland) brush coreutils applets;
-    inherit kernel dspFirmware apps;
-    dev = true;
-  };
-  devEffs = lib.mapAttrs' (m: v: lib.nameValuePair "eff-${m}-dev" v) devImage.effs;
-
   effs = lib.mapAttrs' (m: v: lib.nameValuePair "eff-${m}" v) image.effs;
   kernels = lib.mapAttrs' (m: v: lib.nameValuePair "kernel-${m}" v) image.kernelImages;
 in
 {
   packages = {
     inherit kernel;
+    kernel-source = kernel.source;
     inherit (userland) brush coreutils;
     inherit (workspace) dphone dphone-image;
     rootfs-tree = image.rootfsTree;
@@ -101,7 +92,6 @@ in
   }
   // kernels
   // effs
-  // devEffs
   // lib.optionalAttrs (web != null) { inherit web; }
   // lib.optionalAttrs (apps != null) { inherit apps; };
 

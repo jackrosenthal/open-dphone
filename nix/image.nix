@@ -13,9 +13,6 @@
   dspFirmware,
   apps ? null,
   version, # e.g., "3.0.0"
-  # Development image: SSH on and the /tmp/dphone override allowed (the SSH
-  # key itself is compiled into `dphone`; see workspace.nix).
-  dev ? false,
 }:
 let
   # Stock-style version string: 3_0_0.
@@ -94,8 +91,9 @@ let
     install -m 0644 ${dspFirmware.old} $out/lib/firmware/old-family/dspapp1107_lcc.bin
     install -m 0644 ${dspFirmware.new} $out/lib/firmware/new-family/dspapp1107_lcc.bin
 
-    ${lib.optionalString (apps != null) "cp -r ${apps}/. $out/usr/share/dphone/apps/ && chmod -R u+w $out/usr/share/dphone/apps"}
-    ${lib.optionalString dev "printf 'development image: SSH on, /tmp/dphone override allowed\\n' > $out/etc/dphone/dev"}
+    ${lib.optionalString (
+      apps != null
+    ) "cp -r ${apps}/. $out/usr/share/dphone/apps/ && chmod -R u+w $out/usr/share/dphone/apps"}
 
     printf 'root:x:0:0:root:/nvdata/root:/bin/brush\n' > $out/etc/passwd
     printf 'root:x:0:\ntty:x:5:\n' > $out/etc/group

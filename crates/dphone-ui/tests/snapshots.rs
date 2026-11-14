@@ -1,5 +1,6 @@
 //! Snapshot harness: renders every native screen for every skin through
-//! the HAL simulator and writes PNG files under `target/ui-snapshots/` for
+//! the HAL simulator and writes PNG files under `ui-snapshots/` in cargo's test scratch directory
+//! (`CARGO_TARGET_TMPDIR`, i.e., `<target dir>/tmp/ui-snapshots/`) for
 //! eyeballing.  The assertions here are structural (the right screen is
 //! up, the frame reached the display); see `tests/behavior.rs` for the
 //! behavior tests.
@@ -16,7 +17,7 @@ const MONO: u64 = 5_000_000;
 const UNIX: u64 = 1_794_607_087;
 
 fn out_dir(model: Model) -> PathBuf {
-    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots").join(model.name());
+    let d = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("ui-snapshots").join(model.name());
     std::fs::create_dir_all(&d).unwrap();
     d
 }
@@ -58,7 +59,6 @@ impl Rig {
             utc_offset_secs: -7 * 3600,
             ringtone: "Chime".into(),
             ringtones: vec!["Chime".into(), "Classic".into(), "Pulse".into()],
-            show_diagnostics: true,
             ..Default::default()
         };
         let mut ui = Ui::from_hal(&mut hal, store.clone(), cfg);
