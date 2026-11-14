@@ -611,8 +611,7 @@ static void b53_bcmring_report_unproven(struct b53_device *bdev)
 		/* Standalone user ports are in mode 3 after setup. */
 		b53_bcmring_read64(bdev, B53_EAP_PAGE, B53_PORT_EAP_CONF(i),
 				   &eap);
-		dev_info(dev, "after setup: 42:%02x (EAP, port %u) = %#010x, mode %llu%s
-",
+		dev_info(dev, "after setup: 42:%02x (EAP, port %u) = %#010x, mode %llu%s\n",
 			 B53_PORT_EAP_CONF(i), i, upper_32_bits(eap),
 			 (eap & EAP_MODE_MASK) >> EAP_MODE_SHIFT,
 			 (eap & EAP_MODE_MASK) == EAP_MODE_MASK ? "" :
