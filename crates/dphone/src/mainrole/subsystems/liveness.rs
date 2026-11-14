@@ -71,7 +71,13 @@ fn crash_dir(ctx: &Context) -> PathBuf {
 /// Move crash records out of pstore.  Returns how many were saved.
 pub fn collect(pstore: &Path, into: &Path) -> std::io::Result<usize> {
     let mut records: Vec<PathBuf> = match std::fs::read_dir(pstore) {
-        Ok(d) => d.flatten().map(|e| e.path()).filter(|p| p.is_file()).collect(),
+        // Only `dmesg-*` records are written at a crash.  The console record
+        // (`console-ramoops-0`) is present after every warm restart.
+        Ok(d) => d
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_file() && p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("dmesg-")))
+            .collect(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
         Err(e) => return Err(e),
     };
@@ -146,6 +152,10 @@ mod tests {
         assert_eq!(collect(&pstore, &saved).unwrap(), 2);
         assert_eq!(std::fs::read(saved.join("dmesg-ramoops-0")).unwrap(), b"Oops: first");
         assert!(std::fs::read_dir(&pstore).unwrap().next().is_none(), "records are removed from pstore");
+        // The console record alone is not a crash.
+        std::fs::write(pstore.join("console-ramoops-0"), b"boot messages").unwrap();
+        assert_eq!(collect(&pstore, &saved).unwrap(), 0);
+        std::fs::remove_file(pstore.join("console-ramoops-0")).unwrap();
         // A later crash replaces the saved set.
         std::fs::write(pstore.join("dmesg-ramoops-0"), b"Oops: second").unwrap();
         assert_eq!(collect(&pstore, &saved).unwrap(), 1);
