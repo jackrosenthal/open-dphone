@@ -1019,6 +1019,7 @@ dependencies = [
  "dphone-update",
  "dphone-vpm",
  "dphone-web",
+ "dpma-proto",
  "eff",
  "libc",
  "log",

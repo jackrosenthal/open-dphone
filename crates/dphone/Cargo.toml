@@ -54,6 +54,8 @@ md-5 = "0.10"
 sha2 = { version = "0.10", default-features = false }
 
 [dev-dependencies]
+# The in-process DPMA server of dphone-dpma's tests (tests/provisioned_firmware.rs).
+dpma-proto = "0.2.1"
 tempfile = "3"
 libc = "0.2"
 rustls-pemfile = "2"

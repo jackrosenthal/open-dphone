@@ -35,8 +35,44 @@ use crate::mainrole::{Context, state_model};
 /// What later subsystems (apps, web) need from telephony.
 #[derive(Clone, Default)]
 pub struct Telephony {
-    /// Set once DPMA runs.
+    /// Set once DPMA runs: that is after the phone has an address and SIP
+    /// is up, long after [`start`] returns.  Use [`Telephony::when_dpma`]
+    /// for anything the client must have before its first pass.
     pub dpma: Arc<Mutex<Option<dphone_dpma::DpmaHandle>>>,
+    waiting: Arc<Mutex<Vec<DpmaHook>>>,
+}
+
+type DpmaHook = Box<dyn FnOnce(&dphone_dpma::DpmaHandle) + Send>;
+
+impl Telephony {
+    /// Runs `f` with the DPMA client: at once when it exists, else as soon
+    /// as it is created, before it is told about the network (so before
+    /// its first provisioning pass).
+    pub fn when_dpma(&self, f: impl FnOnce(&dphone_dpma::DpmaHandle) + Send + 'static) {
+        let dpma = self.dpma.lock().unwrap();
+        match dpma.as_ref() {
+            Some(handle) => {
+                let handle = handle.clone();
+                drop(dpma);
+                f(&handle);
+            }
+            // Under the same lock as `set_dpma` takes, so no hook is left
+            // behind.
+            None => self.waiting.lock().unwrap().push(Box::new(f)),
+        }
+    }
+
+    /// The DPMA client exists: publish it and run what waited for it.
+    fn set_dpma(&self, handle: dphone_dpma::DpmaHandle) {
+        let hooks = {
+            let mut dpma = self.dpma.lock().unwrap();
+            *dpma = Some(handle.clone());
+            std::mem::take(&mut *self.waiting.lock().unwrap())
+        };
+        for hook in hooks {
+            hook(&handle);
+        }
+    }
 }
 
 // ------------------------------------------------------------------------
@@ -605,9 +641,11 @@ async fn run(
             // Contact lists and the like that the configuration names by
             // HTTP URL are fetched with the phone's resolver.
             handle.set_http_source(super::provisioning::http_source(&net));
+            // Whoever waited for the client (the firmware updater) gets it
+            // now, before the first report below starts provisioning.
+            telephony.set_dpma(handle.clone());
             // Network state, DHCP option 66, and mDNS announcements.
             super::provisioning::start_discovery(&ctx, &net, &handle);
-            *telephony.dpma.lock().unwrap() = Some(handle.clone());
             ctx.store.set_health(Subsystem::Dpma, HealthStatus::Ok);
         }
         None => {

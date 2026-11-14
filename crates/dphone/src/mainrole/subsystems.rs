@@ -146,14 +146,12 @@ pub async fn start(ctx: &Context, opts: &Options) {
 
     // 7. dphone-sip and dphone-dpma: accounts, provisioning.
     let telephony = telephony::start(ctx, config.clone(), &hub, net.clone(), audio.clone());
-    // Provisioned firmware: downloaded over HTTP(S) and written by the updater.
-    if let (Some(dpma), Some(mtd)) = (telephony.dpma.lock().unwrap().clone(), firmware_mtd) {
-        let (runtime, net) = (tokio::runtime::Handle::current(), net.clone());
-        let source = dphone_dpma::fetch::HttpSource::with_lookup(Box::new(move |host, port| {
-            let resolver = net.resolver().ok_or_else(|| std::io::Error::other("the network is not up"))?;
-            let addrs = runtime.block_on(resolver.lookup_ip(host, false, false)).map_err(|e| std::io::Error::other(format!("{e:?}")))?;
-            addrs.first().map(|ip| std::net::SocketAddr::new(*ip, port)).ok_or_else(|| std::io::Error::other("no address"))
-        }));
+    // Provisioned firmware: downloaded over HTTP(S) and written by the
+    // updater.  The DPMA client does not exist yet (it starts once the
+    // phone has an address and SIP runs), so the updater is handed over
+    // when it does, before its first provisioning pass.
+    if let Some(mtd) = firmware_mtd {
+        let source = provisioning::http_source(&net);
         let installer = dphone_dpma::install::MtdInstaller {
             mtd,
             model: super::state_model(ctx.model),
@@ -161,7 +159,7 @@ pub async fn start(ctx: &Context, opts: &Options) {
             open_dir: ctx.paths.open_dir(),
             store: ctx.store.clone(),
         };
-        dpma.set_firmware_updater(Arc::new(source), Arc::new(installer));
+        telephony.when_dpma(move |dpma| dpma.set_firmware_updater(source, Arc::new(installer)));
     }
 
     // 8. dphone-ui: the UI thread.  (It takes the display, keys, and lamps
