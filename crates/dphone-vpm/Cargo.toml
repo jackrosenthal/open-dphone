@@ -1,0 +1,14 @@
+[package]
+name = "dphone-vpm"
+description = "Userspace side of the BCMRING voice DSP job interface (/dev/bcmring-vpm)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+build = "build.rs"
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+serde_json = "1"

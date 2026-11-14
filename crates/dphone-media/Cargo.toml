@@ -1,0 +1,15 @@
+[package]
+name = "dphone-media"
+description = "RTP/SRTP, jitter buffer, tones, and the real-time audio engine around the voice DSP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+dphone-vpm = { path = "../dphone-vpm" }
+libc = "0.2"
+aes = "0.8"
+hmac = "0.12"
+sha1 = "0.10"
+getrandom = "0.2"
