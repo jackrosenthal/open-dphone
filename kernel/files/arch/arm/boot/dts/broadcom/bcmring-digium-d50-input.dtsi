@@ -10,7 +10,7 @@
  * Key codes: digium-keys.h keeps the vendor ASCII codes unless
  * DIGIUM_KEYS_PROPOSED is defined before this file is included.  The DGK_
  * names are the functions found by pressing the keys on a D60, a D40, and
- * a D50; DGK_CH_<c> marks a character whose key is not identified.
+ * a D50.
  */
 
 #include <dt-bindings/leds/common.h>

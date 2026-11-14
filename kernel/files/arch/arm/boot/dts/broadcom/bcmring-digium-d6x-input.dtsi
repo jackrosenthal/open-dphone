@@ -14,7 +14,9 @@
  * Key codes: digium-keys.h keeps the vendor ASCII codes unless
  * DIGIUM_KEYS_PROPOSED is defined before this file is included.  The DGK_
  * names are the functions found by pressing the keys on a D60, a D40, and
- * a D50; DGK_CH_<c> marks a character whose key is not identified.
+ * a D50, and, for the keys those phones lack (BLF_LEFT, BLF_RIGHT, LINE5,
+ * and LINE6), read from the vendor phone application; those positions have
+ * not been pressed on a unit, and a D60 has no key there.
  */
 
 #include <dt-bindings/leds/common.h>
@@ -72,19 +74,19 @@
 		MATRIX_KEY(4, 2, DGK_3)	/* scan 0x42, vendor '3' (51) */
 		MATRIX_KEY(4, 3, DGK_2)	/* scan 0x43, vendor '2' (50) */
 		MATRIX_KEY(4, 4, DGK_1)	/* scan 0x44, vendor '1' (49) */
-		MATRIX_KEY(4, 5, DGK_CH_O)	/* scan 0x45, vendor 'O' (79) */
+		MATRIX_KEY(4, 5, DGK_LINE5)	/* scan 0x45, vendor 'O' (79) */
 		MATRIX_KEY(5, 0, DGK_UP)	/* scan 0x50, vendor 'U' (85) */
 		MATRIX_KEY(5, 1, DGK_DOWN)	/* scan 0x51, vendor 'D' (68) */
 		MATRIX_KEY(5, 2, DGK_LEFT)	/* scan 0x52, vendor 'L' (76) */
 		MATRIX_KEY(5, 3, DGK_RIGHT)	/* scan 0x53, vendor 'R' (82) */
-		MATRIX_KEY(5, 4, DGK_CH_M)	/* scan 0x54, vendor 'M' (77) */
+		MATRIX_KEY(5, 4, DGK_BLF_LEFT)	/* scan 0x54, vendor 'M' (77) */
 		MATRIX_KEY(5, 5, DGK_LINE3)	/* scan 0x55, vendor 'u' (117) */
 		MATRIX_KEY(6, 0, DGK_CANCEL)	/* scan 0x60, vendor 'b' (98) */
 		MATRIX_KEY(6, 1, DGK_SELECT)	/* scan 0x61, vendor 'C' (67) */
 		MATRIX_KEY(6, 2, DGK_LINE2)	/* scan 0x62, vendor 'i' (105) */
 		MATRIX_KEY(6, 3, DGK_LINE1)	/* scan 0x63, vendor 'j' (106) */
-		MATRIX_KEY(6, 4, DGK_CH_N)	/* scan 0x64, vendor 'N' (78) */
-		MATRIX_KEY(6, 5, DGK_CH_P)	/* scan 0x65, vendor 'P' (80) */
+		MATRIX_KEY(6, 4, DGK_BLF_RIGHT)	/* scan 0x64, vendor 'N' (78) */
+		MATRIX_KEY(6, 5, DGK_LINE6)	/* scan 0x65, vendor 'P' (80) */
 	>;
 };
 

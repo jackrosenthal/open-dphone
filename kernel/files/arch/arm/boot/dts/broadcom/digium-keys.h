@@ -36,10 +36,17 @@
  * CONF, INFO, and BLF1..BLF10 (one column, top to bottom).  LINE4 has only
  * been seen on the D50; the D6x tables place the same character elsewhere
  * in the matrix.  This accounts for every code in the D40/D45/D50 table.
- * The DGK_CH_ names (D6x and D70 tables only) are unidentified.
  *
- * DGK_CH_<c> names a key whose function is not established; <c> is the
- * vendor ASCII character (case matters).
+ * Identified from the vendor phone application, not by pressing: the eight
+ * characters that occur only in the D6x and D70 tables ('G', 'I', 'J', 'M',
+ * 'N', 'O', 'P', and 'Q').  /app/bin/phone turns each key code into a named
+ * event in one switch statement, which is the same in the D60, D62, D65,
+ * and D70 images (2_9_26 and 2_9_28): 'G' "fn.menu", 'I' "fn.status",
+ * 'J' "fn.apps", 'M' "blf.left", 'N' "blf.right", 'O' "line.4.down",
+ * 'P' "line.5.down" (lines count from 0), and 'Q' "fn.dir".  The same
+ * switch gives every key that was pressed the function found by pressing
+ * it.  Not checked on a D62, D65, or D70: which physical key sits at each
+ * of these matrix positions, and whether the model has one there at all.
  */
 #ifndef DIGIUM_KEYS_H
 #define DIGIUM_KEYS_H
@@ -122,14 +129,14 @@
 #define DGK_BLF8	110	/* 'n' */
 #define DGK_BLF9	111	/* 'o' */
 #define DGK_BLF10	112	/* 'p' */
-#define DGK_CH_G	71
-#define DGK_CH_I	73
-#define DGK_CH_J	74
-#define DGK_CH_M	77
-#define DGK_CH_N	78
-#define DGK_CH_O	79
-#define DGK_CH_P	80
-#define DGK_CH_Q	81
+#define DGK_MENU	71	/* 'G' */
+#define DGK_STATUS	73	/* 'I' */
+#define DGK_APPS	74	/* 'J' */
+#define DGK_BLF_LEFT	77	/* 'M', previous page of the BLF keys */
+#define DGK_BLF_RIGHT	78	/* 'N', next page of the BLF keys */
+#define DGK_LINE5	79	/* 'O' */
+#define DGK_LINE6	80	/* 'P' */
+#define DGK_CONTACTS	81	/* 'Q', directory */
 
 #else /* DIGIUM_KEYS_PROPOSED */
 
@@ -197,17 +204,19 @@
 #define DGK_BLF9	KEY_MACRO8
 #define DGK_BLF10	KEY_MACRO13
 /*
- * Function not established (characters that occur only in the D6x and D70
- * tables): placeholders.
+ * Function from the vendor phone application's key table (see the top of
+ * this file; characters that occur only in the D6x and D70 tables), and
+ * Linux has a code for it.
  */
-#define DGK_CH_G	KEY_MACRO23
-#define DGK_CH_I	KEY_MACRO24
-#define DGK_CH_J	KEY_MACRO25
-#define DGK_CH_M	KEY_MACRO26
-#define DGK_CH_N	KEY_MACRO27
-#define DGK_CH_O	KEY_MACRO28
-#define DGK_CH_P	KEY_MACRO29
-#define DGK_CH_Q	KEY_MACRO30
+#define DGK_MENU	KEY_MENU
+#define DGK_APPS	KEY_APPSELECT
+#define DGK_CONTACTS	KEY_ADDRESSBOOK
+/* The same, but Linux has no matching code: placeholders. */
+#define DGK_STATUS	KEY_MACRO24
+#define DGK_BLF_LEFT	KEY_MACRO26
+#define DGK_BLF_RIGHT	KEY_MACRO27
+#define DGK_LINE5	KEY_MACRO28
+#define DGK_LINE6	KEY_MACRO29
 
 #endif /* DIGIUM_KEYS_PROPOSED */
 
