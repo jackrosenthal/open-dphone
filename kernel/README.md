@@ -89,6 +89,7 @@ The kernel passes what it does not recognize to init: `bootmemheap` arrives as `
 | DSP | `/dev/bcmring-vpm` (misc device) and a remoteproc instance; firmware `dspapp1107_lcc.bin` from `/lib/firmware`.  The remoteproc does not start by itself. |
 | Watchdog | `/dev/watchdog` (SP805).  boot2 hands off with it disabled; it starts when opened. |
 | Random numbers | `/dev/hwrng`. |
+| Bluetooth, D65 only | HCI device `hci0` from `hci_uart` (BCM20702 on UART B, `ttyAMA1`, H4 at 115200 baud).  No patch file is loaded: the stock firmware does not load one either, and none is shipped.  ALSA card "Digium Bluetooth": one mono S16_LE PCM device at 8 or 16 kHz on the SoC PCM/TDM interface, which drives the bit clock (1.024 MHz) and frame sync, so the controller must be set to slave on both. |
 | Crash log | pstore/ramoops console, 16 KiB in on-chip RAM that survives a reset: mount `pstore` on `/sys/fs/pstore` and read `console-ramoops-0`. |
 
 ## Module load order
@@ -117,6 +118,25 @@ All models:
 11. `sound/soc/bcm/snd-soc-bcmring-digium-card.ko`
 12. `drivers/remoteproc/bcmring_vpm.ko` (after `dw_dmac`)
 
+D65 only, for Bluetooth, after the list above and only when Bluetooth is wanted:
+
+1. `crypto/crypto.ko`
+2. `crypto/crypto_algapi.ko`
+3. `crypto/kpp.ko`
+4. `crypto/ecc.ko`
+5. `crypto/ecdh_generic.ko`
+6. `lib/crc/crc16.ko`
+7. `lib/crypto/libcryptoutils.ko`
+8. `lib/crypto/libaes.ko`
+9. `net/bluetooth/bluetooth.ko`
+10. `net/bluetooth/rfcomm/rfcomm.ko`
+11. `drivers/bluetooth/btbcm.ko`
+12. `drivers/bluetooth/hci_uart.ko`
+13. `sound/soc/codecs/snd-soc-bt-sco.ko`
+14. `sound/soc/generic/snd-soc-simple-card-utils.ko`
+15. `sound/soc/generic/snd-soc-simple-card.ko`
+16. `sound/soc/bcm/snd-soc-bcmring-pcm.ko`
+
 `regmap-i2c.ko` and `regmap-spi.ko` are built as a side effect and are not needed.
 
 ## Testing a kernel without flashing it
@@ -125,4 +145,4 @@ The RAM-boot loader in `~/d60-re/kernel-re/ramboot` (see its `NOTES.md`, section
 
 ## Status
 
-Run on hardware (D60 and D40, RAM boot only, with the larger config): the platform, Ethernet, display, sound, DSP, LEDs, and the ramoops console.  Not run: the NAND driver, this exact config (bridge, VLAN, high-resolution timers, and the options removed for size), and the `DIGIUM_KEYS_PROPOSED` key codes.  Nothing has booted from flash.  The D45, D50, D62, D65, and D70 devicetrees are extrapolated.
+Run on hardware (D60 and D40, RAM boot only, with the larger config): the platform, Ethernet, display, sound, DSP, LEDs, and the ramoops console.  Not run: the NAND driver, this exact config (bridge, VLAN, high-resolution timers, and the options removed for size), and the `DIGIUM_KEYS_PROPOSED` key codes.  Nothing has booted from flash.  The D45, D50, D62, D65, and D70 devicetrees are extrapolated.  The D65 Bluetooth devicetree and the PCM/TDM driver (`bcmring-pcm.c`) have never run: no D65 was available.

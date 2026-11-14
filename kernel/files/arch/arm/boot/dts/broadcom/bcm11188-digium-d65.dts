@@ -10,6 +10,7 @@
 #include "bcm11188.dtsi"
 #include "bcmring-digium-common.dtsi"
 #include "bcmring-digium-d6x.dtsi"
+#include "bcmring-digium-d65-bluetooth.dtsi"
 
 / {
 	model = "Digium D65";
