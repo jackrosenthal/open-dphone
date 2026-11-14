@@ -21,8 +21,7 @@ use dphone_sip::{
     StreamParams,
 };
 use dphone_state::{
-    AccountId, AudioPath, CallId, CallLog, Codec, DiscoveredServer, DiscoverySource, Features, HealthStatus, Store,
-    Subsystem, Tone, Topic,
+    AccountId, AudioPath, CallId, CallLog, Codec, Features, HealthStatus, Store, Subsystem, Tone, Topic,
 };
 use log::{error, info, warn};
 use tokio::sync::Notify;
@@ -398,6 +397,27 @@ impl dphone_dpma::ConfigSink for Sink {
         Ok(())
     }
 
+    fn ignore_provisioned_firmware(&self, fetched_config: &[u8]) -> Option<bool> {
+        let store = self.config.lock().unwrap();
+        super::provisioning::ignores_firmware(fetched_config, store.model(), store.dphone_settings())
+    }
+
+    fn wanted_resources(&self) -> dphone_dpma::resources::Wanted {
+        super::provisioning::wanted_resources(&self.config.lock().unwrap().config())
+    }
+
+    fn files(&self) -> Option<Arc<dyn dphone_dpma::resources::Files>> {
+        // Contact lists, ringtones, and their digests are stock's files too.
+        self.stock_writes.then(|| Arc::new(super::provisioning::NvFiles(self.nv())) as Arc<dyn dphone_dpma::resources::Files>)
+    }
+
+    fn resources_changed(&self) {
+        // Contact lists and BLF items are read together with the
+        // configuration: everyone who follows it looks again.
+        let cfg = self.config.lock().unwrap().config();
+        self.hub.changed(&self.store, &cfg);
+    }
+
     fn forget(&self) -> Result<(), String> {
         self.guard()?;
         let nv = self.nv();
@@ -559,7 +579,7 @@ async fn run(
 
     // DPMA.
     let mac = ctx.store.read::<dphone_state::System, _>(|s| s.mac).map(|m| m.iter().map(|b| format!("{b:02x}")).collect::<String>());
-    let dpma = match mac {
+    match mac {
         Some(mac) => {
             ctx.store.set_health(Subsystem::Dpma, HealthStatus::Starting);
             let (transport, incoming) = dphone_dpma::sip::transport(&sip, &mac);
@@ -572,53 +592,33 @@ async fn run(
                 stock_writes: super::stock_writes_allowed(&ctx),
             });
             let handle = dphone_dpma::start(ctx.store.clone(), cfg, transport, incoming, Arc::new(OpenStorage(nv.clone())), sink);
+            // "Ignore provisioned firmware" follows the configuration in
+            // effect, whether the phone or the server changed it.
+            {
+                let handle = handle.clone();
+                hub.on_change(move |cfg| handle.set_ignore_provisioned_firmware(cfg.ignore_provisioned_firmware().value));
+            }
+            // Contact lists and the like that the configuration names by
+            // HTTP URL are fetched with the phone's resolver.
+            handle.set_http_source(super::provisioning::http_source(&net));
+            // Network state, DHCP option 66, and mDNS announcements.
+            super::provisioning::start_discovery(&ctx, &net, &handle);
             *telephony.dpma.lock().unwrap() = Some(handle.clone());
             ctx.store.set_health(Subsystem::Dpma, HealthStatus::Ok);
-            Some(handle)
         }
         None => {
             warn!("dpma: no MAC address; provisioning is not started");
             ctx.store.set_health(Subsystem::Dpma, HealthStatus::Failed("no MAC address".into()));
-            None
-        }
-    };
-    let tell_dpma = |up: bool, mdns: Vec<DiscoveredServer>| {
-        if let Some(d) = &dpma {
-            let option66 = ctx.store.read::<dphone_state::Network, _>(|n| n.dhcp_tftp_server.clone());
-            d.network(up, Some(option66).filter(|s| !s.is_empty()), mdns);
-        }
-    };
-    tell_dpma(true, Vec::new());
-    // mDNS discovery of provisioning servers, once the network is up.
-    if dpma.is_some() && !ctx.sim {
-        let found = net.browse_proxies(Duration::from_secs(3)).await;
-        let servers: Vec<DiscoveredServer> = found
-            .iter()
-            .filter_map(|s| {
-                let addr = s.addrs.first().map(|a| a.to_string()).or_else(|| (!s.host.is_empty()).then(|| s.host.clone()))?;
-                Some(DiscoveredServer { source: DiscoverySource::Mdns, name: s.instance.clone(), address: format!("{addr}:{}", s.port) })
-            })
-            .collect();
-        if !servers.is_empty() {
-            info!("dpma: {} server(s) announced over mDNS", servers.len());
-            tell_dpma(true, servers);
         }
     }
 
     // Follow the address and the configuration.
-    let mut was_up = true;
     loop {
         tokio::select! {
             _ = sub.changed() => {}
             _ = changed.notified() => {}
         }
-        let now_ip = local_ip(&ctx);
-        let up = now_ip.is_some();
-        if up != was_up {
-            tell_dpma(up, Vec::new());
-            was_up = up;
-        }
-        let Some(ip) = now_ip else { continue };
+        let Some(ip) = local_ip(&ctx) else { continue };
         audio.set_local_ip(ip);
         let cfg = config.lock().unwrap().config();
         set_ringtone(&cfg);

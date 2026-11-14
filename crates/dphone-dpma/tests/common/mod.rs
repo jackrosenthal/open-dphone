@@ -3,6 +3,7 @@
 //! encoding), an in-memory transport, and in-memory storage.
 #![allow(dead_code)]
 
+use dphone_dpma::resources::{Files, Wanted};
 use dphone_dpma::{ConfigSink, Message, Storage, Transport};
 use dpma_proto::message::{Outgoing, SendContext, Sender, Transactions};
 use dpma_proto::{cert, crypto, errors, headers, types};
@@ -30,6 +31,9 @@ pub struct FakeServer {
     pub config: Vec<u8>,
     /// Sent as `X-Digium-AppServer-MD5` on Verify and Config responses.
     pub md5: Option<String>,
+    /// Send the MD5 of the configuration document's bytes there instead,
+    /// 32 lowercase hex digits, as `res_dpma_rs` does from 0.3.1 on.
+    pub md5_of_document: bool,
     /// Request types in arrival order.
     pub log: Vec<String>,
     pub user_agent: String,
@@ -39,6 +43,17 @@ pub struct FakeServer {
     pub last_mac: HashMap<String, Vec<u8>>,
     /// `X-Digium-AppServer-MACAddress` of every request, in arrival order.
     pub macs: Vec<Vec<u8>>,
+    /// The number of certificates in each Handshake body, in arrival order.
+    pub handshake_certificates: Vec<usize>,
+    /// Leave a Handshake with more than one certificate unanswered, as a
+    /// server that cannot read the chain form does.
+    pub refuse_chain: bool,
+    /// What FileRequests are answered with, by name (`file://NAME`).
+    pub files: HashMap<String, Vec<u8>>,
+    /// The names FileRequests asked for, in arrival order.
+    pub file_requests: Vec<String>,
+    /// Every TokenRequest: user name, password, and configuration password.
+    pub token_requests: Vec<(String, String, String)>,
 }
 
 impl FakeServer {
@@ -54,10 +69,16 @@ impl FakeServer {
             users: vec![("100".into(), "Desk".into(), "1234".into())],
             config: Vec::new(),
             md5: None,
+            md5_of_document: false,
             log: Vec::new(),
             user_agent: String::new(),
             last_mac: HashMap::new(),
             macs: Vec::new(),
+            handshake_certificates: Vec::new(),
+            refuse_chain: false,
+            files: HashMap::new(),
+            file_requests: Vec::new(),
+            token_requests: Vec::new(),
         }
     }
 
@@ -86,6 +107,14 @@ impl FakeServer {
             self.last_mac.insert(phone, mac.to_vec());
         }
         true
+    }
+
+    fn digest_header(&self) -> Vec<u8> {
+        if self.md5_of_document {
+            use md5::{Digest, Md5};
+            return Md5::digest(&self.config).iter().map(|b| format!("{b:02x}")).collect::<String>().into_bytes();
+        }
+        self.md5.clone().unwrap_or_default().into_bytes()
     }
 
     pub fn count(&self, request_type: &str) -> usize {
@@ -176,6 +205,12 @@ impl FakeServer {
 
         if request_type.eq_ignore_ascii_case(types::HANDSHAKE) {
             let certificates = cert::restore_pem_newlines(&request.body);
+            let count = String::from_utf8_lossy(&certificates).matches("-----BEGIN CERTIFICATE-----").count();
+            self.handshake_certificates.push(count);
+            if self.refuse_chain && count > 1 {
+                self.log.push("Handshake(chain unanswered)".into());
+                return Vec::new();
+            }
             let info = cert::ClientInfo { contact: b"test", mac: Some(&request.mac), user_agent: b"" };
             let Ok(client) = cert::verify_client_chain(&self.ca, certificates, &info) else {
                 // A refused certificate gets no answer.
@@ -209,6 +244,11 @@ impl FakeServer {
             }
             types::TOKEN_REQUEST => {
                 let user = String::from_utf8_lossy(&request.username).into_owned();
+                self.token_requests.push((
+                    user.clone(),
+                    String::from_utf8_lossy(&request.password).into_owned(),
+                    String::from_utf8_lossy(&request.config_password).into_owned(),
+                ));
                 let by_mac = !self.token_reqs.contains("user");
                 let found = self.users.iter().find(|(e, _, _)| *e == user || by_mac).cloned();
                 match found {
@@ -224,7 +264,7 @@ impl FakeServer {
             }
             types::VERIFY_REQUEST => {
                 if token_ok {
-                    reply.md5 = self.md5.clone().unwrap_or_default().into_bytes();
+                    reply.md5 = self.digest_header();
                 } else {
                     reply.error = errors::msg::INVALID_TOKEN;
                 }
@@ -232,13 +272,17 @@ impl FakeServer {
             types::CONFIG_REQUEST => {
                 if token_ok {
                     reply.body = self.config.clone();
-                    reply.md5 = self.md5.clone().unwrap_or_default().into_bytes();
+                    reply.md5 = self.digest_header();
                 } else {
                     reply.error = errors::msg::INVALID_TOKEN;
                 }
             }
             types::FILE_REQUEST => {
-                if request.body.starts_with(b"file://ringtone") {
+                let name = String::from_utf8_lossy(request.body.strip_prefix(b"file://").unwrap_or(&request.body)).into_owned();
+                self.file_requests.push(name.clone());
+                if let Some(data) = self.files.get(&name) {
+                    reply.append(data);
+                } else if request.body.starts_with(b"file://ringtone") {
                     reply.append(b"RIFFdata");
                 } else {
                     reply.error = errors::msg::FILE_NOT_FOUND;
@@ -301,11 +345,60 @@ impl Storage for MemStorage {
     }
 }
 
+/// An nvdata tree in memory.
+#[derive(Default)]
+pub struct MemFiles(pub Mutex<HashMap<String, Vec<u8>>>);
+
+impl MemFiles {
+    pub fn get(&self, rel: &str) -> Option<Vec<u8>> {
+        self.0.lock().unwrap().get(rel).cloned()
+    }
+    pub fn put(&self, rel: &str, data: &[u8]) {
+        self.0.lock().unwrap().insert(rel.to_string(), data.to_vec());
+    }
+}
+
+impl Files for MemFiles {
+    fn read(&self, rel: &str) -> Option<Vec<u8>> {
+        self.get(rel)
+    }
+    fn write(&self, rel: &str, data: &[u8]) -> Result<(), String> {
+        self.put(rel, data);
+        Ok(())
+    }
+    fn remove(&self, rel: &str) {
+        self.0.lock().unwrap().remove(rel);
+    }
+    fn list(&self, dir: &str) -> Vec<String> {
+        let prefix = format!("{dir}/");
+        let mut names: Vec<String> = self
+            .0
+            .lock()
+            .unwrap()
+            .keys()
+            .filter_map(|k| k.strip_prefix(&prefix))
+            .filter(|n| !n.contains('/'))
+            .map(str::to_string)
+            .collect();
+        names.sort();
+        names
+    }
+}
+
 #[derive(Default)]
 pub struct MemSink {
     pub configurator: Mutex<Option<Vec<u8>>>,
     pub md5: Mutex<Option<String>>,
     pub applied: Mutex<Vec<Vec<u8>>>,
+    /// What the configuration in effect names (the integrator reads it
+    /// from the merged configuration).
+    pub wanted: Mutex<Wanted>,
+    /// Set to have resources fetched.
+    pub files: Mutex<Option<Arc<MemFiles>>>,
+    pub resource_changes: std::sync::atomic::AtomicUsize,
+    /// Resolve "ignore provisioned firmware" from the fetched
+    /// configuration, as the integrator does from the merged one.
+    pub reads_ignore_setting: bool,
 }
 
 impl ConfigSink for MemSink {
@@ -323,6 +416,22 @@ impl ConfigSink for MemSink {
         self.applied.lock().unwrap().push(fetched_config.to_vec());
         *self.md5.lock().unwrap() = Some(md5.to_string());
         Ok(())
+    }
+    fn ignore_provisioned_firmware(&self, fetched_config: &[u8]) -> Option<bool> {
+        if !self.reads_ignore_setting {
+            return None;
+        }
+        let text = String::from_utf8_lossy(fetched_config);
+        Some(text.contains("<setting id=\"dphone_ignore_provisioned_firmware\" value=\"1\""))
+    }
+    fn wanted_resources(&self) -> Wanted {
+        self.wanted.lock().unwrap().clone()
+    }
+    fn files(&self) -> Option<Arc<dyn Files>> {
+        self.files.lock().unwrap().clone().map(|f| f as Arc<dyn Files>)
+    }
+    fn resources_changed(&self) {
+        self.resource_changes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
     fn forget(&self) -> Result<(), String> {
         *self.configurator.lock().unwrap() = None;

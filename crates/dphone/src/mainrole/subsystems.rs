@@ -42,6 +42,7 @@ pub mod hal;
 pub mod liveness;
 pub mod net;
 pub mod paging;
+pub mod provisioning;
 pub mod remote;
 pub mod syslog;
 pub mod system;

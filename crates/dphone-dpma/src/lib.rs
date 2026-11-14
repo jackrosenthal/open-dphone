@@ -12,7 +12,9 @@
 //! ```
 //!
 //! Firmware the server provisions is installed when it differs from the
-//! running image (see [`firmware`]).
+//! running image (see [`firmware`]).  The files a configuration names
+//! (contact lists, ringtones, the BLF items file) are fetched after it is
+//! applied (see [`resources`]).
 //!
 //! It owns the `Provisioning` state, handles
 //! [`dphone_state::Domain::Provisioning`] commands, emits `Event::Push` for
@@ -20,6 +22,7 @@
 
 pub mod fetch;
 pub mod firmware;
+pub mod resources;
 #[cfg(feature = "update")]
 pub mod install;
 mod link;
@@ -69,6 +72,25 @@ pub trait ConfigSink: Send + Sync + 'static {
     fn fetched_config(&self) -> Option<Vec<u8>> {
         None
     }
+    /// Whether provisioned firmware is to be ignored once this fetched
+    /// configuration is in effect: the setting can come with the very
+    /// configuration that offers the firmware.  `None` leaves it to
+    /// [`DpmaHandle::set_ignore_provisioned_firmware`].
+    fn ignore_provisioned_firmware(&self, _fetched_config: &[u8]) -> Option<bool> {
+        None
+    }
+    /// The files the configuration in effect names, and the stock app
+    /// packages it pushes.
+    fn wanted_resources(&self) -> resources::Wanted {
+        resources::Wanted::default()
+    }
+    /// Where those files are kept.  `None`: resources are not fetched.
+    fn files(&self) -> Option<Arc<dyn resources::Files>> {
+        None
+    }
+    /// A resource pass changed files on disk (contact lists, BLF items,
+    /// ringtones): whoever reads them should read them again.
+    fn resources_changed(&self) {}
     /// Provisioning was forgotten: remove `fetched-config.xml`, the
     /// digest, and the configurator state, and merge again.
     fn forget(&self) -> Result<(), String>;
@@ -91,8 +113,9 @@ pub struct DpmaConfig {
     /// Leave the firmware the server provisions alone: its entries are
     /// dropped from the fetched configuration and nothing is installed.
     /// For development.  Off by default: a provisioned phone runs the
-    /// firmware its server names.  Changeable at run time with
-    /// [`DpmaHandle::set_ignore_provisioned_firmware`].
+    /// firmware its server names.  This is the value at start; afterward
+    /// the client follows [`DpmaHandle::set_ignore_provisioned_firmware`]
+    /// and [`ConfigSink::ignore_provisioned_firmware`].
     pub ignore_provisioned_firmware: bool,
     /// Send the MAC in the firmware download's User-Agent (stock
     /// `send_mac_with_useragent`).
@@ -129,6 +152,9 @@ pub(crate) struct FirmwareCtl {
     pub ignore: std::sync::atomic::AtomicBool,
     pub parts: std::sync::Mutex<Option<FirmwareParts>>,
     pub running: Arc<std::sync::atomic::AtomicBool>,
+    /// Where the files a configuration names are downloaded from when
+    /// their URL is `http://` or `https://`.
+    pub http: std::sync::Mutex<Option<Arc<dyn firmware::FirmwareSource>>>,
 }
 
 pub(crate) enum Input {
@@ -189,8 +215,19 @@ impl DpmaHandle {
         *self.firmware.parts.lock().unwrap() = Some((source, installer));
     }
 
-    /// Turns "ignore firmware provisioned by the server" on or off.  It
-    /// applies from the next configuration fetch.
+    /// Gives the client the HTTP client for the files a configuration
+    /// names by `http://` or `https://` URL (contact lists, ringtones, the
+    /// BLF items file).  Without it, [`fetch::HttpSource`] with the
+    /// system's resolver is used.
+    pub fn set_http_source(&self, source: Arc<dyn firmware::FirmwareSource>) {
+        *self.firmware.http.lock().unwrap() = Some(source);
+    }
+
+    /// Turns "ignore firmware provisioned by the server" on or off: the
+    /// integrator calls this whenever the setting in effect changes.  A
+    /// firmware check that has not started yet sees the new value; the
+    /// entries of a configuration already saved are dropped or restored at
+    /// the next fetch.
     pub fn set_ignore_provisioned_firmware(&self, ignore: bool) {
         self.firmware.ignore.store(ignore, std::sync::atomic::Ordering::SeqCst);
     }
@@ -222,6 +259,7 @@ pub fn start(
         ignore: std::sync::atomic::AtomicBool::new(cfg.ignore_provisioned_firmware),
         parts: std::sync::Mutex::new(None),
         running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        http: std::sync::Mutex::new(None),
     });
     let m = machine::Machine::new(store, cfg, link.clone(), storage, sink, firmware.clone());
     tokio::spawn(m.run(input_rx, events_rx, commands));

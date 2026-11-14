@@ -1,8 +1,9 @@
 //! The provisioning state machine (plan section 9): discover, handshake,
-//! verify or obtain a token, fetch and apply the configuration, then stay
-//! attached for pushes.
+//! verify or obtain a token, fetch and apply the configuration and the
+//! files it names, then stay attached for pushes.
 
 use crate::link::{body_of, DpmaError, Link};
+use crate::resources;
 use crate::xml::{self, Configurator};
 use crate::{files, ConfigSink, DpmaConfig, FirmwareCtl, Input, Storage};
 use std::sync::atomic::Ordering;
@@ -60,6 +61,29 @@ pub(crate) struct Machine {
     attached: bool,
     server: Option<DiscoveredServer>,
     firmware: Arc<FirmwareCtl>,
+    /// What the server's last HandshakeResponse required for a token and
+    /// for the user list (lowercase).  They hold for the session, so a
+    /// pass that reuses the session (after `digium.config.update`) still
+    /// knows them.
+    token_reqs: String,
+    userlist_reqs: String,
+    /// A server (by SIP URI) that answered the single-certificate
+    /// Handshake after leaving the chain form unanswered.
+    legacy_only: Option<String>,
+    /// The pass that fetches the files the configuration names.
+    resource_task: Option<tokio::task::JoinHandle<()>>,
+}
+
+/// The two bodies a Handshake can carry (`dpma-proto`'s `cert`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HandshakeForm {
+    /// Three certificates: one for servers that read only the first, the
+    /// provisioning CA's, and the phone's.  The server answers with
+    /// `Handshake-Version: 1` and encrypts to the last certificate.
+    Chain,
+    /// The phone's certificate alone, as stock firmware sends it (seen in
+    /// the D60's 2_9_28: the body is its `phonecert.pem`).
+    Legacy,
 }
 
 fn sip_uri(address: &str) -> String {
@@ -100,6 +124,10 @@ impl Machine {
             attached: false,
             server: None,
             firmware,
+            token_reqs: String::new(),
+            userlist_reqs: String::new(),
+            legacy_only: None,
+            resource_task: None,
         }
     }
 
@@ -136,16 +164,26 @@ impl Machine {
                 i = input.recv() => match i {
                     Some(Input::Network { up, option66, mdns }) => {
                         let came_up = up && !self.net_up;
+                        // Discovery inputs are reported again whenever the
+                        // integrator looks; only a change is a reason to
+                        // start over.
+                        let changed = up != self.net_up || option66 != self.option66 || mdns != self.mdns;
                         self.net_up = up;
                         self.option66 = option66;
                         self.mdns = mdns;
                         if !up {
                             self.attached = false;
                             self.link.forget();
+                            self.stop_resources();
                             self.store.update::<Provisioning, _>(|p| p.attached = false);
-                        } else if (came_up || !self.attached) && !self.standalone {
+                        } else if (came_up || (changed && !self.attached)) && !self.standalone {
                             want = true;
                             full = true;
+                        } else if changed {
+                            // Attached: the server in use stays, and the
+                            // list shown to the user follows.
+                            let (_, found) = self.pick_server();
+                            self.store.update::<Provisioning, _>(|p| p.discovered = found);
                         }
                     }
                     None => break,
@@ -250,6 +288,10 @@ impl Machine {
                 self.pin = None;
                 self.attached = false;
                 self.server = None;
+                self.token_reqs.clear();
+                self.userlist_reqs.clear();
+                self.legacy_only = None;
+                self.stop_resources();
                 self.storage.remove(files::IDENTITY_CERT);
                 self.storage.remove(files::IDENTITY_KEY);
                 let r = self.sink.forget();
@@ -262,6 +304,7 @@ impl Machine {
                 self.standalone = true;
                 self.attached = false;
                 self.link.forget();
+                self.stop_resources();
                 self.store.update::<Provisioning, _>(|p| {
                     p.attached = false;
                     p.phase = ProvisionPhase::Standalone;
@@ -375,15 +418,76 @@ impl Machine {
         Ok(id)
     }
 
+    /// The Handshake: the certificate-chain form first, and the phone's
+    /// certificate alone when a server leaves that unanswered (a server
+    /// that refuses the certificates sends nothing at all).
+    ///
+    /// The phone has one identity, and it stands in both places of the
+    /// chain form that carry a phone certificate.  A server that reads the
+    /// whole chain encrypts the common password to the last certificate,
+    /// and one that reads only the first to the first: the same key either
+    /// way.
+    async fn handshake(&mut self, identity: &PhoneIdentity, server_uri: &str) -> Result<Incoming, Fail> {
+        let forms: &[HandshakeForm] = if self.legacy_only.as_deref() == Some(server_uri) {
+            &[HandshakeForm::Legacy]
+        } else {
+            &[HandshakeForm::Chain, HandshakeForm::Legacy]
+        };
+        for (n, form) in forms.iter().enumerate() {
+            let body = match form {
+                HandshakeForm::Chain => identity.chain_body(identity),
+                HandshakeForm::Legacy => identity.legacy_body(),
+            };
+            self.link.forget();
+            match self.link.handshake(body).await {
+                Ok(resp) => {
+                    if resp.error == 0 {
+                        log::info!(
+                            "dpma: handshake answered ({}{})",
+                            match form {
+                                HandshakeForm::Chain => "certificate chain",
+                                HandshakeForm::Legacy => "single certificate",
+                            },
+                            if resp.handshake_version.is_empty() {
+                                String::new()
+                            } else {
+                                format!(", Handshake-Version {}", String::from_utf8_lossy(&resp.handshake_version))
+                            }
+                        );
+                        if *form == HandshakeForm::Legacy && n > 0 {
+                            self.legacy_only = Some(server_uri.to_string());
+                        }
+                    }
+                    return Ok(resp);
+                }
+                Err(DpmaError::Timeout) if n + 1 < forms.len() => {
+                    log::info!("dpma: no answer to the certificate-chain Handshake; sending the single certificate");
+                }
+                // A refused certificate gets no HandshakeResponse at all.
+                Err(DpmaError::Timeout) => {
+                    return Err(Fail {
+                        reason: "no HandshakeResponse (server unreachable, or it refused the phone certificate)".into(),
+                        code: None,
+                        retry: true,
+                    });
+                }
+                Err(other) => return Err(other.into()),
+            }
+        }
+        unreachable!("the last form returns")
+    }
+
     async fn provision(&mut self, full: bool) -> Result<Outcome, Fail> {
-        let mut token_reqs = String::new();
-        let mut userlist_reqs = String::new();
+        // The files of the previous configuration are not fetched while a
+        // new one may be on its way.
+        self.stop_resources();
         if full || !self.link.has_session() {
             self.phase(ProvisionPhase::Discovering);
             let (server, found) = self.pick_server();
             self.store.update::<Provisioning, _>(|p| p.discovered = found);
             let Some(server) = server else { return Ok(Outcome::NeedServer) };
-            self.link.set_server(&sip_uri(&server.address));
+            let server_uri = sip_uri(&server.address);
+            self.link.set_server(&server_uri);
             self.server = Some(server.clone());
             self.store.update::<Provisioning, _>(|p| {
                 p.server = Some(server);
@@ -391,22 +495,15 @@ impl Machine {
                 p.attached = false;
             });
             let identity = self.identity()?;
-            self.link.forget();
-            let resp = self.link.handshake(identity.legacy_body()).await.map_err(|e| match e {
-                // A refused certificate gets no HandshakeResponse at all.
-                DpmaError::Timeout => Fail {
-                    reason: "no HandshakeResponse (server unreachable, or it refused the phone certificate)".into(),
-                    code: None,
-                    retry: true,
-                },
-                other => other.into(),
-            })?;
+            self.token_reqs.clear();
+            self.userlist_reqs.clear();
+            let resp = self.handshake(&identity, &server_uri).await?;
             if resp.error != 0 {
                 return Err(Fail { reason: errors::msg_error_text(resp.error).into(), code: Some(resp.error), retry: true });
             }
             self.link.accept_handshake(&resp, &identity.private_key)?;
-            token_reqs = header_text(&resp, headers::TOKEN_AUTH_REQUIREMENTS).to_ascii_lowercase();
-            userlist_reqs = header_text(&resp, headers::USERLIST_AUTH_REQUIREMENTS).to_ascii_lowercase();
+            self.token_reqs = header_text(&resp, headers::TOKEN_AUTH_REQUIREMENTS).to_ascii_lowercase();
+            self.userlist_reqs = header_text(&resp, headers::USERLIST_AUTH_REQUIREMENTS).to_ascii_lowercase();
             let ua = {
                 let v = header_text(&resp, headers::USER_AGENT);
                 if v.is_empty() { header_text(&resp, "Server") } else { v }
@@ -417,6 +514,7 @@ impl Machine {
             });
         }
         let has = |reqs: &str, what: &str| reqs.split(',').any(|r| r.trim() == what);
+        let (token_reqs, userlist_reqs) = (self.token_reqs.clone(), self.userlist_reqs.clone());
 
         // Saved state applies only to the server it was saved for.
         let saved = self.configurator();
@@ -447,6 +545,7 @@ impl Machine {
                         self.check_firmware(saved);
                     }
                     self.done(&user, &md5);
+                    self.start_resources();
                     return Ok(Outcome::Provisioned);
                 }
             } else if resp.error == errors::msg::SESSION_TIMEOUT {
@@ -568,6 +667,11 @@ impl Machine {
             if h.is_empty() { md5_hex(&config) } else { h }
         };
         let offered = xml::offered_firmware(&config);
+        // The setting as it will be with this configuration in effect: a
+        // configuration can set it and offer firmware at once.
+        if let Some(ignore) = self.sink.ignore_provisioned_firmware(&config) {
+            self.firmware.ignore.store(ignore, Ordering::SeqCst);
+        }
         let ignore = self.firmware.ignore.load(Ordering::SeqCst);
         if ignore && offered.is_some() {
             log::info!("dpma: ignoring provisioned firmware {} (ignore_provisioned_firmware is set)", offered.as_deref().unwrap_or(""));
@@ -578,11 +682,64 @@ impl Machine {
             p.phase = ProvisionPhase::Applying;
         });
         self.sink.apply(&content, &md5).map_err(|e| Fail { reason: format!("cannot apply the configuration: {e}"), code: None, retry: false })?;
+        // Applying tells the integrator, which reports the setting now in
+        // effect; `check_firmware` goes by that.
         if !ignore {
             self.check_firmware(config);
         }
         self.done(&user, &md5);
+        self.start_resources();
         Ok(Outcome::Provisioned)
+    }
+
+    fn firmware_policy(&self) -> crate::firmware::Policy {
+        // `Digium <model> <version>`.
+        let mut words = self.cfg.user_agent.split_whitespace().skip(1);
+        let (model, running) = (words.next().unwrap_or(""), words.next().unwrap_or(""));
+        let mac: Vec<&str> = (0..self.cfg.mac.len() / 2).map(|i| &self.cfg.mac[i * 2..i * 2 + 2]).collect();
+        let mut policy = crate::firmware::Policy::new(model, running, &mac.join(":"));
+        policy.mac_in_user_agent = self.cfg.mac_in_user_agent;
+        policy
+    }
+
+    fn stop_resources(&mut self) {
+        if let Some(task) = self.resource_task.take() {
+            task.abort();
+        }
+    }
+
+    /// Fetches the files the configuration in effect names, off this task:
+    /// the session stays free for pushes and app requests meanwhile.
+    fn start_resources(&mut self) {
+        self.stop_resources();
+        let wanted = self.sink.wanted_resources();
+        // Stock JavaScript apps the server pushes: skipped, and said so.
+        resources::log_skipped_apps(&wanted.apps);
+        let Some(files) = self.sink.files() else { return };
+        let sink = self.sink.clone();
+        let fetch = Fetcher {
+            link: self.link.clone(),
+            http: match self.firmware.http.lock().unwrap().clone() {
+                Some(source) => source,
+                None => Arc::new(crate::fetch::HttpSource::new()),
+            },
+            user_agent: self.firmware_policy().user_agent(),
+        };
+        self.resource_task = Some(tokio::spawn(async move {
+            let report = resources::sync(&wanted, &files, &fetch).await;
+            if report.fetched + report.matched + report.failed + report.removed > 0 {
+                log::info!(
+                    "dpma: provisioned files: {} downloaded, {} unchanged by digest, {} failed, {} removed",
+                    report.fetched,
+                    report.matched,
+                    report.failed,
+                    report.removed
+                );
+            }
+            if report.changed {
+                sink.resources_changed();
+            }
+        }));
     }
 
     /// Compares the firmware a fetched configuration provisions with the
@@ -596,15 +753,9 @@ impl Machine {
             log::debug!("dpma: no firmware updater; provisioned firmware is not acted on");
             return;
         };
-        // `Digium <model> <version>`.
-        let mut words = self.cfg.user_agent.split_whitespace().skip(1);
-        let (model, running) = (words.next().unwrap_or(""), words.next().unwrap_or(""));
-        let mac: Vec<&str> = (0..self.cfg.mac.len() / 2).map(|i| &self.cfg.mac[i * 2..i * 2 + 2]).collect();
-        let mut policy = crate::firmware::Policy::new(model, running, &mac.join(":"));
-        policy.mac_in_user_agent = self.cfg.mac_in_user_agent;
         let runner = crate::firmware::Runner {
             store: self.store.clone(),
-            policy,
+            policy: self.firmware_policy(),
             storage: self.storage.clone(),
             source,
             installer,
@@ -627,6 +778,40 @@ impl Machine {
             p.last_success_unix = Some(clock::unix_secs());
             p.users.clear();
         });
+    }
+}
+
+/// Resource downloads: FileRequests on the session, and HTTP through the
+/// blocking client on a thread of its own.
+struct Fetcher {
+    link: Arc<Link>,
+    http: Arc<dyn crate::firmware::FirmwareSource>,
+    user_agent: String,
+}
+
+#[async_trait::async_trait]
+impl resources::Fetch for Fetcher {
+    async fn file(&self, name: &str) -> Result<Vec<u8>, DpmaError> {
+        self.link.file(name).await
+    }
+
+    async fn http(&self, url: &str, max: usize) -> Result<Vec<u8>, String> {
+        use std::io::Read;
+        let (http, url, user_agent) = (self.http.clone(), url.to_string(), self.user_agent.clone());
+        tokio::task::spawn_blocking(move || {
+            let body = http.open(&url, &user_agent).map_err(|e| match e.status {
+                Some(status) => format!("HTTP {status}: {}", e.message),
+                None => e.message,
+            })?;
+            let mut data = Vec::new();
+            body.take(max as u64 + 1).read_to_end(&mut data).map_err(|e| e.to_string())?;
+            if data.len() > max {
+                return Err(format!("more than the {max} bytes allowed"));
+            }
+            Ok(data)
+        })
+        .await
+        .map_err(|e| e.to_string())?
     }
 }
 
