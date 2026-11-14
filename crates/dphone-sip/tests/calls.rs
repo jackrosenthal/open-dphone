@@ -212,3 +212,59 @@ async fn forward_on_no_answer() {
     wait("A talking to C", || (state(&a.store, ca) == Some(CallState::Active)).then_some(())).await;
     assert_eq!(a.media.last_start(ca).unwrap().remote.port(), 6000);
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn parking_follows_the_configured_mode() {
+    use common::{base_config, phone_with};
+    use dphone_sip::AccountConfig;
+    use dphone_state::AccountId;
+    let b = phone("bob", 5000).await;
+    let lot = phone("lot", 6000).await;
+    let parker = |blind: Option<bool>| {
+        let mut cfg = base_config();
+        let mut a = AccountConfig::new(AccountId(0), "alice", "pw", "127.0.0.1");
+        a.register = false;
+        a.mwi_subscribe = false;
+        cfg.accounts.push(a);
+        if let Some(blind) = blind {
+            cfg.park_extension = lot.uri();
+            cfg.park_blind_transfer = blind;
+        }
+        cfg
+    };
+
+    // No parking extension: the phone cannot park.
+    let a = phone_with("alice", parker(None), 4000).await;
+    let (ca, cb) = connect(&a, &b).await;
+    assert!(a.store.send(Command::Park { call: ca }).await.is_err());
+    a.store.send(Command::Hangup { call: ca }).await.unwrap();
+    wait("B idle", || state(&b.store, cb).is_none().then_some(())).await;
+    a.handle.shutdown().await;
+
+    // Blind mode: the other party is sent to the parking extension.
+    let a = phone_with("alice", parker(Some(true)), 4100).await;
+    let (ca, _cb) = connect(&a, &b).await;
+    a.store.send(Command::Park { call: ca }).await.unwrap();
+    assert_eq!(state(&a.store, ca), Some(CallState::Transferring));
+    let cl = wait("the lot rings for B", || only_call(&lot.store)).await;
+    assert_eq!(lot.store.get::<Calls>().get(cl).unwrap().remote.number, "bob");
+    lot.store.send(Command::Answer { call: cl, path: None }).await.unwrap();
+    wait("A's call is gone", || state(&a.store, ca).is_none_or(|s| s.is_ended()).then_some(())).await;
+    lot.store.send(Command::Hangup { call: cl }).await.unwrap();
+    wait("B idle", || b.store.get::<Calls>().calls.is_empty().then_some(())).await;
+    wait("lot idle", || lot.store.get::<Calls>().calls.is_empty().then_some(())).await;
+    a.handle.shutdown().await;
+
+    // The other mode: we call the parking extension ourselves, with the
+    // call to park on hold, as the consultation leg of a transfer.
+    let a = phone_with("alice", parker(Some(false)), 4200).await;
+    let (ca, cb) = connect(&a, &b).await;
+    let consult = match a.store.send(Command::Park { call: ca }).await {
+        Ok(Reply::Call(id)) => id,
+        other => panic!("{other:?}"),
+    };
+    wait("B on hold", || state(&b.store, cb).is_some_and(|s| s.is_held()).then_some(())).await;
+    let cl = wait("the lot rings for A", || only_call(&lot.store)).await;
+    assert_eq!(lot.store.get::<Calls>().get(cl).unwrap().remote.number, "alice");
+    assert_eq!(a.store.get::<Calls>().get(consult).unwrap().transfer_of, Some(ca));
+}

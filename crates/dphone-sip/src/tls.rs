@@ -2,8 +2,11 @@
 //! into `rsipstack`'s platform TLS seam (its own `rustls` feature requires
 //! `ring`, which needs a C toolchain for the target).
 //!
-//! Client connections only: a phone dials out and the PBX reuses the
-//! connection for requests toward it.
+//! Outgoing connections use the stack's TLS connector seam.  The stack has
+//! no TLS listener without `ring` and no way to adopt an accepted TLS
+//! stream, so [`listen`] accepts connections itself and joins each one to
+//! the stack through its in-memory channel transport, using the stack's
+//! own stream framing.
 
 use crate::config::TlsConfig;
 use rsipstack::platform::tls::{TlsClientConfig, TlsConnector, TlsStream};
@@ -160,4 +163,110 @@ impl TlsStream for Stream {
     fn local_addr(&self) -> rsipstack::Result<SocketAddr> {
         Ok(self.local)
     }
+}
+
+/// Accepts SIP over TLS on `bind` and feeds the connections to the stack.
+/// Returns once the listener is bound; the accept loop runs on.
+pub async fn listen(
+    bind: SocketAddr,
+    cert_der: Vec<u8>,
+    key_der: Vec<u8>,
+    inner: rsipstack::transaction::endpoint::EndpointInnerRef,
+) -> Result<(), String> {
+    use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
+    let config = rustls::ServerConfig::builder_with_provider(Arc::new(rustls_rustcrypto::provider()))
+        .with_safe_default_protocol_versions()
+        .map_err(|e| e.to_string())?
+        .with_no_client_auth()
+        .with_single_cert(vec![CertificateDer::from(cert_der)], PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key_der)))
+        .map_err(|e| format!("unusable TLS certificate or key: {e}"))?;
+    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
+    let listener = tokio::net::TcpListener::bind(bind).await.map_err(|e| e.to_string())?;
+    log::info!("sip: accepting TLS on port {}", bind.port());
+    tokio::spawn(async move {
+        loop {
+            let (tcp, remote) = match listener.accept().await {
+                Ok(x) => x,
+                Err(e) => {
+                    log::warn!("sip: TLS accept: {e}");
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    continue;
+                }
+            };
+            let (acceptor, inner) = (acceptor.clone(), inner.clone());
+            tokio::spawn(async move {
+                let stream = match tokio::time::timeout(std::time::Duration::from_secs(20), acceptor.accept(tcp)).await {
+                    Ok(Ok(s)) => s,
+                    Ok(Err(e)) => return log::debug!("sip: TLS handshake from {remote} failed: {e}"),
+                    Err(_) => return log::debug!("sip: TLS handshake from {remote} timed out"),
+                };
+                if let Err(e) = serve(stream, remote, inner).await {
+                    log::debug!("sip: TLS connection from {remote} ended: {e}");
+                }
+            });
+        }
+    });
+    Ok(())
+}
+
+/// Runs one accepted connection: frames what arrives with the stack's
+/// stream codec and hands it in; writes out what the stack sends.
+async fn serve(
+    stream: tokio_rustls::server::TlsStream<TcpStream>,
+    remote: SocketAddr,
+    inner: rsipstack::transaction::endpoint::EndpointInnerRef,
+) -> Result<(), String> {
+    use rsipstack::transport::channel::ChannelConnection;
+    use rsipstack::transport::stream::{SipCodec, SipCodecType};
+    use rsipstack::transport::{SipAddr, SipConnection, TransportEvent};
+    use tokio_util::codec::Decoder;
+
+    let addr = SipAddr { r#type: Some(rsipstack::sip::Transport::Tls), addr: remote.into() };
+    let (to_stack, from_us) = rsipstack::platform::mpsc::unbounded_channel();
+    let (to_us, mut from_stack) = rsipstack::platform::mpsc::unbounded_channel();
+    let channel = ChannelConnection::create_connection(from_us, to_us, addr.clone(), None).await.map_err(|e| e.to_string())?;
+    let connection = SipConnection::Channel(channel);
+    inner.transport_layer.add_connection(connection.clone());
+
+    let (mut read, mut write) = tokio::io::split(stream);
+    let mut buf = bytes::BytesMut::with_capacity(8192);
+    let mut codec = SipCodec::new();
+    let result = loop {
+        tokio::select! {
+            out = from_stack.recv() => match out {
+                Some(TransportEvent::Incoming(msg, _, _)) => {
+                    if let Err(e) = write.write_all(&msg.to_bytes()).await {
+                        break Err(e.to_string());
+                    }
+                }
+                Some(_) => {}
+                None => break Ok(()),
+            },
+            n = read.read_buf(&mut buf) => match n {
+                Ok(0) => break Ok(()),
+                Ok(_) => loop {
+                    match codec.decode(&mut buf) {
+                        Ok(Some(SipCodecType::Message(msg))) => {
+                            if to_stack.send(TransportEvent::Incoming(msg, connection.clone(), addr.clone())).is_err() {
+                                return Ok(());
+                            }
+                        }
+                        // RFC 5626 keepalive: answer the double CRLF.
+                        Ok(Some(SipCodecType::KeepaliveRequest)) => {
+                            let _ = write.write_all(b"\r\n").await;
+                        }
+                        Ok(Some(SipCodecType::KeepaliveResponse)) => {}
+                        Ok(None) => break,
+                        Err(e) => {
+                            inner.transport_layer.remove_connection(&connection);
+                            return Err(e.to_string());
+                        }
+                    }
+                },
+                Err(e) => break Err(e.to_string()),
+            },
+        }
+    };
+    inner.transport_layer.remove_connection(&connection);
+    result
 }

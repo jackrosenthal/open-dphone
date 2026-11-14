@@ -47,6 +47,8 @@ pub(crate) enum Ev {
     InviteDone { call: CallId, result: Result<Option<Response>, String> },
     ReinviteDone { call: CallId, hold: bool, result: Result<Option<Response>, String> },
     ReferDone { call: CallId, result: Result<Option<Response>, String> },
+    /// The answer to a session refresh sent as UPDATE.
+    RefreshDone { call: CallId, generation: u64, result: Result<Option<Response>, String> },
     /// The SDP answer in the ACK of an offerless (re-)INVITE.
     AckBody { call: CallId, body: Vec<u8> },
     Registered { acct: AccountId, generation: u64, outcome: RegOutcome },
@@ -68,6 +70,10 @@ pub(crate) enum Timer {
     Linger { call: CallId },
     /// Retry a hold change that could not be sent yet.
     HoldRetry { call: CallId },
+    /// Time for us to refresh a session (RFC 4028).
+    SessionRefresh { call: CallId, generation: u64 },
+    /// The other side did not refresh the session in time.
+    SessionExpire { call: CallId, generation: u64 },
     Heartbeat,
 }
 
@@ -130,6 +136,16 @@ pub(crate) struct CallRt {
     pub redirected: bool,
     /// The other party's URI (as dialed, or their From).
     pub peer: String,
+    /// The session timer in force, if any, and the generation of its
+    /// pending timer event.
+    pub session: Option<crate::timer::Agreed>,
+    pub session_gen: u64,
+    /// The interval we ask for (raised by a 422).
+    pub session_secs: u32,
+    /// What the 2xx to their INVITE says about the session timer.
+    pub session_answer: Option<(crate::timer::SessionExpires, bool, crate::timer::Agreed)>,
+    /// The peer's `Allow` lists UPDATE (the cheaper refresh).
+    pub peer_update: bool,
 }
 
 pub(crate) enum SubKind {
@@ -173,6 +189,11 @@ pub(crate) struct Core {
     pub park_extension: String,
     /// The latest dialog-info per BLF entry, for directed pickup.
     pub blf_dialogs: std::collections::HashMap<String, crate::bodies::DialogInfo>,
+    /// Call-IDs of CANCELs that said the call was answered elsewhere.
+    pub elsewhere: Arc<std::sync::Mutex<Vec<String>>>,
+    /// Stream ports we accept connections on.
+    pub tcp_listening: Option<u16>,
+    pub tls_listening: Option<u16>,
 }
 
 pub(crate) fn sip_transport(t: Transport) -> rsipstack::sip::Transport {
@@ -230,10 +251,22 @@ impl Core {
         SipAddr::from(std::net::SocketAddr::new(self.cfg.local_ip, self.local_port))
     }
 
+    /// The port peers reach us on over `t`: the listener's for a stream
+    /// transport we listen on, else the UDP port.
+    fn port_for(&self, t: Transport) -> u16 {
+        match t {
+            Transport::Tcp => self.tcp_listening,
+            Transport::Tls => self.tls_listening,
+            Transport::Udp => None,
+        }
+        .unwrap_or(self.local_port)
+    }
+
     /// Our Contact URI for an account: the stack's NAT-aware form (the
     /// address the registrar saw, when it differs from ours).
     pub fn contact_uri(&self, user: &str, public: Option<rsipstack::sip::HostWithPort>, t: Transport) -> Uri {
-        let mut uri = Registration::create_nat_aware_contact(user, public, &self.local_addr()).uri;
+        let local = SipAddr::from(std::net::SocketAddr::new(self.cfg.local_ip, self.port_for(t)));
+        let mut uri = Registration::create_nat_aware_contact(user, public, &local).uri;
         if t != Transport::Udp {
             uri.params.push(rsipstack::sip::Param::Transport(sip_transport(t)));
         }
@@ -492,5 +525,33 @@ impl Core {
             .or_else(|| self.accts.iter().find(|a| a.cfg.user == to_user))
             .or(self.accts.first())
             .map(|a| a.cfg.id)
+    }
+}
+
+/// Notes CANCELs that carry `Reason: ...;text="Call completed elsewhere"`.
+/// The dialog layer ends the call on a CANCEL without showing the request,
+/// so this is where its Reason can be seen.
+pub(crate) struct CancelWatch(pub Arc<std::sync::Mutex<Vec<String>>>);
+
+impl rsipstack::transaction::endpoint::MessageInspector for CancelWatch {
+    fn before_send(&self, msg: rsipstack::sip::SipMessage, _dest: Option<&SipAddr>) -> rsipstack::sip::SipMessage {
+        msg
+    }
+
+    fn after_received(&self, msg: rsipstack::sip::SipMessage, _from: Option<&SipAddr>) -> rsipstack::sip::SipMessage {
+        if let rsipstack::sip::SipMessage::Request(req) = &msg {
+            if req.method == rsipstack::sip::Method::Cancel
+                && util::header(&req.headers, "Reason").is_some_and(|r| r.to_ascii_lowercase().contains("elsewhere"))
+            {
+                if let Some(id) = util::header(&req.headers, "Call-ID") {
+                    let mut list = self.0.lock().unwrap();
+                    if list.len() >= 16 {
+                        list.remove(0);
+                    }
+                    list.push(id.to_string());
+                }
+            }
+        }
+        msg
     }
 }

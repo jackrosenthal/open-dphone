@@ -122,7 +122,56 @@ impl Core {
                 self.start_subs(id);
             }
         }
+        self.ensure_listeners();
         self.sync_keys();
+    }
+
+    /// Starts accepting connections over TCP and TLS once an account uses
+    /// that transport (stock listens on both by default).  The PBX normally
+    /// reuses the connection we opened to register; the listeners take
+    /// over when that connection has gone away.
+    fn ensure_listeners(&mut self) {
+        let uses = |t: Transport| self.accts.iter().any(|a| a.cfg.primary.transport == t || a.cfg.alternate.as_ref().is_some_and(|h| h.transport == t));
+        let any: std::net::IpAddr = match self.cfg.local_ip {
+            ip if ip.is_loopback() => ip,
+            std::net::IpAddr::V4(_) => std::net::Ipv4Addr::UNSPECIFIED.into(),
+            std::net::IpAddr::V6(_) => std::net::Ipv6Addr::UNSPECIFIED.into(),
+        };
+        if let (None, Some(port), true) = (self.tcp_listening, self.cfg.tcp_port, uses(Transport::Tcp)) {
+            self.tcp_listening = Some(port);
+            let inner = self.inner.clone();
+            let (bind, external) = (std::net::SocketAddr::new(any, port), std::net::SocketAddr::new(self.cfg.local_ip, port));
+            tokio::spawn(async move {
+                use rsipstack::transport::tcp_listener::TcpListenerConnection;
+                // The stack's own TCP listener.
+                let listener = match TcpListenerConnection::new(bind, Some(external)).await {
+                    Ok(l) => l,
+                    Err(e) => return log::error!("sip: TCP listener: {e}"),
+                };
+                inner.transport_layer.add_transport(rsipstack::transport::SipConnection::TcpListener(listener.clone()));
+                match listener.serve_listener(inner.transport_layer.inner.clone()).await {
+                    Ok(()) => log::info!("sip: accepting TCP on port {port}"),
+                    Err(e) => log::error!("sip: cannot accept TCP on port {port}: {e}"),
+                }
+            });
+        }
+        #[cfg(feature = "tls")]
+        if let (None, Some(port), true) = (self.tls_listening, self.cfg.tls_port, uses(Transport::Tls)) {
+            let tls = &self.cfg.tls;
+            if tls.server_cert_der.is_empty() || tls.server_key_der.is_empty() {
+                log::info!("sip: no certificate for the TLS listener yet; not accepting TLS");
+            } else {
+                self.tls_listening = Some(port);
+                let (cert, key) = (tls.server_cert_der.clone(), tls.server_key_der.clone());
+                let inner = self.inner.clone();
+                tokio::spawn(async move {
+                    match crate::tls::listen(std::net::SocketAddr::new(any, port), cert, key, inner).await {
+                        Ok(()) => {}
+                        Err(e) => log::error!("sip: cannot accept TLS on port {port}: {e}"),
+                    }
+                });
+            }
+        }
     }
 
     fn blf_uri(&self, acct: AccountId, subscribe: &str) -> Option<String> {
@@ -653,6 +702,15 @@ impl Core {
                     return self.dispatch(Dialog::ClientSubscription(d), tx);
                 }
             }
+        }
+        if event == "check-sync" {
+            // Polycom-style "fetch your configuration again" (stock
+            // `enable_check_sync`).
+            if self.cfg.check_sync {
+                log::info!("sip: check-sync received; asking for the configuration again");
+                self.store.post(dphone_state::Command::Reprovision);
+            }
+            return self.reply(tx, 200, Vec::new());
         }
         if event == "message-summary" {
             if let Some(acct) = self.account_for(req) {

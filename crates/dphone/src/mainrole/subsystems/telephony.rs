@@ -302,6 +302,16 @@ fn sip_config(ctx: &Context, cfg: &Config, nv: &Nvdata, local_ip: IpAddr) -> Sip
         out.udp_keepalive_secs = ka;
     }
     out.call_waiting = cfg.setting_bool("call_waiting_tone", true);
+    out.park_blind_transfer = cfg.setting_bool("parking_lot_enable_blind_transfer", false);
+    out.check_sync = sip.enable_check_sync;
+    // Stock listens for SIP over TCP and TLS as well; the TLS side presents
+    // the phone's own certificate (the one the web server generated).
+    out.tcp_port = sip.tcp_enabled.then_some(sip.tcp_port);
+    out.tls_port = sip.tls_allowed.then_some(sip.tls_port);
+    if let (Ok(Some(cert)), Ok(Some(key))) = (nv.open_get("web-tls-cert.der"), nv.open_get("web-tls-key.der")) {
+        out.tls.server_cert_der = cert;
+        out.tls.server_key_der = key;
+    }
     if let Some(park) = cfg.setting("parking_lot_extension").filter(|p| !p.is_empty()) {
         out.park_extension = park.to_string();
     }

@@ -1127,6 +1127,7 @@ version = "3.0.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
+ "bytes",
  "dphone-state",
  "getrandom 0.3.4",
  "log",
@@ -1138,6 +1139,7 @@ dependencies = [
  "rustls-rustcrypto",
  "tokio",
  "tokio-rustls",
+ "tokio-util",
 ]
 
 [[package]]

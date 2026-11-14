@@ -527,7 +527,8 @@ static const struct snd_soc_component_driver bcmring_pcm_component = {
 	.trigger = bcmring_pcm_trigger,
 	.sync_stop = bcmring_pcm_sync_stop,
 	.pointer = bcmring_pcm_pointer,
-	.pcm_construct = bcmring_pcm_new,
+	.pcm_new = bcmring_pcm_new,
+	.endianness = 1,
 };
 
 static struct snd_soc_dai_driver bcmring_pcm_dai = {

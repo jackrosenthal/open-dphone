@@ -149,6 +149,10 @@ pub struct TlsConfig {
     /// Check the server certificate against `roots_pem` and its name.
     /// Stock's default is not to; see `docs/device-identity-trust.md`.
     pub verify: bool,
+    /// Certificate (DER) and PKCS#8 private key (DER) presented to peers
+    /// that connect to our TLS port.  Empty: no TLS listener.
+    pub server_cert_der: Vec<u8>,
+    pub server_key_der: Vec<u8>,
 }
 
 /// One enabled codec, in preference order.
@@ -192,9 +196,28 @@ pub struct SipConfig {
     pub ended_linger_secs: u16,
     /// Subscription lifetime requested for BLF and MWI.
     pub subscribe_expires_secs: u32,
-    /// Extension that parks a call when it is blind-transferred there
-    /// (Asterisk's default parking extension is 700).
+    /// The parking extension (stock `parking_lot_extension`); empty: the
+    /// phone cannot park.
     pub park_extension: String,
+    /// Park with a blind transfer to the parking extension (stock
+    /// `parking_lot_enable_blind_transfer`).  Otherwise the parking
+    /// extension is called as a consultation call, to be completed as an
+    /// attended transfer.
+    pub park_blind_transfer: bool,
+    /// Session timers (RFC 4028): offer and accept them.
+    pub session_timers: bool,
+    /// The session interval we ask for, and the smallest we accept.
+    pub session_expires_secs: u32,
+    pub min_se_secs: u32,
+    /// Act on a `check-sync` NOTIFY by fetching the configuration again
+    /// (stock `enable_check_sync`).
+    pub check_sync: bool,
+    /// Port to accept SIP over TCP on (stock `transport_tcp_port`), when
+    /// an account uses TCP.  `None`: do not listen.
+    pub tcp_port: Option<u16>,
+    /// Port to accept SIP over TLS on (stock `transport_tls_port`), when
+    /// an account uses TLS and [`TlsConfig`] has a server certificate.
+    pub tls_port: Option<u16>,
 }
 
 impl SipConfig {
@@ -220,7 +243,14 @@ impl SipConfig {
             no_answer_secs: 20,
             ended_linger_secs: 3,
             subscribe_expires_secs: 3600,
-            park_extension: "700".into(),
+            park_extension: String::new(),
+            park_blind_transfer: false,
+            session_timers: true,
+            session_expires_secs: 1800,
+            min_se_secs: 90,
+            check_sync: true,
+            tcp_port: None,
+            tls_port: None,
         }
     }
 

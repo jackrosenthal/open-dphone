@@ -36,6 +36,7 @@ mod core;
 pub mod media;
 mod reg;
 pub mod sdp;
+pub mod timer;
 #[cfg(feature = "tls")]
 pub mod tls;
 pub mod util;
@@ -183,7 +184,9 @@ pub async fn start(
     tls::install(cfg.tls.clone());
 
     let resolver = resolver.unwrap_or_else(|| Arc::new(SystemResolver));
+    let elsewhere = Arc::new(std::sync::Mutex::new(Vec::new()));
     let endpoint = EndpointBuilder::new()
+        .with_inspector(Box::new(crate::core::CancelWatch(elsewhere.clone())))
         .with_user_agent(&cfg.user_agent())
         .with_domain_resolver(Box::new(StackResolver(resolver.clone())))
         .build();
@@ -271,6 +274,9 @@ pub async fn start(
         listeners: Vec::new(),
         park_extension: cfg.park_extension.clone(),
         blf_dialogs: HashMap::new(),
+        elsewhere,
+        tcp_listening: None,
+        tls_listening: None,
     };
     core.configure(cfg);
     core.heartbeat();
@@ -299,6 +305,7 @@ impl Core {
             Ev::InviteDone { call, result } => self.on_invite_done(call, result),
             Ev::ReinviteDone { call, hold, result } => self.on_reinvite_done(call, hold, result),
             Ev::ReferDone { call, result } => self.on_refer_done(call, result),
+            Ev::RefreshDone { call, generation, result } => self.on_refresh_done(call, generation, result),
             Ev::AckBody { call, body } => self.on_ack_body(call, &body),
             Ev::Registered { acct, generation, outcome } => self.on_registered(acct, generation, outcome),
             Ev::Subscribed { sub, generation, result } => self.on_subscribed(sub, generation, result),
@@ -309,6 +316,8 @@ impl Core {
                 Timer::NoAnswer { call } => self.on_no_answer(call),
                 Timer::Linger { call } => self.on_linger(call),
                 Timer::HoldRetry { call } => self.on_hold_retry(call),
+                Timer::SessionRefresh { call, generation } => self.on_session_refresh(call, generation),
+                Timer::SessionExpire { call, generation } => self.on_session_expire(call, generation),
                 Timer::Heartbeat => {
                     self.heartbeat();
                     self.after(Duration::from_secs(5), Timer::Heartbeat);

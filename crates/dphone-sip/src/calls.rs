@@ -10,6 +10,7 @@ use crate::bodies;
 use crate::core::{CallRt, Core, Ev, ReferFrom, Timer};
 use crate::media::{MediaEvent, RingRequest, StreamParams, StreamSrtp};
 use crate::sdp::{self, Crypto, Direction as SdpDir, Sdp, SrtpPolicy, SrtpSuite};
+use crate::timer;
 use crate::util::{self, NameAddr, SipUri};
 use dphone_state::{
     clock, AccountId, AudioPath, Call, CallId, CallLog, CallLogEntry, CallLogKind, CallState, Calls, Command,
@@ -301,7 +302,7 @@ impl Core {
         };
         let offer = sdp::offer(&probe, key_material.as_ref());
         let number = SipUri::parse(&uri).map(|u| util::percent_decode(&u.user)).unwrap_or_default();
-        let pending = PendingCall { acct, replaces: replaces.clone(), referred_by: referred_by.clone() };
+        let pending = PendingCall { acct, session_secs: self.cfg.session_expires_secs, replaces: replaces.clone(), referred_by: referred_by.clone() };
         let dialog = match self.invite_for(id, &pending, &uri, &offer) {
             Ok(d) => d,
             Err(e) => {
@@ -338,6 +339,11 @@ impl Core {
             replaces,
             referred_by,
             redirected: false,
+            session: None,
+            session_gen: 0,
+            session_secs: self.cfg.session_expires_secs,
+            session_answer: None,
+            peer_update: false,
             peer: uri.clone(),
         });
         self.store.update::<Calls, _>(|c| {
@@ -357,7 +363,11 @@ impl Core {
     fn invite_for(&mut self, id: CallId, p: &PendingCall, uri: &str, offer: &Sdp) -> Result<InviteDialog, String> {
         let a = self.acct(p.acct).ok_or("no such account")?;
         let (dest, transport) = self.request_dest(a, uri)?;
-        let mut headers = vec![Core::allow(), Header::Supported("replaces".to_string().into())];
+        let mut headers = vec![Core::allow(), self.supported()];
+        if self.cfg.session_timers {
+            headers.push(Header::SessionExpires(p.session_secs.to_string().into()));
+            headers.push(Header::MinSE(self.cfg.min_se_secs.to_string().into()));
+        }
         if let Some(r) = &p.replaces {
             headers.push(Header::Replaces(r.clone().into()));
         }
@@ -365,7 +375,7 @@ impl Core {
             headers.push(Header::ReferredBy(r.clone().into()));
         }
         let opt = InviteOption {
-            caller_display_name: (!a.cfg.display_name.is_empty()).then(|| a.cfg.display_name.clone()),
+            caller_display_name: Some(display_name(&a.cfg.display_name)).filter(|n| !n.is_empty()),
             caller: crate::core::uri(&format!("sip:{}@{}", a.cfg.user, a.cfg.host(a.alt).server))?,
             callee: crate::core::uri(uri)?,
             destination: Some(dest),
@@ -424,6 +434,7 @@ impl Core {
 
     /// The 2xx to our INVITE: the answer to our offer.
     fn on_answered(&mut self, id: CallId, resp: &Response) {
+        let timers = self.cfg.session_timers;
         let Some(c) = self.call_mut(id) else { return };
         if c.ended || c.answered || !c.outgoing {
             return;
@@ -449,6 +460,9 @@ impl Core {
             }
         }
         let refer = c.refer_from.clone();
+        c.peer_update = allows_update(resp);
+        c.session = timers.then(|| timer::from_response(util::header(&resp.headers, "Session-Expires"))).flatten();
+        self.arm_session(id);
         self.media.tone(None);
         self.apply_media(id);
         let name = NameAddr::parse(util::header(&resp.headers, "To").unwrap_or(""));
@@ -481,23 +495,39 @@ impl Core {
         if (200..300).contains(&code) {
             return self.on_answered(id, &resp);
         }
-        // Redirect: follow the first Contact once.
-        if (300..400).contains(&code) && !c.redirected {
-            let contact = util::header(&resp.headers, "Contact").map(|c| NameAddr::parse(c).uri);
-            if let (Some(contact), Some(offer)) = (contact.filter(|c| SipUri::parse(c).is_some()), c.offer.clone()) {
-                c.redirected = true;
-                let old = c.dialog.id();
-                let p = PendingCall { acct: c.acct, replaces: c.replaces.clone(), referred_by: c.referred_by.clone() };
-                if let Ok(dialog) = self.invite_for(id, &p, &contact, &offer) {
-                    self.layer.remove_dialog(&old);
-                    let did = dialog.id();
-                    if let Some(c) = self.call_mut(id) {
-                        c.key = (did.call_id.clone(), did.local_tag);
-                        c.dialog = dialog;
-                    }
-                    self.set_call(id, |call| call.sip_call_id = did.call_id);
-                    return;
+        // Two answers are followed once: a redirect (to its first Contact),
+        // and 422 Session Interval Too Small (same target, their Min-SE).
+        let retry = if (300..400).contains(&code) {
+            util::header(&resp.headers, "Contact").map(|c| NameAddr::parse(c).uri).filter(|c| SipUri::parse(c).is_some())
+        } else if code == 422 {
+            match util::header(&resp.headers, "Min-SE").and_then(|m| m.split(';').next()?.trim().parse::<u32>().ok()) {
+                Some(min) => {
+                    c.session_secs = min.max(c.session_secs);
+                    Some(c.peer.clone())
                 }
+                None => None,
+            }
+        } else {
+            None
+        };
+        if let (Some(target), Some(offer), false) = (retry, c.offer.clone(), c.redirected) {
+            c.redirected = true;
+            let old = c.dialog.id();
+            let p = PendingCall {
+                acct: c.acct,
+                session_secs: c.session_secs,
+                replaces: c.replaces.clone(),
+                referred_by: c.referred_by.clone(),
+            };
+            if let Ok(dialog) = self.invite_for(id, &p, &target, &offer) {
+                self.layer.remove_dialog(&old);
+                let did = dialog.id();
+                if let Some(c) = self.call_mut(id) {
+                    c.key = (did.call_id.clone(), did.local_tag);
+                    c.dialog = dialog;
+                }
+                self.set_call(id, |call| call.sip_call_id = did.call_id);
+                return;
             }
         }
         let reason = resp.reason_phrase().map(str::to_string).unwrap_or_else(|| resp.status_code.to_string());
@@ -522,6 +552,13 @@ impl Core {
             return self.reply(tx, 481, Vec::new());
         }
         let Some(acct) = self.account_for(&req) else { return self.reply(tx, 404, Vec::new()) };
+        let session_answer = match self.session_answer(&req) {
+            timer::Answer::TooSmall { min_se } => {
+                return self.reply(tx, 422, vec![Header::MinSE(min_se.to_string().into())]);
+            }
+            timer::Answer::Use { header, require, agreed } => Some((header, require, agreed)),
+            timer::Answer::None => None,
+        };
         let features = self.store.get::<Features>();
         let host = self.acct(acct).map(|a| a.cfg.host(a.alt).server.clone()).unwrap_or_default();
         let redirect = |target: &str| {
@@ -664,6 +701,11 @@ impl Core {
             replaces: None,
             referred_by: None,
             redirected: false,
+            session: None,
+            session_gen: 0,
+            session_secs: self.cfg.session_expires_secs,
+            session_answer,
+            peer_update: allows_update(&req),
             peer: from.uri.clone(),
         });
         let others = self.store.get::<Calls>().live().next().is_some();
@@ -758,9 +800,16 @@ impl Core {
                 (offer.render(), None, Some(offer))
             }
         };
-        let headers = vec![Core::allow(), Header::Supported("replaces".to_string().into()), sdp_type()];
+        let mut headers = vec![Core::allow(), self.supported(), sdp_type()];
+        let session = c.session_answer;
+        if let Some((header, require, _)) = &session {
+            headers.extend(session_reply_headers(header, *require));
+        }
         flatten(c.dialog.accept(Some(headers), Some(body.into_bytes()))).map_err(CommandError::Failed)?;
         self.hold_others(Some(id));
+        let c = self.call_mut(id).expect("checked above");
+        c.session = session.map(|(_, _, agreed)| agreed);
+        self.arm_session(id);
         let c = self.call_mut(id).expect("checked above");
         c.answered = true;
         c.server = None;
@@ -862,7 +911,12 @@ impl Core {
                 }
                 let cause = match reason {
                     TerminatedReason::UacBye | TerminatedReason::UasBye => EndCause::RemoteHangup,
-                    TerminatedReason::UacCancel => EndCause::Canceled { answered_elsewhere: false },
+                    TerminatedReason::UacCancel => {
+                        let mut seen = self.elsewhere.lock().unwrap();
+                        let before = seen.len();
+                        seen.retain(|id| *id != did.call_id);
+                        EndCause::Canceled { answered_elsewhere: seen.len() != before }
+                    }
                     TerminatedReason::Timeout => EndCause::Error("the far end stopped answering".into()),
                     other => EndCause::Error(format!("{other:?}")),
                 };
@@ -908,11 +962,35 @@ impl Core {
         Ok(ans.render())
     }
 
-    /// A re-INVITE or UPDATE of theirs.
+    /// A re-INVITE or UPDATE of theirs.  Either may also be a session
+    /// refresh, so the 2xx carries the session timer and restarts it.
     fn on_reoffer(&mut self, id: CallId, req: Request, handle: TransactionHandle) {
+        let mut extra = Vec::new();
+        if self.call(id).is_some_and(|c| c.answered) {
+            match self.session_answer(&req) {
+                timer::Answer::TooSmall { min_se } => {
+                    return self.respond(handle, 422, vec![Header::MinSE(min_se.to_string().into())], None);
+                }
+                timer::Answer::Use { header, require, agreed } => {
+                    extra = session_reply_headers(&header, require);
+                    if let Some(c) = self.call_mut(id) {
+                        c.session = Some(agreed);
+                    }
+                }
+                timer::Answer::None => {
+                    if let Some(c) = self.call_mut(id) {
+                        c.session = None;
+                    }
+                }
+            }
+            self.arm_session(id);
+        }
         if !req.body.is_empty() {
             return match self.answer_reoffer(id, &req.body) {
-                Ok(ans) => self.respond(handle, 200, vec![sdp_type()], Some(ans.into_bytes())),
+                Ok(ans) => {
+                    extra.push(sdp_type());
+                    self.respond(handle, 200, extra, Some(ans.into_bytes()))
+                }
                 Err(e) => {
                     log::warn!("sip: call {}: refused a new offer: {e}", id.0);
                     self.respond(handle, 488, Vec::new(), None)
@@ -920,7 +998,7 @@ impl Core {
             };
         }
         if req.method != Method::Invite {
-            return self.respond(handle, 200, Vec::new(), None);
+            return self.respond(handle, 200, extra, None);
         }
         // Offerless re-INVITE: offer what we have now; the ACK answers.
         self.ensure_key(id);
@@ -935,7 +1013,8 @@ impl Core {
         }
         let post = self.tx.clone();
         tokio::spawn(async move {
-            if handle.respond(StatusCode::OK, Some(vec![sdp_type()]), Some(body)).await.is_ok() {
+            extra.push(sdp_type());
+            if handle.respond(StatusCode::OK, Some(extra), Some(body)).await.is_ok() {
                 if let Ok(ack) = handle.wait_ack().await {
                     let _ = post.send(Ev::AckBody { call: id, body: ack.body });
                 }
@@ -1037,10 +1116,11 @@ impl Core {
         let offer = sdp::offer(&self.local_media(c, dir), c.key_material.as_ref());
         let body = offer.render().into_bytes();
         let (dialog, post) = (c.dialog.clone(), self.tx.clone());
+        let mut headers = vec![Core::allow(), sdp_type()];
+        headers.extend(self.session_request_headers(c));
         tokio::spawn(async move {
             // The layer retries glare (491) with the RFC 3261 back-off.
-            let result =
-                dialog.reinvite_with_glare_retry(Some(vec![Core::allow(), sdp_type()]), Some(body), 3).await;
+            let result = dialog.reinvite_with_glare_retry(Some(headers), Some(body), 3).await;
             let _ = post.send(Ev::ReinviteDone { call: id, hold, result: result.map_err(|e| e.to_string()) });
         });
         let c = self.call_mut(id).expect("exists");
@@ -1051,6 +1131,7 @@ impl Core {
     }
 
     pub fn on_reinvite_done(&mut self, id: CallId, hold: bool, result: Result<Option<Response>, String>) {
+        let timers = self.cfg.session_timers;
         let Some(c) = self.call_mut(id) else { return };
         c.reinvite_busy = false;
         if c.ended {
@@ -1067,6 +1148,9 @@ impl Core {
                     c.neg = Some(n);
                 }
                 c.local_hold = hold;
+                c.session = timers.then(|| timer::from_response(util::header(&resp.headers, "Session-Expires"))).flatten();
+                self.arm_session(id);
+                let Some(c) = self.call(id) else { return };
                 let state = Self::held_state(c);
                 self.set_call(id, |call| {
                     if call.state.is_established() && call.state != CallState::Transferring {
@@ -1116,6 +1200,138 @@ impl Core {
         for id in ids {
             let _ = self.send_reinvite(id, true);
         }
+    }
+
+    // ---------------------------------------------------- session timer
+
+    fn supported(&self) -> Header {
+        Header::Supported(if self.cfg.session_timers { "replaces, timer" } else { "replaces" }.to_string().into())
+    }
+
+    /// What the 2xx to a request of theirs says about the session timer.
+    fn session_answer(&self, req: &Request) -> timer::Answer {
+        if !self.cfg.session_timers {
+            return timer::Answer::None;
+        }
+        let peer_supports = util::headers_all(&req.headers, "Supported")
+            .into_iter()
+            .chain(util::headers_all(&req.headers, "Require"))
+            .any(timer::lists_timer);
+        timer::answer(
+            util::header(&req.headers, "Session-Expires"),
+            util::header(&req.headers, "Min-SE"),
+            peer_supports,
+            self.cfg.session_expires_secs,
+            self.cfg.min_se_secs,
+        )
+    }
+
+    /// The session-timer headers of a request of ours inside the dialog.
+    /// With a timer in force we keep our role: as the sender of this
+    /// request, "we refresh" is `refresher=uac`.
+    fn session_request_headers(&self, c: &CallRt) -> Vec<Header> {
+        if !self.cfg.session_timers {
+            return Vec::new();
+        }
+        let header = match c.session {
+            Some(a) => timer::SessionExpires {
+                secs: a.secs.max(c.session_secs.min(a.secs)),
+                refresher: Some(if a.we_refresh { timer::Refresher::Uac } else { timer::Refresher::Uas }),
+            },
+            None => timer::SessionExpires { secs: c.session_secs, refresher: None },
+        };
+        vec![
+            self.supported(),
+            Header::SessionExpires(header.render().into()),
+            Header::MinSE(self.cfg.min_se_secs.to_string().into()),
+        ]
+    }
+
+    /// (Re)starts the session timer of a call from its agreed state.
+    fn arm_session(&mut self, id: CallId) {
+        let Some(c) = self.call_mut(id) else { return };
+        c.session_gen += 1;
+        let generation = c.session_gen;
+        match c.session {
+            Some(a) if a.we_refresh => self.after(a.refresh_after(), Timer::SessionRefresh { call: id, generation }),
+            Some(a) => self.after(a.expire_after(), Timer::SessionExpire { call: id, generation }),
+            None => {}
+        }
+    }
+
+    /// Our turn to refresh: UPDATE without a body when the peer allows it,
+    /// else a re-INVITE with the current description.
+    pub fn on_session_refresh(&mut self, id: CallId, generation: u64) {
+        let Some(c) = self.call(id) else { return };
+        if c.session_gen != generation || c.ended || !c.answered {
+            return;
+        }
+        if c.reinvite_busy {
+            // A re-INVITE of ours is in flight; its answer refreshes too.
+            return self.after(Duration::from_secs(5), Timer::SessionRefresh { call: id, generation });
+        }
+        if !c.peer_update {
+            let hold = c.local_hold;
+            let _ = self.send_reinvite(id, hold);
+            return;
+        }
+        let headers = self.session_request_headers(c);
+        let (dialog, post) = (c.dialog.clone(), self.tx.clone());
+        tokio::spawn(async move {
+            let result = dialog.update(Some(headers), None).await.map_err(|e| e.to_string());
+            let _ = post.send(Ev::RefreshDone { call: id, generation, result });
+        });
+    }
+
+    pub fn on_refresh_done(&mut self, id: CallId, generation: u64, result: Result<Option<Response>, String>) {
+        let enabled = self.cfg.session_timers;
+        let Some(c) = self.call_mut(id) else { return };
+        if c.session_gen != generation || c.ended {
+            return;
+        }
+        match result {
+            Ok(Some(resp)) if (200..300).contains(&resp.status_code.code()) => {
+                c.session = enabled.then(|| timer::from_response(util::header(&resp.headers, "Session-Expires"))).flatten();
+                self.arm_session(id);
+            }
+            Ok(Some(resp)) if resp.status_code.code() == 422 => {
+                let min = util::header(&resp.headers, "Min-SE").and_then(|m| m.split(';').next()?.trim().parse::<u32>().ok());
+                match (min, c.session.as_mut()) {
+                    (Some(min), Some(a)) if min > a.secs => {
+                        a.secs = min;
+                        c.session_secs = min;
+                        self.on_session_refresh(id, generation);
+                    }
+                    _ => log::warn!("sip: call {}: session refresh refused with 422", id.0),
+                }
+            }
+            Ok(Some(resp)) if matches!(resp.status_code.code(), 405 | 501) => {
+                // UPDATE is not accepted after all: refresh by re-INVITE.
+                c.peer_update = false;
+                self.on_session_refresh(id, generation);
+            }
+            Ok(Some(resp)) if !matches!(resp.status_code.code(), 408 | 481) => {
+                log::warn!("sip: call {}: session refresh answered {}", id.0, resp.status_code);
+            }
+            _ => {
+                self.hangup_dialog(id);
+                self.end_call(id, EndCause::Error("the far end stopped answering".into()));
+            }
+        }
+    }
+
+    /// The other side was to refresh and did not: the session is over.
+    pub fn on_session_expire(&mut self, id: CallId, generation: u64) {
+        let Some(c) = self.call(id) else { return };
+        if c.session_gen != generation || c.ended || c.session.is_none_or(|a| a.we_refresh) {
+            return;
+        }
+        log::warn!("sip: call {}: the session timer ran out; hanging up", id.0);
+        let dialog = c.dialog.clone();
+        tokio::spawn(async move {
+            let _ = dialog.bye_with_reason("SIP;cause=408;text=\"Session expired\"".to_string()).await;
+        });
+        self.end_call(id, EndCause::Error("the session was not refreshed".into()));
     }
 
     // ---------------------------------------------------------- transfer
@@ -1234,8 +1450,20 @@ impl Core {
             }
             Command::Park { call } => {
                 let acct = self.established(call)?.acct;
-                let uri = self.dial_uri(acct, &self.park_extension.clone())?;
-                self.refer(call, format!("<{uri}>"), None)
+                let lot = self.park_extension.clone();
+                if lot.is_empty() {
+                    return Err(invalid("no parking extension is configured"));
+                }
+                if self.cfg.park_blind_transfer {
+                    let uri = self.dial_uri(acct, &lot)?;
+                    return self.refer(call, format!("<{uri}>"), None);
+                }
+                // Stock's other parking mode: call the parking extension
+                // (the call to park goes on hold) and complete it as an
+                // attended transfer.
+                let consult = self.dial(&lot, Some(acct), None, None, None, None)?;
+                self.set_call(consult, |c| c.transfer_of = Some(call));
+                Ok(Reply::Call(consult))
             }
             Command::SendToVoicemail { call } => {
                 let c = self.call(call).ok_or_else(|| invalid("no such call"))?;
@@ -1421,6 +1649,43 @@ impl Core {
 /// What `invite_for` needs before the call record exists.
 struct PendingCall {
     acct: AccountId,
+    /// `Session-Expires` to ask for.
+    session_secs: u32,
     replaces: Option<String>,
     referred_by: Option<String>,
+}
+
+/// Whether a message's `Allow` lists UPDATE.
+fn allows_update(msg: &impl rsipstack::sip::HasHeaders) -> bool {
+    util::headers_all(msg.headers(), "Allow").into_iter().any(|a| a.split(',').any(|m| m.trim().eq_ignore_ascii_case("UPDATE")))
+}
+
+/// The session-timer headers of a 2xx.
+fn session_reply_headers(header: &timer::SessionExpires, require: bool) -> Vec<Header> {
+    let mut out = vec![Header::SessionExpires(header.render().into())];
+    if require {
+        out.push(Header::Require("timer".to_string().into()));
+    }
+    out
+}
+
+/// The display name alone.  The configured caller ID can be a whole
+/// name-addr (`"Jack's Desk" <020>`, as the PBX provisions it); only the
+/// name belongs in From.
+fn display_name(configured: &str) -> String {
+    let name = configured.split('<').next().unwrap_or(configured);
+    name.trim().trim_matches('"').trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::display_name;
+
+    #[test]
+    fn display_name_forms() {
+        assert_eq!(display_name("\"Jack's Desk\" <020>"), "Jack's Desk");
+        assert_eq!(display_name("Front Desk"), "Front Desk");
+        assert_eq!(display_name("<020>"), "");
+        assert_eq!(display_name(""), "");
+    }
 }

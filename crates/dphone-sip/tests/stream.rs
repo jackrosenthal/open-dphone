@@ -115,7 +115,7 @@ async fn register_over_tls() {
     });
 
     // Checking the certificate against the right root succeeds.
-    let verify = TlsConfig { roots_pem: CA.to_vec(), verify: true };
+    let verify = TlsConfig { roots_pem: CA.to_vec(), verify: true, ..Default::default() };
     assert!(registered(Transport::Tls, port, verify).await, "verified TLS registration");
     let reg = wait("REGISTER", || log.lock().unwrap().first().cloned()).await;
     assert!(reg.header("Via").unwrap().starts_with("SIP/2.0/TLS "), "{:?}", reg.header("Via"));
@@ -126,5 +126,101 @@ async fn register_over_tls() {
     assert!(registered(Transport::Tls, port, TlsConfig::default()).await, "unverified TLS registration");
 
     // Checking with no roots configured cannot connect.
-    assert!(dphone_sip::tls::client_config(&TlsConfig { roots_pem: Vec::new(), verify: true }).is_err());
+    assert!(dphone_sip::tls::client_config(&TlsConfig { roots_pem: Vec::new(), verify: true, ..Default::default() }).is_err());
+}
+
+/// A port nothing listens on right now.
+fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+}
+
+const OPTIONS: &str = "OPTIONS sip:100@127.0.0.1 SIP/2.0\r\nVia: SIP/2.0/TCP 127.0.0.1:9;branch=z9hG4bKin1\r\nMax-Forwards: 70\r\n\
+    From: <sip:pbx@127.0.0.1>;tag=a\r\nTo: <sip:100@127.0.0.1>\r\nCall-ID: listener-test\r\nCSeq: 1 OPTIONS\r\nContent-Length: 0\r\n\r\n";
+
+/// Sends OPTIONS on a fresh connection and returns the response's start.
+async fn ask<S: AsyncRead + AsyncWrite + Unpin>(mut s: S) -> String {
+    s.write_all(OPTIONS.as_bytes()).await.unwrap();
+    let mut buf = vec![0u8; 4096];
+    let n = tokio::time::timeout(std::time::Duration::from_secs(5), s.read(&mut buf)).await.expect("an answer").unwrap();
+    String::from_utf8_lossy(&buf[..n]).into_owned()
+}
+
+/// A registrar on TCP for the phone to register with (and so to have a
+/// TCP or TLS account at all).
+async fn stream_phone(transport: Transport, configure: impl FnOnce(&mut dphone_sip::SipConfig)) -> common::Phone {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((s, _)) = listener.accept().await {
+            tokio::spawn(serve(s, Arc::new(Mutex::new(Vec::new()))));
+        }
+    });
+    let mut cfg = base_config();
+    let mut a = AccountConfig::new(AccountId(0), "100", "secret", "127.0.0.1");
+    a.primary.port = port;
+    a.primary.transport = transport;
+    a.mwi_subscribe = false;
+    cfg.accounts.push(a);
+    configure(&mut cfg);
+    phone_with("100", cfg, 4000).await
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn accepts_connections_over_tcp() {
+    let port = free_port();
+    let p = stream_phone(Transport::Tcp, |cfg| cfg.tcp_port = Some(port)).await;
+    let _ = &p;
+    // The PBX's connection is gone; it opens one to the phone.
+    let stream = wait("the TCP listener", || std::net::TcpStream::connect(("127.0.0.1", port)).ok()).await;
+    stream.set_nonblocking(true).unwrap();
+    let answer = ask(tokio::net::TcpStream::from_std(stream).unwrap()).await;
+    assert!(answer.starts_with("SIP/2.0 200"), "{answer}");
+    assert!(answer.contains("Call-ID: listener-test"));
+    // The Contact we register names the listening port.
+    wait("registration", || {
+        matches!(p.store.get::<Accounts>().get(AccountId(0)).map(|a| a.registration.clone()), Some(Registration::Registered { .. }))
+            .then_some(())
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn accepts_connections_over_tls() {
+    let port = free_port();
+    let cert = rustls_pemfile::certs(&mut &CERT[..]).next().unwrap().unwrap().to_vec();
+    let key = match rustls_pemfile::private_key(&mut &KEY[..]).unwrap().unwrap() {
+        rustls::pki_types::PrivateKeyDer::Pkcs8(k) => k.secret_pkcs8_der().to_vec(),
+        other => panic!("the test key is not PKCS#8: {other:?}"),
+    };
+    // Without a certificate there is no TLS listener, and no crash.
+    let quiet = free_port();
+    let _p0 = stream_phone(Transport::Tcp, |cfg| cfg.tls_port = Some(quiet)).await;
+    let _p = stream_phone(Transport::Tcp, |cfg| {
+        // A TLS account is what turns the listener on; the registrar here
+        // speaks plain TCP, so registration itself fails, which is fine.
+        cfg.accounts[0].primary.transport = Transport::Tls;
+        cfg.tls_port = Some(port);
+        cfg.tls.server_cert_der = cert;
+        cfg.tls.server_key_der = key;
+    })
+    .await;
+    let tcp = wait("the TLS listener", || std::net::TcpStream::connect(("127.0.0.1", port)).ok()).await;
+    tcp.set_nonblocking(true).unwrap();
+    let mut roots = rustls::RootCertStore::empty();
+    for c in rustls_pemfile::certs(&mut &CA[..]).flatten() {
+        roots.add(c).unwrap();
+    }
+    let client = rustls::ClientConfig::builder_with_provider(Arc::new(rustls_rustcrypto::provider()))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let name = rustls::pki_types::ServerName::try_from("pbx.test").unwrap();
+    let tls = tokio_rustls::TlsConnector::from(Arc::new(client))
+        .connect(name, tokio::net::TcpStream::from_std(tcp).unwrap())
+        .await
+        .expect("TLS handshake with the phone");
+    let answer = ask(tls).await;
+    assert!(answer.starts_with("SIP/2.0 200"), "{answer}");
+    assert!(std::net::TcpStream::connect(("127.0.0.1", quiet)).is_err(), "no listener without a certificate");
 }
