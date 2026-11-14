@@ -169,8 +169,8 @@ function newFamily(lineKeys: number, pageKey: boolean): Panel {
     viewBox: [-176, 44, 950, 760],
     unit: 480 / 303,
     shapes: [
-      // Cradle wing, left of the two panels; its outer edge bows outward.
-      { d: "M276 170H104Q70 170 62 204Q30 430 62 652Q70 700 120 700H276Z", fill: "#2b2d30" },
+      // Cradle wing, left of the two panels; vertical outer edge.
+      { d: "M276 170H88Q62 170 62 196V674Q62 700 88 700H276Z", fill: "#2b2d30" },
       // Upper cup the earpiece rests in, with the hook switch.
       { d: "M92 172H234V226Q234 264 196 264H130Q92 264 92 226Z", fill: "#1c1d20" },
       { d: rect(152, 246, 22, 9, 2), fill: "#0c0d0e" },
@@ -310,9 +310,8 @@ function oldFamily(v: Old): Panel {
   const hr = 664 + grow; // housing right edge
   // The rapid-dial section (D50, D70) starts at the housing's right edge.
   const wingW = v.wing ? 189 : 0;
-  // Outline of body and rapid-dial section together.  The sides lean out
-  // toward the bottom and the bottom edge bows downward, as in the D40
-  // quick reference drawing, which is front-on.
+  // Outline of body and rapid-dial section together.  The sides are
+  // vertical; the bottom edge bows downward.
   const xl = 268;
   const xr = v.wing ? hr + wingW : right;
   const bow = 16;
@@ -328,7 +327,7 @@ function oldFamily(v: Old): Panel {
   const bottomTo = (xa: number) => {
     const t = (xa - cl) / (cr - cl);
     const cy = yb + 2 * bow * t;
-    return `Q${(cl + xa) / 2} ${cy} ${cl} ${yb}Q${xl} ${yb} ${xl + 1.3} ${yb - 20}`;
+    return `Q${(cl + xa) / 2} ${cy} ${cl} ${yb}Q${xl} ${yb} ${xl} ${yb - 20}`;
   };
   const shapes: Shape[] = [
     // Cradle wing under the handset.
@@ -344,8 +343,8 @@ function oldFamily(v: Old): Panel {
         ? // Body and rapid-dial section as one outline: the section's
           // bottom edge is straight, rising to the right from the end of
           // the body's curve to a rounded bottom-right corner.
-          `M306 212H${xr - 24}Q${xr - 2} 212 ${xr - 2} 236L${xr - 1.3} ${yb - 38}Q${xr} ${yb - 16} ${xr - 22} ${yb - 14}L${hr} ${yb}${bottomTo(hr)}L284 236Q286 212 306 212Z`
-        : `M306 212H${right - 40}Q${right - 20} 212 ${right - 18} 236L${xr - 1.3} ${yb - 20}Q${xr} ${yb} ${cr} ${yb}${bottomTo(cr)}L284 236Q286 212 306 212Z`,
+          `M${xl + 24} 212H${xr - 24}Q${xr} 212 ${xr} 236V${yb - 38}Q${xr} ${yb - 16} ${xr - 22} ${yb - 14}L${hr} ${yb}${bottomTo(hr)}V236Q${xl} 212 ${xl + 24} 212Z`
+        : `M${xl + 24} 212H${xr - 24}Q${xr} 212 ${xr} 236V${yb - 20}Q${xr} ${yb} ${cr} ${yb}${bottomTo(cr)}V236Q${xl} 212 ${xl + 24} 212Z`,
       fill: CHARCOAL,
     },
   ];

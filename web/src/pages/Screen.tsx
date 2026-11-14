@@ -240,7 +240,7 @@ function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: string; 
           aria-pressed={meta.offHook}
           className="cursor-pointer outline-none"
           onClick={toggleHook}
-          transform={meta.offHook ? `translate(${-(hs.w + 14)} ${-hs.h * 0.02}) rotate(-5 ${hs.x + hs.w / 2} ${hs.y + hs.h / 2})` : undefined}
+          transform={meta.offHook ? `translate(${-(hs.w + 14)} ${-hs.h * 0.02})` : undefined}
           filter={meta.offHook ? "url(#lift)" : undefined}
         >
           <title>{meta.offHook ? "Replace the handset" : "Lift the handset"}</title>
