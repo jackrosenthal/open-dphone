@@ -107,12 +107,24 @@ static void __iomem *bcmring_iomap(const char *compatible)
  */
 static bool bcmring_coldsim __initdata;
 
+static bool bcmring_coldsim_panic __initdata;
+
 static int __init bcmring_coldsim_setup(char *arg)
 {
 	bcmring_coldsim = true;
+	/* "bcmring.coldsim=panic": also panic while drivers probe. */
+	bcmring_coldsim_panic = arg && !strcmp(arg, "panic");
 	return 0;
 }
 early_param("bcmring.coldsim", bcmring_coldsim_setup);
+
+static int __init bcmring_coldsim_panic_init(void)
+{
+	if (bcmring_coldsim_panic)
+		panic("bcmring: coldsim: test panic during driver initialization");
+	return 0;
+}
+device_initcall(bcmring_coldsim_panic_init);
 
 static void __init bcmring_simulate_cold_state(void)
 {
@@ -286,7 +298,14 @@ static struct notifier_block bcmring_restart_nb = {
 	.priority = 192,
 };
 
-static void __init bcmring_init_late(void)
+/*
+ * At machine init (an arch initcall), not later: a panic while drivers
+ * probe must find the restart handler in place, or "panic=" ends in
+ * "Reboot failed -- System halted" with the watchdog off (boot2 hands over
+ * with it disabled), and the phone stays dead until power-cycled.  Seen on
+ * a D60.
+ */
+static void __init bcmring_init_machine(void)
 {
 	static const char * const vics[] __initconst = {
 		"brcm,bcmring-intc", "brcm,bcmring-sintc",
@@ -329,6 +348,6 @@ static const char * const bcmring_dt_compat[] __initconst = {
 
 DT_MACHINE_START(BCMRING_DT, "Broadcom BCMRING (BCM11107 family)")
 	.init_irq	= bcmring_init_irq,
-	.init_late	= bcmring_init_late,
+	.init_machine	= bcmring_init_machine,
 	.dt_compat	= bcmring_dt_compat,
 MACHINE_END
