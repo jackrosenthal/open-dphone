@@ -202,6 +202,11 @@ pub enum Command {
     PlayRing(Option<RingSource>, i32),
     /// Sends a digit on a stream, optionally with a tone to the user.
     SendDtmf { id: usize, key: char, duration_ms: u32, mode: DtmfMode, feedback: bool },
+    /// The DSP is about to be restarted: send it nothing until
+    /// [`Command::RestartDsp`].  A freshly loaded DSP that gets frame jobs
+    /// before its start-up sequence does not answer the sequence's Init
+    /// jobs afterward (seen on a D60).
+    HoldDsp,
     /// The DSP was restarted: repeat the start-up and re-open everything.
     RestartDsp,
     Shutdown,
@@ -587,6 +592,7 @@ impl EngineCore {
                         s.dtmf_queue.push_back((key, duration_ms, mode));
                     }
             }
+            Command::HoldDsp => self.dsp_failed = true,
             Command::RestartDsp => {
                 self.dsp_failed = false;
                 self.dsp_errors = 0;

@@ -1069,6 +1069,11 @@ fn register_diag(ctx: &Context, service: AudioService) {
                     }
                 }
                 ["restart"] => {
+                    // The engine must not reach the DSP between its reload
+                    // and the start-up sequence; give the audio thread a
+                    // few ticks to take the hold.
+                    let _ = service.inner.lock().unwrap().send(Ec::HoldDsp);
+                    tokio::time::sleep(Duration::from_millis(50)).await;
                     let r = contained("dsp-restart", Duration::from_secs(30), || {
                         dphone_vpm::remoteproc::Remoteproc::find().and_then(|r| r.restart()).map_err(|e| e.to_string())
                     })
