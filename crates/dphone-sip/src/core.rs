@@ -68,6 +68,8 @@ pub(crate) enum Timer {
     Subscribe { sub: u32, generation: u64 },
     NoAnswer { call: CallId },
     Linger { call: CallId },
+    /// Back to the first rapid-dial page, unless the page changed since.
+    PageReturn { generation: u64 },
     /// Retry a hold change that could not be sent yet.
     HoldRetry { call: CallId },
     /// Time for us to refresh a session (RFC 4028).
@@ -90,6 +92,9 @@ pub(crate) struct Acct {
     pub reg: Arc<tokio::sync::Mutex<Registration>>,
     /// The address the registrar sees us at, for NAT-aware Contacts.
     pub public: Option<rsipstack::sip::HostWithPort>,
+    /// The host of the last successful registration (`true`: the
+    /// alternate), to notice a change of server.
+    pub served_by_alt: Option<bool>,
 }
 
 /// A REFER we received and are acting on: progress NOTIFYs go back on the
@@ -132,6 +137,8 @@ pub(crate) struct CallRt {
     pub refer_from: Option<ReferFrom>,
     pub replaces: Option<String>,
     pub referred_by: Option<String>,
+    /// Headers an app asked for on the INVITE (kept for a retry).
+    pub extra_headers: Vec<(String, String)>,
     /// A 3xx was followed already.
     pub redirected: bool,
     /// The other party's URI (as dialed, or their From).
@@ -199,6 +206,8 @@ pub(crate) struct Core {
     /// Stream ports we accept connections on.
     pub tcp_listening: Option<u16>,
     pub tls_listening: Option<u16>,
+    /// Counts rapid-dial page changes, for the return-to-first-page timer.
+    pub page_changes: u64,
 }
 
 pub(crate) fn sip_transport(t: Transport) -> rsipstack::sip::Transport {
@@ -460,7 +469,7 @@ impl Core {
             if let Some(a) = self.acct(id) {
                 key.binding = LineKeyBinding::Account(id);
                 key.label = if a.cfg.label.is_empty() { a.cfg.user.clone() } else { a.cfg.label.clone() };
-                let mine: Vec<_> = calls.live().filter(|c| c.account == id).collect();
+                let mine: Vec<_> = calls.visible().filter(|c| c.account == id).collect();
                 key.calls = mine.iter().map(|c| c.id).collect();
                 use dphone_state::CallState as S;
                 key.lamp = if mine.iter().any(|c| c.state == S::Ringing) {
@@ -477,42 +486,109 @@ impl Core {
             }
             line_keys.push(key);
         }
-        let per_page = model.blf_keys().max(1) as usize;
-        let rapid: Vec<RapidDialKey> = self
-            .cfg
-            .blf
-            .iter()
-            .enumerate()
-            .map(|(i, b)| {
-                use dphone_state::BlfState as B;
-                let lamp = match presence.get(&b.id).map(|e| e.state) {
-                    Some(B::Idle) => LampState::solid(LampColor::Green),
-                    Some(B::Ringing) => LampState::blinking(LampColor::Red, Blink::Fast),
-                    Some(B::InUse) => LampState::solid(LampColor::Red),
-                    Some(B::OnHold) => LampState::blinking(LampColor::Red, Blink::Slow),
-                    _ => LampState::OFF,
-                };
-                RapidDialKey {
-                    index: (i % per_page) as u8,
-                    page: (i / per_page) as u8,
-                    entry: b.id.clone(),
-                    label: b.label.clone(),
-                    number: b.number.clone(),
-                    lamp,
+        // The BLF and rapid-dial items, where stock puts them.
+        let layout = crate::keys::layout(model, self.accts.len(), self.cfg.page_line_keys, &self.cfg.blf);
+        let lamp_of = |entry: &str| {
+            use dphone_state::BlfState as B;
+            match presence.get(entry).map(|e| e.state) {
+                Some(B::Idle) => LampState::solid(LampColor::Green),
+                Some(B::Ringing) => LampState::blinking(LampColor::Red, Blink::Fast),
+                Some(B::InUse) => LampState::solid(LampColor::Red),
+                Some(B::OnHold) => LampState::blinking(LampColor::Red, Blink::Slow),
+                _ => LampState::OFF,
+            }
+        };
+        let pages = layout.pages;
+        let mut rapid = Vec::new();
+        for (page, slots) in layout.side.iter().take(pages as usize).enumerate() {
+            for (index, slot) in slots.iter().enumerate() {
+                if let crate::keys::Slot::Item(i) = slot {
+                    let b = &self.cfg.blf[*i];
+                    rapid.push(RapidDialKey {
+                        index: index as u8,
+                        page: page as u8,
+                        entry: b.id.clone(),
+                        label: b.label.clone(),
+                        number: b.number.clone(),
+                        lamp: lamp_of(&b.id),
+                    });
                 }
+            }
+        }
+        // Line keys the accounts leave free, page by page.
+        let line_pages: Vec<Vec<LineKey>> = layout
+            .line
+            .iter()
+            .take(pages as usize)
+            .map(|slots| {
+                let mut keys = line_keys.clone();
+                for (key, slot) in keys.iter_mut().zip(slots) {
+                    if let (LineKeyBinding::Unused, crate::keys::Slot::Item(i)) = (&key.binding, slot) {
+                        let b = &self.cfg.blf[*i];
+                        key.binding = LineKeyBinding::Blf(b.id.clone());
+                        key.label = b.label.clone();
+                        key.lamp = lamp_of(&b.id);
+                    }
+                }
+                keys
             })
             .collect();
-        let pages = rapid.len().div_ceil(per_page) as u8;
         let message_lamp = if mwi.any_waiting() { LampState::solid(LampColor::Red) } else { LampState::OFF };
         self.store.update::<Keys, _>(|k| {
-            k.line_keys = line_keys;
-            k.rapid_dial = rapid;
-            k.rapid_pages = pages;
             if k.rapid_page >= pages.max(1) {
                 k.rapid_page = 0;
             }
+            k.line_keys = line_pages.get(k.rapid_page as usize).cloned().unwrap_or(line_keys);
+            k.rapid_dial = rapid;
+            k.rapid_pages = pages;
             k.message_lamp = message_lamp;
         });
+    }
+
+    /// The server event name a request carries.  Stock's app engine takes
+    /// it from `X-Digium-Event-Name`, `X-Event-Name`, or `X-Event-Type`
+    /// (the last one present wins).
+    pub fn event_name(req: &Request) -> Option<String> {
+        req.headers
+            .iter()
+            .filter(|h| ["x-digium-event-name", "x-event-name", "x-event-type"].iter().any(|n| h.name().eq_ignore_ascii_case(n)))
+            .map(|h| h.value().trim().to_string())
+            .filter(|v| !v.is_empty())
+            .last()
+    }
+
+    /// What the configuration says to do with an incoming call by the
+    /// event name it carries.  Stock's phone side reads the name from
+    /// `X-Event-Name`, `X-Digium-Event-Name`, or
+    /// `X-Digium-AppServer-Event-Name` (not from `X-Event-Type`).
+    pub fn event_action(&self, req: &Request) -> Option<crate::config::EventAction> {
+        ["X-Event-Name", "X-Digium-Event-Name", "X-Digium-AppServer-Event-Name"]
+            .iter()
+            .filter_map(|n| util::header(&req.headers, n))
+            .find_map(|name| self.cfg.events.iter().find(|(id, _)| id == name.trim()).map(|(_, a)| *a))
+    }
+
+    /// A server event carried on a call's INVITE or on an INFO in its
+    /// dialog, passed on for apps.  The body is the envelope the app
+    /// manager reads: `type`, `data`, `method`, and `call`.
+    pub fn emit_push(&self, req: &Request, method: &str, call: dphone_state::CallId) {
+        let Some(name) = Self::event_name(req) else { return };
+        let kind = util::header(&req.headers, "X-Event-Type").unwrap_or("").trim();
+        let sdp = util::header(&req.headers, "Content-Type").is_some_and(|c| c.to_ascii_lowercase().contains("sdp"));
+        let data = match util::header(&req.headers, "X-Event-Data") {
+            Some(d) => d.trim().to_string(),
+            None if !sdp => String::from_utf8_lossy(&req.body).into_owned(),
+            None => String::new(),
+        };
+        let body = format!(
+            "{{\"type\":{},\"data\":{},\"method\":{},\"call\":{}}}",
+            util::json_string(kind),
+            util::json_string(&data),
+            util::json_string(method),
+            call.0
+        );
+        log::info!("sip: event {name} on {method} for call {}", call.0);
+        self.store.emit(dphone_state::Event::Push { name, body });
     }
 
     pub fn heartbeat(&self) {

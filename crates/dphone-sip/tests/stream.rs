@@ -289,3 +289,49 @@ async fn sip_sockets_are_marked() {
     assert!(registered(Transport::Tls, tls_port, TlsConfig::default()).await);
     assert!(log.lock().unwrap().iter().any(|(_, peer)| *peer == tls_port), "the TLS connection to the registrar");
 }
+
+/// Stock's `tls_allow_wildcard_certs`: with it off, a server that its
+/// certificate names only through a wildcard is refused.
+#[tokio::test(flavor = "current_thread")]
+async fn wildcard_certificates_can_be_refused() {
+    const WILD_CA: &[u8] = include_bytes!("data/wild-ca.pem");
+    const WILD_CERT: &[u8] = include_bytes!("data/wild-cert.pem");
+    const WILD_KEY: &[u8] = include_bytes!("data/wild-key.pem");
+    // The certificate names `*.wild.test` and `exact.wild.test`.
+    let certs: Vec<_> = rustls_pemfile::certs(&mut &WILD_CERT[..]).flatten().collect();
+    let key = rustls_pemfile::private_key(&mut &WILD_KEY[..]).unwrap().unwrap();
+    let server = rustls::ServerConfig::builder_with_provider(Arc::new(rustls_rustcrypto::provider()))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .unwrap();
+    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        loop {
+            let (s, _) = listener.accept().await.unwrap();
+            let acceptor = acceptor.clone();
+            tokio::spawn(async move {
+                if let Ok(mut tls) = acceptor.accept(s).await {
+                    let mut buf = [0u8; 16];
+                    let _ = tls.read(&mut buf).await;
+                }
+            });
+        }
+    });
+    let policy = |refuse: bool| TlsConfig { roots_pem: WILD_CA.to_vec(), verify: true, refuse_wildcard_certs: refuse, ..Default::default() };
+    // Allowed (stock's default): the wildcard covers any host of the domain.
+    assert!(dphone_sip::tls::connect(&policy(false), "pbx.wild.test", addr).await.is_ok());
+    assert!(dphone_sip::tls::connect(&policy(false), "exact.wild.test", addr).await.is_ok());
+    assert!(dphone_sip::tls::connect(&policy(false), "pbx.other.test", addr).await.is_err());
+    // Refused: only the name written out in the certificate will do.
+    let e = dphone_sip::tls::connect(&policy(true), "pbx.wild.test", addr).await.err().expect("refused");
+    assert!(e.contains("TLS handshake"), "{e}");
+    assert!(dphone_sip::tls::connect(&policy(true), "exact.wild.test", addr).await.is_ok());
+    assert!(dphone_sip::tls::connect(&policy(true), "EXACT.wild.test", addr).await.is_ok());
+    // Without certificate checking the setting has nothing to act on.
+    let lax = TlsConfig { refuse_wildcard_certs: true, ..Default::default() };
+    assert!(dphone_sip::tls::connect(&lax, "pbx.wild.test", addr).await.is_ok());
+}

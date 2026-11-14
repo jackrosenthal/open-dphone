@@ -183,22 +183,75 @@ impl Screen for CallLogScreen {
 
 struct Launcher {
     st: ListState,
+    /// Package icon files already read, by path (`None`: unusable).
+    files: std::collections::HashMap<String, Option<crate::image::Image>>,
 }
 
 pub(crate) fn launcher() -> Box<dyn Screen> {
-    Box::new(Launcher { st: ListState::default() })
+    Box::new(Launcher { st: ListState::default(), files: std::collections::HashMap::new() })
+}
+
+/// The largest icon file read for the launcher.
+const ICON_FILE_MAX: u64 = 256 * 1024;
+
+/// What the launcher draws for an app.
+enum AppIcon<'a> {
+    Builtin(crate::icons::Icon),
+    File(&'a crate::image::Image),
+}
+
+impl AppIcon<'_> {
+    fn size(&self) -> (i32, i32) {
+        match self {
+            AppIcon::Builtin(i) => (i.width(), i.height()),
+            AppIcon::File(i) => (i.width as i32, i.height as i32),
+        }
+    }
+    fn draw(&self, c: &mut Canvas, x: i32, y: i32, tint: crate::gfx::Rgb) {
+        match self {
+            AppIcon::Builtin(i) => c.icon(*i, x, y, tint),
+            AppIcon::File(i) => c.rgba(x, y, i.width as i32, i.height as i32, &i.pixels),
+        }
+    }
 }
 
 fn visible_apps<'a>(cx: &'a Cx) -> Vec<&'a dphone_state::AppInfo> {
     cx.st.apps.installed.iter().filter(|a| !a.hidden).collect()
 }
 
-/// The icon for an app: its manifest icon if built in, its name, or the
-/// generic one.
-fn app_icon(th: &Theme, app: &dphone_state::AppInfo) -> Option<crate::icons::Icon> {
+/// One of the phone's own app icons, for the manifest's icon name, the
+/// app's name, or the generic one.
+fn builtin_app_icon(th: &Theme, app: &dphone_state::AppInfo) -> Option<crate::icons::Icon> {
     th.icon(&format!("app-{}", app.icon))
         .or_else(|| th.icon(&format!("app-{}", app.name)))
         .or_else(|| th.icon("app-app"))
+}
+
+impl Launcher {
+    /// The icon for an app: the icon file of its package (reduced to the
+    /// size of the phone's own app icons), else one of the phone's own.
+    fn app_icon(&mut self, th: &Theme, app: &dphone_state::AppInfo) -> Option<AppIcon<'_>> {
+        if !app.icon_path.is_empty() {
+            let (w, h) = th.icon("app-app").map(|i| (i.width() as u16, i.height() as u16)).unwrap_or((48, 48));
+            let loaded = self.files.entry(app.icon_path.clone()).or_insert_with(|| {
+                let path = std::path::Path::new(&app.icon_path);
+                let small = std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.len() <= ICON_FILE_MAX);
+                let image = small.then(|| std::fs::read(path).ok()).flatten().map(|b| crate::image::decode_png(&b));
+                match image {
+                    Some(Ok(i)) => Some(i.fit(w, h)),
+                    Some(Err(e)) => {
+                        log::warn!("ui: the icon {} is unusable: {e}", app.icon_path);
+                        None
+                    }
+                    None => None,
+                }
+            });
+            if loaded.is_some() {
+                return self.files.get(&app.icon_path).and_then(|i| i.as_ref()).map(AppIcon::File);
+            }
+        }
+        builtin_app_icon(th, app).map(AppIcon::Builtin)
+    }
 }
 
 impl Launcher {
@@ -267,17 +320,20 @@ impl Screen for Launcher {
             // a grid.
             let row_h = (th.row_h).max(24 + 2).min(body.h / 3);
             let f = th.font(Font::Normal);
-            widgets::list(c, th, widgets::body_rows(th, body), apps.len(), &mut self.st, row_h, true, |c, r, i, sel, fg| {
+            let mut st = self.st;
+            widgets::list(c, th, widgets::body_rows(th, body), apps.len(), &mut st, row_h, true, |c, r, i, sel, fg| {
                 let (ic, rest) = r.split_left(row_h + 6);
-                if let Some(icon) = app_icon(th, apps[i]) {
+                if let Some(icon) = self.app_icon(th, apps[i]) {
+                    let (iw, ih) = icon.size();
                     // The gray app icons are opaque four-level bitmaps.
                     if sel {
-                        c.fill(IRect::new(ic.x + 2, ic.y + 1, icon.width() + 2, r.h - 2), th.bg);
+                        c.fill(IRect::new(ic.x + 2, ic.y + 1, iw + 2, r.h - 2), th.bg);
                     }
-                    c.icon(icon, ic.x + 3, ic.y + (r.h - icon.height()) / 2, fg);
+                    icon.draw(c, ic.x + 3, ic.y + (r.h - ih) / 2, fg);
                 }
                 c.text_in(f, IRect { x: rest.x + 4, w: rest.w - 4, ..rest }, &apps[i].display_name, fg, HAlign::Left);
             });
+            self.st = st;
             return;
         }
         let cols = Self::columns(th);
@@ -301,8 +357,10 @@ impl Screen for Launcher {
             if sel {
                 c.fill_round(cell.inset_xy(4, 1), 8, th.sel_bg);
             }
-            if let Some(icon) = app_icon(th, app) {
-                c.icon(icon, cell.x + (cell.w - icon.width()) / 2, cell.y + 6, th.fg);
+            if let Some(icon) = self.app_icon(th, app) {
+                let (iw, ih) = icon.size();
+                // A smaller picture sits in the middle of the icon's box.
+                icon.draw(c, cell.x + (cell.w - iw) / 2, cell.y + 6 + (48 - ih).max(0) / 2, th.fg);
             }
             c.text_in(f, IRect::new(cell.x + 6, cell.y + 56, cell.w - 12, th.line_h - 4), &app.display_name, if sel { th.sel_fg } else { th.fg }, HAlign::Center);
         }

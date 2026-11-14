@@ -635,3 +635,107 @@ fn bluetooth_application_asks_before_pairing() {
     assert_eq!(Rig::drain(&bt), [Command::BluetoothAnswerPairing { addr, accept: true, pin: Some("1234".into()) }]);
     assert_eq!(r.screen(), "bluetooth");
 }
+
+/// A view with one text widget, for the idle screen.
+fn idle_view(name: &str, model: Model) -> (dphone_ui::AppView, dphone_ui::AppEvents) {
+    let (view, events) = dphone_ui::AppView::new(name, model);
+    let line = view.create(dphone_ui::appview::WidgetKind::Text, None, dphone_ui::appview::Rect::new(0, 0, 100, 16));
+    view.set_text(line, name);
+    (view, events)
+}
+
+fn lifecycle(events: &dphone_ui::AppEvents) -> Vec<dphone_ui::AppEvent> {
+    std::iter::from_fn(|| events.try_recv()).collect()
+}
+
+#[test]
+fn idle_views_are_told_when_the_idle_screen_shows_and_hides() {
+    use dphone_ui::AppEvent::{Background, Foreground};
+    let mut r = Rig::new(Model::D60);
+    let (view, events) = idle_view("status", Model::D60);
+    r.ui.handle().add_idle_view(view.clone());
+    r.ui.pump();
+    assert_eq!(lifecycle(&events), [Foreground], "the idle screen is showing");
+    // A menu covers the idle screen; leaving it uncovers it.
+    r.tap(Key::Menu);
+    assert_eq!(lifecycle(&events), [Background]);
+    r.tap(Key::Cancel);
+    assert_eq!(r.screen(), "idle");
+    assert_eq!(lifecycle(&events), [Foreground]);
+    // So does a call.
+    let call = r.add_call(CallState::Ringing);
+    assert_eq!(lifecycle(&events), [Background]);
+    r.store.update::<Calls, _>(|c| c.calls.retain(|x| x.id != call));
+    r.ui.pump();
+    assert_eq!(lifecycle(&events), [Foreground]);
+    // An app's hidden call has no screen: the idle screen stays.
+    r.store.update::<Calls, _>(|c| {
+        let mut hidden = Call::new(CallId(900), AccountId(0), Direction::Incoming, Party::default());
+        hidden.hidden = true;
+        c.calls.push(hidden);
+    });
+    r.ui.pump();
+    assert_eq!(r.screen(), "idle");
+    assert_eq!(lifecycle(&events), []);
+    // A view with nothing in it is not shown; withdrawn, it hears nothing more.
+    view.clear();
+    r.ui.pump();
+    assert_eq!(lifecycle(&events), [Background]);
+    r.ui.handle().remove_idle_view("status");
+    r.ui.pump();
+    assert_eq!(lifecycle(&events), []);
+}
+
+#[test]
+fn several_idle_views_take_turns() {
+    use dphone_ui::AppEvent::{Background, Foreground};
+    let model = Model::D60;
+    let mut hal = Hal::sim(model);
+    let store = Store::new(model);
+    store.update::<System, _>(|s| s.phase = Phase::Running);
+    let cfg = UiConfig { backlight_timeout_secs: 0, idle_cycle_secs: 1, ..Default::default() };
+    let mut ui = Ui::from_hal(&mut hal, store.clone(), cfg.clone());
+    ui.pump();
+    let (a, a_events) = idle_view("a", model);
+    let (b, b_events) = idle_view("b", model);
+    let (empty, empty_events) = dphone_ui::AppView::new("empty", model);
+    ui.handle().add_idle_view(a);
+    ui.handle().add_idle_view(empty);
+    ui.handle().add_idle_view(b);
+    ui.pump();
+    assert_eq!((lifecycle(&a_events), lifecycle(&b_events)), (vec![Foreground], vec![]));
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    ui.pump();
+    assert_eq!((lifecycle(&a_events), lifecycle(&b_events)), (vec![Background], vec![Foreground]));
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    ui.pump();
+    assert_eq!((lifecycle(&a_events), lifecycle(&b_events)), (vec![Foreground], vec![Background]));
+    // A cycle time of 0 shows no idle view at all.
+    ui.handle().set_config(UiConfig { idle_cycle_secs: 0, ..cfg });
+    ui.pump();
+    assert_eq!((lifecycle(&a_events), lifecycle(&b_events)), (vec![Background], vec![]));
+    assert_eq!(lifecycle(&empty_events), [], "a view without widgets never shows");
+}
+
+#[test]
+fn an_app_can_keep_the_backlight_on() {
+    let model = Model::D60;
+    let mut hal = Hal::sim(model);
+    let sim = hal.sim.clone().unwrap();
+    let store = Store::new(model);
+    store.update::<System, _>(|s| s.phase = Phase::Running);
+    let mut ui = Ui::from_hal(&mut hal, store.clone(), UiConfig { backlight_timeout_secs: 1, brightness: 10, ..Default::default() });
+    ui.pump();
+    for _ in 0..3 {
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        store.post(Command::ResetIdleTimer);
+        ui.pump();
+        assert_eq!(sim.brightness(Screen::Main), Some(32), "kept awake past the 1 s timeout");
+    }
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    ui.pump();
+    assert_eq!(sim.brightness(Screen::Main), Some(8));
+    store.post(Command::ResetIdleTimer);
+    ui.pump();
+    assert_eq!(sim.brightness(Screen::Main), Some(32), "and woken");
+}

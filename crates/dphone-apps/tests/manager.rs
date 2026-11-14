@@ -44,6 +44,7 @@ fn publishes_the_app_list() {
             "faulty",
             "hotdesking",
             "parking",
+            "probe",
             "queues",
             "status",
             "voicemail"
@@ -159,6 +160,120 @@ fn storage_follows_the_stock_rules() {
     assert!(r.tmp.join("appdata/@shared/s.txt").is_file());
     assert!(r.nvdata.join("appdata/faulty").is_dir());
     assert!(!r.nvdata.join("appdata/b.txt").exists());
+}
+
+/// Answers the audio and UI command domains the way the phone's
+/// subsystems do, recording what arrived.
+fn audio_and_ui(r: &Rig) -> std::sync::Arc<std::sync::Mutex<Vec<Command>>> {
+    let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    common::answer_commands(&r.store, dphone_state::Domain::Audio, log.clone(), |c| match c {
+        Command::PlayFile { path, .. } if !Path::new(path).is_file() => {
+            Err(dphone_state::CommandError::Failed("no such file".into()))
+        }
+        _ => Ok(Reply::Done),
+    });
+    common::answer_commands(&r.store, dphone_state::Domain::Ui, log.clone(), |_| Ok(Reply::Done));
+    log
+}
+
+#[test]
+fn dial_passes_its_headers() {
+    let mut r = rig();
+    r.launch("probe");
+    r.softkey("probe", "Dial");
+    assert_eq!(r.ui.texts("probe"), ["dial=Ok(8)"]);
+    assert!(r.commands().contains(&Command::DialWith {
+        target: "8500".into(),
+        account: Some(dphone_state::AccountId(1)),
+        headers: vec![("X-Digium-Call-Feature".into(), "voicemail".into()), ("X-Probe".into(), "1".into())],
+    }));
+}
+
+#[test]
+fn a_sound_file_plays_and_reports_where_it_stopped() {
+    let mut r = rig();
+    let log = audio_and_ui(&r);
+    r.launch("probe");
+    r.softkey("probe", "Play");
+    assert_eq!(r.ui.texts("probe"), ["play=Ok(())"]);
+    let played = log.lock().unwrap().clone();
+    let [Command::PlayFile { path, start_secs: 3, app }] = &played[..] else { panic!("{played:?}") };
+    assert_eq!(app, "probe");
+    assert_eq!(Path::new(path), staged().join("probe/tone.wav"));
+    assert!(std::fs::read(path).unwrap().starts_with(b"RIFF"));
+
+    // The audio side says where it ended: the app hears about its own
+    // file, and not about another app's.
+    r.store.emit(dphone_state::Event::PlaybackStopped { app: "voicemail".into(), position_secs: 9 });
+    r.settle();
+    assert_eq!(r.ui.texts("probe"), ["play=Ok(())"]);
+    r.store.emit(dphone_state::Event::PlaybackStopped { app: "probe".into(), position_secs: 4 });
+    r.settle();
+    assert_eq!(r.ui.texts("probe"), ["stopped=4"]);
+
+    // A file that is not there is refused here; nothing is asked of the
+    // audio side.
+    r.softkey("probe", "Bad");
+    assert_eq!(r.ui.texts("probe"), ["play=Err(Error::NotFound)"]);
+    assert_eq!(log.lock().unwrap().len(), 1);
+
+    // Stop goes to the audio side; closing an app whose file is playing
+    // stops the file.
+    r.softkey("probe", "Stop");
+    r.softkey("probe", "Play");
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    r.mgr.close("probe");
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let tail: Vec<Command> = log.lock().unwrap()[1..].to_vec();
+    assert!(matches!(&tail[..], [Command::StopSound, Command::PlayFile { .. }, Command::StopSound]), "{tail:?}");
+}
+
+#[test]
+fn idle_screen_events_and_the_idle_timer() {
+    let mut r = rig();
+    let log = audio_and_ui(&r);
+    r.mgr.autostart();
+    r.settle();
+    assert!(r.mgr.is_running("probe"), "an app with an idle window starts by itself");
+    assert_eq!(r.ui.idle_texts("probe"), ["idle=unknown"], "nothing is announced before the idle screen shows");
+    assert_eq!(r.store.get::<dphone_state::Apps>().idle_app, None);
+    r.ui.idle_screen("probe", true);
+    r.settle();
+    assert_eq!(r.ui.idle_texts("probe"), ["idle=shown"]);
+    assert_eq!(r.store.get::<dphone_state::Apps>().idle_app.as_deref(), Some("probe"));
+    r.ui.idle_screen("probe", false);
+    r.settle();
+    assert_eq!(r.ui.idle_texts("probe"), ["idle=hidden"]);
+    assert_eq!(r.store.get::<dphone_state::Apps>().idle_app, None);
+    r.ui.idle_screen("probe", true);
+    r.settle();
+    assert_eq!(r.ui.idle_texts("probe"), ["idle=shown"]);
+
+    r.launch("probe");
+    r.softkey("probe", "Awake");
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    assert_eq!(log.lock().unwrap().clone(), [Command::ResetIdleTimer]);
+}
+
+#[test]
+fn package_pictures_reach_the_window_and_the_launcher() {
+    let mut r = rig();
+    // The manifest's icon is a file of the package: the launcher gets its path.
+    let apps = r.store.get::<dphone_state::Apps>();
+    let probe = apps.installed.iter().find(|a| a.name == "probe").unwrap();
+    assert_eq!(probe.icon, "pic.png");
+    assert_eq!(Path::new(&probe.icon_path), staged().join("probe/pic.png"));
+    // A built-in's icon is one of the phone's own: no file.
+    let contacts = apps.installed.iter().find(|a| a.name == "contacts").unwrap();
+    assert_eq!(contacts.icon_path, "");
+
+    r.launch("probe");
+    r.softkey("probe", "Pics");
+    let size = std::fs::metadata(staged().join("probe/pic.png")).unwrap().len() as usize;
+    // Read once, although an image widget and a list row both name it; the
+    // name that is no file stays an icon of the phone.
+    assert_eq!(r.ui.images("probe"), [("pic.png".to_string(), size)]);
+    assert_eq!(r.ui.image_names("probe"), ["pic.png"]);
 }
 
 #[test]

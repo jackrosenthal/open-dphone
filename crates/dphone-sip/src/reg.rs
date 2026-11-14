@@ -56,7 +56,7 @@ impl Core {
 
     fn new_acct(&self, cfg: AccountConfig) -> Acct {
         let reg = Arc::new(tokio::sync::Mutex::new(self.new_registration(&cfg, false)));
-        Acct { cfg, alt: false, generation: 0, fails: 0, registered: false, reg, public: None }
+        Acct { cfg, alt: false, generation: 0, fails: 0, registered: false, reg, public: None, served_by_alt: None }
     }
 
     /// Applies a configuration: accounts that changed are unregistered and
@@ -90,10 +90,14 @@ impl Core {
         self.accts.sort_by_key(|a| a.cfg.id);
         self.publish_accounts(true);
         // BLF entries follow the configuration; subscriptions restart.
+        // One entry per contact, however many keys show it; blanks only
+        // reserve keys.
+        let mut seen = std::collections::HashSet::new();
         let entries: Vec<BlfEntry> = self
             .cfg
             .blf
             .iter()
+            .filter(|b| !b.blank && seen.insert(b.id.clone()))
             .map(|b| {
                 let prev = self.store.get::<Presence>().get(&b.id).cloned();
                 BlfEntry {
@@ -335,6 +339,13 @@ impl Core {
             a.fails = 0;
             a.public = o.public;
             let (alt, user) = (a.alt, a.cfg.user.clone());
+            // Registered with the other host than last time: the server
+            // changed under the apps (stock `digium.phone.server_change`).
+            if a.served_by_alt.replace(alt).is_some_and(|before| before != alt) {
+                // Stock's event data: the account and which of its hosts.
+                let body = format!("{{\"accountSlot\":{},\"accountSubslot\":{}}}", id.0, alt as u8);
+                self.store.emit(Event::Push { name: "digium.phone.server_change".into(), body });
+            }
             let granted = o.granted.max(10);
             // Stock refreshes at half the lifetime.
             self.after(Duration::from_secs((granted / 2).max(5) as u64), Timer::Register { acct: id, generation });
@@ -540,7 +551,8 @@ impl Core {
             let uri = if a.cfg.mwi_uri.is_empty() { Core::host_uri(a, Some(&a.cfg.user)) } else { a.cfg.mwi_uri.clone() };
             wanted.push((SubKind::Mwi, uri));
         }
-        for b in self.cfg.blf.iter().filter(|b| b.account == acct) {
+        let mut seen = std::collections::HashSet::new();
+        for b in self.cfg.blf.iter().filter(|b| b.account == acct && !b.blank && seen.insert(b.id.clone())) {
             if let Some(uri) = self.blf_uri(acct, &b.subscribe) {
                 wanted.push((SubKind::Blf(b.id.clone()), uri.clone()));
                 if b.presence {

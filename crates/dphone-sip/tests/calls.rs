@@ -268,3 +268,86 @@ async fn parking_follows_the_configured_mode() {
     assert_eq!(lot.store.get::<Calls>().get(cl).unwrap().remote.number, "alice");
     assert_eq!(a.store.get::<Calls>().get(consult).unwrap().transfer_of, Some(ca));
 }
+
+/// `Event::Push`es seen by a subscription, as (name, body).
+fn pushes(sub: &dphone_state::Subscription) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    while let Some(wake) = sub.try_take() {
+        for e in wake.events {
+            if let dphone_state::Event::Push { name, body } = e {
+                out.push((name, body));
+            }
+        }
+    }
+    out
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn dial_headers_and_events_on_invite() {
+    let a = phone("alice", 4000).await;
+    let b = phone("bob", 5000).await;
+    let sub = b.store.subscribe_events(dphone_state::Topic::Calls);
+    let rings = |p: &common::Phone| p.media.calls().iter().filter(|c| matches!(c, MediaCall::Ring(Some(_)))).count();
+
+    // The stack's own headers are not an app's to set.
+    for bad in ["Via", "from", "Content-Length", "v", "X Bad"] {
+        let r = a
+            .store
+            .send(Command::DialWith { target: b.uri(), account: None, headers: vec![(bad.into(), "x".into())] })
+            .await;
+        assert!(matches!(r, Err(dphone_state::CommandError::Invalid(_))), "{bad}: {r:?}");
+    }
+    let r = a
+        .store
+        .send(Command::DialWith { target: b.uri(), account: None, headers: vec![("X-A".into(), "a\r\nVia: x".into())] })
+        .await;
+    assert!(matches!(r, Err(dphone_state::CommandError::Invalid(_))), "{r:?}");
+
+    // An event name the configuration gives to apps (stock's voicemail
+    // playback call): the call is hidden, does not ring, and the event
+    // names it.
+    let headers = vec![
+        ("X-Digium-Event-Name".to_string(), "digium.incomingCall.voicemail".to_string()),
+        ("X-Event-Data".to_string(), r#"{"folder":"INBOX"}"#.to_string()),
+        ("channel_screen".to_string(), "SIP/100-0001".to_string()),
+    ];
+    let ca = match a.store.send(Command::DialWith { target: b.uri(), account: None, headers }).await {
+        Ok(Reply::Call(id)) => id,
+        other => panic!("dial failed: {other:?}"),
+    };
+    let cb = wait("B to have the call", || only_call(&b.store)).await;
+    let got = wait("the event", || Some(pushes(&sub)).filter(|p| !p.is_empty())).await;
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].0, "digium.incomingCall.voicemail");
+    let body: serde_json::Value = serde_json::from_str(&got[0].1).unwrap();
+    assert_eq!(body["method"], "INVITE");
+    assert_eq!(body["call"], cb.0);
+    assert_eq!(body["data"], r#"{"folder":"INBOX"}"#);
+    let call = b.store.get::<Calls>().get(cb).cloned().unwrap();
+    assert!(call.hidden);
+    assert_eq!(call.state, CallState::Ringing);
+    assert_eq!(b.store.get::<Calls>().ringing().count(), 0, "a hidden call does not alert");
+    assert_eq!(rings(&b), 0);
+    assert!(b.store.get::<dphone_state::Keys>().line_keys[0].calls.is_empty());
+    // The app answers it; when it ends it is not in the call log.
+    b.store.send(Command::Answer { call: cb, path: None }).await.expect("answer");
+    wait("A active", || (state(&a.store, ca) == Some(CallState::Active)).then_some(())).await;
+    b.store.send(Command::Hangup { call: cb }).await.unwrap();
+    wait("A ended", || state(&a.store, ca).filter(|s| s.is_ended())).await;
+    assert!(b.store.get::<CallLog>().entries.is_empty());
+
+    // Any other event name: an ordinary ringing call, and the event still
+    // goes out with its call (the last name header wins, as on stock).
+    let headers = vec![
+        ("X-Event-Name".to_string(), "example.first".to_string()),
+        ("X-Event-Type".to_string(), "example.callback".to_string()),
+    ];
+    a.store.send(Command::DialWith { target: b.uri(), account: None, headers }).await.unwrap();
+    let cb2 = wait("B to ring", || b.store.get::<Calls>().ringing().next().map(|c| c.id)).await;
+    let got = wait("the event", || Some(pushes(&sub)).filter(|p| !p.is_empty())).await;
+    assert_eq!(got[0].0, "example.callback");
+    let body: serde_json::Value = serde_json::from_str(&got[0].1).unwrap();
+    assert_eq!((body["call"].as_u64(), body["type"].as_str(), body["data"].as_str()), (Some(cb2.0 as u64), Some("example.callback"), Some("")));
+    assert!(!b.store.get::<Calls>().get(cb2).unwrap().hidden);
+    assert_eq!(rings(&b), 1);
+}

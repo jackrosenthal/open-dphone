@@ -1152,6 +1152,8 @@ dependencies = [
  "rustls-pemfile",
  "rustls-pki-types",
  "rustls-rustcrypto",
+ "rustls-webpki 0.103.17",
+ "serde_json",
  "socket2",
  "tokio",
  "tokio-rustls",

@@ -2,17 +2,20 @@
 //! requests whose application server is an HTTP(S) URL.
 //!
 //! HTTP/1.1 over TCP or TLS, one request per connection.  TLS is rustls
-//! with the RustCrypto provider, through the client policy the SIP stack
-//! uses (stock's default: the server certificate is not checked; stock
-//! fetches with `curl --insecure`).  Credentials are sent only in answer
-//! to a challenge: Digest (RFC 7616: MD5, SHA-256, their `-sess` forms,
-//! `qop=auth`) when the server offers it, else Basic.  Credentials come
-//! from the request or from the URL's `user:password@` part.
+//! with the RustCrypto provider, under the caller's policy (as on stock:
+//! the server is checked against the trust bundle unless
+//! `allow_insecure_ssl` is set).  Up to five redirects are followed, as
+//! stock's libcurl does.  Credentials are sent only in answer to a
+//! challenge (stock: `CURLAUTH_ANY`): Digest (RFC 7616: MD5, SHA-256, their
+//! `-sess` forms, `qop=auth`) when the server offers it, else Basic.
+//! Credentials come from the request or from the URL's `user:password@`
+//! part.
 
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use dphone_apps::services::{HttpReply, HttpRequest};
+use dphone_sip::TlsConfig;
 use md5::{Digest as _, Md5};
 use sha2::Sha256;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -24,6 +27,7 @@ use super::net::NetHandle;
 const LIMIT: usize = 1 << 20;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_REDIRECTS: usize = 5;
 
 #[derive(Debug, PartialEq, Eq)]
 struct Url {
@@ -445,7 +449,13 @@ async fn resolve(net: Option<&NetHandle>, host: &str, port: u16) -> Result<Socke
         .ok_or_else(|| format!("{host} has no address"))
 }
 
-async fn once(net: Option<&NetHandle>, url: &Url, request: &HttpRequest, authorization: Option<&str>) -> Result<HttpReply, String> {
+async fn once(
+    net: Option<&NetHandle>,
+    tls: &TlsConfig,
+    url: &Url,
+    request: &HttpRequest,
+    authorization: Option<&str>,
+) -> Result<HttpReply, String> {
     let method = if request.method.is_empty() { "GET" } else { request.method.as_str() };
     if !method.bytes().all(|b| b.is_ascii_alphabetic()) {
         return Err("bad request method".into());
@@ -483,7 +493,7 @@ async fn once(net: Option<&NetHandle>, url: &Url, request: &HttpRequest, authori
     let run = async {
         if url.tls {
             use tokio_rustls::rustls::pki_types::ServerName;
-            let config = dphone_sip::tls::client_config(&dphone_sip::TlsConfig::default())?;
+            let config = dphone_sip::tls::client_config(tls)?;
             let name = ServerName::try_from(url.host.clone()).unwrap_or(ServerName::IpAddress(addr.ip().into()));
             let mut tls = tokio_rustls::TlsConnector::from(std::sync::Arc::new(config))
                 .connect(name, tcp)
@@ -500,11 +510,10 @@ async fn once(net: Option<&NetHandle>, url: &Url, request: &HttpRequest, authori
     tokio::time::timeout(EXCHANGE_TIMEOUT, run).await.map_err(|_| "the request timed out".to_string())?
 }
 
-/// Runs a request, answering one authentication challenge when there are
-/// credentials to answer it with.
-pub async fn request(net: Option<&NetHandle>, request: HttpRequest) -> Result<HttpReply, String> {
-    let url = parse_url(&request.url)?;
-    let reply = once(net, &url, &request, None).await?;
+/// One request to one URL, answering one authentication challenge when
+/// there are credentials to answer it with.
+async fn authenticated(net: Option<&NetHandle>, tls: &TlsConfig, url: &Url, request: &HttpRequest) -> Result<HttpReply, String> {
+    let reply = once(net, tls, url, request, None).await?;
     let credentials = request.credentials.as_ref().or(url.credentials.as_ref());
     if reply.status != 401 {
         return Ok(reply);
@@ -512,9 +521,57 @@ pub async fn request(net: Option<&NetHandle>, request: HttpRequest) -> Result<Ht
     let Some((user, pass)) = credentials else { return Ok(reply) };
     let method = if request.method.is_empty() { "GET" } else { request.method.as_str() };
     match authorization(&reply, method, &url.target, user, pass) {
-        Some(value) => once(net, &url, &request, Some(&value)).await,
+        Some(value) => once(net, tls, url, request, Some(&value)).await,
         None => Ok(reply),
     }
+}
+
+/// Where a redirect leads: an absolute URL, or a path on the same server.
+fn redirect_target(from: &Url, location: &str) -> Option<String> {
+    let location = location.trim();
+    if location.starts_with("http://") || location.starts_with("https://") {
+        return Some(location.to_string());
+    }
+    let scheme = if from.tls { "https" } else { "http" };
+    if let Some(rest) = location.strip_prefix("//") {
+        return Some(format!("{scheme}://{rest}"));
+    }
+    if location.starts_with('/') {
+        return Some(format!("{scheme}://{}{location}", from.authority));
+    }
+    // Relative to the directory of the current path.
+    let path = from.target.split('?').next().unwrap_or("/");
+    let dir = &path[..path.rfind('/').map_or(0, |i| i + 1)];
+    (!location.is_empty()).then(|| format!("{scheme}://{}{dir}{location}", from.authority))
+}
+
+/// Runs a request, following redirects.
+pub async fn request(net: Option<&NetHandle>, tls: &TlsConfig, mut request: HttpRequest) -> Result<HttpReply, String> {
+    let mut url = parse_url(&request.url)?;
+    for _ in 0..=MAX_REDIRECTS {
+        let reply = authenticated(net, tls, &url, &request).await?;
+        let location = match reply.status {
+            301 | 302 | 303 | 307 | 308 => header(&reply.headers, "location").and_then(|l| redirect_target(&url, l)),
+            _ => None,
+        };
+        let Some(next) = location else { return Ok(reply) };
+        let next_url = parse_url(&next)?;
+        // As browsers and curl do: these three turn anything but a HEAD
+        // into a GET without a body.
+        if matches!(reply.status, 301..=303) && !request.method.eq_ignore_ascii_case("HEAD") {
+            request.method = "GET".into();
+            request.body.clear();
+            request.headers.retain(|(n, _)| !n.eq_ignore_ascii_case("content-type"));
+        }
+        // Credentials are for the server they were given for.
+        if next_url.host != url.host || next_url.port != url.port || next_url.tls != url.tls {
+            request.credentials = None;
+            request.headers.retain(|(n, _)| !n.eq_ignore_ascii_case("authorization") && !n.eq_ignore_ascii_case("cookie"));
+        }
+        request.url = next;
+        url = next_url;
+    }
+    Err("too many redirects".into())
 }
 
 #[cfg(test)]
@@ -695,13 +752,13 @@ mod tests {
                 tokio::spawn(digest_server(s));
             }
         });
-        let reply = request(None, post(format!("http://127.0.0.1:{port}/json"), Some(("app", "secret")))).await.unwrap();
+        let reply = request(None, &TlsConfig::default(), post(format!("http://127.0.0.1:{port}/json"), Some(("app", "secret")))).await.unwrap();
         assert_eq!((reply.status, reply.body.as_slice()), (200, &b"hello world"[..]));
         // Credentials in the URL work the same way.
-        let reply = request(None, post(format!("http://app:secret@127.0.0.1:{port}/json"), None)).await.unwrap();
+        let reply = request(None, &TlsConfig::default(), post(format!("http://app:secret@127.0.0.1:{port}/json"), None)).await.unwrap();
         assert_eq!(reply.status, 200);
         // Without credentials the challenge is the answer.
-        let reply = request(None, post(format!("http://127.0.0.1:{port}/json"), None)).await.unwrap();
+        let reply = request(None, &TlsConfig::default(), post(format!("http://127.0.0.1:{port}/json"), None)).await.unwrap();
         assert_eq!(reply.status, 401);
     }
 
@@ -725,7 +782,7 @@ mod tests {
                 tokio::spawn(async move { digest_server(acceptor.accept(s).await.unwrap()).await });
             }
         });
-        let reply = request(None, post(format!("https://127.0.0.1:{port}/json"), Some(("app", "secret")))).await.unwrap();
+        let reply = request(None, &TlsConfig::default(), post(format!("https://127.0.0.1:{port}/json"), Some(("app", "secret")))).await.unwrap();
         assert_eq!((reply.status, reply.body.as_slice()), (200, &b"hello world"[..]));
     }
 
@@ -768,13 +825,95 @@ mod tests {
             body: Vec::new(),
             credentials: credentials.map(|(u, p)| (u.to_string(), p.to_string())),
         };
-        let r = request(None, get(None)).await.unwrap();
+        let r = request(None, &TlsConfig::default(), get(None)).await.unwrap();
         assert_eq!((r.status, r.body.as_slice()), (200, &b"abc"[..]));
         assert_eq!(header(&r.headers, "x-a"), Some("b"));
-        let r = request(None, get(None)).await.unwrap();
+        let r = request(None, &TlsConfig::default(), get(None)).await.unwrap();
         assert_eq!(r.body, b"until close");
-        assert_eq!(request(None, get(None)).await.unwrap_err(), "the reply was cut short");
-        let r = request(None, get(Some(("u", "p")))).await.unwrap();
+        assert_eq!(request(None, &TlsConfig::default(), get(None)).await.unwrap_err(), "the reply was cut short");
+        let r = request(None, &TlsConfig::default(), get(Some(("u", "p")))).await.unwrap();
         assert_eq!(r.status, 204);
+    }
+
+    #[tokio::test]
+    async fn redirects_and_certificate_checks() {
+        // Redirects: a relative one, then one that turns the POST into a GET.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let mut seen = Vec::new();
+            loop {
+                let (mut s, _) = listener.accept().await.unwrap();
+                let req = read_request(&mut s).await;
+                let line = req.lines().next().unwrap().to_string();
+                let reply = match line.as_str() {
+                    "POST /a/start HTTP/1.1" => "HTTP/1.1 307 Temporary Redirect\r\nLocation: next\r\nContent-Length: 0\r\n\r\n".to_string(),
+                    "POST /a/next HTTP/1.1" => {
+                        assert!(req.ends_with("{\"request\":1}"), "a 307 keeps the body: {req}");
+                        "HTTP/1.1 302 Found\r\nLocation: /done\r\nContent-Length: 0\r\n\r\n".to_string()
+                    }
+                    "GET /done HTTP/1.1" => format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}", seen.len(), "x".repeat(seen.len())),
+                    "GET /loop HTTP/1.1" => "HTTP/1.1 301 Moved\r\nLocation: /loop\r\nContent-Length: 0\r\n\r\n".to_string(),
+                    other => panic!("unexpected request {other}"),
+                };
+                seen.push(line);
+                s.write_all(reply.as_bytes()).await.unwrap();
+            }
+        });
+        let tls = TlsConfig::default();
+        let r = request(None, &tls, post(format!("http://127.0.0.1:{port}/a/start"), None)).await.unwrap();
+        assert_eq!((r.status, r.body.len()), (200, 2));
+        let mut again = post(format!("http://127.0.0.1:{port}/loop"), None);
+        again.method = "GET".into();
+        assert_eq!(request(None, &tls, again).await.unwrap_err(), "too many redirects");
+
+        // With certificate checking on, a server whose certificate does
+        // not chain to the trusted roots is refused; with its issuer
+        // trusted, it is accepted.
+        let certs: Vec<_> = rustls_pemfile::certs(&mut &CERT[..]).flatten().collect();
+        let key = rustls_pemfile::private_key(&mut &KEY[..]).unwrap().unwrap();
+        let server = tokio_rustls::rustls::ServerConfig::builder_with_provider(Arc::new(rustls_rustcrypto::provider()))
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)
+            .unwrap();
+        let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            loop {
+                let (s, _) = listener.accept().await.unwrap();
+                let acceptor = acceptor.clone();
+                tokio::spawn(async move {
+                    if let Ok(mut s) = acceptor.accept(s).await {
+                        read_request(&mut s).await;
+                        let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok").await;
+                        let _ = s.shutdown().await;
+                    }
+                });
+            }
+        });
+        let get = |host: &str| HttpRequest { url: format!("https://{host}:{port}/"), ..Default::default() };
+        let strict = TlsConfig { verify: true, roots_pem: CERT.to_vec(), ..Default::default() };
+        let e = request(None, &strict, get("127.0.0.1")).await.unwrap_err();
+        assert!(e.contains("TLS handshake"), "{e}");
+        let trusting = TlsConfig {
+            verify: true,
+            roots_pem: include_bytes!("../../../../dphone-sip/tests/data/test-ca.pem").to_vec(),
+            ..Default::default()
+        };
+        assert_eq!(request(None, &trusting, get("127.0.0.1")).await.unwrap().body, b"ok");
+        assert_eq!(request(None, &TlsConfig::default(), get("127.0.0.1")).await.unwrap().body, b"ok");
+    }
+
+    #[test]
+    fn redirect_targets() {
+        let from = parse_url("https://pbx.example:8443/api/v1/call?x=1").unwrap();
+        assert_eq!(redirect_target(&from, "http://other/").unwrap(), "http://other/");
+        assert_eq!(redirect_target(&from, "//other/p").unwrap(), "https://other/p");
+        assert_eq!(redirect_target(&from, "/root").unwrap(), "https://pbx.example:8443/root");
+        assert_eq!(redirect_target(&from, "next?y=2").unwrap(), "https://pbx.example:8443/api/v1/next?y=2");
+        assert_eq!(redirect_target(&from, " "), None);
     }
 }

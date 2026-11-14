@@ -844,6 +844,11 @@ pub struct Call {
     /// Paging or intercom: auto-answered, one-way where so marked.
     pub auto_answer: bool,
     pub paging: bool,
+    /// A call that belongs to an app (stock's "hidden call", e.g., the
+    /// PBX calling back to play a voicemail message): it does not ring,
+    /// has no call screen or line lamp, and is not logged.
+    #[serde(default)]
+    pub hidden: bool,
     /// SIP Call-ID, for logs and diagnostics.
     pub sip_call_id: String,
     pub stats: MediaStats,
@@ -870,6 +875,7 @@ impl Call {
             transfer_of: None,
             auto_answer: false,
             paging: false,
+            hidden: false,
             sip_call_id: String::new(),
             stats: MediaStats::default(),
         }
@@ -905,8 +911,13 @@ impl Calls {
     pub fn live(&self) -> impl Iterator<Item = &Call> {
         self.calls.iter().filter(|c| !c.state.is_ended())
     }
+    /// Calls alerting the user (an app's hidden call does not).
     pub fn ringing(&self) -> impl Iterator<Item = &Call> {
-        self.calls.iter().filter(|c| c.state == CallState::Ringing)
+        self.calls.iter().filter(|c| c.state == CallState::Ringing && !c.hidden)
+    }
+    /// Live calls the user sees (all but apps' hidden calls).
+    pub fn visible(&self) -> impl Iterator<Item = &Call> {
+        self.live().filter(|c| !c.hidden)
     }
     pub fn is_idle(&self) -> bool {
         self.live().next().is_none()
@@ -1333,8 +1344,13 @@ pub struct AppInfo {
     pub has_idle: bool,
     pub hidden: bool,
     pub builtin: bool,
-    /// Icon resource name within the package.
+    /// The manifest's `iconFile`: a file of the package, or the name of
+    /// one of the phone's own app icons.
     pub icon: String,
+    /// Path of the package's icon file when `icon` names one that exists
+    /// (empty otherwise).
+    #[serde(default)]
+    pub icon_path: String,
     pub running: bool,
 }
 

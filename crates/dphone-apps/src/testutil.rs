@@ -39,6 +39,8 @@ pub struct Win {
     pub focus: Option<u32>,
     pub softkeys: Vec<Softkey>,
     pub claims: Vec<Key>,
+    /// Package pictures handed over with `define_image`: name and size.
+    pub images: Vec<(String, usize)>,
     events: VecDeque<WindowEvent>,
     wake: Option<Arc<dyn Fn() + Send + Sync>>,
 }
@@ -167,6 +169,34 @@ impl FakeUi {
                 .map(|n| n.text.clone())
                 .collect()
         })
+    }
+
+    /// Texts of the app's idle-screen window.
+    pub fn idle_texts(&self, app: &str) -> Vec<String> {
+        let s = self.state.lock().unwrap();
+        s.windows
+            .get(&(app.to_string(), WindowKind::Idle))
+            .map(|w| w.nodes.values().filter(|n| n.kind == WidgetKind::Text).map(|n| n.text.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    /// The idle screen came on screen (`true`) or was covered, as the
+    /// phone UI reports it to an app's idle window.
+    pub fn idle_screen(&self, app: &str, shown: bool) {
+        let mut s = self.state.lock().unwrap();
+        if let Some(w) = s.windows.get_mut(&(app.to_string(), WindowKind::Idle)) {
+            w.push(if shown { WindowEvent::Foreground } else { WindowEvent::Background });
+        }
+    }
+
+    /// Package pictures the app's window was handed: (name, file size).
+    pub fn images(&self, app: &str) -> Vec<(String, usize)> {
+        self.with(app, |w| w.images.clone())
+    }
+
+    /// The picture names of the app's image widgets, in creation order.
+    pub fn image_names(&self, app: &str) -> Vec<String> {
+        self.with(app, |w| w.nodes.values().filter(|n| n.kind == WidgetKind::Image).map(|n| n.image.clone()).collect())
     }
 
     /// True when any visible text contains `needle`.
@@ -443,6 +473,10 @@ impl AppWindow for FakeWindow {
     }
     fn set_image(&mut self, w: u32, name: &str) {
         self.node(w, |n| n.image = name.to_string())
+    }
+    fn define_image(&mut self, name: &str, file: &[u8]) -> bool {
+        self.with(|w| w.images.push((name.to_string(), file.len())));
+        file.starts_with(b"\x89PNG")
     }
     fn set_softkeys(&mut self, id: Option<u32>, keys: &[Softkey]) {
         self.with(|w| match id {

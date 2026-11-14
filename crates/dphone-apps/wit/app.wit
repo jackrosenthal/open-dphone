@@ -47,7 +47,8 @@ interface types {
     text: string,
     /// Secondary text at the right edge (may be empty).
     detail: string,
-    /// Icon resource name from the app package (may be empty).
+    /// A picture file (PNG) of the app package, or the name of one of
+    /// the phone's icons (may be empty).
     icon: string,
   }
 
@@ -150,7 +151,8 @@ interface types {
   }
 
   record push {
-    /// Event name (`X-Digium-Event-Name` / `X-Event-Name`).
+    /// Event name: the last of `X-Digium-Event-Name`, `X-Event-Name`,
+    /// and `X-Event-Type` the request carries.
     name: string,
     /// `X-Event-Type` (may be empty).
     kind: string,
@@ -158,8 +160,10 @@ interface types {
     data: string,
     /// SIP method that carried it (`MESSAGE`, `INFO`, `INVITE`, ...).
     method: string,
-    /// The call it arrived with, for INVITE pushes (e.g.,
+    /// The call it arrived with, for INVITE and INFO pushes (e.g.,
     /// `digium.incomingCall.voicemail`); the app may answer or reject it.
+    /// A call whose event the configuration gives to apps does not ring
+    /// and has no call screen; it ends when the app leaves the screen.
     call: option<call-id>,
   }
 
@@ -170,7 +174,11 @@ interface types {
     background,
     /// Last event before the instance is dropped.
     exit,
+    /// The app's idle window came on screen: the idle screen is the top
+    /// screen and it is this app's turn (apps with idle windows take
+    /// turns).
     idle-screen-show,
+    /// The app's idle window left the screen.
     idle-screen-hide,
     /// A key claimed with `ui.claim-keys`.  Names follow the phone's
     /// key vocabulary: `0`..`9`, `*`, `#`, `up`, `down`, `left`, `right`,
@@ -188,9 +196,12 @@ interface types {
     presence(presence),
     /// New merged configuration; re-read `config`.
     new-config,
-    /// The PBX server changed (failover).
+    /// An account registered with its other host (failover to the
+    /// alternate, or back).
     server-change,
-    /// Sound playback finished or stopped; position in seconds.
+    /// The sound started with `audio.play-file` played to its end, was
+    /// stopped, or was cut off by the ringer; position in the file in
+    /// seconds.
     playback-stopped(u32),
     /// An event from another app or the phone, addressed to this app.
     message(tuple<string, string>),
@@ -209,7 +220,8 @@ interface runtime {
   set-exit-after-background: func(exit: bool);
   /// Show another app.
   show-app: func(name: string) -> result<_, string>;
-  /// Reset the phone's idle (screen-saver / return-to-idle) timer.
+  /// Count as user activity: wakes the backlight and restarts its
+  /// timeout.  Has an effect only while the app is on screen.
   reset-idle-timer: func();
   /// 0 error, 1 warn, 2 info, 3 debug.
   log: func(level: u8, message: string);
@@ -250,7 +262,8 @@ interface ui {
   set-input-mode: func(w: widget, mode: input-mode);
   set-max-length: func(w: widget, max: u32);
 
-  /// Image by name: an icon of the phone's icon set.
+  /// Image by name: a picture file (PNG) of the app package, else an
+  /// icon of the phone's icon set.
   set-image: func(w: widget, name: string);
 
   /// Keys this widget wants as `event.key` instead of the built-in
@@ -323,6 +336,8 @@ interface http {
 /// Capability `calls`.
 interface calls {
   use types.{call-id, call-info, error, header, mwi};
+  /// `headers` (at most 30) are added to the INVITE; the headers SIP
+  /// itself needs (`Via`, `From`, `Contact`, and so on) cannot be set.
   dial: func(number: string, account: option<u8>, headers: list<header>) -> result<call-id, error>;
   answer: func(call: call-id) -> result<_, error>;
   reject: func(call: call-id) -> result<_, error>;
@@ -360,7 +375,11 @@ interface events {
 /// Capability `audio`.
 interface audio {
   use types.{location, error};
-  /// Play a sound file from a storage location, from `start` seconds.
+  /// Play a sound file from a storage location, from `start` seconds:
+  /// headerless 16 kHz mono signed 16-bit little-endian samples (stock
+  /// `.sln16`), or a WAVE file (PCM, mu-law, or A-law).  At most five
+  /// minutes.  One sound plays at a time; `event.playback-stopped`
+  /// follows when it is over.
   play-file: func(loc: location, name: string, start: u32) -> result<_, error>;
   stop: func();
 }

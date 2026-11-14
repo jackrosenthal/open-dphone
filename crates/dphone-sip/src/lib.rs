@@ -32,6 +32,7 @@
 pub mod bodies;
 mod calls;
 pub mod config;
+pub mod keys;
 mod core;
 pub mod media;
 mod reg;
@@ -41,7 +42,7 @@ pub mod timer;
 pub mod tls;
 pub mod util;
 
-pub use config::{AccountConfig, BlfConfig, CodecPref, HostConfig, SipConfig, TlsConfig};
+pub use config::{AccountConfig, BlfConfig, BlfLocation, CodecPref, EventAction, HostConfig, SipConfig, TlsConfig};
 pub use media::{MediaControl, MediaEvent, NullMedia, RingRequest, StreamParams, StreamSrtp};
 
 use crate::core::{Core, Ev, Timer};
@@ -300,6 +301,7 @@ pub async fn start(
         listeners: Vec::new(),
         park_extension: cfg.park_extension.clone(),
         blf_dialogs: HashMap::new(),
+        page_changes: 0,
         elsewhere,
         streams,
         udp: socket,
@@ -343,6 +345,12 @@ impl Core {
                 Timer::Subscribe { sub, generation } => self.on_subscribe_timer(sub, generation),
                 Timer::NoAnswer { call } => self.on_no_answer(call),
                 Timer::Linger { call } => self.on_linger(call),
+                Timer::PageReturn { generation } => {
+                    if generation == self.page_changes {
+                        self.store.update::<dphone_state::Keys, _>(|k| k.rapid_page = 0);
+                        self.sync_keys();
+                    }
+                }
                 Timer::HoldRetry { call } => self.on_hold_retry(call),
                 Timer::SessionRefresh { call, generation } => self.on_session_refresh(call, generation),
                 Timer::SessionExpire { call, generation } => self.on_session_expire(call, generation),

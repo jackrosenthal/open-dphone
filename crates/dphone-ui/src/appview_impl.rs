@@ -236,6 +236,10 @@ fn draw_node(tree: &mut Tree, c: &mut Canvas, th: &Theme, id: WidgetId, ox: i32,
                                 c.icon_in(icon, cr, row_fg);
                             }
                         }
+                        Some(Cell::Image(img)) => {
+                            let (w, h) = (img.width as i32, img.height as i32);
+                            c.rgba(cr.x + (cr.w - w) / 2, cr.y + (cr.h - h) / 2, w, h, &img.pixels);
+                        }
                         _ => {}
                     }
                 }

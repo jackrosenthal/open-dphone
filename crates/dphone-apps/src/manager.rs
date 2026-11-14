@@ -275,6 +275,7 @@ impl AppManager {
                 hidden: k.manifest.hidden,
                 builtin: k.builtin,
                 icon: k.manifest.icon.clone(),
+                icon_path: icon_file(&k.dir, &k.manifest.icon, self.store.model().name()),
                 running: self.running.contains_key(&k.manifest.name),
             })
             .collect();
@@ -393,6 +394,8 @@ impl AppManager {
             presence_subs: HashSet::new(),
             exit_after_background: true,
             foreground: false,
+            images: HashSet::new(),
+            playing: false,
             limits: wasmtime::StoreLimitsBuilder::new()
                 .memory_size(cap)
                 .memories(1)
@@ -454,9 +457,26 @@ impl AppManager {
         self.publish();
     }
 
+    /// Ends the calls that belong to apps (hidden calls) when the app on
+    /// screen leaves it, as stock does when its app screen unloads: such
+    /// a call has no other screen from which to end it.
+    fn end_hidden_calls(&self) {
+        let calls = self.store.get::<dphone_state::Calls>();
+        for call in calls.live().filter(|c| c.hidden) {
+            let _ = self.store.post(Command::Hangup { call: call.id });
+        }
+    }
+
     fn kill(&mut self, name: &str) {
+        if self.foreground.as_deref() == Some(name) {
+            self.end_hidden_calls();
+        }
         if let Some(r) = self.running.remove(name) {
             let has_idle = r.store.data().idle.is_some();
+            if r.store.data().playing {
+                // Its sound does not outlive it.
+                let _ = self.store.post(Command::StopSound);
+            }
             drop(r);
             self.shell.hide(name);
             self.shell.close(name, WindowKind::App);
@@ -703,11 +723,15 @@ impl AppManager {
                     name: ev,
                     payload,
                 } => {
-                    if ev != "reset_idle_timer"
-                        && ev != "app_install"
-                        && self.running.contains_key(&app)
+                    if ev != "app_install" && self.running.contains_key(&app)
                     {
                         self.deliver(&app, wit::Event::Message((ev, payload)));
+                    }
+                }
+                Event::PlaybackStopped { app, position_secs } => {
+                    if let Some(r) = self.running.get_mut(&app) {
+                        r.store.data_mut().playing = false;
+                        self.deliver(&app, wit::Event::PlaybackStopped(position_secs));
                     }
                 }
                 Event::CallEnded { call } => {
@@ -811,6 +835,7 @@ impl AppManager {
             WindowEvent::Background => {
                 if self.foreground.as_deref() == Some(name) {
                     self.foreground = None;
+                    self.end_hidden_calls();
                 }
                 let exit = match self.running.get_mut(name) {
                     Some(r) => {
@@ -968,6 +993,23 @@ impl AppManager {
             self.close(&name);
         }
     }
+}
+
+/// The path of a package's icon file, when the manifest's `iconFile` names
+/// a file in the package ("" otherwise: the name is then one of the
+/// phone's own icons).  As on stock, `<model>.<iconFile>` is preferred to
+/// `<iconFile>` (e.g., `D60.icon.png`).
+fn icon_file(dir: &Path, icon: &str, model: &str) -> String {
+    if icon.is_empty() || icon == "." || icon == ".." || icon.contains(['/', '\\', '\0']) {
+        return String::new();
+    }
+    for name in [format!("{model}.{icon}"), icon.to_string()] {
+        let path = dir.join(name);
+        if std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_file()) {
+            return path.to_string_lossy().into_owned();
+        }
+    }
+    String::new()
 }
 
 fn ticks(d: Duration) -> u64 {

@@ -71,7 +71,15 @@ pub trait AppWindow: Send {
     fn value(&self, w: u32) -> String;
     fn set_input_mode(&mut self, w: u32, mode: InputMode);
     fn set_max_length(&mut self, w: u32, max: u32);
+    /// Shows the picture defined as `name`, else the phone's icon of that
+    /// name.
     fn set_image(&mut self, w: u32, name: &str);
+    /// Makes a picture file of the app's package (`file` is its content)
+    /// known as `name` to [`AppWindow::set_image`] and to list icons.
+    /// Returns whether the file is a usable picture.
+    fn define_image(&mut self, _name: &str, _file: &[u8]) -> bool {
+        false
+    }
     fn set_softkeys(&mut self, w: Option<u32>, keys: &[Softkey]);
     fn claim_keys(&mut self, w: Option<u32>, keys: &[Key]);
     /// Next pending user event, if any.

@@ -467,6 +467,38 @@ fn tones_ring_and_volume() {
         let played = std::mem::take(&mut r.audio.lock().unwrap().played);
         assert!(goertzel(&played[..played.len() / 2], 1000, r.rate) > 1000.0, "{family:?}");
         r.core.handle(Command::PlayRing(None, 4096));
+        assert!(!r.events.try_iter().any(|e| matches!(e, Event::SoundEnded { .. })), "a ring is not a sound file");
+
+        // A sound file: 0.25 s of 1 kHz played once from 0.05 s in; the
+        // engine says where it ended.
+        let file: std::sync::Arc<[i16]> =
+            (0..4000).map(|i| ((i as f64 * 1000.0 * std::f64::consts::TAU / 16_000.0).sin() * 8000.0) as i16).collect();
+        r.audio.lock().unwrap().played.clear();
+        r.core.handle(Command::PlayRing(Some(RingSource::Once { samples: file.clone(), start: 800, token: 5 }), 4096));
+        for _ in 0..10 {
+            r.core.tick();
+        }
+        assert!(!r.events.try_iter().any(|e| matches!(e, Event::SoundEnded { .. })), "{family:?}: still playing");
+        for _ in 0..20 {
+            r.core.tick();
+        }
+        assert!(r.events.try_iter().any(|e| e == Event::SoundEnded { token: 5, position: 4000 }), "{family:?}");
+        let played = std::mem::take(&mut r.audio.lock().unwrap().played);
+        assert!(goertzel(&played[..played.len() / 2], 1000, r.rate) > 1000.0, "{family:?}");
+        // Stopped, and replaced by another, part way through.
+        r.core.handle(Command::PlayRing(Some(RingSource::Once { samples: file.clone(), start: 0, token: 6 }), 4096));
+        for _ in 0..5 {
+            r.core.tick();
+        }
+        r.core.handle(Command::PlayRing(Some(RingSource::Once { samples: file, start: 0, token: 7 }), 4096));
+        r.core.tick();
+        r.core.handle(Command::PlayRing(None, 4096));
+        let ends: Vec<Event> = r.events.try_iter().filter(|e| matches!(e, Event::SoundEnded { .. })).collect();
+        assert_eq!(
+            ends,
+            [Event::SoundEnded { token: 6, position: 800 }, Event::SoundEnded { token: 7, position: 160 }],
+            "{family:?}"
+        );
 
         // volume goes to the canceller's gain register (SBAEC register 2)
         r.jobs.lock().unwrap().clear();

@@ -4,7 +4,7 @@
   "displayName": { "fallback": "Queues" },
   "description": { "fallback": "Log in to call queues and see how they are doing" },
   "type": "foreground",
-  "iconFile": "app_queues",
+  "iconFile": "queues",
   "wasm": "queues.wasm",
   "capabilities": ["ui", "config", "pbx", "timers"]
 }

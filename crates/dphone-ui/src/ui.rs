@@ -1,6 +1,6 @@
 //! The UI thread: input, navigation, rendering, lamps, and backlight.
 
-use crate::appview::AppView;
+use crate::appview::{AppEvent, AppView};
 use crate::gfx::{Canvas, HAlign, IRect};
 use crate::screens::app::AppScreen;
 use crate::screens::calls::{CallScreen, Dialer, Purpose};
@@ -44,6 +44,9 @@ pub struct UiConfig {
     /// Off-hook dialing: milliseconds after the last digit before the
     /// number is dialed.
     pub dial_timeout_ms: u32,
+    /// Seconds each app's idle view shows before the next takes its turn
+    /// (stock `idle_cycle_seconds`: 10 by default); 0 shows none.
+    pub idle_cycle_secs: u32,
 }
 
 impl Default for UiConfig {
@@ -59,6 +62,7 @@ impl Default for UiConfig {
             ringtone: String::new(),
             ringtones: Vec::new(),
             dial_timeout_ms: 4000,
+            idle_cycle_secs: 10,
         }
     }
 }
@@ -68,7 +72,8 @@ enum Msg {
     State,
     Command(Envelope),
     OpenApp(AppView),
-    IdleView(Option<AppView>),
+    IdleView(AppView),
+    NoIdleView(String),
     CloseApp(String),
     Config(UiConfig),
     Wake,
@@ -87,11 +92,19 @@ impl UiHandle {
     pub fn open_app(&self, view: AppView) {
         let _ = self.tx.send(Msg::OpenApp(view));
     }
-    /// Shows an app's view in the idle screen's app area (stock `hasIdle`
-    /// apps), or removes it with `None`.  The view is display-only: it
-    /// gets no keys.  Its size is [`crate::idle_app_area`].
-    pub fn set_idle_view(&self, view: Option<AppView>) {
+    /// Offers an app's view for the idle screen's app area (stock
+    /// `hasIdle` apps).  The view is display-only: it gets no keys.  Its
+    /// size is [`crate::idle_app_area`].  As on stock, one view shows at
+    /// a time; views that have at least one widget take turns
+    /// ([`UiConfig::idle_cycle_secs`]), and a view gets
+    /// `AppEvent::Foreground` when it comes on screen and
+    /// `AppEvent::Background` when it leaves or the idle screen is covered.
+    pub fn add_idle_view(&self, view: AppView) {
         let _ = self.tx.send(Msg::IdleView(view));
+    }
+    /// Withdraws the idle view of the app `name`.
+    pub fn remove_idle_view(&self, name: &str) {
+        let _ = self.tx.send(Msg::NoIdleView(name.to_string()));
     }
     /// Removes an app's view from the stack.
     pub fn close_app(&self, name: &str) {
@@ -258,7 +271,8 @@ impl Stack {
         if kind == BaseKind::Update {
             return;
         }
-        let live = !cx.st.calls.is_idle();
+        // An app's hidden call has no call screen.
+        let live = cx.st.calls.visible().next().is_some();
         let ringing: Vec<CallId> = cx.st.calls.ringing().map(|c| c.id).collect();
         let new_ring = ringing.iter().any(|id| !self.seen_ringing.contains(id));
         self.seen_ringing = ringing;
@@ -494,8 +508,15 @@ pub struct Ui {
     last_failed_update: bool,
     /// When the top screen next needs a tick or repaint (set at each draw).
     screen_deadline: Option<u64>,
-    /// An app's view shown on the idle screen (`hasIdle`).
+    /// The apps' views for the idle screen (`hasIdle`), least recently
+    /// shown first.
+    idle_views: Vec<AppView>,
+    /// The one whose turn it is.
     idle_view: Option<AppView>,
+    /// The idle view was told it is on screen.
+    idle_shown: bool,
+    /// When the next view takes its turn.
+    idle_turn_ms: u64,
 }
 
 impl Ui {
@@ -570,7 +591,10 @@ impl Ui {
             quit: false,
             last_failed_update: false,
             screen_deadline: None,
+            idle_views: Vec::new(),
             idle_view: None,
+            idle_shown: false,
+            idle_turn_ms: 0,
         };
         for s in ui.display.screens() {
             let _ = ui.display.set_power(s, true);
@@ -789,6 +813,10 @@ impl Ui {
                 self.apply_light(Light::On);
                 Ok(Reply::Done)
             }
+            Command::ResetIdleTimer => {
+                self.activity();
+                Ok(Reply::Done)
+            }
             Command::SetContrast { level } => {
                 let level = level.min(self.cfg.contrast_max);
                 match self.backlight.set_contrast(dphone_hal::Screen::Main, level) {
@@ -999,18 +1027,14 @@ impl Ui {
                 self.with_cx(|nav, cx| nav.open_app(cx, view));
             }
             Msg::IdleView(view) => {
-                if let Some(old) = self.idle_view.take() {
-                    old.set_ui_waker(None);
-                }
-                if let Some(v) = &view {
-                    let tx = self.tx.clone();
-                    v.set_ui_waker(Some(Box::new(move || {
-                        let _ = tx.send(Msg::Wake);
-                    })));
-                }
-                self.idle_view = view;
-                self.needs_draw = true;
+                self.drop_idle_view(view.name().to_string().as_str());
+                let tx = self.tx.clone();
+                view.set_ui_waker(Some(Box::new(move || {
+                    let _ = tx.send(Msg::Wake);
+                })));
+                self.idle_views.push(view);
             }
+            Msg::NoIdleView(name) => self.drop_idle_view(&name),
             Msg::CloseApp(name) => self.with_cx(|nav, cx| nav.close_app(cx, &name)),
             Msg::Config(mut cfg) => {
                 cfg.contrast_max = self.cfg.contrast_max;
@@ -1092,6 +1116,9 @@ impl Ui {
         add(self.popup.as_ref().map(|p| p.until_ms));
         add(self.notice_deadlines.iter().map(|(_, t)| *t).min());
         add(self.light_deadline());
+        if self.idle_views.len() > 1 {
+            add(Some(self.idle_turn_ms));
+        }
         if self.blinker.needs_ticks() || self.lamp_test {
             add(Some(now + BLINK_TICK_MS));
         }
@@ -1132,8 +1159,66 @@ impl Ui {
         self.finish_turn();
     }
 
+    fn drop_idle_view(&mut self, name: &str) {
+        self.idle_views.retain(|v| {
+            if v.name() == name {
+                v.set_ui_waker(None);
+            }
+            v.name() != name
+        });
+        if self.idle_view.as_ref().is_some_and(|v| v.name() == name) {
+            self.idle_view = None;
+            self.idle_shown = false;
+            self.needs_draw = true;
+        }
+    }
+
+    /// Chooses which app's idle view has the idle screen's app area and
+    /// tells the views when they come on screen and leave it.  The idle
+    /// screen shows them while it is the top screen (so not during a
+    /// call); among the views that have a widget, the least recently shown
+    /// takes the next turn every `idle_cycle_secs`.
+    fn sync_idle_view(&mut self) {
+        let now = clock::mono_ms();
+        let cycle = self.cfg.idle_cycle_secs as u64 * 1000;
+        let has_widgets = |v: &AppView| !v.batch_quiet().roots.is_empty();
+        let due = now >= self.idle_turn_ms;
+        let current_ok = cycle > 0 && self.idle_view.as_ref().is_some_and(has_widgets);
+        if !current_ok || due {
+            // The current view goes to the back of the line; the first
+            // view with something to show is next (it may be the same one).
+            let next = if cycle == 0 { None } else { self.idle_views.iter().position(has_widgets) };
+            let next = next.map(|i| self.idle_views.remove(i));
+            if let Some(v) = &next {
+                self.idle_views.push(v.clone());
+            }
+            let changed = match (&self.idle_view, &next) {
+                (Some(a), Some(b)) => a.name() != b.name(),
+                (None, None) => false,
+                _ => true,
+            };
+            if changed {
+                if let Some(old) = &self.idle_view
+                    && std::mem::take(&mut self.idle_shown)
+                {
+                    old.push_event(AppEvent::Background);
+                }
+                self.idle_view = next;
+                self.needs_draw = true;
+            }
+            self.idle_turn_ms = now + cycle.max(1000);
+        }
+        let Some(view) = &self.idle_view else { return };
+        let shown = self.nav.kind == BaseKind::Idle && self.nav.stack.is_empty();
+        if shown != self.idle_shown {
+            self.idle_shown = shown;
+            view.push_event(if shown { AppEvent::Foreground } else { AppEvent::Background });
+        }
+    }
+
     fn finish_turn(&mut self) {
         self.timers();
+        self.sync_idle_view();
         self.sync_lamps();
         if self.needs_draw {
             self.draw();

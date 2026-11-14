@@ -65,7 +65,7 @@ pub const NETWORK_FAILED: &str = "Network setup failed";
 pub const SHUTTING_DOWN: &str = "Restarting\u{2026}";
 pub const RECOVERY_TITLE: &str = "Recovery";
 pub const RECOVERY_TEXT: &str =
-    "The settings storage could not be mounted. Nothing was erased. Use the web page or SSH to repair or reset it.";
+    "The settings storage could not be mounted. Nothing was erased. Use the web page to repair or reset it.";
 pub const PROV_TITLE: &str = "Setup";
 pub const PROV_DISCOVERING: &str = "Looking for a server\u{2026}";
 pub const PROV_SELECT_SERVER: &str = "Select a server";

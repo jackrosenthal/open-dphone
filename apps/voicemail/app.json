@@ -4,7 +4,7 @@
   "displayName": { "fallback": "Voicemail" },
   "description": { "fallback": "Listen to and manage voicemail messages" },
   "type": "foreground",
-  "iconFile": "app_vmail",
+  "iconFile": "voicemail",
   "wasm": "voicemail.wasm",
   "capabilities": ["ui", "config", "pbx", "calls", "events", "l10n"]
 }

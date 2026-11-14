@@ -1,0 +1,10 @@
+{
+  "name": "probe",
+  "id": "test.probe",
+  "displayName": "Probe",
+  "type": "foreground",
+  "hasIdle": true,
+  "iconFile": "pic.png",
+  "wasm": "probe.wasm",
+  "capabilities": ["ui", "calls", "audio"]
+}

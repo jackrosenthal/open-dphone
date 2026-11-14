@@ -32,8 +32,8 @@ impl UiShell {
 struct UiWindow {
     view: AppView,
     events: AppEvents,
-    /// An idle view gets no events from the toolkit; report it shown once.
-    announce: bool,
+    /// Pictures of the app's package, by name, no larger than the window.
+    images: HashMap<String, dphone_ui::image::Image>,
 }
 
 fn id(w: u32) -> tk::WidgetId {
@@ -140,6 +140,9 @@ impl AppWindow for UiWindow {
                 if icons {
                     cells.push(if i.icon.is_empty() {
                         tk::Cell::Empty
+                    } else if let Some(img) = self.images.get(&i.icon) {
+                        // A package picture, reduced to the row.
+                        tk::Cell::Image(img.fit(m.row_height, m.row_height))
                     } else {
                         tk::Cell::icon(i.icon.clone())
                     });
@@ -184,8 +187,30 @@ impl AppWindow for UiWindow {
             .input_set_max_len(id(w), max.min(u16::MAX as u32) as u16);
     }
     fn set_image(&mut self, w: u32, name: &str) {
-        self.view
-            .set_image(id(w), tk::ImageSource::Icon(name.to_string()));
+        let source = match self.images.get(name) {
+            Some(img) => tk::ImageSource::Rgba {
+                width: img.width,
+                height: img.height,
+                pixels: img.pixels.clone(),
+            },
+            None => tk::ImageSource::Icon(name.to_string()),
+        };
+        self.view.set_image(id(w), source);
+    }
+    fn define_image(&mut self, name: &str, file: &[u8]) -> bool {
+        // An app may name any number of files; keep a bounded set.
+        if self.images.len() >= 32 {
+            return false;
+        }
+        let m = self.view.metrics();
+        match dphone_ui::image::decode_png(file) {
+            Ok(img) => {
+                self.images
+                    .insert(name.to_string(), img.fit(m.width, m.height));
+                true
+            }
+            Err(_) => false,
+        }
     }
     fn set_softkeys(&mut self, w: Option<u32>, keys: &[Softkey]) {
         let keys = keys
@@ -202,9 +227,6 @@ impl AppWindow for UiWindow {
         }
     }
     fn poll_event(&mut self) -> Option<WindowEvent> {
-        if std::mem::take(&mut self.announce) {
-            return Some(WindowEvent::Foreground);
-        }
         loop {
             return Some(match self.events.try_recv()? {
                 AppEvent::Foreground => WindowEvent::Foreground,
@@ -247,12 +269,12 @@ impl Shell for UiShell {
             WindowKind::App => {
                 self.views.insert(app.to_string(), view.clone());
             }
-            WindowKind::Idle => self.ui.set_idle_view(Some(view.clone())),
+            WindowKind::Idle => self.ui.add_idle_view(view.clone()),
         }
         Box::new(UiWindow {
             view,
             events,
-            announce: kind == WindowKind::Idle,
+            images: HashMap::new(),
         })
     }
     fn show(&mut self, app: &str) {
@@ -269,7 +291,7 @@ impl Shell for UiShell {
                 self.ui.close_app(app);
                 self.views.remove(app);
             }
-            WindowKind::Idle => self.ui.set_idle_view(None),
+            WindowKind::Idle => self.ui.remove_idle_view(app),
         }
     }
     fn idle_size(&self) -> Size {

@@ -23,6 +23,7 @@ use std::time::Duration;
 
 use dphone_hal::{Audio as HalAudioCard, PcmConfig, PcmDevice};
 use dphone_media::engine::{Command as Ec, Engine, EngineOptions, Event as Ee, PayloadCodec, SrtpConfig, StreamConfig};
+use dphone_media::ring::RingSource;
 use dphone_media::tone::ToneSpec;
 use dphone_media::{AudioDevice, AudioPath as MPath, DtmfMode, GainControl, VpmDsp, VpmDspOptions};
 use dphone_state::{
@@ -64,6 +65,18 @@ pub enum CallMediaEvent {
 
 type Listener = Box<dyn Fn(CallMediaEvent) + Send + Sync>;
 
+/// A sound file an app started.
+struct Playback {
+    /// Names it in the engine's [`Ee::SoundEnded`].
+    token: u32,
+    app: String,
+}
+
+/// The longest sound file played, in 16 kHz samples (five minutes).
+const SOUND_MAX_SAMPLES: usize = 5 * 60 * dphone_media::ring::RING_RATE as usize;
+/// The largest sound file read (the largest file an app package may hold).
+const SOUND_MAX_BYTES: u64 = 8 << 20;
+
 struct Sockets {
     rtp: UdpSocket,
     rtcp: Option<UdpSocket>,
@@ -89,7 +102,19 @@ struct Inner {
     release_when_quiet: bool,
     tone: Option<Tone>,
     ringing: bool,
+    /// A ringtone preview or an app's sound file is playing: it gets a
+    /// path the way a tone does.
     sound: bool,
+    /// The ringtone preview in progress (0: none); tells a preview's
+    /// timer whether the preview is still its own.
+    preview: u64,
+    previews: u64,
+    /// The sound file playing for an app.
+    playback: Option<Playback>,
+    /// Sound files stopped or replaced, until the engine says where they
+    /// ended.
+    ended: Vec<Playback>,
+    playbacks: u32,
     /// The engine's current path.
     path: AudioPath,
     next_port: u16,
@@ -305,11 +330,19 @@ impl AudioService {
         self.refresh();
     }
 
-    /// Start or stop the ringer.  `name` picks a built-in ring or a user
-    /// ringtone.
+    /// Start or stop the ringer.  `name` picks a built-in ring.  The
+    /// ringer takes the place of an app's sound file.
     pub fn ring(&self, name: Option<&str>) {
         {
             let mut inner = self.inner.lock().unwrap();
+            if let Some(p) = inner.playback.take() {
+                // The engine reports where the file was cut off.
+                inner.ended.push(p);
+                inner.sound = false;
+            }
+            if std::mem::take(&mut inner.preview) != 0 {
+                inner.sound = false;
+            }
             inner.ringing = name.is_some();
             // A built-in ring, or a user ringtone from `/nvdata/ringtones`.
             let source = name.map(super::ringtones::source);
@@ -317,6 +350,79 @@ impl AudioService {
             let _ = inner.send(Ec::PlayRing(source, ring_gain_q12(level)));
         }
         self.refresh();
+    }
+
+    /// Plays `samples` (16 kHz) once for `app`, from `start_secs` in, in
+    /// place of any other sound file or preview.  It sounds where a tone
+    /// would (the path policy), at the path's volume.
+    pub fn play_file(&self, samples: Vec<i16>, start_secs: u32, app: String) -> Result<(), String> {
+        {
+            let mut inner = self.inner.lock().unwrap();
+            if inner.engine.is_none() {
+                return Err(format!("no audio: {}", inner.why_no_engine));
+            }
+            if inner.ringing && inner.preview == 0 {
+                return Err("the phone is ringing".into());
+            }
+            if let Some(p) = inner.playback.take() {
+                inner.ended.push(p);
+            }
+            inner.preview = 0;
+            inner.ringing = false;
+            inner.playbacks = inner.playbacks.wrapping_add(1);
+            let token = inner.playbacks;
+            let start = (start_secs as usize).saturating_mul(dphone_media::ring::RING_RATE as usize);
+            inner.send(Ec::PlayRing(Some(RingSource::Once { samples: samples.into(), start, token }), 4096))?;
+            inner.playback = Some(Playback { token, app });
+            inner.sound = true;
+        }
+        self.refresh();
+        Ok(())
+    }
+
+    /// Stops a ringtone preview or an app's sound file.
+    fn stop_sound(&self) {
+        {
+            let mut inner = self.inner.lock().unwrap();
+            let playing = inner.playback.take();
+            if playing.is_none() && inner.preview == 0 {
+                return;
+            }
+            inner.preview = 0;
+            inner.sound = false;
+            inner.ringing = false;
+            let sent = inner.send(Ec::PlayRing(None, 4096));
+            match (playing, sent) {
+                (Some(p), Ok(())) => inner.ended.push(p),
+                (Some(p), Err(_)) => {
+                    self.store.emit(dphone_state::Event::PlaybackStopped { app: p.app, position_secs: 0 });
+                }
+                (None, _) => {}
+            }
+        }
+        self.refresh();
+    }
+
+    /// The engine's report that a sound file ended at sample `position`.
+    fn sound_ended(&self, token: u32, position: usize) {
+        let (app, current) = {
+            let mut inner = self.inner.lock().unwrap();
+            if inner.playback.as_ref().is_some_and(|p| p.token == token) {
+                // It played to its end.
+                inner.sound = false;
+                (inner.playback.take().map(|p| p.app), true)
+            } else {
+                let i = inner.ended.iter().position(|p| p.token == token);
+                (i.map(|i| inner.ended.remove(i).app), false)
+            }
+        };
+        if current {
+            self.refresh();
+        }
+        if let Some(app) = app {
+            let position_secs = (position / dphone_media::ring::RING_RATE as usize) as u32;
+            self.store.emit(dphone_state::Event::PlaybackStopped { app, position_secs });
+        }
     }
 
     pub fn request_path(&self, path: AudioPath) {
@@ -476,23 +582,24 @@ impl AudioService {
             Command::StopTone => self.tone(None),
             Command::PlaySound { name } => {
                 // Ringtone preview: the named built-in ring, once around.
-                self.inner.lock().unwrap().sound = true;
                 self.ring(Some(&name));
+                let mine = {
+                    let mut inner = self.inner.lock().unwrap();
+                    inner.sound = true;
+                    inner.previews += 1;
+                    inner.preview = inner.previews;
+                    inner.preview
+                };
+                self.refresh();
                 let me = self.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(Duration::from_secs(4)).await;
-                    let was_preview = std::mem::replace(&mut me.inner.lock().unwrap().sound, false);
-                    if was_preview {
-                        me.ring(None);
+                    if me.inner.lock().unwrap().preview == mine {
+                        me.stop_sound();
                     }
                 });
             }
-            Command::StopSound => {
-                let was_preview = std::mem::replace(&mut self.inner.lock().unwrap().sound, false);
-                if was_preview {
-                    self.ring(None);
-                }
-            }
+            Command::StopSound => self.stop_sound(),
             other => return Err(CommandError::Invalid(format!("not an audio command: {other:?}"))),
         }
         Ok(Reply::Done)
@@ -721,6 +828,11 @@ pub async fn start(ctx: &Context, hal: Option<SharedHal>) -> AudioService {
             tone: None,
             ringing: false,
             sound: false,
+            preview: 0,
+            previews: 0,
+            playback: None,
+            ended: Vec::new(),
+            playbacks: 0,
             path: AudioPath::None,
             next_port: RTP_PORT_BASE,
             bind_ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
@@ -852,6 +964,7 @@ async fn events(service: AudioService, mut rx: tokio::sync::mpsc::UnboundedRecei
                 service.inner.lock().unwrap().tone = None;
                 service.refresh();
             }
+            Ee::SoundEnded { token, position } => service.sound_ended(token, position),
         }
     }
 }
@@ -861,8 +974,48 @@ async fn commands(service: AudioService, store: Store) {
     let rx = store.handle(Domain::Audio);
     while let Some(envelope) = rx.next().await {
         let (cmd, responder) = envelope.split();
-        responder.reply(service.command(cmd));
+        match cmd {
+            Command::PlayFile { path, start_secs, app } => {
+                // Reading and decoding the file is not for this thread.
+                let service = service.clone();
+                tokio::spawn(async move {
+                    let loaded = tokio::task::spawn_blocking(move || load_sound(std::path::Path::new(&path)))
+                        .await
+                        .unwrap_or_else(|e| Err(format!("reading the sound file failed: {e}")));
+                    let result = loaded.and_then(|samples| service.play_file(samples, start_secs, app));
+                    responder.reply(result.map(|()| Reply::Done).map_err(CommandError::Failed));
+                });
+            }
+            cmd => responder.reply(service.command(cmd)),
+        }
     }
+}
+
+/// Reads a sound file as 16 kHz mono samples.
+fn load_sound(path: &std::path::Path) -> Result<Vec<i16>, String> {
+    let meta = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if !meta.is_file() || meta.len() > SOUND_MAX_BYTES {
+        return Err("not a regular file of at most 8 MiB".into());
+    }
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let samples = decode_sound(&bytes)?;
+    if samples.len() > SOUND_MAX_SAMPLES {
+        return Err("the sound is longer than five minutes".into());
+    }
+    Ok(samples)
+}
+
+/// Decodes a sound file.  Stock's format is headerless 16 kHz mono
+/// signed 16-bit little-endian samples (`.sln16`; its ringtones and what
+/// its `playFile` reads); anything that does not start as a RIFF file is
+/// taken as that.  RIFF/WAVE files (which stock converts to `.sln16` on
+/// upload) are decoded here: 8-bit or 16-bit PCM, mu-law, or A-law at any
+/// rate, the first channel of several.
+fn decode_sound(bytes: &[u8]) -> Result<Vec<i16>, String> {
+    if bytes.starts_with(b"RIFF") {
+        return dphone_media::ring::decode_wav(bytes).map_err(|e| e.to_string());
+    }
+    Ok(bytes.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)).collect())
 }
 
 /// Keep `Audio::off_hook` current and move a call between handset and
@@ -1174,6 +1327,19 @@ fn register_diag(ctx: &Context, service: AudioService) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sound_file_formats() {
+        // Headerless samples, as stock's `.sln16` files are; an odd last
+        // byte is dropped.
+        assert_eq!(decode_sound(&[0x20, 0x03, 0x9d, 0x07, 0xff]).unwrap(), [0x0320, 0x079d]);
+        // A WAVE file is decoded by its header.
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF\x28\0\0\0WAVEfmt \x10\0\0\0\x01\0\x01\0\x80\x3e\0\0\0\x7d\0\0\x02\0\x10\0data\x04\0\0\0");
+        wav.extend_from_slice(&[1, 0, 0xff, 0xff]);
+        assert_eq!(decode_sound(&wav).unwrap(), [1, -1]);
+        assert!(decode_sound(b"RIFF....nope").is_err());
+    }
 
     #[test]
     fn gains() {

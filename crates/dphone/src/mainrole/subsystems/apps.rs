@@ -52,12 +52,31 @@ impl PbxRequests for Pbx {
 struct Http {
     runtime: tokio::runtime::Handle,
     net: NetHandle,
+    config: Option<SharedConfig>,
+}
+
+impl Http {
+    /// As on stock (libcurl with `/nvdata/certs/certs.crt`): servers are
+    /// checked against the trust bundle unless `allow_insecure_ssl` is
+    /// set (the same policy as SIP over TLS).
+    fn tls_policy(&self) -> dphone_sip::TlsConfig {
+        let Some(store) = self.config.as_ref().and_then(|c| c.lock().ok()) else {
+            return dphone_sip::TlsConfig::default();
+        };
+        let cfg = store.config();
+        dphone_sip::TlsConfig {
+            verify: !cfg.sip().allow_insecure_ssl,
+            roots_pem: super::trust::roots(store.nvdata(), &cfg),
+            ..Default::default()
+        }
+    }
 }
 
 impl HttpClient for Http {
     fn request(&self, request: HttpRequest, done: Completion<Result<HttpReply, String>>) {
         let net = self.net.clone();
-        self.runtime.spawn(async move { done.complete(super::apphttp::request(Some(&net), request).await) });
+        let tls = self.tls_policy();
+        self.runtime.spawn(async move { done.complete(super::apphttp::request(Some(&net), &tls, request).await) });
     }
 }
 
@@ -176,7 +195,7 @@ pub fn start(ctx: &Context, ui: Option<UiHandle>, config: Option<SharedConfig>, 
         .unwrap_or_default();
     let services = Services {
         pbx: Arc::new(Pbx { telephony, runtime: runtime.clone() }),
-        http: Arc::new(Http { runtime, net }),
+        http: Arc::new(Http { runtime, net, config: config.clone() }),
         config: Arc::new(AppConfig { config, mac }),
     };
     let store = ctx.store.clone();

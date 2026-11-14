@@ -74,6 +74,63 @@ impl ServerCertVerifier for NoVerify {
     }
 }
 
+/// The usual checks, and then stock's wildcard rule: the server's name
+/// must be one of the certificate's names as written, not the match of a
+/// wildcard name.  Stock's SIP stack makes the same decision after the
+/// handshake (`core` 0x10b934): with `tls_allow_wildcard_certs` off, a
+/// certificate whose name is `*.domain` is refused with a note that RFC
+/// 5922 section 7.2 does not allow it.
+#[derive(Debug)]
+struct NoWildcards(Arc<dyn ServerCertVerifier>);
+
+/// Whether `cert` names `server` without a wildcard.
+fn names_exactly(cert: &CertificateDer<'_>, server: &ServerName<'_>) -> bool {
+    let ServerName::DnsName(server) = server else {
+        // An address is never matched by a wildcard.
+        return true;
+    };
+    let Ok(cert) = webpki::EndEntityCert::try_from(cert) else { return false };
+    let server = server.as_ref().trim_end_matches('.');
+    cert.valid_dns_names().any(|name| name.trim_end_matches('.').eq_ignore_ascii_case(server))
+}
+
+impl ServerCertVerifier for NoWildcards {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        server_name: &ServerName<'_>,
+        ocsp: &[u8],
+        now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        let ok = self.0.verify_server_cert(end_entity, intermediates, server_name, ocsp, now)?;
+        if !names_exactly(end_entity, server_name) {
+            log::warn!("sip: tls: the server's certificate names it only by a wildcard, which RFC 5922 (section 7.2) does not allow and `tls_allow_wildcard_certs` is off");
+            return Err(rustls::Error::InvalidCertificate(rustls::CertificateError::NotValidForName));
+        }
+        Ok(ok)
+    }
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.0.verify_tls12_signature(message, cert, dss)
+    }
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.0.verify_tls13_signature(message, cert, dss)
+    }
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.0.supported_verify_schemes()
+    }
+}
+
 /// Builds the rustls client configuration for a policy.
 pub fn client_config(policy: &TlsConfig) -> Result<ClientConfig, String> {
     let provider = Arc::new(rustls_rustcrypto::provider());
@@ -87,6 +144,15 @@ pub fn client_config(policy: &TlsConfig) -> Result<ClientConfig, String> {
         }
         if roots.is_empty() {
             return Err("certificate checking is on but no trusted roots are configured".into());
+        }
+        if policy.refuse_wildcard_certs {
+            let usual = rustls::client::WebPkiServerVerifier::builder_with_provider(Arc::new(roots), provider)
+                .build()
+                .map_err(|e| e.to_string())?;
+            return Ok(builder
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(NoWildcards(usual)))
+                .with_no_client_auth());
         }
         Ok(builder.with_root_certificates(roots).with_no_client_auth())
     } else {

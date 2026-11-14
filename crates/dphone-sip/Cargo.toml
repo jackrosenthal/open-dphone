@@ -9,7 +9,7 @@ publish = false
 [features]
 default = ["tls"]
 # SIP over TLS through rustls with the RustCrypto provider (no C).
-tls = ["dep:tokio-rustls", "dep:rustls", "dep:rustls-rustcrypto", "dep:rustls-pki-types", "dep:rustls-pemfile", "dep:tokio-util", "dep:bytes"]
+tls = ["dep:tokio-rustls", "dep:rustls", "dep:rustls-rustcrypto", "dep:rustls-pki-types", "dep:rustls-pemfile", "dep:rustls-webpki", "dep:tokio-util", "dep:bytes"]
 
 [dependencies]
 dphone-state = { path = "../dphone-state" }
@@ -25,10 +25,13 @@ rustls = { version = "0.23", default-features = false, features = ["std", "tls12
 rustls-rustcrypto = { version = "0.0.2-alpha", optional = true }
 rustls-pki-types = { version = "1", optional = true }
 rustls-pemfile = { version = "2", optional = true }
+# The certificate's names, for the wildcard rule (the version rustls uses).
+rustls-webpki = { version = "0.103", default-features = false, features = ["std"], optional = true }
 tokio-util = { version = "0.7", default-features = false, features = ["codec"], optional = true }
 bytes = { version = "1", optional = true }
 
 [dev-dependencies]
+serde_json = "1"
 tokio = { version = "1", features = ["rt", "net", "time", "sync", "macros", "io-util", "test-util"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"] }
 rustls = { version = "0.23", default-features = false, features = ["std", "tls12"] }

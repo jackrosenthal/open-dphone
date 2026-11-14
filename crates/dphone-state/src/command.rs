@@ -63,6 +63,9 @@ pub enum Command {
     /// `None` lets the audio policy choose (headset mode, off-hook, else
     /// speaker).  Replies [`Reply::Call`].
     Dial { target: String, account: Option<AccountId>, path: Option<AudioPath> },
+    /// Place a call as [`Command::Dial`] does, with extra headers on the
+    /// INVITE (an app's `calls.dial`).  Replies [`Reply::Call`].
+    DialWith { target: String, account: Option<AccountId>, headers: Vec<(String, String)> },
     Answer { call: CallId, path: Option<AudioPath> },
     /// End a call in any state (rejects a ringing one with 486).
     Hangup { call: CallId },
@@ -118,9 +121,13 @@ pub enum Command {
     SetHeadsetMode { on: bool },
     PlayTone { tone: Tone, duration_ms: u32 },
     StopTone,
-    /// Play a ringtone by name once (settings preview), or a sound file for
-    /// an app.
+    /// Play a ringtone by name once (settings preview).
     PlaySound { name: String },
+    /// Play a sound file once for the app `app`, from `start_secs` in.
+    /// [`crate::Event::PlaybackStopped`] follows when it ends, is stopped,
+    /// or is cut off by the ringer.
+    PlayFile { path: String, start_secs: u32, app: String },
+    /// Stop a ringtone preview or a sound file.
     StopSound,
 
     // ---- Ui
@@ -136,6 +143,9 @@ pub enum Command {
     SetContrast { level: u8 },
     /// Go to a named native screen.
     ShowScreen { name: String },
+    /// Restart the inactivity timer, as a key press does (an app's
+    /// `runtime.reset-idle-timer`).
+    ResetIdleTimer,
 
     // ---- Config
     /// Files under nvdata changed: re-read and re-merge.
@@ -218,7 +228,7 @@ impl Command {
     pub fn domain(&self) -> Domain {
         use Command::*;
         match self {
-            Dial { .. } | Answer { .. } | Hangup { .. } | Reject { .. } | Silence { .. }
+            Dial { .. } | DialWith { .. } | Answer { .. } | Hangup { .. } | Reject { .. } | Silence { .. }
             | Hold { .. } | Resume { .. } | TransferBlind { .. } | TransferAttended { .. }
             | Conference { .. } | SplitConference { .. } | Dtmf { .. } | Focus { .. }
             | SendToVoicemail { .. } | Park { .. } | Pickup { .. } | DialVoicemail { .. }
@@ -228,9 +238,9 @@ impl Command {
             }
             SetAudioPath { .. } | SetMute { .. } | SetVolume { .. } | AdjustVolume { .. }
             | SetHeadsetMode { .. } | PlayTone { .. } | StopTone | PlaySound { .. }
-            | StopSound => Domain::Audio,
+            | PlayFile { .. } | StopSound => Domain::Audio,
             InjectKey { .. } | InjectHook { .. } | Notify { .. } | DismissNotice { .. }
-            | SetBacklight { .. } | SetContrast { .. } | ShowScreen { .. } => Domain::Ui,
+            | SetBacklight { .. } | SetContrast { .. } | ShowScreen { .. } | ResetIdleTimer => Domain::Ui,
             ReloadConfig | SetSettings { .. } | ReloadContacts => Domain::Config,
             StartProvisioning { .. } | SelectUser { .. } | Reprovision | ForgetProvisioning
             | SkipProvisioning => Domain::Provisioning,

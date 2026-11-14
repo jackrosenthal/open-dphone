@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 //! Ring playback: a few built-in ringtones synthesized from note lists (the
 //! stock ringtones cannot be shipped), and WAV files (PCM, mu-law, or A-law)
-//! for user ringtones.  Output is 16 kHz mono, 10 ms at a time.
+//! for user ringtones.  The same player plays a sound file once for an app
+//! ([`RingSource::Once`]).  Output is 16 kHz mono, 10 ms at a time.
 
 use std::sync::Arc;
 
@@ -92,12 +93,16 @@ pub enum RingSource {
     Builtin(BuiltinRing),
     /// 16 kHz samples, looped with a pause between passes.
     Pcm { samples: Arc<[i16]>, pause_ms: u32 },
+    /// 16 kHz samples played once, from sample `start` to the end.
+    /// `token` names the playback in [`RingPlayer::one_shot`].
+    Once { samples: Arc<[i16]>, start: usize, token: u32 },
 }
 
 #[derive(Clone, Debug)]
 enum State {
     Notes { notes: &'static [Note], idx: usize, left: u32, osc: [Osc; 2], env: i32, ms_tick: u32 },
     Pcm { samples: Arc<[i16]>, pos: usize, pause: u32, pause_left: u32 },
+    Once { samples: Arc<[i16]>, pos: usize, token: u32 },
 }
 
 /// Produces a ring, 160 samples (10 ms at 16 kHz) at a time.
@@ -120,12 +125,25 @@ impl RingPlayer {
                 s
             }
             RingSource::Pcm { samples, pause_ms } => State::Pcm { samples, pos: 0, pause: pause_ms * (RING_RATE / 1000), pause_left: 0 },
+            RingSource::Once { samples, start, token } => {
+                let pos = start.min(samples.len());
+                State::Once { samples, pos, token }
+            }
         };
         Self { state, gain_q12: 4096 }
     }
 
     pub fn set_gain_q12(&mut self, gain: i32) {
         self.gain_q12 = gain;
+    }
+
+    /// For a [`RingSource::Once`] source: its token, the sample position
+    /// reached, and whether it has played to the end.
+    pub fn one_shot(&self) -> Option<(u32, usize, bool)> {
+        match &self.state {
+            State::Once { samples, pos, token } => Some((*token, *pos, *pos >= samples.len())),
+            _ => None,
+        }
     }
 
     fn load_note(s: &mut State) {
@@ -157,6 +175,12 @@ impl RingPlayer {
                         s
                     };
                 }
+            }
+            State::Once { samples, pos, .. } => {
+                let n = (samples.len() - *pos).min(WB);
+                out[..n].copy_from_slice(&samples[*pos..*pos + n]);
+                out[n..].fill(0);
+                *pos += n;
             }
             State::Notes { .. } => {
                 for o in out.iter_mut() {
@@ -322,6 +346,27 @@ mod tests {
             assert!(quiet > 150, "{ring:?} quiet {quiet}");
             assert!(peak < 20_000, "{ring:?} peak {peak}");
         }
+    }
+
+    #[test]
+    fn one_shot_plays_from_its_start_to_the_end() {
+        let samples: Arc<[i16]> = (0..400).map(|i| i as i16 + 1).collect();
+        let mut p = RingPlayer::new(RingSource::Once { samples: samples.clone(), start: 100, token: 7 });
+        assert_eq!(p.one_shot(), Some((7, 100, false)));
+        let mut buf = [0i16; WB];
+        p.fill(&mut buf);
+        assert_eq!((buf[0], buf[159]), (101, 260));
+        assert_eq!(p.one_shot(), Some((7, 260, false)));
+        p.fill(&mut buf);
+        assert_eq!((buf[0], buf[139]), (261, 400));
+        assert!(buf[140..].iter().all(|&s| s == 0));
+        assert_eq!(p.one_shot(), Some((7, 400, true)));
+        p.fill(&mut buf);
+        assert!(buf.iter().all(|&s| s == 0));
+        // A start beyond the end is the end.
+        let p = RingPlayer::new(RingSource::Once { samples, start: 9000, token: 1 });
+        assert_eq!(p.one_shot(), Some((1, 400, true)));
+        assert_eq!(RingPlayer::new(RingSource::Builtin(BuiltinRing::Classic)).one_shot(), None);
     }
 
     #[test]

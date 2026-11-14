@@ -198,7 +198,9 @@ pub enum Command {
     /// Plays a tone to the user (replacing any other); `None` stops it.
     PlayTone(Option<ToneSpec>),
     /// Rings (replacing any other ring); `None` stops.  `gain_q12` scales
-    /// the ring (4096 = unity).
+    /// the ring (4096 = unity).  A [`RingSource::Once`] source is a sound
+    /// file: it plays once, and [`Event::SoundEnded`] says where it ended
+    /// or was replaced.
     PlayRing(Option<RingSource>, i32),
     /// Sends a digit on a stream, optionally with a tone to the user.
     SendDtmf { id: usize, key: char, duration_ms: u32, mode: DtmfMode, feedback: bool },
@@ -246,6 +248,9 @@ pub enum Event {
     RealtimeRefused { priority: i32, errno: i32 },
     /// A non-repeating tone finished.
     ToneEnded,
+    /// A [`RingSource::Once`] sound played to its end, or was stopped or
+    /// replaced; `position` is the 16 kHz sample it reached.
+    SoundEnded { token: u32, position: usize },
 }
 
 type EventSink = Box<dyn FnMut(Event) + Send>;
@@ -579,6 +584,7 @@ impl EngineCore {
             Command::MuteMic(on) => self.mute = on,
             Command::PlayTone(spec) => self.tone = spec.map(ToneGen::new),
             Command::PlayRing(source, gain_q12) => {
+                self.end_sound();
                 self.ring_split.reset();
                 self.ring = source.map(|s| {
                     let mut p = RingPlayer::new(s);
@@ -629,6 +635,7 @@ impl EngineCore {
                     self.stop_stream(id);
                 }
                 self.tone = None;
+                self.end_sound();
                 self.ring = None;
                 self.close_path();
             }
@@ -830,6 +837,14 @@ impl EngineCore {
         paced
     }
 
+    /// Reports a sound file that is being stopped or replaced.
+    fn end_sound(&mut self) {
+        if let Some((token, position, _)) = self.ring.as_ref().and_then(RingPlayer::one_shot) {
+            self.ring = None;
+            self.emit(Event::SoundEnded { token, position });
+        }
+    }
+
     /// Tones and ringing into the far-end mix.
     fn local_sounds(&mut self) {
         if let Some(t) = &mut self.tone
@@ -866,6 +881,10 @@ impl EngineCore {
                 self.ring_split.low_only(&wb, &mut low);
                 mix_into(&mut self.far.nb, &low);
             }
+        }
+        // A sound file that has played out.
+        if self.ring.as_ref().and_then(RingPlayer::one_shot).is_some_and(|(_, _, ended)| ended) {
+            self.end_sound();
         }
     }
 

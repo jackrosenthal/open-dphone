@@ -282,6 +282,8 @@ pub enum Cell {
     /// A built-in icon by name (see [`crate::icons::names`]); unknown names
     /// draw nothing.
     Icon(String),
+    /// A picture (an app's own icon), drawn centered at its own size.
+    Image(crate::image::Image),
 }
 
 impl Cell {

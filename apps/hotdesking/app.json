@@ -4,7 +4,7 @@
   "displayName": { "fallback": "Hot Desking" },
   "description": { "fallback": "Log in to or out of this phone" },
   "type": "foreground",
-  "iconFile": "app_hotdesking",
+  "iconFile": "hotdesking",
   "wasm": "hotdesking.wasm",
   "capabilities": ["ui", "hotdesk"]
 }

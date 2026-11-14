@@ -35,6 +35,7 @@ use crate::diag::Output;
 pub mod apphttp;
 pub mod apps;
 pub mod audio;
+pub mod blfitems;
 pub mod bluetooth;
 pub mod ehs;
 pub mod expansion;

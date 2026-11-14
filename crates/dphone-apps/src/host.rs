@@ -140,8 +140,16 @@ pub(crate) struct AppCtx {
     pub presence_subs: HashSet<String>,
     pub exit_after_background: bool,
     pub foreground: bool,
+    /// Picture names already looked for in the package, per window (idle
+    /// or not), so each file is read once.
+    pub images: HashSet<(bool, String)>,
+    /// A sound file of this app is playing.
+    pub playing: bool,
     pub limits: wasmtime::StoreLimits,
 }
+
+/// The largest picture file read from a package.
+const IMAGE_FILE_MAX: u64 = 512 * 1024;
 
 fn bad_name(name: &str) -> bool {
     name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0'])
@@ -326,6 +334,28 @@ impl AppCtx {
         })
     }
 
+    /// Hands the window the package's picture file called `name`, the
+    /// first time the app names it.  A name that is no file of the package
+    /// stays what it was: one of the phone's icons.
+    fn load_image(&mut self, w: u32, name: &str) {
+        let idle = w & IDLE_BIT != 0;
+        if bad_name(name) || !self.images.insert((idle, name.to_string())) {
+            return;
+        }
+        let path = self.dirs.package.join(name);
+        let usable = std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_file() && m.len() <= IMAGE_FILE_MAX);
+        if !usable {
+            return;
+        }
+        let Ok(bytes) = std::fs::read(&path) else { return };
+        let app = self.name.clone();
+        if let Some((win, _)) = self.win(w)
+            && !win.define_image(name, &bytes)
+        {
+            log::warn!("app {app}: {name} is not a usable picture");
+        }
+    }
+
     fn command(&self, c: Command) -> Result<Reply, Error> {
         self.store
             .send(c)
@@ -361,11 +391,10 @@ impl api::runtime::Host for AppCtx {
         Ok(())
     }
     fn reset_idle_timer(&mut self) {
-        self.store.emit(dphone_state::Event::App {
-            app: self.name.clone(),
-            name: "reset_idle_timer".into(),
-            payload: String::new(),
-        });
+        // As on stock: only the app on screen keeps the phone awake.
+        if self.foreground {
+            let _ = self.store.post(Command::ResetIdleTimer);
+        }
     }
     fn log(&mut self, level: u8, message: String) {
         let level = match level {
@@ -438,6 +467,9 @@ impl api::ui::Host for AppCtx {
         self.on_widget(w, |win, id| win.set_wrap(id, wrap));
     }
     fn set_items(&mut self, w: u32, items: Vec<ListItem>) {
+        for item in items.iter().filter(|i| !i.icon.is_empty()) {
+            self.load_image(w, &item.icon);
+        }
         self.on_widget(w, |win, id| win.set_items(id, &items));
     }
     fn set_selected(&mut self, w: u32, index: u32) {
@@ -466,6 +498,7 @@ impl api::ui::Host for AppCtx {
     }
     fn set_image(&mut self, w: u32, name: String) {
         if !bad_name(&name) {
+            self.load_image(w, &name);
             self.on_widget(w, |win, id| win.set_image(id, &name));
         }
     }
@@ -773,16 +806,25 @@ impl api::calls::Host for AppCtx {
         &mut self,
         number: String,
         account: Option<u8>,
-        _headers: Vec<Header>,
+        headers: Vec<Header>,
     ) -> Result<u32, Error> {
         if number.is_empty() || number.len() > 256 {
             return Err(Error::Invalid("bad number".into()));
         }
-        match self.command(Command::Dial {
-            target: number,
-            account: account.map(AccountId),
-            path: None::<AudioPath>,
-        })? {
+        let command = if headers.is_empty() {
+            Command::Dial {
+                target: number,
+                account: account.map(AccountId),
+                path: None::<AudioPath>,
+            }
+        } else {
+            Command::DialWith {
+                target: number,
+                account: account.map(AccountId),
+                headers: headers.into_iter().map(|h| (h.name, h.value)).collect(),
+            }
+        };
+        match self.command(command)? {
             Reply::Call(id) => Ok(id.0),
             _ => Err(Error::Failed("the phone did not start a call".into())),
         }
@@ -905,15 +947,21 @@ impl api::events::Host for AppCtx {
 }
 
 impl api::audio::Host for AppCtx {
-    fn play_file(&mut self, loc: Location, name: String, _start: u32) -> Result<(), Error> {
+    fn play_file(&mut self, loc: Location, name: String, start: u32) -> Result<(), Error> {
         let path = self.resolve(loc, &name, false)?;
         if !path.is_file() {
             return Err(Error::NotFound);
         }
-        self.command(Command::PlaySound {
-            name: path.to_string_lossy().into_owned(),
-        })
-        .map(|_| ())
+        // The audio side reads and decodes the file before it answers.
+        self.store
+            .send(Command::PlayFile {
+                path: path.to_string_lossy().into_owned(),
+                start_secs: start,
+                app: self.name.clone(),
+            })
+            .wait_timeout(Duration::from_secs(5))
+            .map(|_| self.playing = true)
+            .map_err(|e| Error::Failed(e.to_string()))
     }
     fn stop(&mut self) {
         let _ = self.store.post(Command::StopSound);

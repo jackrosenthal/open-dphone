@@ -518,14 +518,14 @@ fn idle_app_view() {
             t.set_align(line2, av::Align::Center, av::VAlign::Middle);
             t.set_colors(line2, av::Color::Theme(av::ThemeColor::Secondary), av::Color::Default);
         }
-        r.ui.handle().set_idle_view(Some(view.clone()));
+        r.ui.handle().add_idle_view(view.clone());
         r.shot("50-idle-app");
         // A change to the idle view repaints the idle screen.
         let g = r.sim.frame_generation();
         view.clear();
         r.ui.pump();
         assert!(r.sim.frame_generation() > g);
-        r.ui.handle().set_idle_view(None);
+        r.ui.handle().remove_idle_view("status");
         r.ui.pump();
     }
 }

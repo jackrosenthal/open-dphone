@@ -87,6 +87,10 @@ async fn register_failover_subscribe_message() {
         account: AccountId(0),
         pickup_prefix: String::new(),
         presence: false,
+        location: dphone_sip::BlfLocation::Side,
+        index: 0,
+        paging: true,
+        blank: false,
     });
     let p = phone_with("100", cfg, 4000).await;
     let mut inbox = p.handle.messages();
@@ -116,7 +120,10 @@ async fn register_failover_subscribe_message() {
     assert_eq!(entry.remote.name, "Alice");
     assert!(entry.subscribed);
     let keys = p.store.get::<Keys>();
-    assert_eq!(keys.rapid_dial[0].lamp.blink, Blink::Fast);
+    // A D60 has no rapid-dial strip: the item is on the free line key.
+    assert_eq!(keys.line_keys[1].binding, dphone_state::LineKeyBinding::Blf("c101".into()));
+    assert_eq!(keys.line_keys[1].lamp.blink, Blink::Fast);
+    assert!(keys.rapid_dial.is_empty());
     let subs = good.requests("SUBSCRIBE");
     assert!(subs.iter().any(|s| s.start.starts_with("SUBSCRIBE sip:auto_hint_101@127.0.0.1")), "{:?}", subs.iter().map(|s| &s.start).collect::<Vec<_>>());
 
@@ -126,7 +133,7 @@ async fn register_failover_subscribe_message() {
     let idle = notify(sub, good.addr, "dialog", "application/dialog-info+xml", &DIALOG_INFO.replace("early", "terminated"), 2);
     good.socket.send_to(idle.as_bytes(), format!("127.0.0.1:{}", p.handle.local_port())).await.unwrap();
     wait("BLF idle", || p.store.get::<Presence>().get("c101").filter(|e| e.state == BlfState::Idle).map(|_| ())).await;
-    assert_eq!(p.store.get::<Keys>().rapid_dial[0].lamp.color, LampColor::Green);
+    assert_eq!(p.store.get::<Keys>().line_keys[1].lamp.color, LampColor::Green);
 
     // MESSAGE out (as DPMA sends it: from the MAC at the phone's address).
     let code = p

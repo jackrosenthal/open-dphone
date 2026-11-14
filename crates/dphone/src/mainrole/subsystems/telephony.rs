@@ -17,7 +17,7 @@ use dphone_media::PayloadCodec;
 use dphone_media::engine::SrtpConfig;
 use dphone_media::srtp::{MasterKey, Suite};
 use dphone_sip::{
-    AccountConfig, BlfConfig, CodecPref, HostConfig, MediaControl, MediaEvent, RingRequest, SipConfig, SipHandle,
+    AccountConfig, CodecPref, HostConfig, MediaControl, MediaEvent, RingRequest, SipConfig, SipHandle,
     StreamParams,
 };
 use dphone_state::{
@@ -253,43 +253,6 @@ fn codec_by_name(id: &str) -> Option<Codec> {
     })
 }
 
-/// The BLF and rapid-dial keys: each configured item's contact, looked up
-/// in the contact lists on disk.
-fn blf(cfg: &Config, nv: &Nvdata, default_account: AccountId) -> Vec<BlfConfig> {
-    let items = cfg.blf_items();
-    if items.is_empty() {
-        return Vec::new();
-    }
-    let mut contacts = Vec::new();
-    for name in nv.contact_list_names().unwrap_or_default() {
-        if let Ok(Some(bytes)) = nv.contact_list(&name)
-            && let Ok(text) = String::from_utf8(bytes)
-            && let Ok(groups) = dphone_config::contacts::parse_contacts(&text)
-        {
-            contacts.extend(groups.into_iter().flat_map(|g| g.contacts));
-        }
-    }
-    items
-        .iter()
-        .filter(|i| !i.blank && !i.paging)
-        .filter_map(|i| {
-            let id = i.contact_id.as_ref()?;
-            let c = contacts.iter().find(|c| &c.id == id)?;
-            let number = c.primary_number()?;
-            let label = format!("{} {}", c.first_name, c.last_name).trim().to_string();
-            Some(BlfConfig {
-                id: id.clone(),
-                label,
-                number: number.dial.clone(),
-                subscribe: c.subscribe_to.clone().unwrap_or_default(),
-                account: default_account,
-                pickup_prefix: String::new(),
-                presence: false,
-            })
-        })
-        .collect()
-}
-
 fn sip_config(ctx: &Context, cfg: &Config, nv: &Nvdata, local_ip: IpAddr) -> SipConfig {
     let mut out = SipConfig::new(state_model(ctx.model), local_ip);
     let sip = cfg.sip();
@@ -332,7 +295,35 @@ fn sip_config(ctx: &Context, cfg: &Config, nv: &Nvdata, local_ip: IpAddr) -> Sip
     if !codecs.is_empty() {
         out.codecs = codecs;
     }
-    out.blf = blf(cfg, nv, AccountId(0));
+    // BLF and rapid-dial items; stock's line keys page on the D65 only
+    // (`page_linekeys`), and its page-return time is off below 10 s and
+    // at most 60 s.
+    out.page_line_keys = cfg.setting_bool("page_linekeys", out.model == dphone_state::Model::D65) && out.model.blf_pages() > 1;
+    out.blf = super::blfitems::items(cfg, nv, out.model, out.accounts.len(), out.page_line_keys, AccountId(0));
+    // Incoming calls the configuration singles out by the server event
+    // they carry (stock `<events><event id=".." action=".."/>`); without
+    // any, stock's base entry (the voicemail playback call) stays.
+    let events: Vec<(String, dphone_sip::EventAction)> = cfg
+        .root()
+        .children_named("events")
+        .flat_map(|e| e.children_named("event"))
+        .filter_map(|e| {
+            let action = match e.attr("action")? {
+                "auto_answer" | "auto_answer_now" => dphone_sip::EventAction::AutoAnswer,
+                "app" => dphone_sip::EventAction::App,
+                "reject" => dphone_sip::EventAction::Reject,
+                _ => return None,
+            };
+            Some((e.attr("id").filter(|id| !id.is_empty())?.to_string(), action))
+        })
+        .collect();
+    if !events.is_empty() {
+        out.events = events;
+    }
+    out.blf_page_return_secs = match cfg.setting("blf_page_return_timeout").and_then(|v| v.trim().parse::<u32>().ok()) {
+        Some(secs) if secs >= 10 => secs.min(60),
+        _ => 0,
+    };
     if let Some(ka) = sip.udp_keepalive_interval {
         out.udp_keepalive_secs = ka;
     }
@@ -350,6 +341,7 @@ fn sip_config(ctx: &Context, cfg: &Config, nv: &Nvdata, local_ip: IpAddr) -> Sip
     // Servers are checked against the trust bundle in `/nvdata/certs`
     // unless `allow_insecure_ssl` is set, as on stock.
     out.tls.verify = !sip.allow_insecure_ssl;
+    out.tls.refuse_wildcard_certs = !sip.tls_allow_wildcard_certs;
     out.tls.roots_pem = super::trust::roots(nv, cfg);
     if let Some(park) = cfg.setting("parking_lot_extension").filter(|p| !p.is_empty()) {
         out.park_extension = park.to_string();

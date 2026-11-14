@@ -4,7 +4,7 @@
   "displayName": { "fallback": "Parking" },
   "description": { "fallback": "See and retrieve parked calls" },
   "type": "foreground",
-  "iconFile": "app_parking",
+  "iconFile": "parking",
   "wasm": "parking.wasm",
   "capabilities": ["ui", "config", "pbx", "calls", "events", "timers"]
 }

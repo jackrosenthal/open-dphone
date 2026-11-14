@@ -183,6 +183,12 @@ impl Core {
                 calls.focused = next;
             }
         });
+        // An app's hidden call is not logged.
+        if snapshot.as_ref().is_some_and(|c| c.hidden)
+            && let Some(call) = snapshot.take()
+        {
+            self.store.emit(Event::CallEnded { call });
+        }
         if let Some(call) = snapshot {
             let kind = match (outgoing, answered) {
                 (true, _) => CallLogKind::Placed,
@@ -272,6 +278,7 @@ impl Core {
         replaces: Option<String>,
         referred_by: Option<String>,
         refer_from: Option<ReferFrom>,
+        headers: Vec<(String, String)>,
     ) -> Result<CallId, CommandError> {
         let acct = self.pick_account(account)?;
         let uri = self.dial_uri(acct, target)?;
@@ -302,7 +309,13 @@ impl Core {
         };
         let offer = sdp::offer(&probe, key_material.as_ref());
         let number = SipUri::parse(&uri).map(|u| util::percent_decode(&u.user)).unwrap_or_default();
-        let pending = PendingCall { acct, session_secs: self.cfg.session_expires_secs, replaces: replaces.clone(), referred_by: referred_by.clone() };
+        let pending = PendingCall {
+            acct,
+            session_secs: self.cfg.session_expires_secs,
+            replaces: replaces.clone(),
+            referred_by: referred_by.clone(),
+            headers: headers.clone(),
+        };
         let dialog = match self.invite_for(id, &pending, &uri, &offer) {
             Ok(d) => d,
             Err(e) => {
@@ -338,6 +351,7 @@ impl Core {
             refer_from,
             replaces,
             referred_by,
+            extra_headers: headers,
             redirected: false,
             session: None,
             session_gen: 0,
@@ -373,6 +387,9 @@ impl Core {
         }
         if let Some(r) = &p.referred_by {
             headers.push(Header::ReferredBy(r.clone().into()));
+        }
+        for (name, value) in &p.headers {
+            headers.push(Header::Other(name.clone(), value.clone()));
         }
         let opt = InviteOption {
             caller_display_name: Some(display_name(&a.cfg.display_name)).filter(|n| !n.is_empty()),
@@ -518,6 +535,7 @@ impl Core {
                 session_secs: c.session_secs,
                 replaces: c.replaces.clone(),
                 referred_by: c.referred_by.clone(),
+                headers: c.extra_headers.clone(),
             };
             if let Ok(dialog) = self.invite_for(id, &p, &target, &offer) {
                 self.layer.remove_dialog(&old);
@@ -582,7 +600,14 @@ impl Core {
                 })
                 .map(|c| c.id)
         });
-        if replaced.is_none() {
+        // A call that carries a server event the configuration names
+        // (stock `<events>`): an app's call, an auto-answer, or a refusal.
+        let action = self.event_action(&req);
+        if action == Some(crate::config::EventAction::Reject) {
+            return self.reply(tx, 603, Vec::new());
+        }
+        let hidden = action == Some(crate::config::EventAction::App);
+        if replaced.is_none() && !hidden {
             if !features.forward.always.is_empty() {
                 return self.reply(tx, 302, redirect(&features.forward.always));
             }
@@ -661,7 +686,8 @@ impl Core {
         let alert_info = util::header(&req.headers, "Alert-Info").unwrap_or("").to_string();
         let call_info = util::header(&req.headers, "Call-Info").unwrap_or("").to_ascii_lowercase();
         let lower_alert = alert_info.to_ascii_lowercase();
-        let wants_auto = call_info.contains("answer-after=0")
+        let wants_auto = action == Some(crate::config::EventAction::AutoAnswer)
+            || call_info.contains("answer-after=0")
             || lower_alert.contains("auto answer")
             || lower_alert.contains("autoanswer")
             || lower_alert.contains("ring answer")
@@ -674,6 +700,7 @@ impl Core {
         call.sip_call_id = did.call_id.clone();
         call.auto_answer = wants_auto && self.cfg.allow_auto_answer;
         call.paging = lower_alert.contains("paging") || call_info.contains("paging");
+        call.hidden = hidden;
         let auto = call.auto_answer;
         self.calls.push(CallRt {
             id,
@@ -700,6 +727,7 @@ impl Core {
             refer_from: None,
             replaces: None,
             referred_by: None,
+            extra_headers: Vec::new(),
             redirected: false,
             session: None,
             session_gen: 0,
@@ -711,11 +739,21 @@ impl Core {
         let others = self.store.get::<Calls>().live().next().is_some();
         self.store.update::<Calls, _>(|c| {
             c.calls.push(call);
-            if c.focused.is_none() || c.focused().is_none_or(|f| f.state.is_ended()) {
+            if !hidden && (c.focused.is_none() || c.focused().is_none_or(|f| f.state.is_ended())) {
                 c.focused = Some(id);
             }
         });
+        if hidden {
+            // The app that observes the event answers or rejects it; the
+            // user is not alerted.
+            self.emit_push(&req, "INVITE", id);
+            self.sync_keys();
+            return;
+        }
         self.store.emit(Event::IncomingCall { call: id });
+        // A server event that arrives as a call (e.g., voicemail
+        // playback): apps that observe it get the call to answer.
+        self.emit_push(&req, "INVITE", id);
         self.sync_keys();
         if let Some(old) = replaced {
             // The replacement takes over the old call's place at once.
@@ -889,6 +927,7 @@ impl Core {
                         self.store.emit(Event::DtmfReceived { call: id, digit: d.to_ascii_uppercase() });
                     }
                 }
+                self.emit_push(&req, "INFO", id);
                 self.respond(handle, 200, Vec::new(), None);
             }
             DialogState::Options(_, _, handle) => self.respond(handle, 200, vec![Core::allow()], None),
@@ -1038,7 +1077,7 @@ impl Core {
         let acct = self.call(id).map(|c| c.acct);
         self.respond(handle, 202, Vec::new(), None);
         self.notify_refer(id, 100, false);
-        if let Err(e) = self.dial(&target, acct, None, replaces, referred_by, Some(ReferFrom { call: id })) {
+        if let Err(e) = self.dial(&target, acct, None, replaces, referred_by, Some(ReferFrom { call: id }), Vec::new()) {
             log::warn!("sip: cannot follow REFER: {e}");
             self.notify_refer(id, 503, true);
         }
@@ -1389,11 +1428,15 @@ impl Core {
         match command {
             Command::Dial { target, account, path } => {
                 self.last_dialed = Some((target.clone(), account));
-                self.dial(&target, account, path, None, None, None).map(Reply::Call)
+                self.dial(&target, account, path, None, None, None, Vec::new()).map(Reply::Call)
+            }
+            Command::DialWith { target, account, headers } => {
+                check_extra_headers(&headers)?;
+                self.dial(&target, account, None, None, None, None, headers).map(Reply::Call)
             }
             Command::Redial => {
                 let (target, account) = self.last_dialed.clone().ok_or_else(|| invalid("nothing to redial"))?;
-                self.dial(&target, account, None, None, None, None).map(Reply::Call)
+                self.dial(&target, account, None, None, None, None, Vec::new()).map(Reply::Call)
             }
             Command::DialVoicemail { account } => {
                 let acct = self.pick_account(account)?;
@@ -1401,7 +1444,7 @@ impl Core {
                 if vm.is_empty() {
                     return Err(invalid("no voicemail number is configured"));
                 }
-                self.dial(&vm, Some(acct), None, None, None, None).map(Reply::Call)
+                self.dial(&vm, Some(acct), None, None, None, None, Vec::new()).map(Reply::Call)
             }
             Command::Answer { call, path } => self.answer(call, path),
             Command::Hangup { call } => self.hangup(call),
@@ -1461,7 +1504,7 @@ impl Core {
                 // Stock's other parking mode: call the parking extension
                 // (the call to park goes on hold) and complete it as an
                 // attended transfer.
-                let consult = self.dial(&lot, Some(acct), None, None, None, None)?;
+                let consult = self.dial(&lot, Some(acct), None, None, None, None, Vec::new())?;
                 self.set_call(consult, |c| c.transfer_of = Some(call));
                 Ok(Reply::Call(consult))
             }
@@ -1543,14 +1586,14 @@ impl Core {
                     .ok_or_else(|| invalid("no such BLF entry"))?;
                 if !b.pickup_prefix.is_empty() {
                     let target = format!("{}{}", b.pickup_prefix, b.number);
-                    return self.dial(&target, Some(b.account), None, None, None, None).map(Reply::Call);
+                    return self.dial(&target, Some(b.account), None, None, None, None, Vec::new()).map(Reply::Call);
                 }
                 let info = self.blf_dialogs.get(&blf_entry).filter(|i| !i.call_id.is_empty()).cloned();
                 let uri = self.store.get::<Presence>().get(&blf_entry).map(|e| e.uri.clone()).unwrap_or_default();
                 match info {
                     Some(i) if !uri.is_empty() => {
                         let replaces = format!("{};to-tag={};from-tag={};early-only", i.call_id, i.remote_tag, i.local_tag);
-                        self.dial(&uri, Some(b.account), None, Some(replaces), None, None).map(Reply::Call)
+                        self.dial(&uri, Some(b.account), None, Some(replaces), None, None, Vec::new()).map(Reply::Call)
                     }
                     _ => Err(invalid("nothing to pick up")),
                 }
@@ -1609,7 +1652,18 @@ impl Core {
                         ok = true;
                     }
                 });
-                if ok { Ok(Reply::Done) } else { Err(invalid("no such page")) }
+                if !ok {
+                    return Err(invalid("no such page"));
+                }
+                // Line keys that page follow, and the first page comes
+                // back after a while when that is asked for.
+                self.sync_keys();
+                self.page_changes += 1;
+                if page != 0 && self.cfg.blf_page_return_secs > 0 {
+                    let generation = self.page_changes;
+                    self.after(Duration::from_secs(self.cfg.blf_page_return_secs as u64), Timer::PageReturn { generation });
+                }
+                Ok(Reply::Done)
             }
             other => Err(invalid(format!("not a call command: {other:?}"))),
         }
@@ -1653,6 +1707,38 @@ struct PendingCall {
     session_secs: u32,
     replaces: Option<String>,
     referred_by: Option<String>,
+    /// Extra headers from the caller of `dial` (an app).
+    headers: Vec<(String, String)>,
+}
+
+/// Headers of the INVITE that the stack or call control writes; an app
+/// may not add its own.
+const RESERVED_HEADERS: [&str; 24] = [
+    "via", "from", "to", "call-id", "cseq", "contact", "max-forwards", "content-type", "content-length", "route",
+    "record-route", "authorization", "proxy-authorization", "session-expires", "min-se", "supported", "require",
+    "allow", "replaces", "referred-by", "user-agent", "expires", "www-authenticate", "proxy-authenticate",
+];
+
+/// Checks the extra INVITE headers an app asked for: header names must be
+/// tokens that are not the stack's, and values a single line.
+fn check_extra_headers(headers: &[(String, String)]) -> Result<(), CommandError> {
+    // Stock passes up to 30.
+    if headers.len() > 30 {
+        return Err(invalid("too many headers"));
+    }
+    for (name, value) in headers {
+        let token = !name.is_empty()
+            && name.len() <= 64
+            && name.bytes().all(|b| b.is_ascii_alphanumeric() || b"-.!%*_+`'~".contains(&b));
+        // Compact forms (one letter) are the stack's headers under another name.
+        if !token || name.len() == 1 || RESERVED_HEADERS.contains(&name.to_ascii_lowercase().as_str()) {
+            return Err(invalid(format!("the header {name:?} cannot be set")));
+        }
+        if value.len() > 512 || value.chars().any(|c| c.is_control()) {
+            return Err(invalid(format!("the value of {name} is not a single line of at most 512 bytes")));
+        }
+    }
+    Ok(())
 }
 
 /// Whether a message's `Allow` lists UPDATE.

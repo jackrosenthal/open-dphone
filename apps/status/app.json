@@ -4,7 +4,7 @@
   "displayName": { "fallback": "Status" },
   "description": { "fallback": "Set your presence status" },
   "type": "foreground",
-  "iconFile": "app_status",
+  "iconFile": "status",
   "wasm": "status.wasm",
   "capabilities": ["ui", "config", "pbx", "presence"]
 }

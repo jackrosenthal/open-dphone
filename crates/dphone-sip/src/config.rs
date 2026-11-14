@@ -138,6 +138,36 @@ pub struct BlfConfig {
     pub pickup_prefix: String,
     /// Also subscribe to the `presence` event for the user's status.
     pub presence: bool,
+    /// The item's `location`, `index`, and `paging`, and whether it is a
+    /// blank that only reserves its key (see [`crate::keys`]).
+    pub location: BlfLocation,
+    pub index: u8,
+    pub paging: bool,
+    pub blank: bool,
+}
+
+/// What to do with an incoming call that carries a server event name
+/// (stock `<events><event id=".." action=".."/>`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EventAction {
+    /// Answer without ringing (`auto_answer`, `auto_answer_now`).
+    AutoAnswer,
+    /// The call is an app's: hidden, and left for the app to answer.
+    App,
+    Reject,
+}
+
+/// A `<blf_item>`'s `location`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum BlfLocation {
+    /// A line key.
+    #[default]
+    Main,
+    /// The rapid-dial strip (D50, D70); on phones without one, the free
+    /// line keys.
+    Side,
+    /// A key of an expansion module; watched here, shown there.
+    Expansion,
 }
 
 /// TLS client policy.
@@ -149,6 +179,10 @@ pub struct TlsConfig {
     /// Check the server certificate against `roots_pem` and its name.
     /// Stock's default is not to; see `docs/device-identity-trust.md`.
     pub verify: bool,
+    /// With `verify`: refuse a server whose certificate matches its name
+    /// only through a wildcard (stock `tls_allow_wildcard_certs` off; RFC
+    /// 5922 section 7.2 does not allow such certificates for SIP).
+    pub refuse_wildcard_certs: bool,
     /// Certificate (DER) and PKCS#8 private key (DER) presented to peers
     /// that connect to our TLS port.  Empty: no TLS listener.
     pub server_cert_der: Vec<u8>,
@@ -177,7 +211,17 @@ pub struct SipConfig {
     /// Enabled codecs in preference order.  Codecs the media engine
     /// reports unavailable are dropped at negotiation time.
     pub codecs: Vec<CodecPref>,
+    /// Incoming calls treated specially by the event name they carry.
+    /// Stock's base configuration has the one entry this starts with.
+    pub events: Vec<(String, EventAction)>,
+    /// The configured BLF and rapid-dial items, in configuration order.
     pub blf: Vec<BlfConfig>,
+    /// Line keys page with the rapid-dial page (stock `page_linekeys`: on
+    /// for the D65).
+    pub page_line_keys: bool,
+    /// Seconds after a page change until the first page shows again
+    /// (stock `blf_page_return_timeout`); 0: stay.
+    pub blf_page_return_secs: u32,
     pub tls: TlsConfig,
     /// Seconds between UDP keepalives to each registrar (`udp_ka_interval`);
     /// 0 turns them off.
@@ -234,7 +278,10 @@ impl SipConfig {
                 CodecPref { codec: Codec::Pcma, ptime: 20 },
                 CodecPref { codec: Codec::G726_32, ptime: 20 },
             ],
+            events: vec![("digium.incomingCall.voicemail".into(), EventAction::App)],
             blf: Vec::new(),
+            page_line_keys: model == Model::D65,
+            blf_page_return_secs: 0,
             tls: TlsConfig::default(),
             udp_keepalive_secs: 30,
             call_waiting: true,

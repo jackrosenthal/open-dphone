@@ -40,6 +40,9 @@ pub enum Event {
     ConfigApplied { generation: u64 },
     /// An event addressed to one app (from another subsystem or app).
     App { app: String, name: String, payload: String },
+    /// A sound file an app started (`Command::PlayFile`) is no longer
+    /// playing; `position_secs` is how far into the file it got.
+    PlaybackStopped { app: String, position_secs: u32 },
     /// The wall clock jumped (SNTP set it); timers on wall time should
     /// re-arm.
     TimeChanged,

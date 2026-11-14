@@ -115,6 +115,7 @@ impl Rig {
         let commands = Arc::new(Mutex::new(Vec::new()));
         answer_commands(&store, Domain::Calls, commands.clone(), |c| match c {
             Command::Dial { .. } => Ok(Reply::Call(dphone_state::CallId(7))),
+            Command::DialWith { .. } => Ok(Reply::Call(dphone_state::CallId(8))),
             _ => Ok(Reply::Done),
         });
         answer_commands(&store, Domain::Provisioning, commands.clone(), |_| {
