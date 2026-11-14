@@ -10,7 +10,11 @@
 //! wins; otherwise a call or tone uses the headset in headset mode, the
 //! handset when it is off the hook, else the speaker.  The ringer always
 //! uses the speaker when nothing else has a path open.  With nothing to
-//! play, the path is closed.
+//! play and no request, the path is closed.  A request stays until it is
+//! withdrawn (`SetAudioPath` with no path, or the handset replaced), so
+//! an off-hook dialer keeps its path open between the dial tone and the
+//! key tones; a request made for a call is dropped when the last call has
+//! gone and nothing is sounding any more.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
@@ -82,6 +86,8 @@ struct Inner {
     page: Option<CallId>,
     /// Path the user or call control asked for explicitly.
     requested: Option<AudioPath>,
+    /// The last call has gone: drop the request once nothing sounds.
+    release_when_quiet: bool,
     tone: Option<Tone>,
     ringing: bool,
     sound: bool,
@@ -170,6 +176,7 @@ impl AudioService {
         if inner.engine.is_none() {
             return Err(format!("audio is not available: {}", inner.why_no_engine));
         }
+        inner.release_when_quiet = false;
         if let Some(port) = inner.ports.get(&call) {
             return Ok(*port);
         }
@@ -247,6 +254,9 @@ impl AudioService {
                 inner.slots[slot] = None;
                 let _ = inner.send(Ec::StopStream { id: slot });
             }
+            if inner.slots.iter().all(Option::is_none) && inner.ports.is_empty() {
+                inner.release_when_quiet = true;
+            }
         }
         self.refresh();
     }
@@ -312,7 +322,11 @@ impl AudioService {
     }
 
     pub fn request_path(&self, path: AudioPath) {
-        self.inner.lock().unwrap().requested = (path != AudioPath::None).then_some(path);
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.requested = (path != AudioPath::None).then_some(path);
+            inner.release_when_quiet = false;
+        }
         self.refresh();
     }
 
@@ -333,11 +347,11 @@ impl AudioService {
             self.store.read::<Audio, _>(|a| (a.off_hook, a.headset_mode, (a.handset_volume, a.headset_volume, a.speaker_volume)));
         let mut inner = self.inner.lock().unwrap();
         let wants_voice = !inner.connected.is_empty() || inner.page.is_some() || inner.tone.is_some() || inner.sound;
-        if !wants_voice && !inner.ringing {
-            // Nothing sounding: an explicit request does not outlive it.
-            if inner.requested.is_some() && inner.slots.iter().all(Option::is_none) {
-                inner.requested = None;
-            }
+        if inner.release_when_quiet && !wants_voice && !inner.ringing && inner.slots.iter().all(Option::is_none) {
+            // The calls are gone and their last tone has ended: a request
+            // made for them does not outlive that.
+            inner.requested = None;
+            inner.release_when_quiet = false;
         }
         let policy = if headset_mode {
             AudioPath::Headset
@@ -705,6 +719,7 @@ pub async fn start(ctx: &Context, hal: Option<SharedHal>) -> AudioService {
             connected: Vec::new(),
             page: None,
             requested: None,
+            release_when_quiet: false,
             tone: None,
             ringing: false,
             sound: false,
