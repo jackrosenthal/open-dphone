@@ -62,16 +62,24 @@
 
 	reserved-memory {
 		/*
-		 * Persistent console in the top 16 KiB of the DSP shared RAM,
-		 * which keeps its contents across a reset.  The DSP rings end
-		 * at 0x4000a810 (new family) or 0x40008010 (old family).  The
-		 * region is outside /memory; "no-map" is there for the
-		 * binding.  Run on a D60 and a D40 (RAM boot, 2026-11-13).
+		 * Kernel crash records in the top 16 KiB of the DSP shared
+		 * RAM (on-chip): one 8 KiB record that the kernel writes when
+		 * it panics or oopses, and the last 8 KiB of the console.
+		 *
+		 * Not in DDR: marker words in main RAM did not survive a
+		 * reboot of a D60, while words in this RAM did (ramboot notes,
+		 * section 4.3), and the whole region survived watchdog resets
+		 * and reboots under mainline.  boot1 puts its first stack just
+		 * below 0x40008000, and the DSP rings end at 0x4000a810 (new
+		 * family) or 0x40008010 (old family), so nothing known writes
+		 * here.  The region is outside /memory; "no-map" is there for
+		 * the binding.
 		 */
 		ramoops@4000c000 {
 			compatible = "ramoops";
 			reg = <0x4000c000 0x4000>;
-			console-size = <0x4000>;
+			record-size = <0x2000>;
+			console-size = <0x2000>;
 			/* ioremap(), not write-combining: every byte lands */
 			mem-type = <1>;
 			no-map;
@@ -141,7 +149,7 @@
 /*
  * The SoC file gives the DSP the whole 64 KiB of shared RAM.  The driver
  * uses only the mailbox and the four rings behind it; 0xc000 leaves the top
- * 16 KiB to the ramoops console above.
+ * 16 KiB to the ramoops region above.
  */
 &vpm {
 	reg = <0x30800000 0x2000>, <0x30a00000 0x10000>,

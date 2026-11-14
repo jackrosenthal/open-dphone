@@ -90,7 +90,7 @@ The kernel passes what it does not recognize to init: `bootmemheap` arrives as `
 | Watchdog | `/dev/watchdog` (SP805).  boot2 hands off with it disabled; it starts when opened. |
 | Random numbers | `/dev/hwrng`. |
 | Bluetooth, D65 only | HCI device `hci0` from `hci_uart` (BCM20702 on UART B, `ttyAMA1`, H4 at 115200 baud).  No patch file is loaded: the stock firmware does not load one either, and none is shipped.  ALSA card "Digium Bluetooth": one mono S16_LE PCM device at 8 or 16 kHz on the SoC PCM/TDM interface, which drives the bit clock (1.024 MHz) and frame sync, so the controller must be set to slave on both. |
-| Crash log | pstore/ramoops console, 16 KiB in on-chip RAM that survives a reset: mount `pstore` on `/sys/fs/pstore` and read `console-ramoops-0`. |
+| Crash log | pstore/ramoops, 16 KiB of on-chip RAM that survives a reset (not DDR, which does not).  Mount `pstore` on `/sys/fs/pstore`: `dmesg-ramoops-0` is the last 8 KiB of the kernel log at a panic or oops, and exists only after one; `console-ramoops-0` is the last 8 KiB of the previous boot's console, and exists after every warm restart.  `echo c > /proc/sysrq-trigger` panics the kernel for a test (the keyboard and serial SysRq paths are off). |
 
 ## Module load order
 
