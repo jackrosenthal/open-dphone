@@ -1,12 +1,11 @@
 //! dphone-apps: the WebAssembly app runtime, on its own thread.
 //!
 //! The manager owns the `Apps` state and command domain.  Apps reach the
-//! PBX through DPMA (`dasp://`), plain HTTP through a small client here,
-//! and the configuration through the merged view.
+//! PBX through DPMA (`dasp://`), HTTP and HTTPS through the client in
+//! `apphttp`, and the configuration through the merged view.
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 
 use dphone_apps::services::{
     AppAccount, Completion, ConfigSource, HttpClient, HttpReply, HttpRequest, PbxRequest, PbxRequests, Services,
@@ -16,9 +15,9 @@ use dphone_config::xml::Element;
 use dphone_state::{HealthStatus, Subsystem};
 use dphone_ui::UiHandle;
 use log::{error, info, warn};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::SharedConfig;
+use super::net::NetHandle;
 use super::telephony::Telephony;
 use crate::mainrole::{Context, state_model};
 
@@ -49,110 +48,16 @@ impl PbxRequests for Pbx {
     }
 }
 
-/// Plain HTTP/1.1 for apps.  HTTPS is not offered here yet: apps that need
-/// a secure channel go through DPMA.
+/// HTTP and HTTPS for apps (see [`super::apphttp`]).
 struct Http {
     runtime: tokio::runtime::Handle,
-}
-
-const HTTP_LIMIT: usize = 1 << 20;
-
-async fn http(request: HttpRequest) -> Result<HttpReply, String> {
-    let rest = request
-        .url
-        .strip_prefix("http://")
-        .ok_or_else(|| "only http:// URLs are supported for direct requests".to_string())?;
-    let (authority, path) = match rest.find('/') {
-        Some(i) => (&rest[..i], &rest[i..]),
-        None => (rest, "/"),
-    };
-    let target = if authority.contains(':') { authority.to_string() } else { format!("{authority}:80") };
-    let mut stream = tokio::time::timeout(Duration::from_secs(10), tokio::net::TcpStream::connect(&target))
-        .await
-        .map_err(|_| format!("connecting to {target} timed out"))?
-        .map_err(|e| format!("{target}: {e}"))?;
-    let method = if request.method.is_empty() { "GET" } else { request.method.as_str() };
-    let mut head = format!("{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nUser-Agent: Open DPhone\r\n");
-    for (name, value) in &request.headers {
-        if name.contains(['\r', '\n']) || value.contains(['\r', '\n']) {
-            return Err("header contains a line break".into());
-        }
-        head.push_str(&format!("{name}: {value}\r\n"));
-    }
-    if let Some((user, pass)) = &request.credentials {
-        head.push_str(&format!("Authorization: Basic {}\r\n", base64(format!("{user}:{pass}").as_bytes())));
-    }
-    head.push_str(&format!("Content-Length: {}\r\n\r\n", request.body.len()));
-    let io = async {
-        stream.write_all(head.as_bytes()).await?;
-        stream.write_all(&request.body).await?;
-        let mut raw = Vec::new();
-        let mut buf = [0u8; 4096];
-        loop {
-            let n = stream.read(&mut buf).await?;
-            if n == 0 {
-                break;
-            }
-            raw.extend_from_slice(&buf[..n]);
-            if raw.len() > HTTP_LIMIT {
-                return Err(std::io::Error::other("reply too large"));
-            }
-        }
-        Ok(raw)
-    };
-    let raw = tokio::time::timeout(Duration::from_secs(30), io)
-        .await
-        .map_err(|_| "the request timed out".to_string())?
-        .map_err(|e| e.to_string())?;
-    let split = raw.windows(4).position(|w| w == b"\r\n\r\n").ok_or("malformed reply")?;
-    let head = String::from_utf8_lossy(&raw[..split]).into_owned();
-    let mut lines = head.split("\r\n");
-    let status = lines
-        .next()
-        .and_then(|l| l.split_ascii_whitespace().nth(1))
-        .and_then(|s| s.parse::<u16>().ok())
-        .ok_or("malformed status line")?;
-    let headers: Vec<(String, String)> =
-        lines.filter_map(|l| l.split_once(':')).map(|(n, v)| (n.trim().to_string(), v.trim().to_string())).collect();
-    let mut body = raw[split + 4..].to_vec();
-    if headers.iter().any(|(n, v)| n.eq_ignore_ascii_case("transfer-encoding") && v.eq_ignore_ascii_case("chunked")) {
-        body = dechunk(&body).ok_or("malformed chunked body")?;
-    }
-    Ok(HttpReply { status, headers, body })
-}
-
-fn dechunk(mut data: &[u8]) -> Option<Vec<u8>> {
-    let mut out = Vec::new();
-    loop {
-        let end = data.windows(2).position(|w| w == b"\r\n")?;
-        let size_text = std::str::from_utf8(&data[..end]).ok()?;
-        let size = usize::from_str_radix(size_text.split(';').next()?.trim(), 16).ok()?;
-        data = &data[end + 2..];
-        if size == 0 {
-            return Some(out);
-        }
-        out.extend_from_slice(data.get(..size)?);
-        data = data.get(size + 2..)?;
-    }
-}
-
-fn base64(data: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::new();
-    for chunk in data.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
-        let n = (b[0] as u32) << 16 | (b[1] as u32) << 8 | b[2] as u32;
-        out.push(T[(n >> 18) as usize & 63] as char);
-        out.push(T[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if chunk.len() > 2 { T[n as usize & 63] as char } else { '=' });
-    }
-    out
+    net: NetHandle,
 }
 
 impl HttpClient for Http {
     fn request(&self, request: HttpRequest, done: Completion<Result<HttpReply, String>>) {
-        self.runtime.spawn(async move { done.complete(http(request).await) });
+        let net = self.net.clone();
+        self.runtime.spawn(async move { done.complete(super::apphttp::request(Some(&net), request).await) });
     }
 }
 
@@ -245,7 +150,7 @@ impl ConfigSource for AppConfig {
     }
 }
 
-pub fn start(ctx: &Context, ui: Option<UiHandle>, config: Option<SharedConfig>, telephony: Telephony) {
+pub fn start(ctx: &Context, ui: Option<UiHandle>, config: Option<SharedConfig>, telephony: Telephony, net: NetHandle) {
     ctx.store.set_health(Subsystem::Apps, HealthStatus::Starting);
     let Some(ui) = ui else {
         warn!("apps: no UI; the app runtime is not started");
@@ -271,7 +176,7 @@ pub fn start(ctx: &Context, ui: Option<UiHandle>, config: Option<SharedConfig>, 
         .unwrap_or_default();
     let services = Services {
         pbx: Arc::new(Pbx { telephony, runtime: runtime.clone() }),
-        http: Arc::new(Http { runtime }),
+        http: Arc::new(Http { runtime, net }),
         config: Arc::new(AppConfig { config, mac }),
     };
     let store = ctx.store.clone();
@@ -301,18 +206,5 @@ pub fn start(ctx: &Context, ui: Option<UiHandle>, config: Option<SharedConfig>, 
     if let Err(e) = spawned {
         error!("apps: cannot start the app runtime thread: {e}");
         ctx.store.set_health(Subsystem::Apps, HealthStatus::Failed(e.to_string()));
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn encodings() {
-        assert_eq!(base64(b"user:pass"), "dXNlcjpwYXNz");
-        assert_eq!(base64(b"a"), "YQ==");
-        assert_eq!(dechunk(b"4\r\nWiki\r\n5\r\npedia\r\n0\r\n\r\n").unwrap(), b"Wikipedia");
-        assert!(dechunk(b"zz\r\n").is_none());
     }
 }

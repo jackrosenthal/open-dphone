@@ -1022,12 +1022,17 @@ dependencies = [
  "eff",
  "libc",
  "log",
+ "md-5 0.10.6",
  "rand_core 0.6.4",
  "russh",
  "russh-sftp",
+ "rustls-pemfile",
+ "rustls-rustcrypto",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "tokio-rustls",
 ]
 
 [[package]]

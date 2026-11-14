@@ -32,6 +32,7 @@ use log::{error, info, warn};
 use super::{Context, Options};
 use crate::diag::Output;
 
+pub mod apphttp;
 pub mod apps;
 pub mod audio;
 pub mod bluetooth;
@@ -165,7 +166,7 @@ pub async fn start(ctx: &Context, opts: &Options) {
     remote::register(ctx, ui.as_ref().map(|u| u.tap.clone()));
 
     // dphone-apps: the WASM runtime, on its own thread.
-    apps::start(ctx, ui.as_ref().map(|u| u.handle.clone()), config.clone(), telephony.clone());
+    apps::start(ctx, ui.as_ref().map(|u| u.handle.clone()), config.clone(), telephony.clone(), net.clone());
 
     // 9. dphone-web: HTTP(S) and Connect RPC.
     #[cfg(feature = "web")]
