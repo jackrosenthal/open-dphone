@@ -1,7 +1,9 @@
 //! Checks against the stock firmware's own `configmerge`, run under
 //! `qemu-arm`.  Skipped unless `DPHONE_STOCK_ROOTFS` names an extracted
 //! stock root filesystem (containing `app/bin/configmerge`); `qemu-arm` must
-//! be on `PATH`.
+//! be on `PATH`.  With `DPHONE_TEST_REQUIRE_VENDOR` set (the Nix check sets
+//! it, and supplies both: nix/vendor-firmware.nix) the tests fail instead of
+//! skipping.
 //!
 //! Two things are checked:
 //!
@@ -24,7 +26,14 @@ use dphone_config::model::BASE_CONFIG;
 use dphone_config::{ConfigStore, Element, Model, Nvdata};
 
 fn rootfs() -> Option<PathBuf> {
-    let p = PathBuf::from(std::env::var_os("DPHONE_STOCK_ROOTFS")?);
+    let Some(p) = std::env::var_os("DPHONE_STOCK_ROOTFS").map(PathBuf::from) else {
+        assert!(
+            std::env::var_os("DPHONE_TEST_REQUIRE_VENDOR").is_none(),
+            "DPHONE_TEST_REQUIRE_VENDOR is set, but DPHONE_STOCK_ROOTFS is not"
+        );
+        eprintln!("SKIPPED: set DPHONE_STOCK_ROOTFS to an extracted stock root filesystem to run this test");
+        return None;
+    };
     assert!(p.join("app/bin/configmerge").exists(), "no app/bin/configmerge under {}", p.display());
     Some(p)
 }

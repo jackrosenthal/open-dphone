@@ -54,6 +54,8 @@ let
 
   workspace = pkgs.callPackage ./workspace.nix {
     inherit craneLib rust;
+    vendorFirmware = args: pkgs.callPackage ./vendor-firmware.nix args;
+    asterisk = pkgs.callPackage ./asterisk.nix { inherit rustPlatform; };
     webDist = web;
     appsStaged = if apps != null then apps.testFixture else null;
   };
@@ -101,6 +103,9 @@ in
   // lib.optionalAttrs (web != null) { inherit web; }
   // lib.optionalAttrs (apps != null) { inherit apps; };
 
+  # `tests` needs the stock firmware images, which whoever runs the checks
+  # supplies (vendor-firmware.nix), and runs the main role against Asterisk
+  # with res_dpma_rs (asterisk.nix).
   checks = {
     inherit (workspace) tests clippy;
     inherit kernel;
@@ -119,6 +124,7 @@ in
       pkgs.protobuf
       pkgs.buf
       pkgs.nodejs
+      pkgs.pnpm
       pkgs.qemu
       pkgs.pkgsCross.arm-embedded.buildPackages.gcc
       pkgs.pkgsCross.arm-embedded.buildPackages.binutils

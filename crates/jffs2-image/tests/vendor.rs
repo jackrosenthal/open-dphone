@@ -1,11 +1,18 @@
 //! Structure checks against the stock root images.  Set `DPHONE_VENDOR_DIR`
-//! (see the `eff` crate's vendor tests); without it these pass with a notice.
+//! (see the `eff` crate's vendor tests); without it these pass with a notice,
+//! unless `DPHONE_TEST_REQUIRE_VENDOR` is set (the Nix check sets it), in
+//! which case they fail.
 
 use jffs2_image::{Kind, Options, read_image, write_image};
 use std::path::PathBuf;
 
 fn stock_images() -> Vec<PathBuf> {
+    let required = std::env::var_os("DPHONE_TEST_REQUIRE_VENDOR").is_some();
     let Some(dir) = std::env::var_os("DPHONE_VENDOR_DIR").map(PathBuf::from) else {
+        assert!(
+            !required,
+            "DPHONE_TEST_REQUIRE_VENDOR is set, but DPHONE_VENDOR_DIR is not"
+        );
         eprintln!(
             "SKIPPED: set DPHONE_VENDOR_DIR to the directory with the vendor firmware to run this test"
         );
@@ -23,6 +30,9 @@ fn stock_images() -> Vec<PathBuf> {
         }
     }
     out.sort();
+    if required {
+        assert_eq!(out.len(), 7, "the root images of all seven models: {out:?}");
+    }
     out
 }
 

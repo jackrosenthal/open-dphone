@@ -1,6 +1,7 @@
 //! End-to-end runs of the `dphone-image` binary.  The vendor comparisons
 //! need `DPHONE_VENDOR_DIR` (the reverse-engineering tree) and pass with a
-//! notice when it is unset.
+//! notice when it is unset, unless `DPHONE_TEST_REQUIRE_VENDOR` is set (the
+//! Nix check sets it), in which case they fail.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -320,6 +321,10 @@ fn replay_convert_heuristics() {
 #[test]
 fn vendor_references() {
     let Some(dir) = std::env::var_os("DPHONE_VENDOR_DIR").map(PathBuf::from) else {
+        assert!(
+            std::env::var_os("DPHONE_TEST_REQUIRE_VENDOR").is_none(),
+            "DPHONE_TEST_REQUIRE_VENDOR is set, but DPHONE_VENDOR_DIR is not"
+        );
         eprintln!(
             "SKIPPED: set DPHONE_VENDOR_DIR to the reverse-engineering tree to run this test"
         );
@@ -390,6 +395,11 @@ fn vendor_references() {
     assert!(std::fs::read(s.path("re.eff")).unwrap() == std::fs::read(&vendor).unwrap());
     // Replay conversion of the committed tables is stable.
     for f in ["replay-new-family-d60", "replay-old-family-d40"] {
+        // Captured traces, in the reverse-engineering tree only.
+        if !dir.join(format!("dsp/{f}.json")).exists() {
+            eprintln!("SKIPPED {f}: no replay table");
+            continue;
+        }
         let text = ok(&[
             "replay",
             "convert",

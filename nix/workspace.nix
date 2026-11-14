@@ -12,6 +12,10 @@
   rust,
   protobuf,
   openssh,
+  iproute2,
+  qemu-user,
+  vendorFirmware, # the stock images (vendor-firmware.nix), given the host tool
+  asterisk, # Asterisk with res_dpma_rs (asterisk.nix)
   webDist ? null, # built frontend, embedded by dphone-web (DPHONE_WEB_DIST)
   appsStaged ? null, # apps compiled for the build machine (DPHONE_APPS_STAGED)
 }:
@@ -93,6 +97,8 @@ let
     // hostEnv
   );
 
+  stock = vendorFirmware { dphone-image = imageTool.package; };
+
   checksStage = twoStage ({
     pname = "dphone-checks";
     cargoExtraArgs = "--locked --workspace";
@@ -122,8 +128,26 @@ in
       # The OpenSSH client, for the test that logs in to the embedded SSH
       # server and pushes a file with `scp`; that test skips itself on a
       # machine without one.
-      nativeBuildInputs = checksStage.full.nativeBuildInputs ++ [ openssh ];
+      # qemu-arm, for the tests that run the stock `configmerge`; `ip`, for
+      # the tests that run in a network namespace of their own.
+      nativeBuildInputs = checksStage.full.nativeBuildInputs ++ [
+        openssh
+        iproute2
+        qemu-user
+      ];
       DPHONE_TEST_REQUIRE_SSH = "1";
+      # The comparisons with the stock firmware: the images of all seven
+      # models, and the D60's root file system for its `configmerge`.
+      # Without the variable these tests skip themselves; here they must
+      # run.
+      DPHONE_TEST_REQUIRE_VENDOR = "1";
+      DPHONE_VENDOR_DIR = "${stock.dir}";
+      DPHONE_STOCK_ROOTFS = "${stock.rootfs}";
+      # Provisioning and registration against Asterisk with res_dpma_rs
+      # (crates/dphone/tests/asterisk.rs), likewise required here.
+      DPHONE_TEST_REQUIRE_ASTERISK = "1";
+      DPHONE_TEST_ASTERISK = "${asterisk.server}";
+      DPHONE_TEST_ASTERISK_MODULES = "${asterisk.modules}";
     }
     // lib.optionalAttrs (appsStaged != null) {
       # A writable copy, as the tests' own build of the apps would leave:

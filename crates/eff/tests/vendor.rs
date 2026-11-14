@@ -2,7 +2,11 @@
 //! `DPHONE_VENDOR_DIR` to the directory that holds them (the layout of the
 //! reverse-engineering tree: `2_9_28_D60_firmware.eff`,
 //! `firmware-series/<model>/*.eff`, `dumps/*/ctrl.bin`).  Without it the
-//! tests print a notice and pass.
+//! tests print a notice and pass, unless `DPHONE_TEST_REQUIRE_VENDOR` is
+//! set (the Nix check sets it, and supplies the images of all seven
+//! models: nix/vendor-firmware.nix), in which case they fail.  The
+//! partition dumps are not vendor images; that test runs where the
+//! directory has them.
 
 use eff::ctrl::CtrlRecord;
 use eff::envelope::{self, EffReader, EffWriter};
@@ -14,12 +18,20 @@ fn vendor_dir() -> Option<PathBuf> {
     match std::env::var_os("DPHONE_VENDOR_DIR") {
         Some(d) => Some(PathBuf::from(d)),
         None => {
+            assert!(
+                !vendor_required(),
+                "DPHONE_TEST_REQUIRE_VENDOR is set, but DPHONE_VENDOR_DIR is not"
+            );
             eprintln!(
                 "SKIPPED: set DPHONE_VENDOR_DIR to the directory with the vendor firmware to run this test"
             );
             None
         }
     }
+}
+
+fn vendor_required() -> bool {
+    std::env::var_os("DPHONE_TEST_REQUIRE_VENDOR").is_some()
 }
 
 fn d60_ota(dir: &Path) -> Vec<u8> {
@@ -154,17 +166,24 @@ fn every_vendor_eff_round_trips_byte_for_byte() {
         models.push(header.model);
     }
     assert!(models.iter().any(|m| m == "D60"));
+    if vendor_required() {
+        models.sort();
+        assert_eq!(models, ["D40", "D45", "D50", "D60", "D62", "D65", "D70"]);
+    }
 }
 
 #[test]
 fn ctrl_dumps_parse_and_rebuild() {
     let Some(dir) = vendor_dir() else { return };
+    let Ok(dumps) = std::fs::read_dir(dir.join("dumps")) else {
+        eprintln!(
+            "SKIPPED: no partition dumps (dumps/*/ctrl.bin) under {}",
+            dir.display()
+        );
+        return;
+    };
     let mut seen = 0;
-    for entry in std::fs::read_dir(dir.join("dumps"))
-        .into_iter()
-        .flatten()
-        .flatten()
-    {
+    for entry in dumps.flatten() {
         let path = entry.path().join("ctrl.bin");
         let Ok(data) = std::fs::read(&path) else {
             continue;
