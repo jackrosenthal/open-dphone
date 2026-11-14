@@ -58,6 +58,11 @@ pub const ROLLBACK: &str = "Roll back";
 
 // Boot, recovery, provisioning.
 pub const STARTING: &str = "Starting\u{2026}";
+pub const STARTING_CONFIG: &str = "Reading the configuration\u{2026}";
+pub const STARTING_AUDIO: &str = "Starting audio\u{2026}";
+pub const STARTING_TELEPHONY: &str = "Starting telephony\u{2026}";
+pub const STARTING_APPS: &str = "Starting apps\u{2026}";
+pub const STARTING_WEB: &str = "Starting the web interface\u{2026}";
 pub const WAITING_NETWORK: &str = "Waiting for network\u{2026}";
 pub const NO_LINK: &str = "Network cable unplugged";
 pub const GETTING_ADDRESS: &str = "Getting an address\u{2026}";

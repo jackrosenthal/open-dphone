@@ -182,3 +182,84 @@ fn branding_only_on_the_boot_screen() {
     assert!(names.contains(&"splash"));
     assert!(!names.contains(&"wordmark"));
 }
+
+#[test]
+fn boot_screen_has_a_loading_bar_and_no_softkeys() {
+    // (model, the loading bar's rectangle)
+    for (model, bar) in [
+        (Model::D40, IRect::new(60, 69, 120, 7)),
+        (Model::D50, IRect::new(60, 69, 120, 7)),
+        (Model::D70, IRect::new(80, 94, 160, 9)),
+        (Model::D60, IRect::new(120, 180, 240, 8)),
+        (Model::D65, IRect::new(120, 180, 240, 8)),
+    ] {
+        let th = Theme::for_model(model);
+        let mut hal = Hal::sim(model);
+        let store = Store::new(model);
+        let mut ui = Ui::from_hal(&mut hal, store.clone(), UiConfig::default());
+        ui.set_fixed_time(Some((5_000_000, UNIX)));
+        ui.pump();
+        assert_eq!(ui.screen_name(), "boot", "{model}");
+
+        // No softkey shapes: where the idle screen has them, the boot
+        // screen has only its background.
+        let mid = bar.y + bar.h / 2;
+        let background = if th.gray { 0xFFFFFF } else { ui.canvas().pixel(bar.x - 6, mid) };
+        for i in 0..4 {
+            let r = th.softkey_rect(i);
+            for (x, y) in [(r.x + r.w / 2, r.y + 3), (r.x + 2, r.y + 3), (r.x + r.w / 2, r.y)] {
+                let p = ui.canvas().pixel(x, y);
+                assert!(p != th.sk_bg && p != th.sk_edge, "{model} softkey {i} at {x},{y}: {p:06x}");
+                if th.gray {
+                    assert_eq!(p, background, "{model} softkey {i} at {x},{y}");
+                }
+            }
+        }
+
+        // The bar: empty before any stage has completed, and (on gray)
+        // outlined.  `filled(permille)` looks just inside that part of it.
+        let filled = |ui: &Ui, permille: i32| {
+            let x = bar.x + 2 + (bar.w - 4) * permille / 1000 - 2;
+            ui.canvas().pixel(x, mid) == th.load_fill
+        };
+        assert!(!filled(&ui, 50), "{model}");
+        if th.gray {
+            assert_eq!(ui.canvas().pixel(bar.x + bar.w / 2, bar.y), th.fg, "{model}");
+            assert_eq!(ui.canvas().pixel(bar.x, bar.y), background, "{model}: the corner pixel is left out");
+            assert_eq!(ui.canvas().pixel(bar.x + bar.w / 2, bar.y + 1), background, "{model}");
+        } else {
+            assert_eq!(ui.canvas().pixel(bar.x + bar.w / 2, mid), th.load_track, "{model}");
+            assert_ne!(ui.canvas().pixel(bar.x, bar.y), th.load_track, "{model}: the end is round");
+        }
+
+        // It advances as the stages complete, in the main role's order.
+        store.set_health(Subsystem::Config, HealthStatus::Ok);
+        store.set_health(Subsystem::Media, HealthStatus::Starting);
+        ui.pump();
+        assert!(filled(&ui, 100) && !filled(&ui, 150), "{model}");
+        store.set_health(Subsystem::Media, HealthStatus::Failed("no DSP".into()));
+        store.set_health(Subsystem::Sip, HealthStatus::Ok);
+        ui.pump();
+        assert!(filled(&ui, 750) && !filled(&ui, 800), "{model}");
+        // It never moves backward.
+        store.set_health(Subsystem::Media, HealthStatus::Starting);
+        ui.pump();
+        assert!(filled(&ui, 750), "{model}");
+        store.set_health(Subsystem::Media, HealthStatus::Ok);
+        store.set_health(Subsystem::Apps, HealthStatus::Ok);
+        store.set_health(Subsystem::Web, HealthStatus::Ok);
+        ui.pump();
+        assert!(filled(&ui, 950) && !filled(&ui, 1000), "{model}");
+
+        // Shutting down shows no bar.
+        store.update::<System, _>(|s| s.phase = Phase::ShuttingDown);
+        ui.pump();
+        assert_eq!(ui.screen_name(), "boot", "{model}");
+        assert!(!filled(&ui, 100), "{model}");
+
+        // The end of start-up leaves the screen.
+        store.update::<System, _>(|s| s.phase = Phase::Running);
+        ui.pump();
+        assert_eq!(ui.screen_name(), "idle", "{model}");
+    }
+}

@@ -131,6 +131,12 @@ pub(crate) trait Screen: Send {
     fn wallpaper(&self) -> bool {
         false
     }
+    /// Whether the softkey shapes are drawn below this screen.  A screen
+    /// on which no key does anything returns false and gets the whole
+    /// frame to draw in.
+    fn softkey_bar(&self, _cx: &Cx) -> bool {
+        true
+    }
     /// Paints over the softkey bar too.
     fn full_screen(&self) -> bool {
         false
@@ -536,20 +542,10 @@ impl Screen for Level {
     }
 }
 
-/// A full-area centered message with an optional icon and progress bar
-/// (boot, provisioning progress, update).
-pub(crate) fn splash(c: &mut Canvas, th: &Theme, area: IRect, art: bool, title: &str, text: &str, percent: Option<u32>) {
-    let mut y = area.y + th.pad;
-    if art {
-        if let Some(icon) = th.icon("splash") {
-            let avail = area.h - 3 * th.line_h - th.pad;
-            let iy = area.y + ((avail - icon.height()) / 2).max(0);
-            c.icon(icon, area.x + (area.w - icon.width()) / 2, iy, th.fg);
-            y = iy + icon.height() + th.pad;
-        }
-    } else {
-        y = area.y + (area.h - 3 * th.line_h) / 2;
-    }
+/// A full-area centered message with an optional progress bar
+/// (provisioning progress, update).
+pub(crate) fn splash(c: &mut Canvas, th: &Theme, area: IRect, title: &str, text: &str, percent: Option<u32>) {
+    let mut y = area.y + (area.h - 3 * th.line_h) / 2;
     if !title.is_empty() {
         c.text_in(th.font(Font::Title), IRect::new(area.x + th.pad, y, area.w - 2 * th.pad, th.line_h), title, th.fg, HAlign::Center);
         y += th.line_h;

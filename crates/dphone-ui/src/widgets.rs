@@ -165,6 +165,31 @@ pub fn softkey_bar(c: &mut Canvas, th: &Theme, labels: &[String; 4]) {
     }
 }
 
+/// The loading bar of the boot screen: `permille` of `r` filled.  On the
+/// color skin a bar with round, anti-aliased ends; on gray a pixel-fitted
+/// outline with a solid fill inside, black and white only.
+pub fn loading_bar(c: &mut Canvas, th: &Theme, r: IRect, permille: u32) {
+    let p = permille.min(1000) as i32;
+    if th.gray {
+        // The outline, with its four corner pixels left out.
+        c.hline(r.x + 1, r.y, r.w - 2, th.fg);
+        c.hline(r.x + 1, r.bottom() - 1, r.w - 2, th.fg);
+        c.vline(r.x, r.y + 1, r.h - 2, th.fg);
+        c.vline(r.right() - 1, r.y + 1, r.h - 2, th.fg);
+        // One pixel of background between the outline and the fill.
+        let inner = r.inset(2);
+        c.fill(IRect::new(inner.x, inner.y, inner.w * p / 1000, inner.h), th.fg);
+        return;
+    }
+    let rad = r.h / 2;
+    c.fill_round_aa(r, rad, th.load_track);
+    // The fill keeps its round ends: it is never shorter than it is tall.
+    let w = r.h + (r.w - r.h) * p / 1000;
+    if p > 0 {
+        c.fill_round_aa(IRect::new(r.x, r.y, w, r.h), rad, th.load_fill);
+    }
+}
+
 /// A horizontal progress bar.
 pub fn progress(c: &mut Canvas, th: &Theme, r: IRect, percent: u32) {
     c.frame(r, if th.gray { th.fg } else { th.border });

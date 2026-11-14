@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 const SKINS: [&str; 3] = ["SMALL_GRAY", "LARGE_GRAY", "COLOR"];
+/// The skins' names in asset file names (`splash.small-gray.svg`).
+const SKIN_FILE_TAGS: [&str; 3] = ["small-gray", "large-gray", "color"];
 
 /// (font file, pixel size, digits only) per skin, in role order: Normal,
 /// Bold, Small, Title, Large, then the two idle-screen roles: Clock (the
@@ -59,6 +61,10 @@ const FONTS: [[(&str, f32, bool); 9]; 3] = [
 /// skin keeps color (else an alpha mask tinted at draw time).
 /// The last flag inverts luminance on the gray skins (artwork drawn for a
 /// dark background, shown on the light gray screens).
+///
+/// A file named `<name>.<skin>.svg` (`small-gray`, `large-gray`, or
+/// `color`) replaces `<name>.svg` on that skin.  It is drawn for that
+/// skin's pixels: it is rendered at its own size, and never inverted.
 const CLASSES: [(&str, [u32; 3], bool, bool); 3] = [
     ("icons/status", [13, 15, 22], false, false),
     ("icons/app", [24, 28, 48], true, false),
@@ -147,11 +153,13 @@ fn gen_font(out: &mut String, blobs: &Path, assets: &Path, name: &str, file: &st
     .unwrap();
 }
 
-fn render_svg(path: &Path, height: u32, opt: &resvg::usvg::Options) -> (u32, u32, Vec<u8>) {
+/// Renders an SVG `height` pixels tall, or at its own size.
+fn render_svg(path: &Path, height: Option<u32>, opt: &resvg::usvg::Options) -> (u32, u32, Vec<u8>) {
     let data = fs::read(path).unwrap();
     let tree = resvg::usvg::Tree::from_data(&data, opt)
         .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     let size = tree.size();
+    let height = height.unwrap_or(size.height().round().max(1.0) as u32);
     let scale = height as f32 / size.height();
     let width = (size.width() * scale).round().max(1.0) as u32;
     let mut pm = resvg::tiny_skia::Pixmap::new(width, height).unwrap();
@@ -169,7 +177,12 @@ fn render_svg(path: &Path, height: u32, opt: &resvg::usvg::Options) -> (u32, u32
     (width, height, px)
 }
 
-fn encode(rgba: &[u8], fmt: u8, invert: bool) -> Vec<u8> {
+/// `on_white` (gray artwork): partly covered pixels are blended with the
+/// white background the artwork is shown on before the four levels are
+/// chosen, so edges are anti-aliased through the two middle grays; only
+/// untouched pixels stay transparent.  Without it (app icons, which also
+/// sit on selected, black rows) a pixel is either opaque or transparent.
+fn encode(rgba: &[u8], fmt: u8, invert: bool, on_white: bool) -> Vec<u8> {
     match fmt {
         FMT_MASK4 => {
             let mut n = Nibbles::new();
@@ -181,11 +194,13 @@ fn encode(rgba: &[u8], fmt: u8, invert: bool) -> Vec<u8> {
         FMT_GRAY2 => {
             let mut n = Nibbles::new();
             for p in rgba.as_chunks::<4>().0 {
-                if p[3] < 128 {
+                let a = p[3] as u32;
+                if (on_white && a == 0) || (!on_white && a < 128) {
                     n.push(15);
                 } else {
                     let lum = (p[0] as u32 * 77 + p[1] as u32 * 150 + p[2] as u32 * 29) >> 8;
                     let lum = if invert { 255 - lum } else { lum };
+                    let lum = if on_white { (lum * a + 255 * (255 - a) + 127) / 255 } else { lum };
                     n.push(((lum * 3 + 127) / 255) as u8);
                 }
             }
@@ -250,30 +265,39 @@ fn main() {
     for (si, skin) in SKINS.iter().enumerate() {
         let mut blob: Vec<u8> = Vec::new();
         let mut recs = String::new();
-        let mut entries: Vec<(String, PathBuf, u32, u8, bool)> = Vec::new();
+        // (name, file, pixel height or `None` for the file's own, format,
+        // invert, blend with white).
+        let mut entries: Vec<(String, PathBuf, Option<u32>, u8, bool, bool)> = Vec::new();
         for (dir, heights, colored, invert) in CLASSES {
             let d = assets.join(dir);
             let Ok(rd) = fs::read_dir(&d) else { continue };
-            for f in rd.flatten() {
-                let p = f.path();
-                if p.extension().is_some_and(|e| e == "svg") {
-                    let stem = p.file_stem().unwrap().to_string_lossy().into_owned();
-                    // App icons get their own namespace: `app-contacts` beside
-                    // the monochrome `contacts`.
-                    let name = if dir == "icons/app" { format!("app-{stem}") } else { stem };
-                    let fmt = match (colored, si) {
-                        (false, _) => FMT_MASK4,
-                        (true, 2) => FMT_RGBA_RLE,
-                        (true, _) => FMT_GRAY2,
-                    };
-                    entries.push((name, p, heights[si], fmt, invert));
-                }
+            let files: Vec<PathBuf> = rd.flatten().map(|f| f.path()).filter(|p| p.extension().is_some_and(|e| e == "svg")).collect();
+            for p in &files {
+                let stem = p.file_stem().unwrap().to_string_lossy().into_owned();
+                // A file for one skin: used on that skin only, where it
+                // replaces the file for every skin.
+                let (stem, own) = match stem.split_once('.') {
+                    Some((base, tag)) if tag == SKIN_FILE_TAGS[si] => (base.to_string(), true),
+                    Some(_) => continue,
+                    None if files.iter().any(|q| q.file_name().is_some_and(|n| *n == *format!("{stem}.{}.svg", SKIN_FILE_TAGS[si]))) => continue,
+                    None => (stem, false),
+                };
+                // App icons get their own namespace: `app-contacts` beside
+                // the monochrome `contacts`.
+                let name = if dir == "icons/app" { format!("app-{stem}") } else { stem };
+                let fmt = match (colored, si) {
+                    (false, _) => FMT_MASK4,
+                    (true, 2) => FMT_RGBA_RLE,
+                    (true, _) => FMT_GRAY2,
+                };
+                let height = if own { None } else { Some(heights[si]) };
+                entries.push((name, p.clone(), height, fmt, invert && !own, dir == "art"));
             }
         }
         entries.sort();
-        for (name, path, h, fmt, invert) in entries {
+        for (name, path, h, fmt, invert, on_white) in entries {
             let (w, h, rgba) = render_svg(&path, h, &opt);
-            let enc = encode(&rgba, fmt, invert);
+            let enc = encode(&rgba, fmt, invert, on_white);
             writeln!(
                 recs,
                 "    IconRec {{ name: {name:?}, w: {w}, h: {h}, fmt: {fmt}, off: {}, len: {} }},",

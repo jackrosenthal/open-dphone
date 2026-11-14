@@ -301,7 +301,19 @@ fn form_app(model: Model) -> (AppView, dphone_ui::AppEvents) {
 
 fn all_screens(model: Model) {
     let mut r = Rig::new(model);
+    // Start-up as the main role reports it, stage by stage.
+    r.store.set_health(Subsystem::Config, HealthStatus::Ok);
+    r.store.set_health(Subsystem::Media, HealthStatus::Starting);
     r.shot("01-boot");
+    r.store.set_health(Subsystem::Media, HealthStatus::Ok);
+    r.store.set_health(Subsystem::Sip, HealthStatus::Starting);
+    r.shot("01-boot-2-telephony");
+    r.store.set_health(Subsystem::Sip, HealthStatus::Ok);
+    r.store.set_health(Subsystem::Apps, HealthStatus::Starting);
+    r.store.set_health(Subsystem::Web, HealthStatus::Starting);
+    r.shot("01-boot-3-apps");
+    r.store.set_health(Subsystem::Apps, HealthStatus::Ok);
+    r.shot("01-boot-4-web");
     r.store.update::<System, _>(|s| s.phase = Phase::NetworkWait);
     r.shot("02-network-wait");
     r.store.update::<System, _>(|s| s.phase = Phase::Recovery);

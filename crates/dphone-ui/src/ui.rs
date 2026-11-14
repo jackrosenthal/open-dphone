@@ -150,7 +150,7 @@ fn base_kind(st: &ds::State) -> BaseKind {
 
 fn make_base(kind: BaseKind) -> Box<dyn Screen> {
     match kind {
-        BaseKind::Boot => Box::new(boot::Boot),
+        BaseKind::Boot => Box::new(boot::Boot::default()),
         BaseKind::Recovery => Box::new(boot::Recovery),
         BaseKind::Provision => Box::new(boot::Provision::default()),
         BaseKind::Update => Box::new(boot::UpdateScreen),
@@ -928,13 +928,17 @@ impl Ui {
             } else {
                 c.clear(th.bg);
             }
-            let (area, _) = bounds.split_bottom(th.softkey_h);
-            top.draw(&cx, c, area);
-            let labels = match top.raw_softkeys(&cx) {
-                Some(l) => l,
-                None => soft_slots(&top.softkeys(&cx), self.nav.soft_page).map(|(_, l)| l),
-            };
-            widgets::softkey_bar(c, th, &labels);
+            if top.softkey_bar(&cx) {
+                let (area, _) = bounds.split_bottom(th.softkey_h);
+                top.draw(&cx, c, area);
+                let labels = match top.raw_softkeys(&cx) {
+                    Some(l) => l,
+                    None => soft_slots(&top.softkeys(&cx), self.nav.soft_page).map(|(_, l)| l),
+                };
+                widgets::softkey_bar(c, th, &labels);
+            } else {
+                top.draw(&cx, c, bounds);
+            }
         }
         self.screen_deadline = top.deadline(&cx);
         let name = top.name();

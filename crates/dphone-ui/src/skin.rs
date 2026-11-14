@@ -93,6 +93,9 @@ pub struct Theme {
     /// Line-key tab fill.
     pub tab_bg: Rgb,
     pub tab_fg: Rgb,
+    /// The boot screen's loading bar: the empty track and the filled part.
+    pub load_track: Rgb,
+    pub load_fill: Rgb,
 }
 
 static SMALL_GRAY: Theme = gray_theme(Skin::SmallGray);
@@ -146,6 +149,8 @@ static COLOR: Theme = Theme {
     card_dark: rgb(0x21, 0x21, 0x21),
     tab_bg: rgb(0x42, 0x42, 0x42),
     tab_fg: rgb(0xEE, 0xEE, 0xEE),
+    load_track: rgb(0x1F, 0x35, 0x5E),
+    load_fill: rgb(0x2F, 0x80, 0xED),
 };
 
 const fn gray_theme(skin: Skin) -> Theme {
@@ -199,6 +204,8 @@ const fn gray_theme(skin: Skin) -> Theme {
         card_dark: GRAY[3],
         tab_bg: GRAY[3],
         tab_fg: GRAY[0],
+        load_track: GRAY[3],
+        load_fill: GRAY[0],
     }
 }
 

@@ -169,7 +169,7 @@ impl Screen for LampTest {
         true
     }
     fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
-        splash(c, cx.th, area, false, tr::TEST_LAMPS, tr::LAMPS_CYCLING, None);
+        splash(c, cx.th, area, tr::TEST_LAMPS, tr::LAMPS_CYCLING, None);
     }
     fn deadline(&self, cx: &Cx) -> Option<u64> {
         Some(cx.now_ms + 500)

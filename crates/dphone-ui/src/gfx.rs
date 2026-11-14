@@ -226,6 +226,40 @@ impl Canvas {
         }
     }
 
+    /// A filled rectangle with rounded corners of radius `rad`, its edge
+    /// anti-aliased by pixel coverage.  (A gray canvas shows the coverage
+    /// through its two middle levels.)  A radius of half the height makes
+    /// a bar with round ends.
+    pub fn fill_round_aa(&mut self, r: IRect, rad: i32, c: Rgb) {
+        /// One pixel in the fixed-point unit of the distances below.
+        const ONE: i32 = 256;
+        if r.is_empty() {
+            return;
+        }
+        let rad = rad.min(r.w / 2).min(r.h / 2).max(0);
+        let c = self.color(c);
+        // The straight middle needs no blending.
+        self.fill(IRect::new(r.x + rad, r.y, r.w - 2 * rad, r.h), c);
+        // Half the size, and half the size less the radius: the distance
+        // from the center to the centers of the corner circles.
+        let (hw, hh) = (r.w * ONE / 2, r.h * ONE / 2);
+        let (iw, ih) = (hw - rad * ONE, hh - rad * ONE);
+        for j in 0..r.h {
+            let qy = (j * ONE + ONE / 2 - hh).abs() - ih;
+            for i in (0..rad).chain(r.w - rad..r.w) {
+                let qx = (i * ONE + ONE / 2 - hw).abs() - iw;
+                // The signed distance from the pixel's center to the edge.
+                let d = if qx > 0 && qy > 0 {
+                    ((qx * qx + qy * qy) as u32).isqrt() as i32 - rad * ONE
+                } else {
+                    qx.max(qy) - rad * ONE
+                };
+                let coverage = (ONE / 2 - d).clamp(0, ONE) as u32;
+                self.put_blend(r.x + i, r.y + j, c, coverage, ONE as u32);
+            }
+        }
+    }
+
     #[inline]
     fn put_blend(&mut self, x: i32, y: i32, c: Rgb, a: u32, max: u32) {
         if a == 0 || x < self.clip.x || y < self.clip.y || x >= self.clip.right() || y >= self.clip.bottom() {
