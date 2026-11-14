@@ -1,0 +1,26 @@
+[package]
+name = "dphone-dpma"
+description = "Open DPhone: DPMA provisioning client and app-request transport on dpma-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = ["sip"]
+# Adapter that carries DPMA over dphone-sip's out-of-dialog MESSAGE.
+sip = ["dep:dphone-sip"]
+
+[dependencies]
+dphone-state = { path = "../dphone-state" }
+dphone-sip = { path = "../dphone-sip", optional = true }
+dpma-proto = { path = "../../../dpma-rs/crates/dpma-proto" }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
+async-trait = "0.1"
+log = "0.4"
+md-5 = "0.10"
+rsa = "0.9"
+serde_json = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "net", "time", "sync", "macros", "test-util"] }
