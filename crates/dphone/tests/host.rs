@@ -185,6 +185,38 @@ fn output_into_a_closed_pipe_is_not_a_panic() {
     assert_eq!(run_into_closed_pipes(Some(&socket), &["no-such-command"]), 127);
     // Following the log would never end by itself.
     assert_eq!(run_into_closed_pipes(Some(&socket), &["log", "-f"]), 1);
+
+    // The same when the reader goes away later, while the log is quiet
+    // (`dphone log -f | head -1`): there is then no write to fail, so the
+    // command has to notice the closed pipe by itself.
+    wait_for("healthy", Duration::from_secs(10), || diag(&socket, &["health"]).0 == 0);
+    let quiet = |socket: &Path| {
+        let lines = |socket: &Path| diag(socket, &["log", "-n", "100000"]).1.lines().count();
+        let before = lines(socket);
+        std::thread::sleep(Duration::from_secs(1));
+        lines(socket) == before
+    };
+    wait_for("a quiet log", Duration::from_secs(20), || quiet(&socket));
+    let mut follow = Command::new(BIN)
+        .args(["log", "-f"])
+        .env("DPHONE_DIAG_SOCKET", &socket)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut reader = BufReader::new(follow.stdout.take().unwrap());
+    let mut first = String::new();
+    reader.read_line(&mut first).unwrap();
+    assert!(!first.is_empty());
+    // The backlog is out; nothing more is coming.  Close the pipe.
+    std::thread::sleep(Duration::from_millis(500));
+    drop(reader);
+    let closed = Instant::now();
+    let mut follow = KillOnDrop(follow);
+    wait_for("log -f to end after its output closed", Duration::from_secs(3), || follow.0.try_wait().unwrap().is_some());
+    assert!(closed.elapsed() < Duration::from_secs(3));
+    assert_eq!(follow.0.try_wait().unwrap().unwrap().code(), Some(1));
 }
 
 #[test]
