@@ -270,8 +270,8 @@ function oldFamily(v: Old): Panel {
   keys.push({ id: "vup", cx: 470, cy: 566, w: 56, h: 16, r: 3, fill: KEY, ink: white, legend: { icon: "plus" }, size: 11, bare: true });
 
   // Right of the dial pad.
-  const fx = wide ? [566, 626, 686] : [568, 636];
-  const navX = wide ? 606 : 590;
+  const fx = wide ? [558, 618, 678] : [568, 636];
+  const navX = wide ? 598 : 590;
   let y = 400;
   if (v.top) {
     v.top.forEach((id, i) => keys.push({ id, cx: fx[i], cy: y, w: 44, h: 22, r: 4, fill: KEY, ink: white, legend: { icon: id }, size: 16 }));
@@ -306,65 +306,97 @@ function oldFamily(v: Old): Panel {
     ),
   );
 
+  const hl = 300; // housing left edge
+  const hr = 664 + grow; // housing right edge
+  // The rapid-dial section (D50, D70) starts at the housing's right edge.
+  const wingW = v.wing ? 189 : 0;
+  // Outline of body and rapid-dial section together.  The sides lean out
+  // toward the bottom and the bottom edge bows downward, as in the D40
+  // quick reference drawing, which is front-on.
+  const xl = 268;
+  const xr = v.wing ? hr + wingW : right;
+  const bow = 16;
+  const yb = bottom - 24;
+  // Bottom edge: one quadratic from (xl, yb) to (xr, yb), bowed by `bow`.
+  // The curve runs between the rounded bottom corners.
+  const cl = xl + 20;
+  const cr = xr - 20;
+  const bottomY = (x: number) => {
+    const t = (x - cl) / (cr - cl);
+    return yb + 4 * bow * t * (1 - t);
+  };
+  // The same curve from `xa` back to `xl` (de Casteljau split), for the
+  // body, which ends where the rapid-dial section begins.
+  const bottomTo = (xa: number) => {
+    const t = (xa - cl) / (cr - cl);
+    const cy = yb + 2 * bow * t;
+    return `Q${(cl + xa) / 2} ${cy} ${cl} ${yb}Q${xl} ${yb} ${xl + 1.3} ${yb - 20}`;
+  };
+  const bottomFrom = (xa: number) => {
+    const t = (xa - cl) / (cr - cl);
+    const cy = yb + 2 * bow * (1 - t);
+    return `Q${xr} ${yb} ${cr} ${yb}Q${(xa + cr) / 2} ${cy} ${xa} ${bottomY(xa)}`;
+  };
   const shapes: Shape[] = [
     // Cradle wing under the handset.
-    { d: rect(98, 232, 200, bottom - 232, 24), fill: "#2b2e32" },
+    { d: rect(98, 232, 200, yb - 232, 24), fill: "#2b2e32" },
     // Upper cup the earpiece rests in, with the hook switch.
     { d: rect(116, 244, 136, 72, 24), fill: "#1f2124" },
     { d: rect(174, 296, 20, 9, 2), fill: "#0e0f10" },
     // Lower cup the mouthpiece rests in.
-    { d: rect(116, bottom - 104, 136, 90, 28), fill: "#1f2124" },
+    { d: rect(116, yb - 100, 136, 88, 28), fill: "#1f2124" },
     // Body.
-    { d: rect(268, 212, right - 268, bottom - 212, 24), fill: CHARCOAL },
+    {
+      d: v.wing
+        ? `M306 212H${hr}V${bottomY(hr)}${bottomTo(hr)}L284 236Q286 212 306 212Z`
+        : `M306 212H${right - 40}Q${right - 20} 212 ${right - 18} 236L${xr - 1.3} ${yb - 20}Q${xr} ${yb} ${cr} ${yb}${bottomTo(cr)}L284 236Q286 212 306 212Z`,
+      fill: CHARCOAL,
+    },
   ];
-  // Right wing: ten rapid-dial keys beside a label window (D50) or a
-  // second display (D70), in a black housing joined to the body's side.
+  // Rapid-dial section: one black surface joined edge to edge to the
+  // right of the silver housing, holding ten keys beside a label window
+  // (D50) or a second display (D70).
   let side: Panel["side"];
   let vbRight = right + 28;
   if (v.wing) {
-    const wx = right - 4;
-    const ww = 150;
-    const top = 262;
-    // Housing, with a raised inner panel.
-    shapes.push({ d: `M${wx} ${top}H${wx + ww - 18}Q${wx + ww} ${top} ${wx + ww} ${top + 18}V${bottom - 20}Q${wx + ww} ${bottom} ${wx + ww - 20} ${bottom}H${wx}Z`, fill: "#17181a", gloss: true });
-    shapes.push({ d: rect(wx + 10, top + 24, ww - 22, bottom - top - 40, 5), fill: "#222427", stroke: "#0c0d0e" });
-    const kx = wx + ww - 32;
+    const wx = hr;
+    shapes.push({ d: `M${wx} 212H${xr - 24}Q${xr - 2} 212 ${xr - 2} 236L${xr - 1.3} ${yb - 20}${bottomFrom(wx)}Z`, fill: "#17181a", gloss: true });
+    const kx = wx + 160;
     if (v.wing === "paper") {
       // D50: ten label rows behind a window, a key beside each row.
-      const rowH = 27;
-      const wy = top + 38;
-      shapes.push({ d: rect(wx + 20, wy - 4, 84, 10 * rowH + 8, 3), fill: "#0d0e0f" });
+      const rowH = 24.3;
+      const wy = 268;
+      shapes.push({ d: rect(wx + 20, wy - 3, 103, 10 * rowH + 6, 2), fill: "#08090a" });
       for (let i = 0; i < 10; i++) {
-        shapes.push({ d: rect(wx + 24, wy + i * rowH, 76, rowH, 0), fill: i % 2 ? "#c7cbd1" : "#f3f4f6" });
-        keys.push({ id: `blf${i + 1}`, cx: kx, cy: wy + (i + 0.5) * rowH, w: 26, h: 13, r: 6.5, fill: HOUSING_KEY, lamp: `blf${i + 1}` });
+        shapes.push({ d: rect(wx + 23, wy + i * rowH, 97, rowH, 0), fill: i % 2 ? "#c7cbd1" : "#f3f4f6" });
+        keys.push({ id: `blf${i + 1}`, cx: kx, cy: wy + (i + 0.5) * rowH, w: 38, h: 15, r: 6, fill: HOUSING_KEY, lamp: `blf${i + 1}` });
       }
     } else {
       // D70: second display (ten entries and a page row), a key beside
       // each entry, two teal page keys under the display.
-      const sw = 80;
+      const sw = 92;
       const sh = sw * (357 / 113);
-      const sy = top + 38;
-      side = { x: wx + 22, y: sy, w: sw, h: sh };
-      shapes.push({ d: rect(wx + 17, sy - 5, sw + 10, sh + 10, 3), fill: "#0d0e0f" });
+      const sy = 256;
+      side = { x: wx + 24, y: sy, w: sw, h: sh };
+      shapes.push({ d: rect(wx + 20, sy - 4, sw + 8, sh + 8, 2), fill: "#08090a" });
       for (let i = 0; i < 10; i++) {
-        keys.push({ id: `blf${i + 1}`, cx: kx, cy: sy + (i + 0.5) * (sh / 11), w: 26, h: 13, r: 6.5, fill: HOUSING_KEY, lamp: `blf${i + 1}` });
+        keys.push({ id: `blf${i + 1}`, cx: kx, cy: sy + (i + 0.5) * (sh / 11), w: 38, h: 15, r: 6, fill: HOUSING_KEY, lamp: `blf${i + 1}` });
       }
       [
-        ["blfleft", wx + 22 + sw * 0.27],
-        ["blfright", wx + 22 + sw * 0.73],
+        ["blfleft", wx + 24 + sw * 0.27],
+        ["blfright", wx + 24 + sw * 0.73],
       ].forEach(([id, cx]) => {
-        keys.push({ id: id as string, cx: cx as number, cy: sy + sh + 26, w: 30, h: 13, r: 5, fill: TEAL });
-        lines.push([cx as number, sy + sh + 6, cx as number, sy + sh + 19]);
+        keys.push({ id: id as string, cx: cx as number, cy: sy + sh + 24, w: 32, h: 13, r: 5, fill: TEAL });
+        lines.push([cx as number, sy + sh + 5, cx as number, sy + sh + 17]);
       });
     }
-    vbRight = wx + ww + 24;
+    vbRight = xr + 24;
   }
-  const hl = 300; // housing left edge
-  const hr = 664 + grow; // housing right edge
+  const mid = (hl + hr) / 2;
   shapes.push(
-    // Silver display housing, rising above the body's top edge; straight
-    // sides, bowed lower edge.
-    { d: `M${hl + 22} 158H${hr - 22}Q${hr} 158 ${hr} 180V346Q${(hl + hr) / 2} 378 ${hl} 346V180Q${hl} 158 ${hl + 22} 158Z`, fill: "#c9ccd0", gloss: true, stroke: "#9da1a6" },
+    // Silver display housing, rising above the body's top edge: arched
+    // top edge, bowed lower edge.
+    { d: `M${hl} 182Q${hl} 162 ${hl + 22} 160Q${mid} 148 ${hr - 22} 160Q${hr} 162 ${hr} 182V346Q${mid} 378 ${hl} 346Z`, fill: "#c9ccd0", gloss: true, stroke: "#9da1a6" },
     // Display bezel.
     { d: rect(326, 188, 224, 122, 10), fill: "#2b2d2f" },
     // The volume bar and the ring around the pad.
@@ -383,7 +415,7 @@ function oldFamily(v: Old): Panel {
     side,
     // The lamp is the housing's top-right corner itself: a smoked lens
     // that follows the corner along the top and down the right edge.
-    mwi: { d: `M${hr - 36} 158H${hr - 22}Q${hr} 158 ${hr} 180V186H${hr - 36}Z`, off: "#8e94a2" },
+    mwi: { d: `M${hr - 38} 159L${hr - 22} 160Q${hr} 162 ${hr} 182V188H${hr - 38}Z`, off: "#8e94a2" },
     handset: { x: 106, y: 96, w: 152, h: bottom - 96 - 14, fill: "#303338", print: "HDVoice" },
     // Vertical slots beside the housing, as in the quick reference drawing.
     grille: { cx: 184, cy: 400, rx: 40, ry: 58 },
