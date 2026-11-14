@@ -89,14 +89,14 @@ pub fn run(args: &[String]) -> i32 {
         ["arm-trial"] => arm_trial(),
         [file, rest @ ..] if !file.starts_with('-') && *file != "help" => install(file, rest),
         _ => {
-            eprint!("{USAGE}");
+            crate::err!("{USAGE}");
             return 2;
         }
     };
     match result {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("dphone update: {e}");
+            crate::errln!("dphone update: {e}");
             1
         }
     }
@@ -107,10 +107,10 @@ fn status() -> Result<(), String> {
     let dir = open_dir();
     let st = inspect(&mut mtd, &cmdline(), dir.exists().then_some(dir.as_path())).map_err(|e| e.to_string())?;
     let name = |b: Option<Bank>| b.map(bank_name).unwrap_or("neither bank");
-    println!("running from:   {}", name(st.running));
-    println!("ctrl active:    {}", name(st.active));
-    println!("boot2 boots:    {}", bank_name(st.next_boot));
-    println!(
+    crate::outln!("running from:   {}", name(st.running));
+    crate::outln!("ctrl active:    {}", name(st.active));
+    crate::outln!("boot2 boots:    {}", bank_name(st.next_boot));
+    crate::outln!(
         "ctrl record:    {}, {} valid copies ({} good blocks, {} bad){}",
         if st.ctrl_valid { "valid" } else { "INVALID" },
         st.ctrl_copies.0,
@@ -119,20 +119,20 @@ fn status() -> Result<(), String> {
         if st.ctrl_consistent { "" } else { ", copies DISAGREE" },
     );
     for b in &st.banks {
-        println!("bank {}:", bank_name(b.bank));
-        println!("  header:       {}", if b.header.is_some() { "valid" } else { "none or bad CRC" });
-        println!("  image:        {} ({})", b.image_name, b.build_date);
-        println!("  version:      {}", b.version.as_deref().unwrap_or("?"));
+        crate::outln!("bank {}:", bank_name(b.bank));
+        crate::outln!("  header:       {}", if b.header.is_some() { "valid" } else { "none or bad CRC" });
+        crate::outln!("  image:        {} ({})", b.image_name, b.build_date);
+        crate::outln!("  version:      {}", b.version.as_deref().unwrap_or("?"));
         match &b.kernel {
-            Ok(span) => println!("  kernel:       loadable ({span:?})"),
-            Err(p) => println!("  kernel:       NOT loadable: {p}"),
+            Ok(span) => crate::outln!("  kernel:       loadable ({span:?})"),
+            Err(p) => crate::outln!("  kernel:       NOT loadable: {p}"),
         }
-        println!("  bad blocks:   kernel {}, rootfs {}", b.kernel_bad_blocks, b.rootfs_bad_blocks);
-        println!("  bootable:     {}", if b.bootable() { "yes" } else { "no" });
+        crate::outln!("  bad blocks:   kernel {}, rootfs {}", b.kernel_bad_blocks, b.rootfs_bad_blocks);
+        crate::outln!("  bootable:     {}", if b.bootable() { "yes" } else { "no" });
     }
     match &st.trial {
-        Some(t) => println!("trial:          pending ({t:?})"),
-        None => println!("trial:          none"),
+        Some(t) => crate::outln!("trial:          pending ({t:?})"),
+        None => crate::outln!("trial:          none"),
     }
     Ok(())
 }
@@ -143,7 +143,7 @@ fn switch_bank(bank: Bank) -> Result<(), String> {
     select_bank(&mut mtd, model, bank).map_err(|e| e.to_string())?;
     // A manual choice ends any trial: the init role must not undo it.
     let _ = trial::clear(&open_dir());
-    println!("bank {} selected for the next boot; 'dphone reboot' to boot it", bank_name(bank));
+    crate::outln!("bank {} selected for the next boot; 'dphone reboot' to boot it", bank_name(bank));
     Ok(())
 }
 
@@ -174,7 +174,7 @@ fn arm_trial() -> Result<(), String> {
         File::open(&dir)?.sync_all()
     };
     write().map_err(|e| format!("{}: {e}", path.display()))?;
-    println!(
+    crate::outln!(
         "trial recorded: bank {} must come up healthy within {} boots, or the phone returns to bank {}",
         bank_name(other),
         record.max_boots,
@@ -209,15 +209,15 @@ fn install(file: &str, rest: &[&str]) -> Result<(), String> {
         .progress(|phase| {
             let text = format!("{phase:?}");
             if text != last {
-                print!("\r{text:<40}");
-                let _ = std::io::stdout().flush();
+                crate::out!("\r{text:<40}");
+                crate::out::flush();
                 last = text;
             }
         })
         .install_eff(reader)
         .map_err(|e| format!("\n{e}"))?;
-    println!();
-    println!(
+    crate::outln!();
+    crate::outln!(
         "installed version {} into bank {}{}; bank {} is kept as it was",
         installed.version,
         bank_name(installed.bank),
@@ -227,12 +227,12 @@ fn install(file: &str, rest: &[&str]) -> Result<(), String> {
     let dir = open_dir();
     if dir.exists() {
         match trial::begin(&dir, &installed) {
-            Ok(true) => println!("trial boot recorded: the phone returns to the kept bank if the new image does not come up healthy"),
+            Ok(true) => crate::outln!("trial boot recorded: the phone returns to the kept bank if the new image does not come up healthy"),
             Ok(false) => {}
-            Err(e) => eprintln!("warning: could not record the trial boot: {e}"),
+            Err(e) => crate::errln!("warning: could not record the trial boot: {e}"),
         }
     }
-    println!("'dphone reboot' to boot it");
+    crate::outln!("'dphone reboot' to boot it");
     Ok(())
 }
 
@@ -255,9 +255,9 @@ fn write_userdata(file: &str) -> Result<(), String> {
         return Err("userdata is mounted; refusing to overwrite it".into());
     }
     let mut part = mtd.open(PART).map_err(|e| e.to_string())?;
-    println!("erasing {PART} ({} bytes)", info.size);
+    crate::outln!("erasing {PART} ({} bytes)", info.size);
     let bad = dphone_hal::erase_all(part.as_mut(), |_, _| {}).map_err(|e| e.to_string())?;
-    println!("writing ({bad} bad blocks skipped)");
+    crate::outln!("writing ({bad} bad blocks skipped)");
     let bs = info.erase_size as usize;
     let mut block = vec![0u8; bs];
     let mut back = vec![0u8; bs];
@@ -287,6 +287,6 @@ fn write_userdata(file: &str) -> Result<(), String> {
             break;
         }
     }
-    println!("wrote and verified {total} bytes; boot with root=/dev/mtdblock{} rootfstype=jffs2 ro", info.index);
+    crate::outln!("wrote and verified {total} bytes; boot with root=/dev/mtdblock{} rootfstype=jffs2 ro", info.index);
     Ok(())
 }

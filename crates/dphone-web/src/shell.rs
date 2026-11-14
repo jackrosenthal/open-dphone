@@ -142,10 +142,14 @@ impl ShellHost for PtyShellHost {
                 if libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
                     return Err(io::Error::last_os_error());
                 }
-                // A server started under `nohup` ignores hang-ups, and an
-                // ignored signal stays ignored across exec: the shell and
-                // its jobs must end when the terminal goes away.
-                libc::signal(libc::SIGHUP, libc::SIG_DFL);
+                // A server started under `nohup` ignores hang-ups, and one
+                // started in the background by a script ignores interrupt
+                // and quit; an ignored signal stays ignored across exec.
+                // The shell and its jobs must end when the terminal goes
+                // away, and Ctrl-C must interrupt what runs in it.
+                for signal in [libc::SIGHUP, libc::SIGINT, libc::SIGQUIT] {
+                    libc::signal(signal, libc::SIG_DFL);
+                }
                 Ok(())
             });
         }
@@ -312,13 +316,7 @@ impl Session {
 
     fn signal_group(&self, signal: libc::c_int) {
         let pid = self.child.lock().unwrap().id() as libc::pid_t;
-        // The shell leads its own session and process group; job-control
-        // shells put commands in further groups of that session, which the
-        // hang-up from closing the terminal reaches.
-        // SAFETY: kill on a process group we started.
-        unsafe {
-            libc::kill(-pid, signal);
-        }
+        signal_session(pid, signal);
     }
 
     /// Ends the shell and whatever it started: hang up, wait briefly, then
@@ -354,12 +352,36 @@ impl Drop for Session {
         // `terminate`: never leave a root shell behind.
         let child = self.child.get_mut().unwrap();
         if let Ok(None) = child.try_wait() {
-            let pid = child.id() as libc::pid_t;
-            // SAFETY: kill on a process group we started.
-            unsafe {
-                libc::kill(-pid, libc::SIGKILL);
-            }
+            signal_session(child.id() as libc::pid_t, libc::SIGKILL);
             let _ = child.wait();
+        }
+    }
+}
+
+/// Signals every process of the session that the shell `leader` leads.
+///
+/// The shell's own process group is not enough.  A shell with job control
+/// puts each command in a group of its own, the hang-up from closing the
+/// terminal reaches only the foreground group, and whether a shell passes a
+/// hang-up on to its background jobs differs from shell to shell (bash does;
+/// ash does not).  The session is what they all share.
+fn signal_session(leader: libc::pid_t, signal: libc::c_int) {
+    // SAFETY: kill on a process group we started.
+    unsafe {
+        libc::kill(-leader, signal);
+    }
+    let Ok(entries) = std::fs::read_dir("/proc") else { return };
+    for pid in entries.filter_map(|e| e.ok()?.file_name().to_str()?.parse::<libc::pid_t>().ok()) {
+        // "PID (COMM) STATE PPID PGRP SESSION ..."; COMM may hold spaces and
+        // parentheses, so the fields are counted from its last ')'.
+        let session = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok().and_then(|stat| {
+            stat.rsplit_once(')')?.1.split_ascii_whitespace().nth(3)?.parse::<libc::pid_t>().ok()
+        });
+        if session == Some(leader) {
+            // SAFETY: kill on a process of the session we started.
+            unsafe {
+                libc::kill(pid, signal);
+            }
         }
     }
 }

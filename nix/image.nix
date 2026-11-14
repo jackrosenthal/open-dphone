@@ -10,6 +10,7 @@
   brush,
   coreutils,
   applets,
+  sed,
   dspFirmware,
   apps ? null,
   version, # e.g., "3.0.0"
@@ -74,7 +75,7 @@ let
     install -m 0755 ${dphone}/bin/dphone $out/sbin/init
     ln -s ../sbin/init $out/bin/dphone
     # System commands `dphone` provides under its own name.
-    for c in mount umount insmod rmmod lsmod modprobe reboot poweroff halt dmesg; do
+    for c in mount umount insmod rmmod lsmod modprobe reboot poweroff halt dmesg ps; do
       ln -s ../sbin/init $out/bin/$c
     done
 
@@ -85,6 +86,7 @@ let
       ln -s coreutils $out/bin/$a
     done
     ln -s test "$out/bin/["
+    install -m 0755 ${sed}/bin/sed $out/bin/sed
 
     cp -r ${kernel}/lib/modules $out/lib/modules
 

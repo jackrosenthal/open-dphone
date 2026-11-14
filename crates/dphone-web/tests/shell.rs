@@ -67,7 +67,11 @@ async fn phone(with_control: bool) -> Phone {
         upload_dir: dir.join("upload"),
         ..Default::default()
     };
-    let shell = PtyShellHost::new("/bin/sh").env_clear().env("PATH", "/usr/bin:/bin").env("PS1", "prompt> ").current_dir(&dir);
+    // The search path of the test run, not a fixed one: the commands these
+    // tests type (`stty`, `sleep`) are not in /usr/bin or /bin everywhere
+    // (e.g., in a Nix build sandbox).
+    let path = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into());
+    let shell = PtyShellHost::new("/bin/sh").env_clear().env("PATH", path).env("PS1", "prompt> ").current_dir(&dir);
     let mut server = WebServer::new(Store::new(Model::D60), config.clone(), options).with_shell(Arc::new(shell));
     if with_control {
         server = server.with_ssh_control(Arc::new(FakeSsh { config: config.clone(), listening: AtomicBool::new(true) }));

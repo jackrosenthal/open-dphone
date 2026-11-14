@@ -1,6 +1,6 @@
 //! System commands the image has no other provider for.  uutils coreutils
-//! covers file tools; these are the Linux-specific ones a person at an SSH
-//! prompt expects.  Each is reachable as `dphone <name>` and, through a
+//! and uutils sed cover file and text tools; these are the Linux-specific
+//! ones a person at an SSH prompt expects.  Each is reachable as `dphone <name>` and, through a
 //! symlink named after it, directly.
 
 use std::path::Path;
@@ -10,7 +10,7 @@ use crate::sys::{self, Shutdown};
 
 /// Names handled here.
 pub const NAMES: &[&str] =
-    &["mount", "umount", "insmod", "rmmod", "lsmod", "modprobe", "reboot", "poweroff", "halt", "dmesg"];
+    &["mount", "umount", "insmod", "rmmod", "lsmod", "modprobe", "reboot", "poweroff", "halt", "dmesg", "ps"];
 
 pub fn is_command(name: &str) -> bool {
     NAMES.contains(&name)
@@ -29,21 +29,20 @@ pub fn run(name: &str, args: &[String]) -> i32 {
         "poweroff" => shutdown(Shutdown::PowerOff, args),
         "halt" => shutdown(Shutdown::Halt, args),
         "dmesg" => dmesg(args),
+        "ps" => ps(args),
         _ => Err(format!("unknown command '{name}'")),
     };
     match result {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("{name}: {e}");
+            crate::errln!("{name}: {e}");
             1
         }
     }
 }
 
 fn print(text: &str) {
-    use std::io::Write;
-    // A closed pipe (e.g., `dmesg | head`) is not an error worth a panic.
-    let _ = std::io::stdout().write_all(text.as_bytes());
+    crate::out!("{text}");
 }
 
 fn mount(args: &[String]) -> Result<(), String> {
@@ -186,4 +185,85 @@ fn dmesg(args: &[String]) -> Result<(), String> {
     }
     print(&out);
     Ok(())
+}
+
+/// One line of `ps`, from `/proc/PID/stat`.
+#[derive(Debug, PartialEq)]
+struct Process {
+    comm: String,
+    state: char,
+    ppid: u32,
+    /// User plus system CPU time, in clock ticks.
+    ticks: u64,
+    /// Resident set, in pages.
+    rss: u64,
+}
+
+/// Parse `/proc/PID/stat`: "PID (COMM) STATE PPID ...".  COMM may hold
+/// spaces and parentheses, so the fields are counted from its last ')'.
+fn parse_stat(stat: &str) -> Option<Process> {
+    let (head, tail) = stat.rsplit_once(')')?;
+    let comm = head.split_once('(')?.1.to_string();
+    let f: Vec<&str> = tail.split_ascii_whitespace().collect();
+    Some(Process {
+        comm,
+        state: f.first()?.chars().next()?,
+        ppid: f.get(1)?.parse().ok()?,
+        ticks: f.get(11)?.parse::<u64>().ok()? + f.get(12)?.parse::<u64>().ok()?,
+        rss: f.get(21)?.parse().ok()?,
+    })
+}
+
+/// Every process: PID, parent, state, resident memory, CPU time, and command
+/// line.  The usual ways of asking for all processes (`ps aux`, `ps -ef`)
+/// are accepted; there is no selection, since everything is always shown.
+fn ps(args: &[String]) -> Result<(), String> {
+    const USAGE: &str = "usage: ps    (lists every process; 'aux', '-ef', '-A', and the like are accepted)";
+    for a in args {
+        if a == "-h" || a == "--help" {
+            print(&format!("{USAGE}\n"));
+            return Ok(());
+        }
+        if !a.trim_start_matches('-').chars().all(|c| "aAefluwx".contains(c)) {
+            return Err(format!("unknown option '{a}'\n{USAGE}"));
+        }
+    }
+    // SAFETY: sysconf with valid names has no preconditions.
+    let (tick, page_kb) = unsafe { (libc::sysconf(libc::_SC_CLK_TCK).max(1) as u64, libc::sysconf(libc::_SC_PAGESIZE).max(1024) as u64 / 1024) };
+    let mut pids: Vec<u32> = std::fs::read_dir("/proc")
+        .map_err(|e| format!("/proc: {e}"))?
+        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok())
+        .collect();
+    pids.sort_unstable();
+    print(&format!("{:>5} {:>5} S {:>7} {:>8} COMMAND\n", "PID", "PPID", "RSS", "TIME"));
+    for pid in pids {
+        // A process may end between the directory listing and the read.
+        let Some(p) = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok().as_deref().and_then(parse_stat) else {
+            continue;
+        };
+        let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+        let words: Vec<_> = cmdline.split(|b| *b == 0).filter(|w| !w.is_empty()).map(String::from_utf8_lossy).collect();
+        // Kernel threads have no command line.
+        let command = if words.is_empty() { format!("[{}]", p.comm) } else { words.join(" ") };
+        let secs = p.ticks / tick;
+        let time = format!("{}:{:02}:{:02}", secs / 3600, secs / 60 % 60, secs % 60);
+        print(&format!("{pid:>5} {:>5} {} {:>6}K {time:>8} {command}\n", p.ppid, p.state, p.rss * page_kb));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stat_line() {
+        let line = "812 (tmux: server (1)) S 1 812 812 0 -1 4194560 3160 24710 0 3 141 59 20 14 20 0 1 0 5306 \
+                    12587008 1190 18446744073709551615 1 1 0 0 0 0 0 528386 134433281 0 0 0 17 9 0 0 0 0 0";
+        assert_eq!(
+            parse_stat(line),
+            Some(Process { comm: "tmux: server (1)".into(), state: 'S', ppid: 1, ticks: 200, rss: 1190 })
+        );
+        assert_eq!(parse_stat("12 (x) R"), None);
+    }
 }

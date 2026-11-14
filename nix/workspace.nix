@@ -11,7 +11,9 @@
   craneLib,
   rust,
   protobuf,
+  openssh,
   webDist ? null, # built frontend, embedded by dphone-web (DPHONE_WEB_DIST)
+  appsStaged ? null, # apps compiled for the build machine (DPHONE_APPS_STAGED)
 }:
 let
   root = ../.;
@@ -115,6 +117,23 @@ in
     // {
       cargoArtifacts = checksStage.deps;
       doCheck = true;
+      # Every failure in one run, not only the first crate's.
+      cargoTestExtraArgs = "--no-fail-fast";
+      # The OpenSSH client, for the test that logs in to the embedded SSH
+      # server and pushes a file with `scp`; that test skips itself on a
+      # machine without one.
+      nativeBuildInputs = checksStage.full.nativeBuildInputs ++ [ openssh ];
+      DPHONE_TEST_REQUIRE_SSH = "1";
+    }
+    // lib.optionalAttrs (appsStaged != null) {
+      # A writable copy, as the tests' own build of the apps would leave:
+      # they copy files out of it and then edit the copies, and a copy of a
+      # store file is read-only.
+      preCheck = ''
+        cp -r ${appsStaged} "$NIX_BUILD_TOP/apps-staged"
+        chmod -R u+w "$NIX_BUILD_TOP/apps-staged"
+        export DPHONE_APPS_STAGED="$NIX_BUILD_TOP/apps-staged"
+      '';
     }
   );
 

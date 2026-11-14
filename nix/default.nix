@@ -5,7 +5,7 @@
 #   kernel-<model>     boot image for the k0/k1 slot
 #   dphone             the firmware binary (ARMv6, static)
 #   dphone-image       host tool: EFF, OTA, kernel image, rootfs
-#   brush, coreutils   shell and core utilities (ARMv6, static)
+#   brush, coreutils, sed   shell and utilities (ARMv6, static)
 #   apps               built-in phone apps (.wasm)
 #   web                frontend bundle
 #   rootfs-tree        the root file system as a directory
@@ -55,6 +55,7 @@ let
   workspace = pkgs.callPackage ./workspace.nix {
     inherit craneLib rust;
     webDist = web;
+    appsStaged = if apps != null then apps.testFixture else null;
   };
   apps =
     if has "apps/Cargo.lock" then
@@ -67,7 +68,12 @@ let
 
   image = pkgs.callPackage ./image.nix {
     inherit (workspace) dphone dphone-image version;
-    inherit (userland) brush coreutils applets;
+    inherit (userland)
+      brush
+      coreutils
+      applets
+      sed
+      ;
     inherit kernel dspFirmware apps;
   };
 
@@ -78,7 +84,7 @@ in
   packages = {
     inherit kernel;
     kernel-source = kernel.source;
-    inherit (userland) brush coreutils;
+    inherit (userland) brush coreutils sed;
     inherit (workspace) dphone dphone-image;
     rootfs-tree = image.rootfsTree;
     inherit (image) rootfs;
@@ -98,7 +104,7 @@ in
   checks = {
     inherit (workspace) tests clippy;
     inherit kernel;
-    inherit (userland) brush coreutils;
+    inherit (userland) brush coreutils sed;
     inherit (workspace) dphone;
     # The rootfs image under the kernel's JFFS2 driver, on simulated NAND.
     jffs2-mount = pkgs.callPackage ./jffs2-mount-test.nix {

@@ -16,7 +16,7 @@ pub const LOCAL_HELP: &str = "\
 Commands run locally:
   main       run the main role (see 'dphone main --help')
   update     firmware: status, install an EFF, switch bank (see 'dphone update')
-  mount, umount, insmod, rmmod, lsmod, modprobe, reboot, poweroff, halt, dmesg
+  mount, umount, insmod, rmmod, lsmod, modprobe, reboot, poweroff, halt, dmesg, ps
 ";
 
 fn usage() -> String {
@@ -49,14 +49,14 @@ pub fn run(args: Vec<OsString>) -> i32 {
         return crate::cmds::run(base, rest);
     }
     let Some(command) = rest.first().map(String::as_str) else {
-        eprint!("{}", usage());
+        crate::err!("{}", usage());
         return 2;
     };
     let command_args = &rest[1..];
     match command {
         "main" => {
             if command_args.iter().any(|a| a == "--help" || a == "-h") {
-                print!("{}", crate::mainrole::USAGE);
+                crate::out!("{}", crate::mainrole::USAGE);
                 return 0;
             }
             crate::mainrole::run(command_args)
@@ -64,11 +64,11 @@ pub fn run(args: Vec<OsString>) -> i32 {
         "init" => run_init_test(command_args),
         "update" => crate::update_cli::run(command_args),
         "--help" | "-h" => {
-            print!("{}", usage());
+            crate::out!("{}", usage());
             0
         }
         "--version" | "-V" => {
-            println!("{} {}", crate::PRODUCT, crate::VERSION);
+            crate::outln!("{} {}", crate::PRODUCT, crate::VERSION);
             0
         }
         c if crate::cmds::is_command(c) => crate::cmds::run(c, command_args),
@@ -105,13 +105,13 @@ fn run_init_test(args: &[String]) -> i32 {
                 break;
             }
             _ => {
-                eprint!("{USAGE}");
+                crate::err!("{USAGE}");
                 return 2;
             }
         }
     }
     let (true, Some(nvdata), Some(run_dir), false) = (supervise_only, nvdata, run_dir, command.is_empty()) else {
-        eprint!("{USAGE}");
+        crate::err!("{USAGE}");
         return 2;
     };
     init::run_supervisor_test(init::TestOptions {

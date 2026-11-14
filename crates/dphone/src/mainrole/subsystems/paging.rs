@@ -392,15 +392,15 @@ impl Service {
 
     fn apply(&mut self, settings: Settings) {
         // A group that went away takes its page with it.
-        if let Some(p) = &self.playing {
-            if settings.listeners.get(p.listener) != self.settings.listeners.get(p.listener) {
-                self.stop_playing(false);
-            }
+        if let Some(p) = &self.playing
+            && settings.listeners.get(p.listener) != self.settings.listeners.get(p.listener)
+        {
+            self.stop_playing(false);
         }
-        if let Some((id, _)) = &self.sending {
-            if !settings.broadcasts.iter().any(|b| &b.group.id == id) {
-                self.stop_sending();
-            }
+        if let Some((id, _)) = &self.sending
+            && !settings.broadcasts.iter().any(|b| &b.group.id == id)
+        {
+            self.stop_sending();
         }
         self.ignored.clear();
         self.settings = settings;

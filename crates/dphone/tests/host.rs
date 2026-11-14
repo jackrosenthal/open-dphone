@@ -24,6 +24,37 @@ fn wait_for(what: &str, timeout: Duration, mut check: impl FnMut() -> bool) {
     }
 }
 
+/// The first child process of `parent`, from `/proc`.  (Not `pgrep`: the
+/// test must not depend on which tools the machine running it has.)
+fn child_of(parent: u32) -> Option<i32> {
+    let mut children: Vec<i32> = std::fs::read_dir("/proc")
+        .ok()?
+        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<i32>().ok())
+        .filter(|pid| {
+            // "PID (COMM) STATE PPID ..."; COMM may itself hold spaces and
+            // parentheses, so the fields are counted from its last ')'.
+            std::fs::read_to_string(format!("/proc/{pid}/stat")).ok().is_some_and(|stat| {
+                stat.rsplit_once(')')
+                    .and_then(|(_, rest)| rest.split_ascii_whitespace().nth(1)?.parse::<u32>().ok())
+                    == Some(parent)
+            })
+        })
+        .collect();
+    children.sort_unstable();
+    children.first().copied()
+}
+
+/// Prints a file when the test that holds it fails.
+struct ShowOnPanic(PathBuf);
+
+impl Drop for ShowOnPanic {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!("--- {} ---\n{}", self.0.display(), std::fs::read_to_string(&self.0).unwrap_or_default());
+        }
+    }
+}
+
 struct KillOnDrop(Child);
 
 impl Drop for KillOnDrop {
@@ -112,6 +143,50 @@ fn diag_commands_and_restart() {
     assert_eq!(status.code(), Some(0));
 }
 
+/// Run the binary with standard output and standard error both connected to
+/// pipes that nobody reads, as in `dphone ... 2>&1 | head` after `head` has
+/// gone.  Returns the exit status.
+fn run_into_closed_pipes(socket: Option<&Path>, args: &[&str]) -> i32 {
+    let closed = || {
+        let (reader, writer) = std::io::pipe().unwrap();
+        drop(reader);
+        Stdio::from(writer)
+    };
+    let mut cmd = Command::new(BIN);
+    cmd.args(args).stdin(Stdio::null()).stdout(closed()).stderr(closed());
+    if let Some(socket) = socket {
+        cmd.env("DPHONE_DIAG_SOCKET", socket);
+    }
+    // A panic exits with 101; death by a signal has no exit code.
+    cmd.status().unwrap().code().expect("killed by a signal")
+}
+
+#[test]
+fn output_into_a_closed_pipe_is_not_a_panic() {
+    // Commands that run locally: standard output, then standard error.
+    assert_eq!(run_into_closed_pipes(None, &["--help"]), 0);
+    assert_eq!(run_into_closed_pipes(None, &["--version"]), 0);
+    assert_eq!(run_into_closed_pipes(None, &["main", "--help"]), 0);
+    assert_eq!(run_into_closed_pipes(None, &["mount"]), 0);
+    assert_eq!(run_into_closed_pipes(None, &[]), 2);
+    assert_eq!(run_into_closed_pipes(None, &["update"]), 2);
+    assert_eq!(run_into_closed_pipes(None, &["update", "switch-bank", "c"]), 1);
+    assert_eq!(run_into_closed_pipes(None, &["umount"]), 1);
+    assert_eq!(run_into_closed_pipes(None, &["main", "--no-such-option"]), 2);
+    assert_eq!(run_into_closed_pipes(None, &["init", "--no-such-option"]), 2);
+
+    // Commands relayed from the main role, and the main role not being there.
+    let dir = temp();
+    let (_main, socket) = start_main(dir.path(), &["--no-ssh"]);
+    assert_eq!(run_into_closed_pipes(Some(&dir.path().join("none.sock")), &["ping"]), 1);
+    wait_for("diag socket", Duration::from_secs(10), || socket.exists());
+    wait_for("main role", Duration::from_secs(10), || diag(&socket, &["ping"]).0 == 0);
+    assert_eq!(run_into_closed_pipes(Some(&socket), &["help"]), 1);
+    assert_eq!(run_into_closed_pipes(Some(&socket), &["no-such-command"]), 127);
+    // Following the log would never end by itself.
+    assert_eq!(run_into_closed_pipes(Some(&socket), &["log", "-f"]), 1);
+}
+
 #[test]
 fn supervisor_confirms_trial_and_restarts_main() {
     let dir = temp();
@@ -122,6 +197,9 @@ fn supervisor_confirms_trial_and_restarts_main() {
     let trial = nv.join("open/trial");
     std::fs::write(&trial, "pending=1\nprevious_bank=0\nboots=0\nmax_boots=3\n").unwrap();
 
+    // What the supervisor and the main roles log, shown if the test fails.
+    let log = dir.path().join("log");
+    let _show_log = ShowOnPanic(log.clone());
     let sup = Command::new(BIN)
         .args(["init", "--supervise-only", "--nvdata"])
         .arg(&nv)
@@ -134,7 +212,7 @@ fn supervisor_confirms_trial_and_restarts_main() {
         .arg("--run-dir")
         .arg(&run)
         .stdin(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(std::fs::File::create(&log).unwrap())
         .spawn()
         .unwrap();
     let sup = KillOnDrop(sup);
@@ -143,10 +221,7 @@ fn supervisor_confirms_trial_and_restarts_main() {
     // The main role reports healthy; the trial is confirmed.
     wait_for("trial confirmation", Duration::from_secs(15), || !trial.exists());
 
-    let main_pid = |sup: &KillOnDrop| -> Option<i32> {
-        let out = Command::new("pgrep").arg("-P").arg(sup.0.id().to_string()).output().ok()?;
-        String::from_utf8_lossy(&out.stdout).lines().next()?.trim().parse().ok()
-    };
+    let main_pid = |sup: &KillOnDrop| child_of(sup.0.id());
     wait_for("main role", Duration::from_secs(10), || diag(&socket, &["ping"]).0 == 0);
     let first = main_pid(&sup).expect("main role pid");
 
@@ -159,6 +234,14 @@ fn supervisor_confirms_trial_and_restarts_main() {
     let second = main_pid(&sup).unwrap();
 
     // Hang it: the heartbeat stops, the supervisor kills and restarts it.
+    // The short beat timeout applies only once the supervisor has had a beat
+    // from this instance; one that has not beaten yet is given the whole
+    // start grace.  The diagnostics socket answers before the first beat is
+    // written, so "answers ping" is too early to stop it: wait until the
+    // supervisor says it has heard from this instance (its second such line;
+    // the first was for the instance that confirmed the trial).
+    let heard = || std::fs::read_to_string(&log).unwrap_or_default().matches("main role reports healthy").count();
+    wait_for("second instance healthy", Duration::from_secs(15), || heard() >= 2);
     // SAFETY: as above.
     unsafe { libc::kill(second, libc::SIGSTOP) };
     wait_for("restart after hang", Duration::from_secs(20), || {
@@ -178,7 +261,10 @@ fn have(tool: &str) -> bool {
 
 #[test]
 fn ssh_exec_and_sftp_with_openssh_client() {
-    if !have("ssh") || !Path::new("/bin/sh").exists() {
+    if !have("ssh") || !have("scp") || !Path::new("/bin/sh").exists() {
+        // The Nix check provides the client and sets this, so that the test
+        // cannot pass there by not running.
+        assert!(std::env::var_os("DPHONE_TEST_REQUIRE_SSH").is_none(), "no OpenSSH client (ssh, scp) or no /bin/sh");
         eprintln!("skipped: no OpenSSH client on this machine");
         return;
     }
@@ -273,7 +359,7 @@ fn ssh_exec_and_sftp_with_openssh_client() {
     assert!(String::from_utf8_lossy(&out.stdout).contains("/dev/pts/"), "{:?}", out);
 
     // Push a file with scp (SFTP underneath) and read it back over exec.
-    if have("scp") {
+    {
         let payload: Vec<u8> = (0..300_000u32).map(|i| (i.wrapping_mul(2654435761) >> 24) as u8).collect();
         let local = d.join("payload.bin");
         let remote = d.join("pushed.bin");
@@ -285,5 +371,33 @@ fn ssh_exec_and_sftp_with_openssh_client() {
         assert_eq!(std::fs::read(&remote).unwrap(), payload);
         let out = ssh(&key, "root", &format!("cat {}", remote.display()));
         assert_eq!(out.stdout, payload);
+
+        // Into a directory, as in `scp file root@phone:/tmp/`, keeping the
+        // mode (-p also sends times, which the server accepts).
+        let into = d.join("into");
+        std::fs::create_dir(&into).unwrap();
+        std::fs::set_permissions(&local, std::os::unix::fs::PermissionsExt::from_mode(0o750)).unwrap();
+        let mut cmd = Command::new("scp");
+        options(&mut cmd, &key);
+        let out = cmd.args(["-p", "-P", &port]).arg(&local).arg(format!("root@127.0.0.1:{}/", into.display())).output().unwrap();
+        assert!(out.status.success(), "scp into a directory: {:?}", out);
+        let pushed = into.join("payload.bin");
+        assert_eq!(std::fs::read(&pushed).unwrap(), payload);
+        assert_eq!(std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&pushed).unwrap().permissions()) & 0o777, 0o750);
+
+        // And back.
+        let fetched = d.join("fetched.bin");
+        let mut cmd = Command::new("scp");
+        options(&mut cmd, &key);
+        let out = cmd.args(["-P", &port]).arg(format!("root@127.0.0.1:{}", pushed.display())).arg(&fetched).output().unwrap();
+        assert!(out.status.success(), "scp from the phone: {:?}", out);
+        assert_eq!(std::fs::read(&fetched).unwrap(), payload);
+
+        // A directory tree.
+        let mut cmd = Command::new("scp");
+        options(&mut cmd, &key);
+        let out = cmd.args(["-r", "-P", &port]).arg(&into).arg(format!("root@127.0.0.1:{}", d.join("tree").display())).output().unwrap();
+        assert!(out.status.success(), "scp -r: {:?}", out);
+        assert_eq!(std::fs::read(d.join("tree/payload.bin")).unwrap(), payload);
     }
 }

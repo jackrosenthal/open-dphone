@@ -166,7 +166,7 @@ pub fn run(args: &[String]) -> i32 {
     let opts = match Options::parse(args) {
         Ok(o) => o,
         Err(e) => {
-            eprint!("dphone main: {e}\n{USAGE}");
+            crate::err!("dphone main: {e}\n{USAGE}");
             return 2;
         }
     };

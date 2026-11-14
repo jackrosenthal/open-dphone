@@ -10,8 +10,11 @@
 //! - **diagnostic client** ([`diag::client`]): `dphone <command>` talks to the
 //!   running main role over a Unix socket.
 //! - **system commands** ([`cmds`]): `mount`, `umount`, `insmod`, `rmmod`,
-//!   `lsmod`, `modprobe`, `reboot`, `poweroff`, `halt`, and `dmesg`, which the
-//!   image has no other provider for.
+//!   `lsmod`, `modprobe`, `reboot`, `poweroff`, `halt`, `dmesg`, and `ps`,
+//!   which the image has no other provider for.
+
+// Output for a person goes through `out` (see there for why).
+#![deny(clippy::print_stdout, clippy::print_stderr)]
 
 pub mod cli;
 pub mod clock;
@@ -21,6 +24,7 @@ pub mod init;
 pub mod logging;
 pub mod mainrole;
 pub mod model;
+pub mod out;
 pub mod paths;
 pub mod ssh;
 pub mod sys;

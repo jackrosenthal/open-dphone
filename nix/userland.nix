@@ -1,5 +1,10 @@
-# The shell and the core utilities: brush and uutils coreutils, both Rust,
-# both static ARMv6 binaries with no C in them (spike S7).
+# The shell and the utilities: brush, uutils coreutils, and uutils sed, all
+# Rust, all static ARMv6 binaries with no C in them (spike S7).
+#
+# Not here, because their uutils implementations cannot be built without a C
+# cross compiler, which userspace does not have: `grep` and `find` (uu_grep
+# 0.2.0 and findutils 0.11.0 need the Oniguruma C library) and `tar`
+# (uutils/tar needs the zstd C library).
 {
   lib,
   fetchCrate,
@@ -63,6 +68,7 @@ let
     "truncate"
     "uname"
     "uniq"
+    "uptime"
     "wc"
     "yes"
   ];
@@ -125,5 +131,13 @@ in
       (lib.concatStringsSep "," applets)
     ];
     bin = "coreutils";
+  };
+
+  sed = crate {
+    pname = "sed";
+    version = "0.3.0";
+    srcHash = "sha256-vRyaJAxCRj0mLcJmJ+14vfqc5N3Z/3TiaHwL7Sd9F98=";
+    vendorHash = "sha256-gcFMYF8effLwMPLVU78f419UFtJz2KGv2gVZw8kOdPI=";
+    bin = "sed";
   };
 }
