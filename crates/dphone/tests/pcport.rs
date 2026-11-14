@@ -341,6 +341,14 @@ async fn run(mut nl: Netlink) {
     dphone(&ctx, &["net", "bridge", "on"]).await;
     wait_kernel(&mut nl, "the bridge by command", Duration::from_secs(30), bridged_up).await;
     assert!(flag.exists());
+    // A settings change that is not about the network leaves the command's
+    // arrangement alone (provisioning reports one whenever the network
+    // comes up; on the D60 that undid the bridge 0.4 s after its lease).
+    set(&[("blf_page_return_timeout", "7")]);
+    sleep(Duration::from_secs(3)).await;
+    let k = kernel(&mut nl).await;
+    assert!(bridged_up(&k), "a settings change undid 'dphone net bridge on': {k:?}");
+    assert!(dphone(&ctx, &["net", "status"]).await.contains("PC jack bridged"));
     dphone(&ctx, &["net", "configured"]).await;
     wait_kernel(&mut nl, "the held arrangement again", Duration::from_secs(30), standalone_up).await;
     let text = dphone(&ctx, &["net", "bridge", "on", "--save"]).await;

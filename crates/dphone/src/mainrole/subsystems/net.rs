@@ -356,6 +356,11 @@ async fn run(
     // The arrangement the settings last gave, which a fallback leaves.
     let mut last_configured = active.clone();
     let mut fb = Fallback::None;
+    // The PC jack as `dphone net bridge on|off` without `--save` left it.
+    // Settings changes keep it (provisioning reports one each time the
+    // network comes up, which would otherwise undo the command at once);
+    // `dphone net configured`, `dphone net plain`, and a fallback end it.
+    let mut pc_override: Option<PcPort> = None;
     let mut deadline = (active != plain).then(|| Instant::now() + fallback);
     let mut was_up = false;
     loop {
@@ -450,6 +455,7 @@ async fn run(
                     );
                 }
                 active = plain.clone();
+                pc_override = None;
                 manager.reconfigure(active.clone()).await;
             }
             cmd = cmds.recv() => {
@@ -469,13 +475,17 @@ async fn run(
                     }
                     Cmd::Plain(reply) => {
                         active = plain.clone();
+                        pc_override = None;
                         fb = Fallback::None;
                         deadline = None;
                         manager.reconfigure(active.clone()).await;
                         let _ = reply.send("plain configuration applied\n".into());
                     }
                     Cmd::Changed => {
-                        let now = configured(&ctx, config.as_ref(), mac);
+                        let mut now = configured(&ctx, config.as_ref(), mac);
+                        if let Some(pc) = pc_override {
+                            now.pc_port = pc;
+                        }
                         // In a fallback the plain arrangement is in force
                         // on purpose: only settings that differ from the
                         // ones that failed end it.
@@ -508,6 +518,7 @@ async fn run(
                         }
                     }
                     Cmd::Configured(reply) => {
+                        pc_override = None;
                         active = configured(&ctx, config.as_ref(), mac);
                         last_configured = active.clone();
                         fb = Fallback::None;
@@ -542,6 +553,9 @@ async fn run(
                             active.clone()
                         };
                         next.pc_port = if on { PcPort::Bridged } else { PcPort::Disabled };
+                        // With `--save` the settings (and the hold file
+                        // just written or removed) decide from now on.
+                        pc_override = (!save).then_some(next.pc_port);
                         active = next;
                         fb = Fallback::None;
                         deadline = (active != plain).then(|| Instant::now() + fallback);
