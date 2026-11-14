@@ -8,6 +8,7 @@ import { dateTime, duration } from "../lib/format";
 import { addressSourceNames, codecNames, discoverySourceNames, label, netPhaseNames, provisionPhaseNames, subsystemNames, systemPhaseNames, vlanSourceNames } from "../lib/labels";
 import { useStatus } from "../lib/status";
 import { RegistrationBadge, callStateLabel } from "./common";
+import { ExpansionCard } from "./Expansion";
 
 const healthTone = {
   [HealthState.UNSPECIFIED]: "gray",
@@ -134,6 +135,8 @@ export function Dashboard() {
             ]}
           />
         </Card>
+
+        {sys.hasExpansion && <ExpansionCard />}
 
         <Card title="Subsystems" actions={!status.healthy && <Badge tone="amber">Not yet healthy</Badge>}>
           <ul className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">

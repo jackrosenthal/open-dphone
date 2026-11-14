@@ -4,13 +4,15 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { BoolSetting } from "./config_pb";
+import { file_dphone_v1_config } from "./config_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file dphone/v1/system.proto.
  */
 export const file_dphone_v1_system: GenFile = /*@__PURE__*/
-  fileDesc("ChZkcGhvbmUvdjEvc3lzdGVtLnByb3RvEglkcGhvbmUudjEiDwoNUmVib290UmVxdWVzdCIQCg5SZWJvb3RSZXNwb25zZSImChNGYWN0b3J5UmVzZXRSZXF1ZXN0Eg8KB2NvbmZpcm0YASABKAkiFgoURmFjdG9yeVJlc2V0UmVzcG9uc2UiIwoOU2V0VGltZVJlcXVlc3QSEQoJdW5peF9zZWNzGAEgASgEIhEKD1NldFRpbWVSZXNwb25zZSIVChNDcmVhdGVCYWNrdXBSZXF1ZXN0IjkKFENyZWF0ZUJhY2t1cFJlc3BvbnNlEhAKCGZpbGVuYW1lGAEgASgJEg8KB2FyY2hpdmUYAiABKAwiJwoUUmVzdG9yZUJhY2t1cFJlcXVlc3QSDwoHYXJjaGl2ZRgBIAEoDCI+ChVSZXN0b3JlQmFja3VwUmVzcG9uc2USDQoFZmlsZXMYASABKA0SFgoOcmVzdGFydF9uZWVkZWQYAiABKAgyhgMKDVN5c3RlbVNlcnZpY2USPQoGUmVib290EhguZHBob25lLnYxLlJlYm9vdFJlcXVlc3QaGS5kcGhvbmUudjEuUmVib290UmVzcG9uc2USTwoMRmFjdG9yeVJlc2V0Eh4uZHBob25lLnYxLkZhY3RvcnlSZXNldFJlcXVlc3QaHy5kcGhvbmUudjEuRmFjdG9yeVJlc2V0UmVzcG9uc2USQAoHU2V0VGltZRIZLmRwaG9uZS52MS5TZXRUaW1lUmVxdWVzdBoaLmRwaG9uZS52MS5TZXRUaW1lUmVzcG9uc2USTwoMQ3JlYXRlQmFja3VwEh4uZHBob25lLnYxLkNyZWF0ZUJhY2t1cFJlcXVlc3QaHy5kcGhvbmUudjEuQ3JlYXRlQmFja3VwUmVzcG9uc2USUgoNUmVzdG9yZUJhY2t1cBIfLmRwaG9uZS52MS5SZXN0b3JlQmFja3VwUmVxdWVzdBogLmRwaG9uZS52MS5SZXN0b3JlQmFja3VwUmVzcG9uc2ViBnByb3RvMw");
+  fileDesc("ChZkcGhvbmUvdjEvc3lzdGVtLnByb3RvEglkcGhvbmUudjEiDwoNUmVib290UmVxdWVzdCIQCg5SZWJvb3RSZXNwb25zZSImChNGYWN0b3J5UmVzZXRSZXF1ZXN0Eg8KB2NvbmZpcm0YASABKAkiFgoURmFjdG9yeVJlc2V0UmVzcG9uc2UiIwoOU2V0VGltZVJlcXVlc3QSEQoJdW5peF9zZWNzGAEgASgEIhEKD1NldFRpbWVSZXNwb25zZSIVChNDcmVhdGVCYWNrdXBSZXF1ZXN0IjkKFENyZWF0ZUJhY2t1cFJlc3BvbnNlEhAKCGZpbGVuYW1lGAEgASgJEg8KB2FyY2hpdmUYAiABKAwiJwoUUmVzdG9yZUJhY2t1cFJlcXVlc3QSDwoHYXJjaGl2ZRgBIAEoDCI+ChVSZXN0b3JlQmFja3VwUmVzcG9uc2USDQoFZmlsZXMYASABKA0SFgoOcmVzdGFydF9uZWVkZWQYAiABKAgiGQoXR2V0U2VyaWFsQ29uc29sZVJlcXVlc3QiSgoYR2V0U2VyaWFsQ29uc29sZVJlc3BvbnNlEi4KDnNlcmlhbF9jb25zb2xlGAEgASgLMhYuZHBob25lLnYxLkJvb2xTZXR0aW5nIjEKF1NldFNlcmlhbENvbnNvbGVSZXF1ZXN0EhYKDnNlcmlhbF9jb25zb2xlGAEgASgIIkoKGFNldFNlcmlhbENvbnNvbGVSZXNwb25zZRIuCg5zZXJpYWxfY29uc29sZRgBIAEoCzIWLmRwaG9uZS52MS5Cb29sU2V0dGluZzLABAoNU3lzdGVtU2VydmljZRI9CgZSZWJvb3QSGC5kcGhvbmUudjEuUmVib290UmVxdWVzdBoZLmRwaG9uZS52MS5SZWJvb3RSZXNwb25zZRJPCgxGYWN0b3J5UmVzZXQSHi5kcGhvbmUudjEuRmFjdG9yeVJlc2V0UmVxdWVzdBofLmRwaG9uZS52MS5GYWN0b3J5UmVzZXRSZXNwb25zZRJACgdTZXRUaW1lEhkuZHBob25lLnYxLlNldFRpbWVSZXF1ZXN0GhouZHBob25lLnYxLlNldFRpbWVSZXNwb25zZRJPCgxDcmVhdGVCYWNrdXASHi5kcGhvbmUudjEuQ3JlYXRlQmFja3VwUmVxdWVzdBofLmRwaG9uZS52MS5DcmVhdGVCYWNrdXBSZXNwb25zZRJSCg1SZXN0b3JlQmFja3VwEh8uZHBob25lLnYxLlJlc3RvcmVCYWNrdXBSZXF1ZXN0GiAuZHBob25lLnYxLlJlc3RvcmVCYWNrdXBSZXNwb25zZRJbChBHZXRTZXJpYWxDb25zb2xlEiIuZHBob25lLnYxLkdldFNlcmlhbENvbnNvbGVSZXF1ZXN0GiMuZHBob25lLnYxLkdldFNlcmlhbENvbnNvbGVSZXNwb25zZRJbChBTZXRTZXJpYWxDb25zb2xlEiIuZHBob25lLnYxLlNldFNlcmlhbENvbnNvbGVSZXF1ZXN0GiMuZHBob25lLnYxLlNldFNlcmlhbENvbnNvbGVSZXNwb25zZWIGcHJvdG8z", [file_dphone_v1_config]);
 
 /**
  * @generated from message dphone.v1.RebootRequest
@@ -175,6 +177,72 @@ export const RestoreBackupResponseSchema: GenMessage<RestoreBackupResponse> = /*
   messageDesc(file_dphone_v1_system, 9);
 
 /**
+ * @generated from message dphone.v1.GetSerialConsoleRequest
+ */
+export type GetSerialConsoleRequest = Message<"dphone.v1.GetSerialConsoleRequest"> & {
+};
+
+/**
+ * Describes the message dphone.v1.GetSerialConsoleRequest.
+ * Use `create(GetSerialConsoleRequestSchema)` to create a new message.
+ */
+export const GetSerialConsoleRequestSchema: GenMessage<GetSerialConsoleRequest> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_system, 10);
+
+/**
+ * @generated from message dphone.v1.GetSerialConsoleResponse
+ */
+export type GetSerialConsoleResponse = Message<"dphone.v1.GetSerialConsoleResponse"> & {
+  /**
+   * True: the serial console has the port.  False: the EHS adapter has it.
+   *
+   * @generated from field: dphone.v1.BoolSetting serial_console = 1;
+   */
+  serialConsole?: BoolSetting | undefined;
+};
+
+/**
+ * Describes the message dphone.v1.GetSerialConsoleResponse.
+ * Use `create(GetSerialConsoleResponseSchema)` to create a new message.
+ */
+export const GetSerialConsoleResponseSchema: GenMessage<GetSerialConsoleResponse> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_system, 11);
+
+/**
+ * @generated from message dphone.v1.SetSerialConsoleRequest
+ */
+export type SetSerialConsoleRequest = Message<"dphone.v1.SetSerialConsoleRequest"> & {
+  /**
+   * @generated from field: bool serial_console = 1;
+   */
+  serialConsole: boolean;
+};
+
+/**
+ * Describes the message dphone.v1.SetSerialConsoleRequest.
+ * Use `create(SetSerialConsoleRequestSchema)` to create a new message.
+ */
+export const SetSerialConsoleRequestSchema: GenMessage<SetSerialConsoleRequest> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_system, 12);
+
+/**
+ * @generated from message dphone.v1.SetSerialConsoleResponse
+ */
+export type SetSerialConsoleResponse = Message<"dphone.v1.SetSerialConsoleResponse"> & {
+  /**
+   * @generated from field: dphone.v1.BoolSetting serial_console = 1;
+   */
+  serialConsole?: BoolSetting | undefined;
+};
+
+/**
+ * Describes the message dphone.v1.SetSerialConsoleResponse.
+ * Use `create(SetSerialConsoleResponseSchema)` to create a new message.
+ */
+export const SetSerialConsoleResponseSchema: GenMessage<SetSerialConsoleResponse> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_system, 13);
+
+/**
  * @generated from service dphone.v1.SystemService
  */
 export const SystemService: GenService<{
@@ -219,6 +287,25 @@ export const SystemService: GenService<{
     methodKind: "unary";
     input: typeof RestoreBackupRequestSchema;
     output: typeof RestoreBackupResponseSchema;
+  },
+  /**
+   * Who has UART A: the serial console, or the electronic hook switch
+   * (EHS) headset adapter.  The two cannot share the port.
+   *
+   * @generated from rpc dphone.v1.SystemService.GetSerialConsole
+   */
+  getSerialConsole: {
+    methodKind: "unary";
+    input: typeof GetSerialConsoleRequestSchema;
+    output: typeof GetSerialConsoleResponseSchema;
+  },
+  /**
+   * @generated from rpc dphone.v1.SystemService.SetSerialConsole
+   */
+  setSerialConsole: {
+    methodKind: "unary";
+    input: typeof SetSerialConsoleRequestSchema;
+    output: typeof SetSerialConsoleResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_dphone_v1_system, 0);

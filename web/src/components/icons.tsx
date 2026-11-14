@@ -88,6 +88,11 @@ export const Icons = {
       <path d="M5 4h14M5 9h14M5 14h9M5 19h6" />
     </Icon>
   ),
+  bluetooth: (p: P) => (
+    <Icon {...p}>
+      <path d="M7 7l10 10-5 4V3l5 4L7 17" />
+    </Icon>
+  ),
   terminal: (p: P) => (
     <Icon {...p}>
       <rect x="3" y="4" width="18" height="16" rx="2" />

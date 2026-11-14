@@ -1,5 +1,6 @@
-//! `SshService` (the SSH server's switch and its authorized keys) and the
-//! provisioned-firmware policy of `FirmwareService`: Open DPhone's own
+//! `SshService` (the SSH server's switch and its authorized keys), the
+//! provisioned-firmware policy of `FirmwareService`, and the serial console
+//! switch of `SystemService`: Open DPhone's own
 //! settings, which live in `/nvdata/dphone_settings.txtpb`.
 
 use super::{config_error, with_config};
@@ -175,4 +176,31 @@ pub async fn set_provisioned_firmware_policy(
     })
     .await?;
     Ok(pb::SetProvisionedFirmwarePolicyResponse { ignore: Some(setting).into() })
+}
+
+// ------------------------------------------------------- serial console
+
+pub async fn get_serial_console(
+    ctx: Ctx,
+    _req: pb::GetSerialConsoleRequest,
+) -> Result<pb::GetSerialConsoleResponse, ConnectError> {
+    let setting = with_config(&ctx.app, false, |c| Ok(bool_setting(c.config().serial_console()))).await?;
+    Ok(pb::GetSerialConsoleResponse { serial_console: Some(setting).into() })
+}
+
+pub async fn set_serial_console(
+    ctx: Ctx,
+    req: pb::SetSerialConsoleRequest,
+) -> Result<pb::SetSerialConsoleResponse, ConnectError> {
+    let on = req.serial_console;
+    let setting = with_config(&ctx.app, true, move |c| {
+        if c.config().serial_console().locked {
+            return Err(locked());
+        }
+        let config = c.update_dphone_settings(|s| s.serial_console = Some(on)).map_err(config_error)?;
+        Ok(bool_setting(config.serial_console()))
+    })
+    .await?;
+    log::info!("serial console switched {} from the web UI ({})", if on { "on" } else { "off" }, ctx.peer);
+    Ok(pb::SetSerialConsoleResponse { serial_console: Some(setting).into() })
 }

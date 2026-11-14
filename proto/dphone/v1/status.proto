@@ -50,6 +50,10 @@ message SystemInfo {
   // "small_gray", "large_gray", or "color".
   string skin = 14;
   string user_agent = 15;
+  // The model has a Bluetooth controller.
+  bool has_bluetooth = 16;
+  // The model takes expansion modules.
+  bool has_expansion = 17;
 }
 
 message SubsystemHealth {

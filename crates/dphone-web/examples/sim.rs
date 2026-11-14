@@ -304,6 +304,36 @@ fn fabricate(store: &Store, model: Model) {
         );
     }
     store.update::<st::Health, _>(|h| h.healthy = true);
+
+    store.update::<st::Paging, _>(|p| {
+        let group = |id: &str, name: &str, last: u8| st::PageGroup {
+            id: id.into(),
+            name: name.into(),
+            addr: format!("239.1.1.{last}"),
+            port: 5004,
+        };
+        p.listeners = vec![group("1", "All phones", 1), group("2", "Warehouse", 2)];
+        p.broadcasts = vec![group("1", "All phones", 1), group("3", "Front office", 3)];
+    });
+    if model.expansion_modules() {
+        store.update::<st::Expansion, _>(|e| {
+            e.enabled = true;
+            e.modules = vec![
+                st::ExpansionModule { node: 0, addr: "192.168.218.2".into(), version: "EXP150 1_2_0".into(), page: 0 },
+                st::ExpansionModule { node: 1, addr: "192.168.218.3".into(), version: "EXP150 1_2_0".into(), page: 1 },
+            ];
+        });
+    }
+    if model.bluetooth() {
+        store.update::<st::Bluetooth, _>(|b| {
+            b.present = true;
+            b.enabled = true;
+            b.powered = true;
+            b.address = "00:0F:D3:65:00:01".into();
+            b.paired = vec![st::BluetoothDevice { addr: "00:1B:DC:0F:A1:02".into(), name: "Voyager 5200".into(), rssi: 0 }];
+            b.connected = "00:1B:DC:0F:A1:02".into();
+        });
+    }
 }
 
 /// Runs a handler thread for one command domain.
@@ -502,6 +532,92 @@ fn spawn_handlers(store: &Store, hal: Hal, config: Arc<Mutex<ConfigStore>>) {
     });
 
     handle(store, Domain::Network, |_, _| Ok(Reply::Done));
+
+    handle(store, Domain::Paging, |store, c| {
+        match c {
+            Command::StartPage { id } => store.update::<st::Paging, _>(|p| {
+                if let Some(g) = p.broadcasts.iter().find(|g| &g.id == id) {
+                    p.activity = st::PageActivity::Sending { group: g.id.clone(), name: g.name.clone() };
+                }
+            }),
+            _ => store.update::<st::Paging, _>(|p| p.activity = st::PageActivity::Idle),
+        }
+        Ok(Reply::Done)
+    });
+
+    // Bluetooth: discovery finds two made-up devices; one pairs by passkey
+    // comparison and the other asks for a PIN.
+    handle(store, Domain::Bluetooth, |store, c| {
+        let found = || {
+            vec![
+                st::BluetoothDevice { addr: "70:BF:92:11:22:33".into(), name: "Evolve2 65".into(), rssi: -48 },
+                st::BluetoothDevice { addr: "00:16:94:AA:BB:CC".into(), name: String::new(), rssi: -71 },
+            ]
+        };
+        match c {
+            Command::SetBluetooth { on } => store.update::<st::Bluetooth, _>(|b| {
+                b.enabled = *on;
+                b.powered = *on;
+                if !*on {
+                    b.discovering = false;
+                    b.found.clear();
+                    b.connected.clear();
+                    b.pairing = None;
+                }
+            }),
+            Command::BluetoothDiscovery { on } => {
+                store.update::<st::Bluetooth, _>(|b| b.discovering = *on);
+                if *on {
+                    let s = store.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_secs(1));
+                        s.update::<st::Bluetooth, _>(|b| {
+                            if b.discovering {
+                                b.found = found();
+                            }
+                        });
+                    });
+                }
+            }
+            Command::BluetoothPair { addr } => store.update::<st::Bluetooth, _>(|b| {
+                let name = b.found.iter().find(|d| &d.addr == addr).map(|d| d.name.clone()).unwrap_or_default();
+                let legacy = name.is_empty();
+                b.discovering = false;
+                b.pairing = Some(st::BluetoothPairing {
+                    addr: addr.clone(),
+                    name,
+                    passkey: (!legacy).then_some(482_913),
+                    pin_needed: legacy,
+                });
+            }),
+            Command::BluetoothAnswerPairing { addr, accept, pin } => {
+                let wrong_pin = store.get::<st::Bluetooth>().pairing.as_ref().is_some_and(|p| p.pin_needed)
+                    && *accept
+                    && pin.as_deref() != Some("0000");
+                store.update::<st::Bluetooth, _>(|b| {
+                    let Some(p) = b.pairing.take() else { return };
+                    b.error.clear();
+                    if wrong_pin {
+                        b.error = "Pairing failed: wrong PIN".into();
+                    } else if *accept && &p.addr == addr {
+                        b.found.retain(|d| d.addr != p.addr);
+                        b.paired.push(st::BluetoothDevice { addr: p.addr.clone(), name: p.name, rssi: 0 });
+                        b.connected = p.addr;
+                    }
+                });
+            }
+            Command::BluetoothUnpair { addr } => store.update::<st::Bluetooth, _>(|b| {
+                b.paired.retain(|d| &d.addr != addr);
+                if &b.connected == addr {
+                    b.connected.clear();
+                }
+            }),
+            Command::BluetoothConnect { addr } => store.update::<st::Bluetooth, _>(|b| b.connected = addr.clone()),
+            Command::BluetoothDisconnect => store.update::<st::Bluetooth, _>(|b| b.connected.clear()),
+            other => return unsupported(other),
+        }
+        Ok(Reply::Done)
+    });
 
     handle(store, Domain::Apps, |store, c| match c {
         Command::LaunchApp { name } | Command::CloseApp { name } => {

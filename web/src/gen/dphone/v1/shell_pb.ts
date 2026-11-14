@@ -243,7 +243,9 @@ export const ShellService: GenService<{
     output: typeof OpenShellResponseSchema;
   },
   /**
-   * Input for a session (keystrokes, pasted text).
+   * Input for a session (keystrokes, pasted text).  The page also sends an
+   * empty write every 25 seconds as a heartbeat: a shell not heard from for
+   * 75 seconds is ended.
    *
    * @generated from rpc dphone.v1.ShellService.WriteShell
    */

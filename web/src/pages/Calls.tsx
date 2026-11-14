@@ -5,6 +5,7 @@ import { CallDirection, CallLogKind, CallState, CallsService, type Call } from "
 import { dateTime, duration } from "../lib/format";
 import { codecNames, label } from "../lib/labels";
 import { useStatus } from "../lib/status";
+import { PagingCard } from "./Paging";
 import { ErrorNote, callStateLabel } from "./common";
 
 function CallRow({ call, onError, elapsed }: { call: Call; onError: (e: unknown) => void; elapsed: number }) {
@@ -163,6 +164,8 @@ export function Calls() {
             </div>
           </Card>
         </div>
+
+        <PagingCard onError={setError} />
 
         <Card title="In progress">
           {!snap || snap.calls.length === 0 ? (

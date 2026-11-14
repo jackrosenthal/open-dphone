@@ -7,6 +7,7 @@
 mod auth;
 mod calls;
 mod config;
+mod devices;
 mod shell;
 mod ssh;
 mod status;
@@ -171,6 +172,8 @@ service!(SystemService {
     unary set_time(SetTimeRequest) -> SetTimeResponse = system::set_time;
     unary create_backup(CreateBackupRequest) -> CreateBackupResponse = system::create_backup;
     unary restore_backup(RestoreBackupRequest) -> RestoreBackupResponse = system::restore_backup;
+    unary get_serial_console(GetSerialConsoleRequest) -> GetSerialConsoleResponse = ssh::get_serial_console;
+    unary set_serial_console(SetSerialConsoleRequest) -> SetSerialConsoleResponse = ssh::set_serial_console;
 });
 
 service!(ShellService {
@@ -185,6 +188,30 @@ service!(SshService {
     unary set_ssh_enabled(SetSshEnabledRequest) -> SetSshEnabledResponse = ssh::set_ssh_enabled;
     unary add_ssh_key(AddSshKeyRequest) -> AddSshKeyResponse = ssh::add_ssh_key;
     unary remove_ssh_key(RemoveSshKeyRequest) -> RemoveSshKeyResponse = ssh::remove_ssh_key;
+});
+
+service!(BluetoothService {
+    unary get_bluetooth(GetBluetoothRequest) -> GetBluetoothResponse = devices::get_bluetooth;
+    stream watch_bluetooth(WatchBluetoothRequest) -> WatchBluetoothResponse = devices::watch_bluetooth;
+    unary set_bluetooth_enabled(SetBluetoothEnabledRequest) -> SetBluetoothEnabledResponse = devices::set_bluetooth_enabled;
+    unary set_bluetooth_discovery(SetBluetoothDiscoveryRequest) -> SetBluetoothDiscoveryResponse = devices::set_bluetooth_discovery;
+    unary pair_bluetooth_device(PairBluetoothDeviceRequest) -> PairBluetoothDeviceResponse = devices::pair_bluetooth_device;
+    unary answer_bluetooth_pairing(AnswerBluetoothPairingRequest) -> AnswerBluetoothPairingResponse = devices::answer_bluetooth_pairing;
+    unary remove_bluetooth_device(RemoveBluetoothDeviceRequest) -> RemoveBluetoothDeviceResponse = devices::remove_bluetooth_device;
+    unary connect_bluetooth_device(ConnectBluetoothDeviceRequest) -> ConnectBluetoothDeviceResponse = devices::connect_bluetooth_device;
+    unary disconnect_bluetooth_device(DisconnectBluetoothDeviceRequest) -> DisconnectBluetoothDeviceResponse = devices::disconnect_bluetooth_device;
+});
+
+service!(PagingService {
+    unary get_paging(GetPagingRequest) -> GetPagingResponse = devices::get_paging;
+    stream watch_paging(WatchPagingRequest) -> WatchPagingResponse = devices::watch_paging;
+    unary start_page(StartPageRequest) -> StartPageResponse = devices::start_page;
+    unary stop_page(StopPageRequest) -> StopPageResponse = devices::stop_page;
+});
+
+service!(ExpansionService {
+    unary get_expansion(GetExpansionRequest) -> GetExpansionResponse = devices::get_expansion;
+    stream watch_expansion(WatchExpansionRequest) -> WatchExpansionResponse = devices::watch_expansion;
 });
 
 /// The Connect router with every service registered.
@@ -206,6 +233,9 @@ pub(crate) fn router() -> connectrpc::Router {
         .add_service::<Rpc, pb::SystemServiceRegisterMarker>(rpc.clone())
         .add_service::<Rpc, pb::ShellServiceRegisterMarker>(rpc.clone())
         .add_service::<Rpc, pb::SshServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::BluetoothServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::PagingServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::ExpansionServiceRegisterMarker>(rpc.clone())
 }
 
 /// A command failure as an RPC error.

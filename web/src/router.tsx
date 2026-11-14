@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 import { Layout } from "./components/Layout";
 import { Accounts } from "./pages/Accounts";
 import { Apps } from "./pages/Apps";
+import { Bluetooth } from "./pages/Bluetooth";
 import { Calls } from "./pages/Calls";
 import { Contacts } from "./pages/Contacts";
 import { Dashboard } from "./pages/Dashboard";
@@ -35,6 +36,7 @@ const routeTree = root.addChildren([
   page("/network", Network),
   page("/provisioning", Provisioning),
   page("/settings", Settings),
+  page("/bluetooth", Bluetooth),
   page("/apps", Apps),
   page("/firmware", Firmware),
   page("/logs", Logs),

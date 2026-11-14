@@ -1,13 +1,13 @@
-import { useMutation } from "@connectrpc/connect-query";
+import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useRef, useState, type FormEvent } from "react";
-import { Alert, Button, Card, ConfirmButton, Field, Input, KeyValue, PageHeader } from "../components/ui";
+import { Alert, Button, Card, ConfirmButton, Field, Input, KeyValue, PageHeader, Select } from "../components/ui";
 import { AuthService } from "../gen/dphone/v1/auth_pb";
 import { SystemService } from "../gen/dphone/v1/system_pb";
 import { dateTime, duration } from "../lib/format";
 import { getSession, setSession } from "../lib/session";
 import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
-import { SshCard } from "./Ssh";
+import { SshCard, settingOrigin } from "./Ssh";
 
 function Password() {
   const [current, setCurrent] = useState("");
@@ -48,6 +48,34 @@ function Password() {
           Change password
         </Button>
       </form>
+    </Card>
+  );
+}
+
+/// UART A goes to the serial console or to the EHS headset adapter.
+function SerialPort() {
+  const [error, setError] = useState<unknown>();
+  const loaded = useQuery(SystemService.method.getSerialConsole, {});
+  const set = useMutation(SystemService.method.setSerialConsole, {
+    onError: setError,
+    onSuccess: () => {
+      setError(undefined);
+      loaded.refetch();
+    },
+  });
+  const setting = loaded.data?.serialConsole;
+  const origin = settingOrigin(setting);
+  return (
+    <Card title="Serial port">
+      <div className="space-y-2">
+        <ErrorNote error={error ?? loaded.error} />
+        <Field label="Used by" hint={origin || undefined}>
+          <Select value={setting?.value === false ? "ehs" : "console"} disabled={!setting || setting.locked || set.isPending} onChange={(e) => set.mutate({ serialConsole: e.target.value === "console" })}>
+            <option value="console">Serial console</option>
+            <option value="ehs">EHS headset adapter</option>
+          </Select>
+        </Field>
+      </div>
     </Card>
   );
 }
@@ -122,6 +150,8 @@ export function System() {
               </Button>
             </div>
           </Card>
+
+          <SerialPort />
 
           <SshCard />
         </div>

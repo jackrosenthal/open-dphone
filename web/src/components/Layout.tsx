@@ -18,6 +18,7 @@ const nav = [
   { to: "/network", label: "Network", icon: Icons.network },
   { to: "/provisioning", label: "Provisioning", icon: Icons.cloud },
   { to: "/settings", label: "Phone settings", icon: Icons.sliders },
+  { to: "/bluetooth", label: "Bluetooth", icon: Icons.bluetooth, needs: "bluetooth" },
   { to: "/apps", label: "Apps", icon: Icons.apps },
   { to: "/firmware", label: "Firmware", icon: Icons.chip },
   { to: "/logs", label: "Logs", icon: Icons.logs },
@@ -81,7 +82,9 @@ function Shell() {
           </div>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
-          {nav.map((n) => (
+          {nav
+            .filter((n) => !("needs" in n) || sys?.hasBluetooth)
+            .map((n) => (
             <Link
               key={n.to}
               to={n.to}

@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package dphone.v1;
 
+import "dphone/v1/config.proto";
+
 service SystemService {
   rpc Reboot(RebootRequest) returns (RebootResponse);
   rpc FactoryReset(FactoryResetRequest) returns (FactoryResetResponse);
@@ -9,6 +11,10 @@ service SystemService {
   // A backup of the local configuration, as a gzip-compressed tar archive.
   rpc CreateBackup(CreateBackupRequest) returns (CreateBackupResponse);
   rpc RestoreBackup(RestoreBackupRequest) returns (RestoreBackupResponse);
+  // Who has UART A: the serial console, or the electronic hook switch
+  // (EHS) headset adapter.  The two cannot share the port.
+  rpc GetSerialConsole(GetSerialConsoleRequest) returns (GetSerialConsoleResponse);
+  rpc SetSerialConsole(SetSerialConsoleRequest) returns (SetSerialConsoleResponse);
 }
 
 message RebootRequest {}
@@ -42,4 +48,19 @@ message RestoreBackupRequest {
 message RestoreBackupResponse {
   uint32 files = 1;
   bool restart_needed = 2;
+}
+
+message GetSerialConsoleRequest {}
+
+message GetSerialConsoleResponse {
+  // True: the serial console has the port.  False: the EHS adapter has it.
+  BoolSetting serial_console = 1;
+}
+
+message SetSerialConsoleRequest {
+  bool serial_console = 1;
+}
+
+message SetSerialConsoleResponse {
+  BoolSetting serial_console = 1;
 }

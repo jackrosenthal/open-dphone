@@ -39,6 +39,8 @@ pub fn system(s: &st::System, uptime_secs: u64) -> pb::SystemInfo {
         unix_time: st::clock::unix_secs(),
         skin: skin(s.model).to_owned(),
         user_agent: s.model.user_agent(&s.version),
+        has_bluetooth: s.model.bluetooth(),
+        has_expansion: s.model.expansion_modules(),
     }
 }
 
@@ -456,5 +458,73 @@ pub fn lamp_blink(b: st::Blink) -> &'static str {
         st::Blink::Slow => "slow",
         st::Blink::Fast => "fast",
         st::Blink::Wink => "wink",
+    }
+}
+
+fn bluetooth_device(d: &st::BluetoothDevice) -> pb::BluetoothDevice {
+    pb::BluetoothDevice { address: d.addr.clone(), name: d.name.clone(), rssi: d.rssi as i32 }
+}
+
+pub fn bluetooth(b: &st::Bluetooth) -> pb::BluetoothSnapshot {
+    pb::BluetoothSnapshot {
+        present: b.present,
+        enabled: b.enabled,
+        powered: b.powered,
+        address: b.address.clone(),
+        discovering: b.discovering,
+        found: b.found.iter().map(bluetooth_device).collect(),
+        paired: b.paired.iter().map(bluetooth_device).collect(),
+        pairing_with: b.pairing_with.clone(),
+        pairing: b
+            .pairing
+            .as_ref()
+            .map(|p| pb::BluetoothPairing {
+                address: p.addr.clone(),
+                name: p.name.clone(),
+                passkey: p.passkey,
+                pin_needed: p.pin_needed,
+            })
+            .into(),
+        connected: b.connected.clone(),
+        audio_open: b.audio_open,
+        error: b.error.clone(),
+    }
+}
+
+fn page_group(g: &st::PageGroup) -> pb::PageGroup {
+    pb::PageGroup { id: g.id.clone(), name: g.name.clone(), address: g.addr.clone(), port: g.port as u32 }
+}
+
+pub fn paging(p: &st::Paging) -> pb::PagingSnapshot {
+    let (activity, group, name) = match &p.activity {
+        st::PageActivity::Idle => (pb::PageActivity::PAGE_ACTIVITY_IDLE, "", ""),
+        st::PageActivity::Receiving { group, name } => (pb::PageActivity::PAGE_ACTIVITY_RECEIVING, group.as_str(), name.as_str()),
+        st::PageActivity::Blocked { group, name } => (pb::PageActivity::PAGE_ACTIVITY_BLOCKED, group.as_str(), name.as_str()),
+        st::PageActivity::Sending { group, name } => (pb::PageActivity::PAGE_ACTIVITY_SENDING, group.as_str(), name.as_str()),
+    };
+    pb::PagingSnapshot {
+        listeners: p.listeners.iter().map(page_group).collect(),
+        broadcasts: p.broadcasts.iter().map(page_group).collect(),
+        activity: activity.into(),
+        active_group: group.to_owned(),
+        active_name: name.to_owned(),
+        error: p.error.clone(),
+    }
+}
+
+pub fn expansion(e: &st::Expansion) -> pb::ExpansionSnapshot {
+    pb::ExpansionSnapshot {
+        enabled: e.enabled,
+        modules: e
+            .modules
+            .iter()
+            .map(|m| pb::ExpansionModule {
+                node: m.node as u32,
+                address: m.addr.clone(),
+                version: m.version.clone(),
+                page: m.page as u32,
+            })
+            .collect(),
+        error: e.error.clone(),
     }
 }

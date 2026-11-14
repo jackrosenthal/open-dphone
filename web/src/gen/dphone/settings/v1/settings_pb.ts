@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/settings/v1/settings.proto.
  */
 export const file_dphone_settings_v1_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSKEAQoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBAUIOCgxfc3NoX2VuYWJsZWRCHgocX2lnbm9yZV9wcm92aXNpb25lZF9maXJtd2FyZWIGcHJvdG8z");
+  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSK0AQoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBARIbCg5zZXJpYWxfY29uc29sZRgDIAEoCEgCiAEBQg4KDF9zc2hfZW5hYmxlZEIeChxfaWdub3JlX3Byb3Zpc2lvbmVkX2Zpcm13YXJlQhEKD19zZXJpYWxfY29uc29sZWIGcHJvdG8z");
 
 /**
  * Settings that only Open DPhone has.  Stored on the phone in protobuf text
@@ -44,6 +44,17 @@ export type DphoneSettings = Message<"dphone.settings.v1.DphoneSettings"> & {
    * @generated from field: optional bool ignore_provisioned_firmware = 2;
    */
   ignoreProvisionedFirmware?: boolean | undefined;
+
+  /**
+   * Keep the serial console on UART A.  Default: true.  The console and an
+   * electronic hook switch (EHS) headset adapter use the same UART and
+   * cannot share it: while this is true the adapter is not driven; set it
+   * to false to run EHS (the stock "ehs" setting then picks the adapter
+   * type) and give up the console.
+   *
+   * @generated from field: optional bool serial_console = 3;
+   */
+  serialConsole?: boolean | undefined;
 };
 
 /**
