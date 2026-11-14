@@ -14,7 +14,7 @@
   openssh,
   iproute2,
   qemu-user,
-  vendorFirmware, # the stock images (vendor-firmware.nix), given the host tool
+  stock, # the stock images (vendor-firmware.nix)
   asterisk, # Asterisk with res_dpma_rs (asterisk.nix)
   webDist ? null, # built frontend, embedded by dphone-web (DPHONE_WEB_DIST)
   appsStaged ? null, # apps compiled for the build machine (DPHONE_APPS_STAGED)
@@ -97,8 +97,6 @@ let
     // hostEnv
   );
 
-  stock = vendorFirmware { dphone-image = imageTool.package; };
-
   checksStage = twoStage ({
     pname = "dphone-checks";
     cargoExtraArgs = "--locked --workspace";
@@ -136,8 +134,8 @@ in
         qemu-user
       ];
       DPHONE_TEST_REQUIRE_SSH = "1";
-      # The comparisons with the stock firmware: the images of all seven
-      # models, and the D60's root file system for its `configmerge`.
+      # The comparisons with the stock firmware: the D40 and D60 images,
+      # and the D60's root file system for its `configmerge`.
       # Without the variable these tests skip themselves; here they must
       # run.
       DPHONE_TEST_REQUIRE_VENDOR = "1";

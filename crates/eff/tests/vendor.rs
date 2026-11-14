@@ -3,8 +3,9 @@
 //! reverse-engineering tree: `2_9_28_D60_firmware.eff`,
 //! `firmware-series/<model>/*.eff`, `dumps/*/ctrl.bin`).  Without it the
 //! tests print a notice and pass, unless `DPHONE_TEST_REQUIRE_VENDOR` is
-//! set (the Nix check sets it, and supplies the images of all seven
-//! models: nix/vendor-firmware.nix), in which case they fail.  The
+//! set (the Nix check sets it, with the D40 and D60 images:
+//! nix/vendor-firmware.nix), in which case they fail.  Those two images are
+//! required then; any others in the directory are exercised too.  The
 //! partition dumps are not vendor images; that test runs where the
 //! directory has them.
 
@@ -167,8 +168,7 @@ fn every_vendor_eff_round_trips_byte_for_byte() {
     }
     assert!(models.iter().any(|m| m == "D60"));
     if vendor_required() {
-        models.sort();
-        assert_eq!(models, ["D40", "D45", "D50", "D60", "D62", "D65", "D70"]);
+        assert!(models.iter().any(|m| m == "D40"), "no D40 image: {models:?}");
     }
 }
 

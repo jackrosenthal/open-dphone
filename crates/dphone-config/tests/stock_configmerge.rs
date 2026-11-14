@@ -2,7 +2,7 @@
 //! `qemu-arm`.  Skipped unless `DPHONE_STOCK_ROOTFS` names an extracted
 //! stock root filesystem (containing `app/bin/configmerge`); `qemu-arm` must
 //! be on `PATH`.  With `DPHONE_TEST_REQUIRE_VENDOR` set (the Nix check sets
-//! it, and supplies both: nix/vendor-firmware.nix) the tests fail instead of
+//! it, with both: nix/vendor-firmware.nix) the tests fail instead of
 //! skipping.
 //!
 //! Two things are checked:

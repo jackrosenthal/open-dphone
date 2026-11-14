@@ -1,22 +1,26 @@
-# The stock firmware images the checks compare against: the EFF/OTA round
-# trips, the JFFS2 structure checks, and the stock `configmerge` (run under
-# qemu-arm) that our configuration merge must agree with.  They are
-# proprietary, so they are never in the repository; whoever runs the checks
-# supplies them.  Building an image needs none of them.
+# The vendor's stock firmware images.  They are proprietary, so they are
+# never in the repository; Nix downloads each from the vendor when
+# something needs it, and checks it against the hash here.  The whole
+# repository uses exactly two: the D40's for the old family and the D60's
+# for the new one.  Two things need them:
 #
-# Download each file from the vendor and add it to the Nix store once; the
-# checks then find it by hash:
+# - An image build needs the voice DSP firmware, which is a file in the
+#   stock root file system (dsp-firmware.nix).
+# - The checks compare against them: the EFF/OTA round trips, the JFFS2
+#   structure checks, and the stock `configmerge` (run under qemu-arm) that
+#   our configuration merge must agree with.
 #
-#   curl -fLO https://phones.dl.sangoma.com/firmware/asterisk/2_9_28/2_9_28_D60_firmware.eff
+# The downloads are fixed-output derivations: Nix looks for the result by
+# its hash before it fetches.  A store that already holds an image builds
+# without the network, whether or not the vendor still serves it.  To put a
+# copy you have into the store by hand:
+#
 #   nix store add-file 2_9_28_D60_firmware.eff
-#
-# and likewise for the other six.  Without a file, the check stops with a
-# message naming it.
 {
   lib,
-  requireFile,
+  fetchurl,
   runCommand,
-  dphone-image, # the host tool
+  dphone-image, # the host tool (not the `dphone` package: see dsp-firmware.nix)
 }:
 let
   # The releases the tests' expectations were taken from.
@@ -25,29 +29,9 @@ let
       version = "2_9_26";
       sha256 = "7b038b4fb03026cdb49bff3ec3809804912be6f6a591abd1d4ebc6a0e9ac9edd";
     };
-    D45 = {
-      version = "2_9_26";
-      sha256 = "b45ee927cb5a98948dc7a669eec970d2f2dbe0290c7b6b402b287da221752a96";
-    };
-    D50 = {
-      version = "2_9_26";
-      sha256 = "396a0cc94bb6432e7cbb08f46b38f6117ed6aa7123fe0f153064ce73f50a7fba";
-    };
     D60 = {
       version = "2_9_28";
       sha256 = "2e55006abb7e6e51979c2556865900b4d38afffd504fa8aaa360b08f59f6dd02";
-    };
-    D62 = {
-      version = "2_9_28";
-      sha256 = "f4d2e0638257d11f82ff1583c4a070c07b70eff14ced648b3d090a1b70eb5d47";
-    };
-    D65 = {
-      version = "2_9_28";
-      sha256 = "39f6116489d072963b34780d01f91eacb5100e41bf8b06a901399c62722656a1";
-    };
-    D70 = {
-      version = "2_9_26";
-      sha256 = "92f42f9cf418e8d9b89d381c065fe76fcbd92315c14c10dc1c73995c5958cb0e";
     };
   };
 
@@ -56,21 +40,10 @@ let
     { version, sha256 }:
     let
       name = "${version}_${model}_firmware.eff";
-      url = "https://phones.dl.sangoma.com/firmware/asterisk/${version}/${name}";
     in
-    requireFile {
+    fetchurl {
       inherit name sha256;
-      message = ''
-        Missing proprietary input: the stock ${model} firmware, ${name}.
-
-        The checks compare against the stock images, and Open DPhone cannot
-        distribute them.  Download it from the vendor and add it to the store:
-
-          curl -fLO ${url}
-          nix store add-file ${name}
-
-        See nix/vendor-firmware.nix.
-      '';
+      url = "https://phones.dl.sangoma.com/firmware/asterisk/${version}/${name}";
     };
   effs = lib.mapAttrs eff images;
 

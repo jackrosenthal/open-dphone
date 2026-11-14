@@ -42,7 +42,13 @@ let
 
   userland = pkgs.callPackage ./userland.nix { inherit rustPlatform rust; };
   kernel = pkgs.callPackage ./kernel.nix { kernelSrc = root + "/kernel"; };
-  dspFirmware = pkgs.callPackage ./dsp-firmware.nix { };
+  # The vendor's stock images, downloaded when something needs one, and the
+  # DSP firmware taken out of two of them.
+  stock = pkgs.callPackage ./vendor-firmware.nix { inherit (workspace) dphone-image; };
+  dspFirmware = pkgs.callPackage ./dsp-firmware.nix {
+    inherit stock;
+    inherit (workspace) dphone-image;
+  };
 
   web =
     if has "web/pnpm-lock.yaml" then
@@ -54,7 +60,7 @@ let
 
   workspace = pkgs.callPackage ./workspace.nix {
     inherit craneLib rust;
-    vendorFirmware = args: pkgs.callPackage ./vendor-firmware.nix args;
+    inherit stock;
     asterisk = pkgs.callPackage ./asterisk.nix { inherit rustPlatform; };
     webDist = web;
     appsStaged = if apps != null then apps.testFixture else null;
@@ -103,9 +109,9 @@ in
   // lib.optionalAttrs (web != null) { inherit web; }
   // lib.optionalAttrs (apps != null) { inherit apps; };
 
-  # `tests` needs the stock firmware images, which whoever runs the checks
-  # supplies (vendor-firmware.nix), and runs the main role against Asterisk
-  # with res_dpma_rs (asterisk.nix).
+  # `tests` compares against the D40 and D60 stock firmware images
+  # (vendor-firmware.nix), and runs the main role against Asterisk with
+  # res_dpma_rs (asterisk.nix).
   checks = {
     inherit (workspace) tests clippy;
     inherit kernel;

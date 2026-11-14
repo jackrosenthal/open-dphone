@@ -31,7 +31,10 @@ fn stock_images() -> Vec<PathBuf> {
     }
     out.sort();
     if required {
-        assert_eq!(out.len(), 7, "the root images of all seven models: {out:?}");
+        // The D60's is first in the list; the D40's is the other one that
+        // must be there.
+        let d40 = dir.join("firmware-series/D40/rootfs.jffs2");
+        assert!(out.contains(&d40), "no D40 root image: {out:?}");
     }
     out
 }
