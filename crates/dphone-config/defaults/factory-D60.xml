@@ -1,0 +1,20 @@
+<?xml version="1.0" ?>
+<!-- Open DPhone factory restrictions for the D60 (merge layer 2). -->
+<config>
+    <setting id="phone_model" value="D60" conflict="freeze"/>
+    <setting id="max_accounts" value="2" conflict="freeze"/>
+    <setting id="width" value="480" conflict="freeze"/>
+    <setting id="height" value="272" conflict="freeze"/>
+    <setting id="line_tab_width" value="144" conflict="freeze"/>
+    <setting id="line_tab_height" value="40" conflict="freeze"/>
+    <setting id="label_width" value="120" conflict="freeze"/>
+    <setting id="default_fontsize" value="14"/>
+    <setting id="desi_strip_max_pages" value="0" conflict="freeze"/>
+    <setting id="page_linekeys" value="0" conflict="freeze"/>
+    <keymap>
+        <state id="all">
+            <key id="line1" length="long" action="blf_info" conflict="freeze"/>
+            <key id="line2" length="long" action="blf_info" conflict="freeze"/>
+        </state>
+    </keymap>
+</config>

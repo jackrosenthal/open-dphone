@@ -1,0 +1,17 @@
+<?xml version="1.0" ?>
+<!-- Open DPhone factory restrictions for the D70 (merge layer 2). -->
+<config>
+    <setting id="phone_model" value="D70" conflict="freeze"/>
+    <setting id="max_accounts" value="6" conflict="freeze"/>
+    <setting id="width" value="320" conflict="freeze"/>
+    <setting id="height" value="160" conflict="freeze"/>
+    <setting id="line_tab_width" value="91" conflict="freeze"/>
+    <setting id="label_width" value="79" conflict="freeze"/>
+    <setting id="default_fontsize" value="11"/>
+    <setting id="backlight_timeout" value="30"/>
+    <setting id="contrast" value="5"/>
+    <setting id="desi_strip_enable" value="1"/>
+    <setting id="desi_strip_type" value="LCD" conflict="freeze"/>
+    <setting id="desi_strip_size" value="10" conflict="freeze"/>
+    <setting id="desi_strip_max_pages" value="10" conflict="freeze"/>
+</config>

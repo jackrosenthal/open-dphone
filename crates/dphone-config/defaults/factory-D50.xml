@@ -1,0 +1,44 @@
+<?xml version="1.0" ?>
+<!-- Open DPhone factory restrictions for the D50 (merge layer 2). -->
+<config>
+    <setting id="phone_model" value="D50" conflict="freeze"/>
+    <setting id="max_accounts" value="4" conflict="freeze"/>
+    <setting id="width" value="240" conflict="freeze"/>
+    <setting id="height" value="120" conflict="freeze"/>
+    <setting id="line_tab_width" value="62" conflict="freeze"/>
+    <setting id="label_width" value="62" conflict="freeze"/>
+    <setting id="default_fontsize" value="10"/>
+    <setting id="backlight_timeout" value="30"/>
+    <setting id="contrast" value="5"/>
+    <setting id="desi_strip_type" value="paper" conflict="freeze"/>
+    <setting id="desi_strip_size" value="10" conflict="freeze"/>
+    <setting id="desi_strip_max_pages" value="1" conflict="freeze"/>
+    <keymap>
+        <state id="all">
+            <key id="line1" length="long" action="blf_info" conflict="freeze"/>
+            <key id="line2" length="long" action="blf_info" conflict="freeze"/>
+            <key id="line3" length="long" action="blf_info" conflict="freeze"/>
+            <key id="line4" length="long" action="blf_info" conflict="freeze"/>
+            <key id="blf1" length="short" action="blf_info" conflict="freeze"/>
+            <key id="blf2" length="short" action="blf_panel" conflict="freeze"/>
+            <key id="blf3" length="short" action="blf_panel" conflict="freeze"/>
+            <key id="blf4" length="short" action="blf_panel" conflict="freeze"/>
+            <key id="blf5" length="short" action="blf_panel" conflict="freeze"/>
+            <key id="blf6" length="short" action="blf_panel" conflict="freeze"/>
+            <key id="blf7" length="short" action="blf_panel" conflict="freeze"/>
+            <key id="blf8" length="short" action="blf_panel" conflict="freeze"/>
+            <key id="blf9" length="short" action="blf_panel" conflict="freeze"/>
+            <key id="blf10" length="short" action="blf_panel" conflict="freeze"/>
+            <key id="blf1" length="long" action="blf_info" conflict="freeze"/>
+            <key id="blf2" length="long" action="blf_info" conflict="freeze"/>
+            <key id="blf3" length="long" action="blf_info" conflict="freeze"/>
+            <key id="blf4" length="long" action="blf_info" conflict="freeze"/>
+            <key id="blf5" length="long" action="blf_info" conflict="freeze"/>
+            <key id="blf6" length="long" action="blf_info" conflict="freeze"/>
+            <key id="blf7" length="long" action="blf_info" conflict="freeze"/>
+            <key id="blf8" length="long" action="blf_info" conflict="freeze"/>
+            <key id="blf9" length="long" action="blf_info" conflict="freeze"/>
+            <key id="blf10" length="long" action="blf_info" conflict="freeze"/>
+        </state>
+    </keymap>
+</config>

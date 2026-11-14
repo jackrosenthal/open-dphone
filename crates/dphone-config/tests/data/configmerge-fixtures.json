@@ -1,0 +1,179 @@
+[
+ {
+  "name": "ordinary",
+  "inputs": [
+   "<config><setting id=\"x\" value=\"A\"/></config>",
+   "<config><setting id=\"x\" value=\"B\"/></config>"
+  ],
+  "expected": "<config>\n    <setting id=\"x\" value=\"B\" />\n</config>\n"
+ },
+ {
+  "name": "freeze_earlier",
+  "inputs": [
+   "<config><setting id=\"x\" value=\"A\" conflict=\"freeze\"/></config>",
+   "<config><setting id=\"x\" value=\"B\"/></config>"
+  ],
+  "expected": "<config>\n    <setting id=\"x\" value=\"A\" conflict=\"freeze\" />\n</config>\n"
+ },
+ {
+  "name": "freeze_later",
+  "inputs": [
+   "<config><setting id=\"x\" value=\"A\"/></config>",
+   "<config><setting id=\"x\" value=\"B\" conflict=\"freeze\"/></config>"
+  ],
+  "expected": "<config>\n    <setting id=\"x\" value=\"B\" conflict=\"freeze\" />\n</config>\n"
+ },
+ {
+  "name": "child_merge",
+  "inputs": [
+   "<config><accounts><account id=\"1\" a=\"A\"/></accounts></config>",
+   "<config><accounts><account id=\"1\" b=\"B\"/></accounts></config>"
+  ],
+  "expected": "<config>\n    <accounts>\n        <account id=\"1\" b=\"B\" />\n    </accounts>\n</config>\n"
+ },
+ {
+  "name": "replace",
+  "inputs": [
+   "<config><accounts><account id=\"1\" a=\"A\"/><account id=\"2\" a=\"A\"/></accounts></config>",
+   "<config><accounts conflict=\"replace\"><account id=\"1\" b=\"B\"/></accounts></config>"
+  ],
+  "expected": "<config>\n    <accounts conflict=\"replace\">\n        <account id=\"1\" b=\"B\" />\n    </accounts>\n</config>\n"
+ },
+ {
+  "name": "freeze_third",
+  "inputs": [
+   "<config><setting id=\"x\" value=\"A\"/></config>",
+   "<config><setting id=\"x\" value=\"B\" conflict=\"freeze\"/></config>",
+   "<config><setting id=\"x\" value=\"C\"/></config>"
+  ],
+  "expected": "<config>\n    <setting id=\"x\" value=\"B\" conflict=\"freeze\" />\n</config>\n"
+ },
+ {
+  "name": "accounts_recursive",
+  "inputs": [
+   "<config><accounts><account id=\"1\" a=\"A\"/><account id=\"2\" a=\"A\"/></accounts></config>",
+   "<config><accounts><account id=\"1\" b=\"B\"/></accounts></config>"
+  ],
+  "expected": "<config>\n    <accounts>\n        <account id=\"1\" b=\"B\" />\n    </accounts>\n</config>\n"
+ },
+ {
+  "name": "no_id_siblings",
+  "inputs": [
+   "<config><item value=\"A\"/><item value=\"B\"/></config>",
+   "<config><item value=\"C\"/></config>"
+  ],
+  "expected": "<config>\n    <item value=\"C\" />\n</config>\n"
+ },
+ {
+  "name": "setting_attrs_replace",
+  "inputs": [
+   "<config><setting id=\"x\" value=\"a\" custom=\"old\"/></config>",
+   "<config><setting id=\"x\" value=\"b\"/></config>"
+  ],
+  "expected": "<config>\n    <setting id=\"x\" value=\"b\" custom=\"old\" />\n</config>\n"
+ },
+ {
+  "name": "generic_id_siblings",
+  "inputs": [
+   "<config><foo id=\"a\" value=\"1\"/><foo id=\"b\" value=\"2\"/></config>",
+   "<config><foo id=\"a\" value=\"3\"/></config>"
+  ],
+  "expected": "<config>\n    <foo id=\"a\" value=\"3\" />\n    <foo id=\"b\" value=\"2\" />\n</config>\n"
+ },
+ {
+  "name": "generic_nested",
+  "inputs": [
+   "<config><foo><bar id=\"a\" value=\"1\"/><bar id=\"b\" value=\"2\"/></foo></config>",
+   "<config><foo><bar id=\"a\" value=\"3\"/></foo></config>"
+  ],
+  "expected": "<config>\n    <foo>\n        <bar id=\"a\" value=\"3\" />\n        <bar id=\"b\" value=\"2\" />\n    </foo>\n</config>\n"
+ },
+ {
+  "name": "accounts_explicit_merge",
+  "inputs": [
+   "<config><accounts><account id=\"1\" a=\"A\"/><account id=\"2\" a=\"B\"/></accounts></config>",
+   "<config><accounts conflict=\"merge\"><account id=\"1\" b=\"C\"/></accounts></config>"
+  ],
+  "expected": "<config>\n    <accounts conflict=\"merge\">\n        <account id=\"1\" b=\"C\" />\n    </accounts>\n</config>\n"
+ },
+ {
+  "name": "accounts_frozen",
+  "inputs": [
+   "<config><accounts conflict=\"freeze\"><account id=\"1\" a=\"A\"/></accounts></config>",
+   "<config><accounts><account id=\"2\" b=\"C\"/></accounts></config>"
+  ],
+  "expected": "<config>\n    <accounts conflict=\"freeze\">\n        <account id=\"1\" a=\"A\" />\n    </accounts>\n</config>\n"
+ },
+ {
+  "name": "codecs_siblings",
+  "inputs": [
+   "<config><codecs><codec id=\"a\" enabled=\"1\"/><codec id=\"b\" enabled=\"0\"/></codecs></config>",
+   "<config><codecs><codec id=\"a\" enabled=\"0\"/></codecs></config>"
+  ],
+  "expected": "<config>\n    <codecs>\n        <codec id=\"a\" enabled=\"0\" />\n        <codec id=\"b\" enabled=\"0\" />\n    </codecs>\n</config>\n"
+ },
+ {
+  "name": "codec_attrs",
+  "inputs": [
+   "<config><codecs><codec id=\"a\" enabled=\"1\" jitter_min=\"5\"/></codecs></config>",
+   "<config><codecs><codec id=\"a\" enabled=\"0\"/></codecs></config>"
+  ],
+  "expected": "<config>\n    <codecs>\n        <codec id=\"a\" enabled=\"0\" jitter_min=\"5\" />\n    </codecs>\n</config>\n"
+ },
+ {
+  "name": "contact_sources",
+  "inputs": [
+   "<config><contacts><contact_source id=\"a\" url=\"x\"/><contact_source id=\"b\" url=\"y\"/></contacts></config>",
+   "<config><contacts><contact_source id=\"a\" url=\"z\"/></contacts></config>"
+  ],
+  "expected": "<config>\n    <contacts>\n        <contact_source id=\"a\" url=\"z\" />\n        <contact_source id=\"b\" url=\"y\" />\n    </contacts>\n</config>\n"
+ },
+ {
+  "name": "apps_siblings",
+  "inputs": [
+   "<config><appconfig><application id=\"a\" value=\"1\"/><application id=\"b\" value=\"2\"/></appconfig></config>",
+   "<config><appconfig><application id=\"a\" value=\"3\"/></appconfig></config>"
+  ],
+  "expected": "<config>\n    <appconfig>\n        <application id=\"a\" value=\"3\" />\n        <application id=\"b\" value=\"2\" />\n    </appconfig>\n</config>\n"
+ },
+ {
+  "name": "keymap_states",
+  "inputs": [
+   "<config><keymap><state id=\"a\"><key id=\"1\" action=\"a\"/><key id=\"2\" action=\"b\"/></state><state id=\"b\"/></keymap></config>",
+   "<config><keymap><state id=\"a\"><key id=\"1\" action=\"c\"/></state></keymap></config>"
+  ],
+  "expected": "<config>\n    <keymap>\n        <state id=\"a\">\n            <key id=\"1\" action=\"c\" />\n            <key id=\"2\" action=\"b\" />\n        </state>\n        <state id=\"b\" />\n    </keymap>\n</config>\n"
+ },
+ {
+  "name": "firmwares",
+  "inputs": [
+   "<config><firmwares><firmware model=\"D60\" version=\"a\"/><firmware model=\"D40\" version=\"b\"/></firmwares></config>",
+   "<config><firmwares><firmware model=\"D60\" version=\"c\"/></firmwares></config>"
+  ],
+  "expected": "<config>\n    <firmwares>\n        <firmware model=\"D60\" version=\"c\" />\n        <firmware model=\"D40\" version=\"b\" />\n    </firmwares>\n</config>\n"
+ },
+ {
+  "name": "unknown_conflict",
+  "inputs": [
+   "<config><foo id=\"x\" a=\"a\"/></config>",
+   "<config><foo id=\"x\" conflict=\"not-a-policy\" b=\"b\"/></config>"
+  ],
+  "expected": "<config>\n    <foo id=\"x\" a=\"a\" conflict=\"not-a-policy\" b=\"b\" />\n</config>\n"
+ },
+ {
+  "name": "freeze_children",
+  "inputs": [
+   "<config><foo><bar id=\"x\" value=\"a\" conflict=\"freeze\"/></foo></config>",
+   "<config><foo><bar id=\"x\" value=\"b\"/><bar id=\"y\" value=\"c\"/></foo></config>"
+  ],
+  "expected": "<config>\n    <foo>\n        <bar id=\"x\" value=\"a\" conflict=\"freeze\" />\n        <bar id=\"y\" value=\"c\" />\n    </foo>\n</config>\n"
+ },
+ {
+  "name": "network_setting_single",
+  "inputs": [
+   "<config><network id=\"n\"><setting id=\"x\" value=\"a\"/></network></config>",
+   "<config><network id=\"n\"><setting id=\"y\" value=\"b\"/></network></config>"
+  ],
+  "expected": "<config>\n    <network id=\"n\">\n        <setting id=\"x\" value=\"a\" />\n        <setting id=\"y\" value=\"b\" />\n    </network>\n</config>\n"
+ }
+]

@@ -1,0 +1,22 @@
+<?xml version="1.0" ?>
+<!-- Open DPhone factory restrictions for the D45 (merge layer 2). -->
+<config>
+    <setting id="phone_model" value="D45" conflict="freeze"/>
+    <setting id="max_accounts" value="2" conflict="freeze"/>
+    <setting id="width" value="240" conflict="freeze"/>
+    <setting id="height" value="120" conflict="freeze"/>
+    <setting id="line_tab_width" value="62" conflict="freeze"/>
+    <setting id="label_width" value="62" conflict="freeze"/>
+    <setting id="default_fontsize" value="10"/>
+    <setting id="backlight_timeout" value="30"/>
+    <setting id="contrast" value="5"/>
+    <setting id="desi_strip_type" value="none" conflict="freeze"/>
+    <setting id="desi_strip_size" value="0" conflict="freeze"/>
+    <setting id="desi_strip_max_pages" value="0" conflict="freeze"/>
+    <keymap>
+        <state id="all">
+            <key id="line1" length="long" action="blf_info" conflict="freeze"/>
+            <key id="line2" length="long" action="blf_info" conflict="freeze"/>
+        </state>
+    </keymap>
+</config>
