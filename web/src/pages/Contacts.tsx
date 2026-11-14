@@ -35,7 +35,7 @@ function ContactEditor({ contact, onSave, onClose }: { contact: Contact; onSave:
           <Field label="Organization">
             <Input value={c.organization} onChange={(e) => setC({ ...c, organization: e.target.value })} />
           </Field>
-          <Field label="Presence extension" hint="Extension whose status this contact shows.">
+          <Field label="Presence extension">
             <Input value={c.subscribeTo} onChange={(e) => setC({ ...c, subscribeTo: e.target.value })} />
           </Field>
         </div>
@@ -57,7 +57,7 @@ function ContactEditor({ contact, onSave, onClose }: { contact: Contact; onSave:
             ))}
           </div>
           <Button size="sm" className="mt-2" onClick={() => setC({ ...c, numbers: [...c.numbers, create(ContactNumberSchema, { primary: c.numbers.length === 0 })] })}>
-            <Icons.plus className="size-3.5" /> Add number
+            Add number
           </Button>
         </div>
       </div>
@@ -113,11 +113,11 @@ function ListEditor({ name }: { name: string }) {
                 {g.name || g.id || "Group"} <span className="font-normal text-slate-400">{g.contacts.length}</span>
               </h3>
               <Button size="sm" onClick={() => setEditing({ group: gi, index: -1, contact: create(ContactSchema, { contactType: "sip", numbers: [create(ContactNumberSchema, { primary: true })] }) })}>
-                <Icons.plus className="size-3.5" /> Add contact
+                Add contact
               </Button>
             </div>
             {rows.length === 0 ? (
-              <Empty>{q ? "No matches." : "This group is empty."}</Empty>
+              <Empty>{q ? "No matches" : "None"}</Empty>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -225,7 +225,6 @@ export function Contacts() {
     <>
       <PageHeader
         title="Contacts"
-        description="Contact lists stored on the phone, in the stock XML format."
         actions={
           <>
             <input ref={file} type="file" accept=".xml,application/xml,text/xml" className="hidden" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0]).then(() => (e.target.value = ""))} />
@@ -243,7 +242,7 @@ export function Contacts() {
         {error && <ErrorNote error={error} />}
         {names.length === 0 ? (
           <Card>
-            <Empty>No contact lists yet. Create one, or import a stock contacts XML file.</Empty>
+            <Empty>None</Empty>
           </Card>
         ) : (
           <Card
@@ -258,7 +257,7 @@ export function Contacts() {
                 </Select>
               </span>
             }
-            actions={name && <ConfirmButton size="sm" variant="secondary" label="Delete list" title={`Delete ${name}?`} message="The whole list is removed from the phone." confirmLabel="Delete" onConfirm={() => remove.mutateAsync({ name })} />}
+            actions={name && <ConfirmButton size="sm" variant="secondary" label="Delete list" title={`Delete ${name}?`} confirmLabel="Delete" onConfirm={() => remove.mutateAsync({ name })} />}
           >
             {name && <ListEditor key={name} name={name} />}
           </Card>

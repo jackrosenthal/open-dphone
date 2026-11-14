@@ -119,14 +119,14 @@ export function Calls() {
 
   return (
     <>
-      <PageHeader title="Calls" description="Place and control calls on the phone from here." />
+      <PageHeader title="Calls" />
       <div className="space-y-5">
         <ErrorNote error={error} />
         <div className="grid gap-5 lg:grid-cols-3">
-          <Card title="Click to dial" className="lg:col-span-2">
+          <Card title="Dial" className="lg:col-span-2">
             <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
               <Field label="Number or SIP address" className="min-w-48 flex-1">
-                <Input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="e.g., 104" inputMode="tel" />
+                <Input value={target} onChange={(e) => setTarget(e.target.value)} inputMode="tel" />
               </Field>
               <Field label="Line">
                 <Select value={account} onChange={(e) => setAccount(e.target.value)}>
@@ -165,7 +165,7 @@ export function Calls() {
 
         <Card title="In progress">
           {!snap || snap.calls.length === 0 ? (
-            <Empty>No calls in progress.</Empty>
+            <Empty>None</Empty>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {snap.calls.map((c) => (
@@ -179,12 +179,12 @@ export function Calls() {
           title="Recent calls"
           actions={
             (log.data?.entries.length ?? 0) > 0 && (
-              <ConfirmButton size="sm" variant="secondary" label="Clear" title="Clear the call log?" message="This removes the call history from the phone." confirmLabel="Clear" onConfirm={() => clear.mutateAsync({}).then(() => log.refetch())} />
+              <ConfirmButton size="sm" variant="secondary" label="Clear" title="Clear the call log?" confirmLabel="Clear" onConfirm={() => clear.mutateAsync({}).then(() => log.refetch())} />
             )
           }
         >
           {!log.data || log.data.entries.length === 0 ? (
-            <Empty>No recent calls.</Empty>
+            <Empty>None</Empty>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">

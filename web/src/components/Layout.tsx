@@ -6,7 +6,7 @@ import { setSession, useSession } from "../lib/session";
 import { StatusProvider, useStatus } from "../lib/status";
 import { client } from "../lib/transport";
 import { Icons } from "./icons";
-import { Alert, StreamBadge, cx } from "./ui";
+import { Alert, cx } from "./ui";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: Icons.dashboard },
@@ -101,15 +101,15 @@ function Shell() {
           <Icons.menu />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{sys?.hostname || "Phone"}</p>
+          <p className="truncate text-sm font-medium">{sys?.hostname}</p>
           <p className="truncate text-xs text-slate-500 dark:text-slate-400">{status?.network?.ipv4Address || " "}</p>
         </div>
-        <StreamBadge status={stream} />
         <ThemeToggle />
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-6 lg:px-8">
         <div className="mb-4 space-y-3 empty:hidden">
+          {stream === "reconnecting" && <Alert tone="red" title="Connection to the phone lost. What is shown may be out of date." />}
           {defaultPassword && (
             <Alert title="The administrator password is still the factory default.">
               Change it under <Link to="/system" className="font-medium underline">System</Link>.

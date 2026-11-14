@@ -25,7 +25,6 @@ export function Provisioning() {
     <>
       <PageHeader
         title="Provisioning"
-        description="Configuration from a Digium Phone Module (DPMA) server."
         actions={
           <>
             <Button onClick={() => again.mutate({})} busy={again.isPending} disabled={!p.server}>
@@ -68,16 +67,16 @@ export function Provisioning() {
                 start.mutate({ server: server.trim() });
               }}
             >
-              <Field label="Server address" hint="Leave empty to discover (saved server, DHCP option 66, mDNS)." className="flex-1">
-                <Input value={server} onChange={(e) => setServer(e.target.value)} placeholder="pbx.example.com:5060" />
+              <Field label="Server address" className="flex-1">
+                <Input value={server} onChange={(e) => setServer(e.target.value)} placeholder="host:port" />
               </Field>
-              <Button type="submit" variant="primary" busy={start.isPending} className="mb-5">
+              <Button type="submit" variant="primary" busy={start.isPending} >
                 {server.trim() ? "Use" : "Discover"}
               </Button>
             </form>
             <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Discovered</p>
             {p.discovered.length === 0 ? (
-              <Empty>No servers found.</Empty>
+              <Empty>None</Empty>
             ) : (
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {p.discovered.map((d) => (

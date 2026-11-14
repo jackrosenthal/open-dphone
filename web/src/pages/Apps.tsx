@@ -35,7 +35,6 @@ export function Apps() {
     <>
       <PageHeader
         title="Apps"
-        description="Phone apps are WebAssembly packages."
         actions={
           <>
             <input ref={file} type="file" className="hidden" onChange={(e) => e.target.files?.[0] && install(e.target.files[0]).then(() => (e.target.value = ""))} />
@@ -51,7 +50,7 @@ export function Apps() {
           {!snap ? (
             <Spinner />
           ) : snap.apps.length === 0 ? (
-            <Empty>No apps are installed.</Empty>
+            <Empty>None</Empty>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {snap.apps.map((a) => (

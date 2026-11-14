@@ -67,7 +67,7 @@ function Login({ model, hostname }: { model?: string; hostname?: string }) {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Open DPhone</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {model ? `Digium ${model}` : "Phone administration"}
+              {model ? `Digium ${model}` : ""}
               {hostname ? ` · ${hostname}` : ""}
             </p>
           </div>

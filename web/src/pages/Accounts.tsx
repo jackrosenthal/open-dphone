@@ -50,7 +50,7 @@ function Editor({ account, onSave, onClose, busy, error }: { account: AccountCon
         <div className="grid gap-4 sm:grid-cols-2">
           {text("username", "User name")}
           {text("authname", "Authentication name", { placeholder: "Same as user name" })}
-          {text("password", "Password", { type: "password", placeholder: a.hasPassword ? "Unchanged" : "", hint: a.hasPassword ? "Leave empty to keep the stored password." : undefined })}
+          {text("password", "Password", { type: "password", placeholder: a.hasPassword ? "Unchanged" : "", hint: undefined })}
           {text("displayName", "Display name")}
           {text("lineLabel", "Line key label")}
           {text("voicemail", "Voicemail number")}
@@ -105,7 +105,6 @@ export function Accounts() {
     <>
       <PageHeader
         title="Accounts"
-        description={`SIP lines. This model has ${maxAccounts}.`}
         actions={
           <>
             <Button onClick={() => rereg.mutate({})}>Register again</Button>
@@ -122,18 +121,16 @@ export function Accounts() {
       <div className="space-y-5">
         {!editing && <ErrorNote error={error} />}
         {!local && accounts.length > 0 && (
-          <Alert tone="blue" title="These accounts come from the provisioning server.">
-            Saving a change here stores all accounts on the phone, and the stored accounts then replace the provisioned ones, as on the stock firmware.
-          </Alert>
+          <Alert tone="blue" title="These accounts come from the provisioning server. Saving a change stores all of them on the phone, and the stored accounts then replace the provisioned ones." />
         )}
         {local && (
           <Alert tone="blue" title="These accounts are stored on the phone and replace any provisioned accounts.">
-            <ConfirmButton size="sm" variant="secondary" label="Use provisioned accounts" title="Remove the stored accounts?" message="The accounts stored on the phone are deleted, and the provisioning server's accounts apply again." confirmLabel="Remove" onConfirm={() => clear.mutateAsync({})} />
+            <ConfirmButton size="sm" variant="secondary" label="Use provisioned accounts" title="Remove the stored accounts?" message="The provisioning server's accounts apply again." confirmLabel="Remove" onConfirm={() => clear.mutateAsync({})} />
           </Alert>
         )}
         <Card>
           {accounts.length === 0 ? (
-            <Empty>No accounts are configured.</Empty>
+            <Empty>None</Empty>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {accounts.map((a) => {
@@ -159,7 +156,7 @@ export function Accounts() {
                       <Button size="sm" onClick={() => setEditing({ ...a, password: "" })}>
                         Edit
                       </Button>
-                      <ConfirmButton size="sm" variant="secondary" label="Remove" title={`Remove line ${a.index + 1}?`} message="The account is deleted from the phone." confirmLabel="Remove" onConfirm={() => remove(a.index)} />
+                      <ConfirmButton size="sm" variant="secondary" label="Remove" title={`Remove line ${a.index + 1}?`} confirmLabel="Remove" onConfirm={() => remove(a.index)} />
                     </div>
                   </li>
                 );

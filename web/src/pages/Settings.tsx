@@ -158,7 +158,7 @@ export function Settings() {
     <>
       <PageHeader
         title="Phone settings"
-        description="Changes are stored on the phone and override provisioned values."
+        description="Values saved here override provisioned ones."
         actions={
           <>
             {changes.length > 0 && <Badge tone="amber">{changes.length} unsaved</Badge>}
@@ -193,9 +193,7 @@ export function Settings() {
             </Button>
           }
         >
-          {!showAll ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">Every setting of the merged configuration, by its stock setting ID. A local value can be reverted to the provisioned or default one.</p>
-          ) : (
+          {showAll && (
             <>
               <Field label="Filter" className="mb-3 max-w-sm">
                 <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Setting ID or value" />

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, Card, Input, PageHeader, Select, StreamBadge, Toggle, cx } from "../components/ui";
+import { Alert, Button, Card, Input, PageHeader, Select, Toggle, cx } from "../components/ui";
 import { LogLevel, LogsService, type LogEntry } from "../gen/dphone/v1/logs_pb";
 import { useStream } from "../lib/stream";
 import { client } from "../lib/transport";
@@ -68,7 +68,12 @@ export function Logs() {
 
   return (
     <>
-      <PageHeader title="Logs" description="The phone's in-memory log, live." actions={<StreamBadge status={status} />} />
+      <PageHeader title="Logs" />
+      {status === "reconnecting" && (
+        <div className="mb-4">
+          <Alert tone="red" title="Connection lost. New lines are not arriving." />
+        </div>
+      )}
       <Card>
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <Select className="!w-auto" value={level} onChange={(e) => setLevel(Number(e.target.value))} aria-label="Least severe level shown">
@@ -94,7 +99,7 @@ export function Logs() {
         </div>
         <div ref={box} className="h-[60vh] overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-xs leading-5 ring-1 ring-inset ring-slate-200 dark:bg-slate-950 dark:ring-slate-800" onWheel={() => box.current && setFollow(box.current.scrollTop + box.current.clientHeight >= box.current.scrollHeight - 24)}>
           {shown.length === 0 ? (
-            <p className="text-slate-400">No log lines{q ? " match" : " yet"}.</p>
+            <p className="text-slate-400">{q ? "No matches" : "None"}</p>
           ) : (
             shown.map((e) => (
               <div key={String(e.seq)} className="whitespace-pre-wrap break-words">

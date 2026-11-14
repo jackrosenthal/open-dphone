@@ -212,7 +212,7 @@ export function ConfirmButton({
 }: {
   label: ReactNode;
   title: string;
-  message: ReactNode;
+  message?: ReactNode;
   confirmLabel: string;
   onConfirm: () => Promise<unknown> | void;
   variant?: "danger" | "primary" | "secondary";
@@ -263,7 +263,7 @@ export function ConfirmButton({
           }
         >
           <div className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
-            <div>{message}</div>
+            {message && <div>{message}</div>}
             {requireText !== undefined && (
               <Field label={`Type ${requireText} to confirm`}>
                 <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
@@ -274,26 +274,6 @@ export function ConfirmButton({
         </Modal>
       )}
     </>
-  );
-}
-
-export function StreamBadge({ status }: { status: "connecting" | "live" | "reconnecting" }) {
-  if (status === "live") {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
-        <span className="relative flex size-2">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-          <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
-        </span>
-        Live
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
-      <Dot tone="amber" />
-      {status === "connecting" ? "Connecting" : "Reconnecting"}
-    </span>
   );
 }
 

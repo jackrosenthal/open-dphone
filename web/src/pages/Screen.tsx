@@ -1,41 +1,42 @@
 import { useQuery } from "@connectrpc/connect-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Alert, Button, Card, PageHeader, Spinner, StreamBadge, cx } from "../components/ui";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { Alert, Button, Card, PageHeader, Spinner, cx } from "../components/ui";
 import { KeyAction, ScreenId, ScreenService, type Lamp } from "../gen/dphone/v1/screen_pb";
+import { panels, type PanelKey } from "../lib/phones";
 import { useStream } from "../lib/stream";
 import { client, errorMessage } from "../lib/transport";
 
-const labels: Record<string, ReactNode> = {
-  up: "▲",
-  down: "▼",
-  left: "◀",
-  right: "▶",
-  select: "✓",
-  cancel: "✕",
-  vup: "Vol +",
-  vdn: "Vol −",
-  mute: "Mute",
-  spkr: "Speaker",
-  hdst: "Headset",
-  hold: "Hold",
-  xfer: "Transfer",
-  redial: "Redial",
-  msgs: "Msgs",
-  conf: "Conf",
-  info: "Info",
-  status: "Status",
-  dir: "Contacts",
-  apps: "Apps",
-  menu: "Menu",
-  blfleft: "◀ Page",
-  blfright: "Page ▶",
-};
-const letters: Record<string, string> = { "2": "ABC", "3": "DEF", "4": "GHI", "5": "JKL", "6": "MNO", "7": "PQRS", "8": "TUV", "9": "WXYZ" };
-
 const lampColor: Record<string, string> = { red: "bg-red-500", green: "bg-emerald-500", amber: "bg-amber-400" };
 
+/// Names for keys that carry no print on the phone.
+function keyName(id: string): string {
+  const n = id.replace(/\D/g, "");
+  if (id.startsWith("sk")) return `Soft key ${n}`;
+  if (id.startsWith("line")) return `Line key ${n}`;
+  if (/^blf\d/.test(id)) return `Rapid dial key ${n}`;
+  if (id === "blfleft") return "Previous page";
+  if (id === "blfright") return "Next page";
+  return id;
+}
+
 /// One mirrored display: draws each PNG the stream sends.
-function Mirror({ screen, width, height, scale, onMeta }: { screen: ScreenId; width: number; height: number; scale: number; onMeta?: (lamps: Lamp[], backlight: boolean, offHook: boolean) => void }) {
+function Mirror({
+  screen,
+  width,
+  height,
+  scale,
+  style,
+  dim,
+  onMeta,
+}: {
+  screen: ScreenId;
+  width: number;
+  height: number;
+  scale: number;
+  style?: CSSProperties;
+  dim?: boolean;
+  onMeta?: (lamps: Lamp[], backlight: boolean, offHook: boolean) => void;
+}) {
   const [url, setUrl] = useState<string>();
   const last = useRef<string>(undefined);
   const status = useStream(
@@ -53,9 +54,9 @@ function Mirror({ screen, width, height, scale, onMeta }: { screen: ScreenId; wi
   );
   useEffect(() => () => void (last.current && URL.revokeObjectURL(last.current)), []);
   return (
-    <div className="relative shrink-0 overflow-hidden rounded-md bg-black ring-4 ring-slate-800" style={{ width: width * scale, height: height * scale }}>
-      {url ? <img src={url} alt="Phone screen" width={width * scale} height={height * scale} draggable={false} style={{ imageRendering: "pixelated" }} /> : <div className="flex size-full items-center justify-center text-xs text-slate-500">No picture</div>}
-      <div className="absolute right-1 top-1 rounded bg-black/50 px-1">{status !== "live" && <StreamBadge status={status} />}</div>
+    <div className="absolute overflow-hidden bg-black ring-2 ring-slate-950" style={{ ...style, width: width * scale, height: height * scale }}>
+      {url && <img src={url} alt="" width={width * scale} height={height * scale} draggable={false} className={cx(dim && "opacity-60")} style={{ imageRendering: "pixelated" }} />}
+      {status === "reconnecting" && <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-xs text-amber-300">Connection lost</div>}
     </div>
   );
 }
@@ -77,21 +78,19 @@ export function Screen() {
   // The computer keyboard works as a keypad while this page is open.
   useEffect(() => {
     const map = (e: KeyboardEvent): string | undefined => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLButtonElement || e.ctrlKey || e.metaKey || e.altKey) return;
       if (/^[0-9*#]$/.test(e.key)) return e.key;
       return ({ ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", Enter: "select", Escape: "cancel", Backspace: "cancel", F1: "sk1", F2: "sk2", F3: "sk3", F4: "sk4" } as Record<string, string>)[e.key];
     };
     const down = (e: KeyboardEvent) => {
       const k = map(e);
       if (!k || e.repeat) return;
-      if (e.target instanceof HTMLButtonElement && e.key === "Enter") return;
       e.preventDefault();
       press(k, KeyAction.DOWN);
     };
     const up = (e: KeyboardEvent) => {
       const k = map(e);
       if (!k) return;
-      if (e.target instanceof HTMLButtonElement && e.key === "Enter") return;
       e.preventDefault();
       press(k, KeyAction.UP);
     };
@@ -105,55 +104,65 @@ export function Screen() {
 
   if (layout.error) return <Alert tone="red">{errorMessage(layout.error)}</Alert>;
   if (!layout.data) return <Spinner />;
-  const { keys, screens, skin, model, mirrorAvailable } = layout.data;
-  const has = (k: string) => keys.includes(k);
+  const { keys, screens, model, mirrorAvailable } = layout.data;
   const main = screens.find((s) => s.id === ScreenId.MAIN)!;
   const side = screens.find((s) => s.id === ScreenId.SIDE);
-  const scale = skin === "color" ? 1 : skin === "large_gray" ? 1.5 : 2;
-  const lamp = (k: string) => lamps.find((l) => l.key === k && l.color !== "off");
+  const panel = panels[model];
+  const lamp = (id?: string) => lamps.find((l) => l.key === id && l.color !== "off");
 
-  function Key({ k, className, children }: { k: string; className?: string; children?: ReactNode }) {
-    if (!has(k)) return null;
-    const l = lamp(k);
+  function Key({ k, style, className }: { k: PanelKey; style?: CSSProperties; className?: string }) {
+    const l = lamp(k.lamp);
     const release = () => {
-      if (held.current === k) {
+      if (held.current === k.id) {
         held.current = undefined;
-        press(k, KeyAction.UP);
+        press(k.id, KeyAction.UP);
       }
     };
     return (
       <button
         type="button"
-        title={k}
-        aria-label={typeof (children ?? labels[k]) === "string" ? undefined : k}
+        title={k.label ? undefined : keyName(k.id)}
+        aria-label={k.label && /[A-Za-z0-9]/.test(k.label) ? undefined : keyName(k.id)}
+        style={style}
         className={cx(
-          "relative flex min-h-9 select-none items-center justify-center rounded-md bg-slate-700 px-2 py-1.5 text-xs font-medium text-slate-100 shadow-sm ring-1 ring-inset ring-slate-600 transition active:translate-y-px active:bg-slate-600",
+          "flex select-none flex-col items-center justify-center text-[11px] font-medium leading-none text-slate-100 active:brightness-125",
+          k.shape === "rect" ? "rounded-md" : "rounded-full",
+          // An unprinted key with a lamp lights as a whole.
+          l && !k.label ? cx(lampColor[l.color], l.blink !== "solid" && `lamp-${l.blink}`) : "bg-slate-600 ring-1 ring-inset ring-slate-500",
           className,
         )}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
-          held.current = k;
-          press(k, KeyAction.DOWN);
+          held.current = k.id;
+          press(k.id, KeyAction.DOWN);
         }}
         onPointerUp={release}
         onPointerCancel={release}
-        onClick={(e) => e.detail === 0 && press(k, KeyAction.TAP)}
+        onClick={(e) => e.detail === 0 && press(k.id, KeyAction.TAP)}
       >
-        {children ?? labels[k] ?? k}
-        {l && <span className={cx("absolute right-1 top-1 size-2 rounded-full shadow", lampColor[l.color], l.blink !== "solid" && `lamp-${l.blink}`)} />}
+        {k.sub !== undefined ? (
+          <>
+            <span className="text-sm">{k.label}</span>
+            <span className="h-2 text-[7px] tracking-widest text-slate-400">{k.sub}</span>
+          </>
+        ) : (
+          k.label
+        )}
+        {l && k.label && <span className={cx("absolute right-1 top-1 size-1.5 rounded-full", lampColor[l.color], l.blink !== "solid" && `lamp-${l.blink}`)} />}
       </button>
     );
   }
 
-  const lineKeys = keys.filter((k) => k.startsWith("line"));
-  const blfKeys = keys.filter((k) => /^blf\d+$/.test(k));
-  const functionKeys = ["msgs", "hold", "xfer", "redial", "conf", "info", "status", "dir", "apps", "menu", "blfleft", "blfright"].filter(has);
+  const placed = panel ? panel.keys.filter((k) => keys.includes(k.id)) : [];
+  // Keys the phone reports that the drawing has no place for: listed
+  // plainly rather than given an invented position.
+  const unplaced = keys.filter((id) => !placed.some((k) => k.id === id));
+  const mwi = lamp("msgs");
 
   return (
     <>
       <PageHeader
         title="Screen"
-        description={`A live picture of the ${model}'s display, with a working keypad. Digits, arrows, Enter, Esc, and F1 to F4 on your keyboard work too.`}
         actions={
           <Button
             variant={offHook ? "primary" : "secondary"}
@@ -163,95 +172,49 @@ export function Screen() {
                 .catch((e) => setError(errorMessage(e)))
             }
           >
-            {offHook ? "Handset lifted: hang up" : "Lift handset"}
+            {offHook ? "Replace handset" : "Lift handset"}
           </Button>
         }
       />
       <div className="space-y-4">
         {error && <Alert tone="red">{error}</Alert>}
-        {!mirrorAvailable && <Alert tone="blue" title="No screen picture is available in this build; the keys still work." />}
+        {!mirrorAvailable && <Alert tone="blue" title="This build has no screen picture. The keys still work." />}
         <Card className="overflow-x-auto">
-          <div className="mx-auto w-fit rounded-3xl bg-slate-900 p-5 shadow-xl ring-1 ring-slate-700">
-            <div className="flex items-start justify-center gap-3">
-              <div className="flex flex-col justify-around gap-2 self-stretch py-1">
-                {lineKeys.map((k) => (
-                  <Key key={k} k={k} className="w-12">
-                    {`L${k.slice(4)}`}
-                  </Key>
-                ))}
-              </div>
-              <div>
-                <div className={cx("transition-opacity", !backlight && "opacity-60")}>
-                  <Mirror
-                    screen={ScreenId.MAIN}
-                    width={main.width}
-                    height={main.height}
-                    scale={scale}
-                    onMeta={(l, b, h) => {
-                      setLamps(l);
-                      setBacklight(b);
-                      setOffHook(h);
-                    }}
-                  />
-                </div>
-                <div className="mt-2 grid grid-cols-4 gap-2">
-                  {[1, 2, 3, 4].map((n) => (
-                    <Key key={n} k={`sk${n}`} className="!min-h-6 !py-0.5">
-                      <span className="text-[10px] text-slate-400">F{n}</span>
-                    </Key>
-                  ))}
-                </div>
-              </div>
-              {(side || blfKeys.length > 0) && (
-                <div className="flex gap-2">
-                  {side && <Mirror screen={ScreenId.SIDE} width={side.width} height={side.height} scale={1} />}
-                  {blfKeys.length > 0 && (
-                    <div className="flex flex-col justify-between gap-1">
-                      {blfKeys.map((k) => (
-                        <Key key={k} k={k} className="!min-h-0 w-12 flex-1 !py-0.5">
-                          {`B${k.slice(3)}`}
-                        </Key>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+          {panel && (
+            <div className="relative mx-auto rounded-2xl bg-slate-800 ring-1 ring-slate-700" style={{ width: panel.width, height: panel.height }}>
+              <div
+                title="Message waiting"
+                className={cx("absolute rounded-sm", mwi ? cx(lampColor[mwi.color], mwi.blink !== "solid" && `lamp-${mwi.blink}`) : "bg-slate-600")}
+                style={{ left: panel.mwi.x, top: panel.mwi.y, width: panel.mwi.w, height: panel.mwi.h }}
+              />
+              <Mirror
+                screen={ScreenId.MAIN}
+                width={main.width}
+                height={main.height}
+                scale={panel.display.scale}
+                dim={!backlight}
+                style={{ left: panel.display.x, top: panel.display.y }}
+                onMeta={(l, b, h) => {
+                  setLamps(l);
+                  setBacklight(b);
+                  setOffHook(h);
+                }}
+              />
+              {side && panel.side && <Mirror screen={ScreenId.SIDE} width={side.width} height={side.height} scale={1} style={{ left: panel.side.x, top: panel.side.y }} />}
+              {panel.paper && <div className="absolute rounded-sm bg-slate-100" style={{ left: panel.paper.x, top: panel.paper.y, width: panel.paper.w, height: panel.paper.h }} />}
+              {placed.map((k) => (
+                <Key key={k.id} k={k} className="absolute" style={{ left: k.x, top: k.y, width: k.w, height: k.h }} />
+              ))}
             </div>
-
-            <div className="mt-5 flex flex-wrap items-start justify-center gap-6">
-              <div className="grid w-44 grid-cols-2 gap-2">
-                {functionKeys.map((k) => (
-                  <Key key={k} k={k} />
-                ))}
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <span />
-                <Key k="up" />
-                <span />
-                <Key k="left" />
-                <Key k="select" className="bg-brand-700 ring-brand-600" />
-                <Key k="right" />
-                <Key k="cancel" />
-                <Key k="down" />
-                <span />
-              </div>
-              <div className="grid w-44 grid-cols-3 gap-2">
-                {["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"].map((d) => (
-                  <Key key={d} k={d} className="flex-col !py-1">
-                    <span className="text-base leading-none">{d}</span>
-                    <span className="h-2.5 text-[8px] leading-none tracking-widest text-slate-400">{letters[d] ?? ""}</span>
-                  </Key>
-                ))}
-              </div>
-              <div className="grid w-40 grid-cols-2 gap-2">
-                <Key k="vdn" />
-                <Key k="vup" />
-                <Key k="mute" />
-                <Key k="hdst" />
-                <Key k="spkr" className="col-span-2" />
-              </div>
+          )}
+          {unplaced.length > 0 && (
+            <div className="mx-auto mt-4 flex max-w-xl flex-wrap gap-2">
+              {unplaced.map((id) => (
+                <Key key={id} k={{ id, label: id, x: 0, y: 0, w: 0, h: 0, shape: "rect" }} className="relative px-3 py-2" />
+              ))}
             </div>
-          </div>
+          )}
+          <p className="mt-4 text-center text-xs text-slate-500 dark:text-slate-400">Keyboard: 0–9 * #, arrows, Enter for ✓, Esc for ✕, F1–F4 for the soft keys.</p>
         </Card>
       </div>
     </>

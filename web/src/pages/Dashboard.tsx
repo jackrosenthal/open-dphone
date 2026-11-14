@@ -36,17 +36,12 @@ export function Dashboard() {
     <>
       <PageHeader
         title="Dashboard"
-        description={`Digium ${sys.model} running Open DPhone ${sys.version}`}
-        actions={
-          <Badge tone={sys.phase === SystemPhase.RUNNING ? "green" : sys.phase === SystemPhase.RECOVERY ? "red" : "amber"}>
-            {enumLabel(SystemPhase[sys.phase], "")}
-          </Badge>
-        }
+        actions={sys.phase !== SystemPhase.RUNNING && <Badge tone={sys.phase === SystemPhase.RECOVERY ? "red" : "amber"}>{enumLabel(SystemPhase[sys.phase], "")}</Badge>}
       />
       <div className="grid gap-5 lg:grid-cols-2">
         <Card title="Lines" actions={<Link to="/accounts" className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">Manage</Link>}>
           {status.accounts.length === 0 ? (
-            <Empty>No accounts are configured.</Empty>
+            <Empty>None</Empty>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {status.accounts.map((a) => (
@@ -70,7 +65,7 @@ export function Dashboard() {
 
         <Card title="Calls" actions={<Link to="/calls" className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">Open</Link>}>
           {calls.calls.length === 0 ? (
-            <Empty>No calls in progress.</Empty>
+            <Empty>None</Empty>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {calls.calls.map((c) => (
@@ -139,7 +134,7 @@ export function Dashboard() {
           />
         </Card>
 
-        <Card title="Subsystems" actions={status.healthy ? <Badge tone="green">Healthy</Badge> : <Badge tone="amber">Not yet healthy</Badge>}>
+        <Card title="Subsystems" actions={!status.healthy && <Badge tone="amber">Not yet healthy</Badge>}>
           <ul className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
             {status.health.map((h) => (
               <li key={h.subsystem} className="flex items-center gap-2" title={h.detail}>

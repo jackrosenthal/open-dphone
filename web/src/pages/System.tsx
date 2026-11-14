@@ -46,7 +46,6 @@ function Password() {
         <Button type="submit" variant="primary" busy={change.isPending} disabled={mismatch}>
           Change password
         </Button>
-        <p className="text-xs text-slate-500 dark:text-slate-400">The password is stored in the stock format, so it keeps working if the phone is returned to stock firmware.</p>
       </form>
     </Card>
   );
@@ -93,19 +92,19 @@ export function System() {
           <Card title="Restart and reset">
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-4">
-                <p className="text-sm text-slate-600 dark:text-slate-300">Restart the phone. Calls in progress end.</p>
-                <ConfirmButton variant="secondary" label="Restart" title="Restart the phone?" message="Calls in progress end, and this page reconnects when the phone is back." confirmLabel="Restart" onConfirm={() => reboot.mutateAsync({}).then(() => setNote("The phone is restarting."))} />
+                <p className="text-sm text-slate-600 dark:text-slate-300">Calls in progress end.</p>
+                <ConfirmButton variant="secondary" label="Restart" title="Restart the phone?" message="Calls in progress end." confirmLabel="Restart" onConfirm={() => reboot.mutateAsync({}).then(() => setNote("The phone is restarting."))} />
               </div>
               <div className="flex items-center justify-between gap-4 border-t border-slate-100 pt-4 dark:border-slate-800">
-                <p className="text-sm text-slate-600 dark:text-slate-300">Erase all settings, accounts, contacts, and the administrator password, then restart.</p>
-                <ConfirmButton label="Factory reset" title="Erase everything?" message="All settings stored on the phone are deleted, as the stock factory reset does. The network identity (MAC address) is kept." confirmLabel="Erase and restart" requireText={sys?.model ?? "RESET"} onConfirm={() => reset.mutateAsync({ confirm: sys?.model ?? "" }).then(() => setNote("The phone is resetting."))} />
+                <p className="text-sm text-slate-600 dark:text-slate-300">Erases all settings, accounts, contacts, and the administrator password, then restarts.</p>
+                <ConfirmButton label="Factory reset" title="Erase everything?" message="The MAC address is kept. Everything else stored on the phone is deleted." confirmLabel="Erase and restart" requireText={sys?.model ?? "RESET"} onConfirm={() => reset.mutateAsync({ confirm: sys?.model ?? "" }).then(() => setNote("The phone is resetting."))} />
               </div>
             </div>
           </Card>
 
           <Card title="Backup and restore">
             <div className="space-y-4">
-              <p className="text-sm text-slate-600 dark:text-slate-300">A backup holds the settings changed on the phone, the stored accounts, and the contact lists. It does not hold the phone's identity keys or provisioned configuration.</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">Holds locally changed settings, stored accounts, and contact lists. Leaves out identity keys and provisioned configuration.</p>
               <div className="flex gap-2">
                 <Button onClick={download} busy={backup.isPending}>
                   Download backup

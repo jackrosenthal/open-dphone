@@ -73,7 +73,7 @@ export function Firmware() {
 
   return (
     <>
-      <PageHeader title="Firmware" description="The phone keeps two firmware banks and installs into the one not running." />
+      <PageHeader title="Firmware" />
       <div className="space-y-5">
         <ErrorNote error={error} />
         {fw.trial === "pending" && (
@@ -126,7 +126,7 @@ export function Firmware() {
                 {!up.modelMatches && <Alert tone="red" title={`This image is for the ${up.model}, not this phone.`} />}
                 {up.isStock && (
                   <Alert tone="red" title="This is stock Digium firmware.">
-                    Installing it replaces Open DPhone. The phone's settings stay compatible, but this web interface, SSH access, and the trial-boot safety net will be gone. You would need the stock updater to come back.
+                    Installing it replaces Open DPhone, including this web interface, SSH access, and the trial-boot rollback. Coming back needs the stock updater.
                   </Alert>
                 )}
                 <div className="flex gap-2">
@@ -144,7 +144,7 @@ export function Firmware() {
               <div className="space-y-3">
                 {fw.phase === UpdatePhase.FAILED && <Alert tone="red" title="The last install failed.">{fw.error}</Alert>}
                 <p className="text-sm text-slate-600 dark:text-slate-300">
-                  Choose an <code>.eff</code> image. Open DPhone images and stock Digium images are both accepted; nothing is written until you confirm.
+                  Accepts Open DPhone and stock Digium <code>.eff</code> images. Nothing is written until you confirm.
                 </p>
                 <input ref={file} type="file" accept=".eff" className="hidden" onChange={(e) => e.target.files?.[0] && send(e.target.files[0]).then(() => (e.target.value = ""))} />
                 <Button variant="primary" onClick={() => file.current?.click()}>
