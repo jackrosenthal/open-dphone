@@ -37,6 +37,8 @@ pub fn bridge_flag(ctx: &Context) -> std::path::PathBuf {
 }
 
 enum Cmd {
+    /// The merged configuration changed.
+    Changed,
     Show(oneshot::Sender<String>),
     Bridge { on: bool, save: bool, reply: oneshot::Sender<String> },
     Plain(oneshot::Sender<String>),
@@ -59,6 +61,12 @@ impl NetHandle {
         let _ = self.tx.try_send(Cmd::Configured(reply));
     }
 
+    /// The merged configuration changed: re-run bring-up only if the
+    /// effective network configuration differs from the one in use.
+    pub fn config_changed(&self) {
+        let _ = self.tx.try_send(Cmd::Changed);
+    }
+
     pub fn sync_time(&self) {
         let _ = self.tx.try_send(Cmd::SyncTime);
     }
@@ -79,7 +87,7 @@ impl NetHandle {
     }
 }
 
-pub fn start(ctx: &Context, config: Option<SharedConfig>) -> NetHandle {
+pub fn start(ctx: &Context, config: Option<SharedConfig>, hub: &super::system::ConfigHub) -> NetHandle {
     ctx.store.set_health(Subsystem::Net, HealthStatus::Starting);
     let mac = read_mac(ctx, config.as_ref());
     match mac {
@@ -99,7 +107,7 @@ pub fn start(ctx: &Context, config: Option<SharedConfig>) -> NetHandle {
         return handle;
     }
     ctx.health.require("net");
-    tokio::spawn(run(ctx.clone(), config, mac, rx, handle.resolver.clone()));
+    tokio::spawn(run(ctx.clone(), config, hub.clone(), mac, rx, handle.resolver.clone()));
     handle
 }
 
@@ -109,7 +117,7 @@ async fn sim_task(mut rx: mpsc::Receiver<Cmd>) {
         match cmd {
             Cmd::Show(r) | Cmd::Plain(r) | Cmd::Configured(r) => drop(r.send(text)),
             Cmd::Bridge { reply, .. } => drop(reply.send(text)),
-            Cmd::SyncTime => {}
+            Cmd::SyncTime | Cmd::Changed => {}
             Cmd::Browse(_, reply) => drop(reply.send(Vec::new())),
         }
     }
@@ -210,6 +218,7 @@ fn set_hostname(name: &str) {
 async fn run(
     ctx: Context,
     config: Option<SharedConfig>,
+    hub: super::system::ConfigHub,
     mac: Option<MacAddr>,
     mut cmds: mpsc::Receiver<Cmd>,
     resolver_slot: Arc<std::sync::Mutex<Option<dphone_net::Resolver>>>,
@@ -258,6 +267,26 @@ async fn run(
                 let state = state_rx.borrow_and_update().clone();
                 publish(&ctx, &state, &active);
                 let up = state.has_address();
+                // The merge selects the network profile (and with it the
+                // accounts) by the phone's address, as stock does.
+                if let (Some(config), Some(v4)) = (&config, state.ipv4.as_ref()) {
+                    let merged = {
+                        let mut c = config.lock().unwrap();
+                        let before = c.config().generation();
+                        match c.set_ip(Some(v4.address)) {
+                            Ok(cfg) if cfg.generation() != before => Some(cfg),
+                            Ok(_) => None,
+                            Err(e) => {
+                                warn!("net: configuration merge for {}: {e}", v4.address);
+                                None
+                            }
+                        }
+                    };
+                    if let Some(cfg) = merged {
+                        info!("net: network profile selected for {}", v4.address);
+                        hub.changed(&ctx.store, &cfg);
+                    }
+                }
                 if up && !was_up {
                     let addr = state.ipv4.as_ref().map(|v| format!("{}/{}", v.address, v.prefix_len)).unwrap_or_default();
                     info!("net: up on {} {addr}", state.interface);
@@ -298,6 +327,15 @@ async fn run(
                         deadline = None;
                         manager.reconfigure(active.clone()).await;
                         let _ = reply.send("plain configuration applied\n".into());
+                    }
+                    Cmd::Changed => {
+                        let now = configured(&ctx, config.as_ref(), mac, bridge_flag(&ctx).exists());
+                        if now != active {
+                            info!("net: network settings changed; applying {}", describe(&now));
+                            active = now;
+                            deadline = (active != plain).then(|| Instant::now() + Duration::from_secs(FALLBACK_SECS));
+                            manager.reconfigure(active.clone()).await;
+                        }
                     }
                     Cmd::Configured(reply) => {
                         active = configured(&ctx, config.as_ref(), mac, bridge_flag(&ctx).exists());

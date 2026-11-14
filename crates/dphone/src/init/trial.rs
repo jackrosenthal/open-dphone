@@ -21,6 +21,10 @@ use std::path::{Path, PathBuf};
 /// Boots a trial gets before rollback, unless the record says otherwise.
 pub const DEFAULT_MAX_BOOTS: u32 = 3;
 
+/// How long a trial boot may take to report healthy before the init role
+/// restarts the phone (the boot stays counted against the trial).
+pub const TRIAL_HEALTHY_SECS: u64 = 300;
+
 /// Main-role failures within one trial boot that trigger rollback at once.
 pub const MAX_TRIAL_CRASHES: u32 = 5;
 

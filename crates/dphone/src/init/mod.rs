@@ -617,6 +617,14 @@ impl Supervisor {
             sys::sync();
             self.wd.starve();
         }
+        // A trial boot that has not come up healthy in time is restarted, so
+        // that an image whose main role runs but cannot be reached (e.g., no
+        // network) still uses up its boots and is rolled back.
+        if self.real && self.trial.is_some() && now >= trial::TRIAL_HEALTHY_SECS {
+            error!("trial boot not healthy after {} s; rebooting", trial::TRIAL_HEALTHY_SECS);
+            self.trial = None;
+            self.shutdown(Shutdown::Reboot, Some("init: trial boot did not become healthy"));
+        }
         if now.saturating_sub(self.last_clock_save) >= CLOCK_SAVE_SECS {
             self.last_clock_save = now;
             self.save_clock();

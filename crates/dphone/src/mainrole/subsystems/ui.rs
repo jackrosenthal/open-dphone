@@ -102,7 +102,12 @@ pub struct UiParts {
     pub tap: Arc<ScreenTap>,
 }
 
-pub fn start(ctx: &Context, hal: Option<SharedHal>, config: Option<SharedConfig>, hub: &ConfigHub) -> Option<UiParts> {
+pub async fn start(
+    ctx: &Context,
+    hal: Option<SharedHal>,
+    config: Option<SharedConfig>,
+    hub: &ConfigHub,
+) -> Option<UiParts> {
     ctx.store.set_health(Subsystem::Ui, HealthStatus::Starting);
     let Some(hal) = hal else {
         error!("ui: no hardware layer; the UI is not started");
@@ -112,19 +117,28 @@ pub fn start(ctx: &Context, hal: Option<SharedHal>, config: Option<SharedConfig>
     let tap = Arc::new(ScreenTap::default());
     let current = config.as_ref().map(|c| c.lock().unwrap().config());
     let cfg = ui_config(ctx, current.as_deref());
-    let ui = {
-        let mut hal = hal.lock().ok()?;
-        let inner = std::mem::replace(&mut hal.display, Box::new(dphone_hal::Null("display")));
-        hal.display = Box::new(TapDisplay { inner, tap: tap.clone() });
-        Ui::from_hal(&mut hal, ctx.store.clone(), cfg)
-    };
-    let handle = ui.handle();
     ctx.health.require("ui");
     let health = ctx.health.clone();
     let store = ctx.store.clone();
+    // The UI is built on its own thread as well as run there: taking over
+    // the display is a blocking device call (a mode set that waits for the
+    // panel), and a display that does not answer must not stall the runtime
+    // that SSH and the diagnostics run on.
+    let (handle_tx, handle_rx) = tokio::sync::oneshot::channel();
+    let thread_tap = tap.clone();
     let spawned = std::thread::Builder::new().name("ui".into()).spawn(move || {
         // The UI owns its devices and is not Sync; it lives on this thread.
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || ui.run()));
+        let ui_store = store.clone();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            let ui = {
+                let Ok(mut hal) = hal.lock() else { return };
+                let inner = std::mem::replace(&mut hal.display, Box::new(dphone_hal::Null("display")));
+                hal.display = Box::new(TapDisplay { inner, tap: thread_tap });
+                Ui::from_hal(&mut hal, ui_store, cfg)
+            };
+            let _ = handle_tx.send(ui.handle());
+            ui.run()
+        }));
         health.fail("ui");
         let why = if result.is_err() { "the UI thread panicked" } else { "the UI thread ended" };
         error!("ui: {why}");
@@ -135,6 +149,19 @@ pub fn start(ctx: &Context, hal: Option<SharedHal>, config: Option<SharedConfig>
         ctx.store.set_health(Subsystem::Ui, HealthStatus::Failed(e.to_string()));
         return None;
     }
+    let handle = match tokio::time::timeout(Duration::from_secs(20), handle_rx).await {
+        Ok(Ok(handle)) => handle,
+        Ok(Err(_)) => {
+            ctx.store.set_health(Subsystem::Ui, HealthStatus::Failed("the UI did not start".into()));
+            return None;
+        }
+        Err(_) => {
+            error!("ui: the display did not answer within 20 s; continuing without the UI");
+            ctx.health.fail("ui");
+            ctx.store.set_health(Subsystem::Ui, HealthStatus::Failed("the display does not answer".into()));
+            return None;
+        }
+    };
     info!("ui: running");
 
     // Healthy once it has stayed up for a moment.

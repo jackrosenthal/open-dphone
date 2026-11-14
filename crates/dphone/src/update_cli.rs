@@ -6,7 +6,7 @@
 //! accepts a stock EFF.
 
 use std::fs::File;
-use std::io::{BufReader, Write};
+use std::io::{BufReader, Read, Write};
 use std::path::Path;
 
 use dphone_hal::Mtd;
@@ -20,12 +20,17 @@ usage: dphone update status
        dphone update FILE.eff [--bank a|b] [--allow-unbootable-other]
        dphone update switch-bank a|b
        dphone update write-userdata IMAGE.jffs2
+       dphone update arm-trial
   status       show both banks, the ctrl record, and what boot2 will boot next
   FILE.eff     install an image (Open DPhone or stock) into the bank that is
                not running, verify it, and select it for the next boot;
                reboot afterwards with 'dphone reboot'
   switch-bank  select a bank for the next boot without writing an image
                (refused unless that bank holds a bootable image)
+  arm-trial    record a trial boot of the bank that is not running, for an
+               image installed there by other means (e.g., by the stock
+               updater): Open DPhone returns to the running bank by itself
+               if it does not come up healthy within a few boots
   write-userdata
                erase the unused 'userdata' partition and write a root file
                system image there, for booting a test kernel from RAM with
@@ -81,6 +86,7 @@ pub fn run(args: &[String]) -> i32 {
             None => Err(format!("unknown bank '{bank}' (a or b)")),
         },
         ["write-userdata", file] => write_userdata(file),
+        ["arm-trial"] => arm_trial(),
         [file, rest @ ..] if !file.starts_with('-') && *file != "help" => install(file, rest),
         _ => {
             eprint!("{USAGE}");
@@ -141,6 +147,42 @@ fn switch_bank(bank: Bank) -> Result<(), String> {
     Ok(())
 }
 
+fn arm_trial() -> Result<(), String> {
+    let mtd = open_mtd()?;
+    let parts = mtd.partitions().map_err(|e| e.to_string())?;
+    let running = dphone_update::bank::running_bank(&cmdline(), &parts)
+        .ok_or("cannot tell the running bank from root= on the kernel command line")?;
+    let other = match running {
+        Bank::A => Bank::B,
+        Bank::B => Bank::A,
+    };
+    let record = trial::TrialRecord {
+        previous_bank: running,
+        trial_bank: Some(other),
+        boots: 0,
+        max_boots: trial::DEFAULT_MAX_BOOTS,
+    };
+    let dir = open_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let path = trial::record_path(&dir);
+    let tmp = path.with_extension("tmp");
+    let write = || -> std::io::Result<()> {
+        let mut f = File::create(&tmp)?;
+        f.write_all(record.to_text().as_bytes())?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, &path)?;
+        File::open(&dir)?.sync_all()
+    };
+    write().map_err(|e| format!("{}: {e}", path.display()))?;
+    println!(
+        "trial recorded: bank {} must come up healthy within {} boots, or the phone returns to bank {}",
+        bank_name(other),
+        record.max_boots,
+        bank_name(running)
+    );
+    Ok(())
+}
+
 fn install(file: &str, rest: &[&str]) -> Result<(), String> {
     let mut options = Options::default();
     let mut it = rest.iter();
@@ -198,7 +240,13 @@ fn install(file: &str, rest: &[&str]) -> Result<(), String> {
 /// Neither bank and nothing boot2 reads is touched.
 fn write_userdata(file: &str) -> Result<(), String> {
     const PART: &str = "userdata";
-    let image = std::fs::read(file).map_err(|e| format!("{file}: {e}"))?;
+    // Streamed one erase block at a time ("-" is standard input): a stock
+    // phone has too little free memory to hold the image twice.
+    let mut input: Box<dyn Read> = if file == "-" {
+        Box::new(std::io::stdin().lock())
+    } else {
+        Box::new(File::open(Path::new(file)).map_err(|e| format!("{file}: {e}"))?)
+    };
     let mounts = std::fs::read_to_string("/proc/mounts").unwrap_or_default();
     let mut mtd = open_mtd()?;
     let parts = mtd.partitions().map_err(|e| e.to_string())?;
@@ -209,17 +257,36 @@ fn write_userdata(file: &str) -> Result<(), String> {
     let mut part = mtd.open(PART).map_err(|e| e.to_string())?;
     println!("erasing {PART} ({} bytes)", info.size);
     let bad = dphone_hal::erase_all(part.as_mut(), |_, _| {}).map_err(|e| e.to_string())?;
-    let usable = info.size - bad as u64 * info.erase_size as u64;
-    if image.len() as u64 > usable {
-        return Err(format!("image is {} bytes; {PART} has {usable} usable ({bad} bad blocks)", image.len()));
+    println!("writing ({bad} bad blocks skipped)");
+    let bs = info.erase_size as usize;
+    let mut block = vec![0u8; bs];
+    let mut back = vec![0u8; bs];
+    let mut off = 0u64;
+    let mut total = 0usize;
+    loop {
+        let mut n = 0;
+        while n < bs {
+            match input.read(&mut block[n..]) {
+                Ok(0) => break,
+                Ok(k) => n += k,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(format!("{file}: {e}")),
+            }
+        }
+        if n == 0 {
+            break;
+        }
+        let start = off;
+        off = dphone_hal::write_skip_bad(part.as_mut(), start, &block[..n], |_, _| {}).map_err(|e| e.to_string())?;
+        dphone_hal::read_skip_bad(part.as_mut(), start, &mut back[..n]).map_err(|e| e.to_string())?;
+        if back[..n] != block[..n] {
+            return Err(format!("read-back differs from the image in the block at {start:#x}"));
+        }
+        total += n;
+        if n < bs {
+            break;
+        }
     }
-    println!("writing {} bytes ({bad} bad blocks skipped)", image.len());
-    dphone_hal::write_skip_bad(part.as_mut(), 0, &image, |_, _| {}).map_err(|e| e.to_string())?;
-    let mut back = vec![0u8; image.len()];
-    dphone_hal::read_skip_bad(part.as_mut(), 0, &mut back).map_err(|e| e.to_string())?;
-    if back != image {
-        return Err("read-back differs from the image".into());
-    }
-    println!("verified; boot with root=/dev/mtdblock{} rootfstype=jffs2 ro", info.index);
+    println!("wrote and verified {total} bytes; boot with root=/dev/mtdblock{} rootfstype=jffs2 ro", info.index);
     Ok(())
 }

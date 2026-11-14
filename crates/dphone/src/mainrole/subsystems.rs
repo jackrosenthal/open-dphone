@@ -58,7 +58,7 @@ pub async fn start(ctx: &Context, opts: &Options) {
 
     // 3. dphone-net: `NetManager` on this runtime.  Before the hardware, so
     //    that nothing there can delay the way in.
-    let net = net::start(ctx, config.clone());
+    let net = net::start(ctx, config.clone(), &hub);
     {
         let net = net.clone();
         let mut last = config.as_ref().map(|c| c.lock().unwrap().config().network());
@@ -69,7 +69,7 @@ pub async fn start(ctx: &Context, opts: &Options) {
             let mut last = last_cell.lock().unwrap();
             if last.as_ref() != Some(&now) {
                 *last = Some(now);
-                net.reconfigure();
+                net.config_changed();
             }
         });
     }
@@ -115,7 +115,7 @@ pub async fn start(ctx: &Context, opts: &Options) {
 
     // 8. dphone-ui: the UI thread.  (It takes the display, keys, and lamps
     //    out of the hardware bundle; `dphone hal` then only reports status.)
-    let ui = ui::start(ctx, hal.clone(), config.clone(), &hub);
+    let ui = ui::start(ctx, hal.clone(), config.clone(), &hub).await;
 
     remote::register(ctx, ui.as_ref().map(|u| u.tap.clone()));
 

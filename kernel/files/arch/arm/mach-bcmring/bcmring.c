@@ -52,6 +52,7 @@
 #define   CHIPC_BUSINTF_SPU		BIT(19)
 #define   CHIPC_BUSINTF_VRAM		BIT(13)
 #define   CHIPC_SOFT_RESET_CHIP_SOFT	BIT(0)
+#define   CHIPC_SOFT_RESET_LCD		BIT(22)
 #define   CHIPC_SOFT_RESET_CHIP_WARM	BIT(1)
 
 /* "TZPC" (vendor secHw): two banks of {status, set unsecure, set secure} */
@@ -97,6 +98,7 @@ static void __iomem *bcmring_iomap(const char *compatible)
 static void __init bcmring_set_unsecure(void)
 {
 	void __iomem *tzpc;
+	u32 val;
 
 	bcmring_chipc = bcmring_iomap("brcm,bcmring-chipc");
 	tzpc = bcmring_iomap("brcm,bcmring-tzpc");
@@ -113,6 +115,19 @@ static void __init bcmring_set_unsecure(void)
 	 */
 	writel(readl(bcmring_chipc + CHIPC_BUSINTF_CLK) | CHIPC_BUSINTF_SPU |
 	       CHIPC_BUSINTF_VRAM, bcmring_chipc + CHIPC_BUSINTF_CLK);
+
+	/*
+	 * Pulse the LCD controller's soft reset.  A chip reset leaves it
+	 * reset already; a kernel started from a running system (kexec-style
+	 * RAM boot) can inherit a controller stopped in mid-frame that never
+	 * fetches again (current-address register frozen, no next-base
+	 * interrupt), which the PL111 driver does not recover from.  Seen on
+	 * a D60; clearing it by this reset was tested there.
+	 */
+	val = readl(bcmring_chipc + CHIPC_SOFT_RESET1);
+	writel(val | CHIPC_SOFT_RESET_LCD, bcmring_chipc + CHIPC_SOFT_RESET1);
+	readl(bcmring_chipc + CHIPC_SOFT_RESET1);
+	writel(val & ~CHIPC_SOFT_RESET_LCD, bcmring_chipc + CHIPC_SOFT_RESET1);
 
 	writel(SECHW_LS_VENDOR_MASK | SECHW_LS_ESW,
 	       tzpc + SECHW_LS_SET_UNSECURE);
