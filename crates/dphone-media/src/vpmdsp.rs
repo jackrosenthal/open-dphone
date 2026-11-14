@@ -46,6 +46,7 @@
 //!   recovered; ours has the same structure).
 //! - G.726's bytes are pair-swapped like G.722's.
 
+use dphone_vpm::replay::JobLike;
 use dphone_vpm::startup::{self, StartupOptions, Tuning};
 use dphone_vpm::transport::Transport;
 use dphone_vpm::vpm::{hec, sbaec};
@@ -95,6 +96,7 @@ pub struct VpmDsp<T: Transport> {
     opts: VpmDspOptions,
     tuning: Tuning,
     started: bool,
+    startup: Option<String>,
     gains: [i16; 3],
     in_call: bool,
     codecs: [Option<CodecParams>; SLOTS],
@@ -122,6 +124,7 @@ impl<T: Transport + Send> VpmDsp<T> {
             gains: [g.handset, g.headset, g.speaker],
             tuning,
             started: false,
+            startup: None,
             in_call: false,
             codecs: [None; SLOTS],
             dev_split: Split2::new(),
@@ -197,9 +200,37 @@ impl<T: Transport + Send> Dsp for VpmDsp<T> {
         self.started = false;
         self.codecs = [None; SLOTS];
         let opts = StartupOptions { queries: self.opts.queries, keep_going: false };
-        startup::run_startup(&mut self.vpm, &opts, |_, _| {})?;
+        let mut sent = 0u32;
+        let mut failure = None;
+        let mut notes = String::new();
+        let result = startup::run_startup(&mut self.vpm, &opts, |job, r| match r {
+            Ok(reply) => {
+                sent += 1;
+                // Canceller jobs answer with two values; anything but the
+                // request's own arguments is worth seeing.
+                if (job.client == dphone_vpm::abi::CLIENT_SBAEC || job.client == dphone_vpm::abi::CLIENT_HEC)
+                    && (reply.value1 != job.arg1 || reply.value2 != job.arg2)
+                {
+                    notes.push_str(&format!(
+                        "; client {} operation {} answered {} {} to {} {}",
+                        job.client, job.op, reply.value1, reply.value2, job.arg1, job.arg2
+                    ));
+                }
+            }
+            Err(e) if failure.is_none() => failure = Some(format!("{}: {e}", job.describe())),
+            Err(_) => {}
+        });
+        self.startup = Some(match &failure {
+            None => format!("{sent} start-up jobs accepted{notes}"),
+            Some(f) => format!("{sent} start-up jobs accepted, then {f}"),
+        });
+        result?;
         self.started = true;
         Ok(())
+    }
+
+    fn startup_summary(&self) -> Option<String> {
+        self.startup.clone()
     }
 
     fn attach(&mut self, path: AudioPath, rx_gain_q8: i16, in_call: bool) -> DspResult<()> {
@@ -417,7 +448,7 @@ impl<T: Transport + Send> Dsp for VpmDsp<T> {
         pcm_to_bytes(pcm, &mut self.frame[..p.pcm_bytes()]);
         let (n, _status) = self.vpm.pve_encode(enc, slot as u16, p.number, 0, &self.frame[..p.pcm_bytes()], &mut self.out[..512])?;
         if n != p.frame_bytes {
-            return Err(Error::ShortReply { want: p.frame_bytes, got: n });
+            return Err(Error::ShortReply { want: p.frame_bytes, got: n, client: 1, channel: enc, opcode: 0 });
         }
         out[..n].copy_from_slice(&self.out[..n]);
         swap_pairs(&mut out[..n]);
@@ -435,7 +466,7 @@ impl<T: Transport + Send> Dsp for VpmDsp<T> {
         swap_pairs(&mut self.frame[..frame.len()]);
         let n = self.vpm.pve_decode(dec, slot as u16, p.number, 1, &self.frame[..frame.len()], &mut self.out[..2 * WB])?;
         if n != p.pcm_bytes() {
-            return Err(Error::ShortReply { want: p.pcm_bytes(), got: n });
+            return Err(Error::ShortReply { want: p.pcm_bytes(), got: n, client: 1, channel: dec, opcode: 1 });
         }
         bytes_to_pcm(&self.out[..n], pcm);
         Ok(p.frame_samples)

@@ -21,7 +21,7 @@ pub enum Error {
     /// The body is too long.
     TooLong,
     /// The result is shorter than the job's fixed frame.
-    ShortReply { want: usize, got: usize },
+    ShortReply { want: usize, got: usize, client: u16, channel: u16, opcode: u16 },
     /// The driver speaks another ABI version.
     AbiVersion(u32),
     /// Not available on this family (e.g., the BAND client on the old one).
@@ -74,7 +74,9 @@ impl fmt::Display for Error {
             Error::Protocol => f.write_str("the DSP result does not belong to the request"),
             Error::Invalid => f.write_str("invalid channel, client, or argument"),
             Error::TooLong => f.write_str("job body too long"),
-            Error::ShortReply { want, got } => write!(f, "short DSP result: {got} bytes, expected {want}"),
+            Error::ShortReply { want, got, client, channel, opcode } => {
+                write!(f, "short DSP result: {got} bytes, expected {want} (client {client}, channel {channel}, operation {opcode})")
+            }
             Error::AbiVersion(v) => write!(f, "driver ABI version {v} is not supported"),
             Error::NotOnThisFamily => f.write_str("not available on this DSP family"),
             Error::Unsupported(what) => write!(f, "unsupported: {what}"),

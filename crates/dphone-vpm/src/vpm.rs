@@ -176,7 +176,7 @@ impl<T: Transport> Vpm<T> {
     fn exact(&mut self, c: &Call<'_>, reply: &mut [u8], want: usize) -> Result<Reply> {
         let r = self.job(c, reply)?;
         if r.len < want {
-            return Err(Error::ShortReply { want, got: r.len });
+            return Err(Error::ShortReply { want, got: r.len, client: c.client, channel: c.channel, opcode: c.opcode });
         }
         Ok(r)
     }
@@ -356,12 +356,21 @@ impl<T: Transport> Vpm<T> {
 
     /// Microphone side, in place; `frame` is [`sbaec::FRAME`] bytes.
     pub fn sbaec_ingress(&mut self, channel: u16, instance: u16, frame: &mut [u8]) -> Result<()> {
-        self.frame(abi::CLIENT_SBAEC, channel, instance, sbaec::INGRESS, 0, frame)
+        self.frame(abi::CLIENT_SBAEC, channel, instance, sbaec::INGRESS, (frame.len() / 2) as u16, frame)
     }
 
-    /// Loudspeaker side, in place.  Argument 1 is the sample count (80).
+    /// Loudspeaker side, in place.
+    ///
+    /// Argument 1 is the number of 16-bit samples in the body.  Measured on
+    /// a D60, through this driver and through the stock kernel's job device
+    /// alike: the result carries twice argument 1 in bytes whatever the
+    /// body length (80 gives 160 bytes, 240 gives 480, 0 gives none), for
+    /// this job and for the microphone-side one.  The vendor's wrapper
+    /// passes 80 with its 480-byte frame and its results in the rings are
+    /// 480 bytes; what puts the DSP into that state was not found, so the
+    /// count here is the body's and the whole frame comes back.
     pub fn sbaec_egress(&mut self, channel: u16, instance: u16, frame: &mut [u8]) -> Result<()> {
-        self.frame(abi::CLIENT_SBAEC, channel, instance, sbaec::EGRESS, sbaec::FRAME_SAMPLES, frame)
+        self.frame(abi::CLIENT_SBAEC, channel, instance, sbaec::EGRESS, (frame.len() / 2) as u16, frame)
     }
 
     /// 40-byte state block, not decoded.

@@ -62,6 +62,12 @@ pub trait Dsp: Send {
     /// already be running.  `force` repeats it (after a DSP restart).
     fn start(&mut self, force: bool) -> DspResult<()>;
 
+    /// What the last start-up did, for the log (jobs sent, and the first
+    /// failure if any).
+    fn startup_summary(&self) -> Option<String> {
+        None
+    }
+
     /// A path's canceller starts being used.  `rx_gain_q8` is the receive
     /// gain in dB * 256.
     fn attach(&mut self, path: AudioPath, rx_gain_q8: i16, in_call: bool) -> DspResult<()>;

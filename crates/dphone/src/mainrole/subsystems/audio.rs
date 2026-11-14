@@ -150,6 +150,11 @@ impl AudioService {
         if inner.engine.is_some() { Ok(()) } else { Err(inner.why_no_engine.clone()) }
     }
 
+    /// The engine's level meters, when it runs.
+    pub fn meters(&self) -> Option<Arc<dphone_media::Meters>> {
+        self.inner.lock().unwrap().engine.as_ref().map(|e| e.meters())
+    }
+
     /// The address RTP sockets bind to follows the phone's address.
     pub fn set_local_ip(&self, ip: IpAddr) {
         self.inner.lock().unwrap().bind_ip = ip;
@@ -659,7 +664,11 @@ type Built = (Box<dyn AudioDevice>, Box<dyn dphone_media::Dsp>);
 /// thread: starting the remoteproc loads firmware and can take seconds.
 fn build_phone(card: Box<dyn HalAudioCard>, model: dphone_state::Model) -> Result<Built, String> {
     let rproc = dphone_vpm::remoteproc::Remoteproc::find().map_err(|e| format!("DSP remoteproc: {e}"))?;
-    rproc.start().map_err(|e| format!("DSP start: {e}"))?;
+    // A DSP left running by an earlier main role still holds that run's
+    // canceller instances, and a second Init of one never answers (seen on
+    // a D60: the start-up stopped at the handset canceller's Init).  Start
+    // from a freshly loaded DSP every time.
+    rproc.restart().map_err(|e| format!("DSP start: {e}"))?;
     let device = dphone_vpm::Device::open_default().map_err(|e| format!("/dev/bcmring-vpm: {e}"))?;
     let vpm = dphone_vpm::Vpm::new(device).map_err(|e| format!("DSP info: {e}"))?;
     let dsp = VpmDsp::new(vpm, VpmDspOptions::default());
@@ -821,6 +830,7 @@ async fn events(service: AudioService, mut rx: tokio::sync::mpsc::UnboundedRecei
                 }
             }
             Ee::AudioError { kind } => warn!("audio: sound card: {kind:?}"),
+            Ee::DspStartup { summary } => info!("audio: DSP: {summary}"),
             Ee::ToneEnded => {
                 service.inner.lock().unwrap().tone = None;
                 service.refresh();
@@ -884,7 +894,22 @@ fn register_diag(ctx: &Context, service: AudioService) {
                             Err(e) => format!("NOT running: {e}"),
                         };
                         let codecs: Vec<String> = svc.codecs().iter().map(|c| format!("{c:?}")).collect();
-                        Ok(format!("engine: {engine}\ncodecs: {}\n{a:#?}\n", codecs.join(" ")))
+                        let levels = match svc.meters() {
+                            Some(m) => {
+                                use std::sync::atomic::Ordering::Relaxed;
+                                format!(
+                                    "levels (last second, of 32767): to device peak {} mean {}; from device peak {} mean {}\nticks: {}  DSP job failures: {}\n",
+                                    m.speaker_peak.load(Relaxed),
+                                    m.speaker_mean.load(Relaxed),
+                                    m.mic_peak.load(Relaxed),
+                                    m.mic_mean.load(Relaxed),
+                                    m.ticks.load(Relaxed),
+                                    m.dsp_errors.load(Relaxed),
+                                )
+                            }
+                            None => String::new(),
+                        };
+                        Ok(format!("engine: {engine}\ncodecs: {}\n{levels}{a:#?}\n", codecs.join(" ")))
                     }
                     ["path", p] => match *p {
                         "none" => Ok(AudioPath::None),
@@ -958,7 +983,7 @@ fn register_diag(ctx: &Context, service: AudioService) {
     );
 
     let sim = ctx.sim;
-    ctx.diag.register("dsp", "dsp [status] | selftest | restart", move |args: Vec<String>, out: Output| {
+    ctx.diag.register("dsp", "dsp [status] | selftest | restart | job CLIENT CHANNEL INSTANCE OP ARG1 ARG2 BODY-BYTES [FILL-WORD]", move |args: Vec<String>, out: Output| {
         let service = service.clone();
         async move {
             let args: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -978,6 +1003,16 @@ fn register_diag(ctx: &Context, service: AudioService) {
                             )),
                             Err(e) => text.push_str(&format!("remoteproc: {e}\n")),
                         }
+                        match dphone_vpm::Device::open_default().and_then(dphone_vpm::Vpm::new) {
+                            Ok(vpm) => {
+                                let i = vpm.info();
+                                text.push_str(&format!(
+                                    "driver: {} jobs, {} timeouts, {} assertions, {} asynchronous events, {} stale results\n",
+                                    i.jobs, i.timeouts, i.asserts, i.async_events, i.stale_results
+                                ));
+                            }
+                            Err(e) => text.push_str(&format!("driver: {e}\n")),
+                        }
                     }
                     out.out(&text).await;
                     0
@@ -990,6 +1025,33 @@ fn register_diag(ctx: &Context, service: AudioService) {
                     }
                     out.out(&text).await;
                     if report.passed() { 0 } else { 1 }
+                }
+                ["job", rest @ ..] if rest.len() >= 7 => {
+                    // dsp job CLIENT CHANNEL INSTANCE OP ARG1 ARG2 BODY-BYTES [FILL]
+                    let n: Vec<u16> = rest.iter().filter_map(|a| a.parse().ok()).collect();
+                    if n.len() < 7 {
+                        out.err("usage: dphone dsp job CLIENT CHANNEL INSTANCE OP ARG1 ARG2 BODY-BYTES [FILL-WORD]\n").await;
+                        return 2;
+                    }
+                    let fill = n.get(7).copied().unwrap_or(0).to_le_bytes();
+                    let body: Vec<u8> = (0..n[6] as usize).map(|i| fill[i % 2]).collect();
+                    let r = contained("dsp-job", Duration::from_secs(10), move || {
+                        let dev = dphone_vpm::Device::open_default().map_err(|e| e.to_string())?;
+                        let mut vpm = dphone_vpm::Vpm::new(dev).map_err(|e| e.to_string())?;
+                        Ok::<_, String>(dphone_vpm::diag::probe_job(&mut vpm, n[0], n[1], n[2], n[3], n[4], n[5], &body))
+                    })
+                    .await
+                    .and_then(|r| r);
+                    match r {
+                        Ok(text) => {
+                            out.out(&format!("{text}\n")).await;
+                            0
+                        }
+                        Err(e) => {
+                            out.err(&format!("dphone dsp: {e}\n")).await;
+                            1
+                        }
+                    }
                 }
                 ["restart"] => {
                     let r = contained("dsp-restart", Duration::from_secs(30), || {
@@ -1010,7 +1072,7 @@ fn register_diag(ctx: &Context, service: AudioService) {
                     }
                 }
                 _ => {
-                    out.err("usage: dphone dsp [status] | selftest | restart\n").await;
+                    out.err("usage: dphone dsp [status] | selftest | restart | job CLIENT CHANNEL INSTANCE OP ARG1 ARG2 BODY-BYTES [FILL-WORD]\n").await;
                     2
                 }
             }

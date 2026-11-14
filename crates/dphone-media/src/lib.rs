@@ -73,5 +73,7 @@ pub mod vpmdsp;
 
 pub use bands::BandFrame;
 pub use device::{AudioDevice, AudioPath, Dsp, GainControl};
-pub use engine::{Command, DtmfMode, Engine, EngineCore, EngineOptions, Event, PayloadCodec, SrtpConfig, StreamConfig, StreamStats};
+pub use engine::{
+    Command, DtmfMode, Engine, EngineCore, EngineOptions, Event, Meters, PayloadCodec, SrtpConfig, StreamConfig, StreamStats,
+};
 pub use vpmdsp::{VpmDsp, VpmDspOptions};

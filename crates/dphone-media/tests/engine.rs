@@ -505,19 +505,19 @@ fn dsp_failure_is_reported_once_and_recovers() {
     for _ in 0..5 {
         core.tick();
     }
-    assert!(events.try_iter().next().is_none());
+    assert!(events.try_iter().all(|e| matches!(e, Event::DspStartup { .. })));
     *fail.lock().unwrap() = true;
     for _ in 0..50 {
         core.tick();
     }
-    let got: Vec<_> = events.try_iter().collect();
+    let got: Vec<_> = events.try_iter().filter(|e| !matches!(e, Event::DspStartup { .. })).collect();
     assert_eq!(got, [Event::DspError { error: dphone_vpm::Error::Failed, needs_restart: true }]);
     *fail.lock().unwrap() = false;
     core.handle(Command::RestartDsp);
     for _ in 0..5 {
         core.tick();
     }
-    assert!(events.try_iter().next().is_none());
+    assert!(events.try_iter().all(|e| matches!(e, Event::DspStartup { .. })));
 }
 
 #[test]
@@ -529,7 +529,13 @@ fn engine_thread_runs_and_stops() {
     let engine = Engine::spawn(Box::new(audio), Box::new(dsp), move |e| drop(tx.send(e)), EngineOptions { rt_priority: None, queue: 8 }).unwrap();
     engine.send(Command::SetPath(Some(AudioPath::Speaker))).unwrap();
     engine.send(Command::PlayTone(Some(ToneSpec::BEEP))).unwrap();
-    assert_eq!(events.recv_timeout(Duration::from_secs(5)).unwrap(), Event::ToneEnded);
+    let ended = loop {
+        match events.recv_timeout(Duration::from_secs(5)).unwrap() {
+            Event::DspStartup { .. } => {}
+            other => break other,
+        }
+    };
+    assert_eq!(ended, Event::ToneEnded);
     engine.shutdown();
     let s = state.lock().unwrap();
     assert_eq!(s.open, None);

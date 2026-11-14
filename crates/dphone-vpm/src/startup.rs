@@ -137,8 +137,28 @@ pub fn startup_jobs(family: Family, opts: &StartupOptions) -> Vec<OwnedJob> {
         Family::New => {
             for name in ["boot_part1", "boot_part2", "boot_part3"] {
                 let seq = t.sequence(name).expect("boot sequence present");
-                out.extend(seq.jobs.iter().filter(|j| opts.queries || !j.is_query()).map(|j| owned(name, j)));
+                out.extend(
+                    seq.jobs
+                        .iter()
+                        .filter(|j| opts.queries || !j.is_query())
+                        // The capture holds the speakerphone canceller's
+                        // operation 1 three times, with argument 1, 0, and
+                        // 0; the two zeros sit at capture boundaries and
+                        // may be results caught as requests.  Measured on a
+                        // D60: argument 1 leaves register 0 at 0 and
+                        // argument 0 leaves it at 0x04d3, and stock at idle
+                        // reads register 0 as 0.  Only the argument-1 form
+                        // is sent, so the idle state matches stock's.
+                        .filter(|j| !(j.client == abi::CLIENT_SBAEC && j.op == sbaec::ENABLE && j.arg1 == 0))
+                        .map(|j| owned(name, j)),
+                );
             }
+            // The vendor's last step for the speakerphone canceller, after
+            // its register load and "set register 0 = 1", is operation 1
+            // with argument 1 (register 0 then reads 0, as on idle stock).
+            let sb = ChannelMap::new(family).sbaec();
+            let at = out.iter().rposition(|j| j.client == abi::CLIENT_SBAEC).map_or(out.len(), |i| i + 1);
+            out.insert(at, synth("boot_tail", abi::CLIENT_SBAEC, sb, 0, 0, sbaec::ENABLE, 1, 0, &[]));
         }
         Family::Old => {
             let map = ChannelMap::new(family);

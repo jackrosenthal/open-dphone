@@ -25,6 +25,8 @@
 use std::collections::VecDeque;
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError, sync_channel};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -230,6 +232,8 @@ pub enum Event {
     /// A DSP job failed.  After a fatal one (`needs_restart`), restart the
     /// DSP and send [`Command::RestartDsp`].
     DspError { error: dphone_vpm::Error, needs_restart: bool },
+    /// The DSP start-up configuration was sent; `summary` says how it went.
+    DspStartup { summary: String },
     AudioError { kind: io::ErrorKind },
     /// A non-repeating tone finished.
     ToneEnded,
@@ -285,6 +289,50 @@ struct Stream {
 }
 
 /// The engine without its thread.
+/// Signal levels over the engine's last full second, for diagnostics
+/// ("is anything being played or picked up?").  Sample values are absolute
+/// 16-bit magnitudes.
+#[derive(Debug, Default)]
+pub struct Meters {
+    /// Ticks run since the engine started.
+    pub ticks: AtomicU32,
+    /// Loudest sample written to the audio device.
+    pub speaker_peak: AtomicU32,
+    /// Mean magnitude of the samples written to the audio device.
+    pub speaker_mean: AtomicU32,
+    /// Loudest sample read from the audio device.
+    pub mic_peak: AtomicU32,
+    /// Mean magnitude of the samples read from the audio device.
+    pub mic_mean: AtomicU32,
+    /// DSP job failures since the engine started.
+    pub dsp_errors: AtomicU32,
+}
+
+#[derive(Default)]
+struct MeterWindow {
+    spk_peak: u32,
+    spk_sum: u64,
+    mic_peak: u32,
+    mic_sum: u64,
+    samples: u64,
+}
+
+impl MeterWindow {
+    fn add(&mut self, spk: &[i16], mic: &[i16]) {
+        for v in spk {
+            let a = v.unsigned_abs() as u32;
+            self.spk_peak = self.spk_peak.max(a);
+            self.spk_sum += a as u64;
+        }
+        for v in mic {
+            let a = v.unsigned_abs() as u32;
+            self.mic_peak = self.mic_peak.max(a);
+            self.mic_sum += a as u64;
+        }
+        self.samples += spk.len() as u64;
+    }
+}
+
 pub struct EngineCore {
     audio: Box<dyn AudioDevice>,
     dsp: Box<dyn Dsp>,
@@ -307,6 +355,8 @@ pub struct EngineCore {
     // scratch, so that the tick does not allocate
     mic_pcm: [i16; SWB],
     spk_pcm: [i16; SWB],
+    meters: Arc<Meters>,
+    window: MeterWindow,
     mic: BandFrame,
     far: BandFrame,
     scratch: BandFrame,
@@ -346,6 +396,8 @@ impl EngineCore {
             audio_errors: 0,
             mic_pcm: [0; SWB],
             spk_pcm: [0; SWB],
+            meters: Arc::new(Meters::default()),
+            window: MeterWindow::default(),
             mic: BandFrame::ZERO,
             far: BandFrame::ZERO,
             scratch: BandFrame::ZERO,
@@ -356,8 +408,16 @@ impl EngineCore {
 
     /// Sends the DSP its start-up configuration.  Call once before ticking.
     pub fn start(&mut self) {
-        if let Err(e) = self.dsp.start(false) {
+        let r = self.dsp.start(false);
+        self.report_startup();
+        if let Err(e) = r {
             self.dsp_error(e);
+        }
+    }
+
+    fn report_startup(&mut self) {
+        if let Some(text) = self.dsp.startup_summary() {
+            self.emit(Event::DspStartup { summary: text });
         }
     }
 
@@ -370,12 +430,34 @@ impl EngineCore {
         self.tick
     }
 
+    /// The level meters; see [`Meters`].
+    pub fn meters(&self) -> Arc<Meters> {
+        self.meters.clone()
+    }
+
+    fn meter(&mut self, n: usize, device: bool) {
+        if device {
+            let (spk, mic) = (&self.spk_pcm[..n], &self.mic_pcm[..n]);
+            self.window.add(spk, mic);
+        }
+        self.meters.ticks.store(self.tick, Ordering::Relaxed);
+        if self.tick.is_multiple_of(100) {
+            let w = std::mem::take(&mut self.window);
+            let mean = |sum: u64| sum.checked_div(w.samples).unwrap_or(0) as u32;
+            self.meters.speaker_peak.store(w.spk_peak, Ordering::Relaxed);
+            self.meters.speaker_mean.store(mean(w.spk_sum), Ordering::Relaxed);
+            self.meters.mic_peak.store(w.mic_peak, Ordering::Relaxed);
+            self.meters.mic_mean.store(mean(w.mic_sum), Ordering::Relaxed);
+        }
+    }
+
     fn emit(&mut self, e: Event) {
         (self.events)(e);
     }
 
     fn dsp_error(&mut self, e: dphone_vpm::Error) {
         self.dsp_errors += 1;
+        self.meters.dsp_errors.fetch_add(1, Ordering::Relaxed);
         let fatal = e.is_fatal();
         // one report per failure burst, not one per tick
         if (fatal && !self.dsp_failed) || (!fatal && self.dsp_errors % 100 == 1) {
@@ -490,7 +572,9 @@ impl EngineCore {
             Command::RestartDsp => {
                 self.dsp_failed = false;
                 self.dsp_errors = 0;
-                match self.dsp.start(true) {
+                let started = self.dsp.start(true);
+                self.report_startup();
+                match started {
                     Err(e) => self.dsp_error(e),
                     Ok(()) => {
                         if let Some(path) = self.path
@@ -691,8 +775,10 @@ impl EngineCore {
                     self.dsp_error(e);
                 }
             }
+            self.meter(n, true);
         } else {
             self.mic.clear();
+            self.meter(n, false);
         }
         if self.mute {
             self.mic.clear();
@@ -1046,6 +1132,7 @@ impl Default for EngineOptions {
 pub struct Engine {
     tx: SyncSender<Command>,
     thread: Option<JoinHandle<()>>,
+    meters: Arc<Meters>,
 }
 
 #[derive(Debug)]
@@ -1088,15 +1175,23 @@ impl Engine {
         opts: EngineOptions,
     ) -> io::Result<Self> {
         let (tx, rx) = sync_channel(opts.queue.max(1));
+        let meters = Arc::new(Meters::default());
+        let core_meters = meters.clone();
         let thread = std::thread::Builder::new().name("audio".into()).spawn(move || {
             if let Some(p) = opts.rt_priority {
                 set_realtime(p);
             }
             let mut core = EngineCore::new(audio, dsp, Box::new(events));
+            core.meters = core_meters;
             core.start();
             run(&mut core, &rx);
         })?;
-        Ok(Self { tx, thread: Some(thread) })
+        Ok(Self { tx, thread: Some(thread), meters })
+    }
+
+    /// The level meters; see [`Meters`].
+    pub fn meters(&self) -> Arc<Meters> {
+        self.meters.clone()
     }
 
     /// Queues a command; never blocks.

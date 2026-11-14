@@ -91,11 +91,11 @@ pub fn selftest() -> SelfTestReport {
             || format!("{fam}: HEC ingress request {j:?}"),
         );
         let j = &jobs[5];
-        r.check((j.client, j.channel, j.opcode, j.arg1, j.body.len()) == (3, if new { 18 } else { 8 }, 8, 80, 480), || {
+        r.check((j.client, j.channel, j.opcode, j.arg1, j.body.len()) == (3, if new { 18 } else { 8 }, 8, 240, 480), || {
             format!("{fam}: SBAEC egress request {j:?}")
         });
         let j = &jobs[6];
-        r.check((j.opcode, j.arg1, j.body.len()) == (9, 0, 480), || format!("{fam}: SBAEC ingress request {j:?}"));
+        r.check((j.opcode, j.arg1, j.body.len()) == (9, 240, 480), || format!("{fam}: SBAEC ingress request {j:?}"));
         let j = &jobs[7];
         let last = if new { 0x3a3 } else { 0x3a2 };
         r.check((j.opcode, j.arg1, j.arg2, j.body.len()) == (5, 0, last, 2 * (usize::from(last) + 1)), || {
@@ -282,6 +282,34 @@ pub fn band_round_trip<T: Transport>(vpm: &mut Vpm<T>, stream: usize, pcm: &[i16
     let n = vpm.band_combine_swb(b.combine, b.instance, 80, &bands, &mut out)?;
     let words = |b: &[u8]| b.as_chunks::<2>().0.iter().map(|c| i16::from_le_bytes([c[0], c[1]])).collect::<Vec<_>>();
     Ok((words(&bands), words(&out[..n])))
+}
+
+/// One job with a free choice of header fields, reporting what came back:
+/// the two result values and the result body's length.  For working out a
+/// client's behavior on a phone.
+#[allow(clippy::too_many_arguments)]
+pub fn probe_job<T: Transport>(
+    vpm: &mut Vpm<T>,
+    client: u16,
+    channel: u16,
+    instance: u16,
+    opcode: u16,
+    arg1: u16,
+    arg2: u16,
+    body: &[u8],
+) -> String {
+    let mut reply = [0u8; 2048];
+    let call = crate::vpm::Call { channel, client, instance, opcode, arg1, arg2, body, ..Default::default() };
+    match vpm.job(&call, &mut reply) {
+        Ok(r) => {
+            let n = r.len.min(reply.len());
+            let nonzero = reply[..n].iter().filter(|b| **b != 0).count();
+            let words: Vec<String> =
+                reply[..n].as_chunks::<2>().0.iter().map(|c| format!("{:04x}", u16::from_le_bytes(*c))).collect();
+            format!("values {} {}, body {} bytes ({} nonzero)\n{}", r.value1, r.value2, r.len, nonzero, words.join(" "))
+        }
+        Err(e) => format!("error: {e}"),
+    }
 }
 
 #[cfg(test)]
