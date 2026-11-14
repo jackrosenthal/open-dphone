@@ -894,6 +894,81 @@ async fn manager_end_to_end() {
     }
     println!("netns: static reconfiguration, 802.1X pass-through, and logoff on PC disconnect ok");
 
+    // --- Expansion modules behind the PC jack -----------------------------
+    // The module talks on VLAN 3182 at 172.20.x.y; the phone gets `exp`
+    // with its own address there, and none of it shows on the LAN jack.
+    {
+        use dphone_net::packet::RawSocket;
+        use dphone_net::topology::{EXPANSION_IF, EXPANSION_VID};
+        let phone_addr = Ipv4Addr::new(172, 20, 2, 3);
+        let module_addr = Ipv4Addr::new(172, 20, 9, 9);
+        nl.add_vlan("module", pcpeer, EXPANSION_VID, &[], &[]).await.unwrap();
+        let module_if = idx(&mut nl, "module").await;
+        nl.addr_add(module_if, IpAddr::V4(module_addr), 16).await.unwrap();
+        nl.set_up(module_if, true).await.unwrap();
+        let module = std::net::UdpSocket::bind((module_addr, 10025)).unwrap();
+        module.set_nonblocking(true).unwrap();
+        dphone_net::qos::bind_to_device(&module, "module").unwrap();
+        let module = UdpSocket::from_std(module).unwrap();
+        // Everything that crosses the LAN jack with an 802.1Q tag.
+        let lan_tap = RawSocket::new(sw, 0x8100).unwrap();
+
+        for bridged in [true, false] {
+            let mut c = test_config();
+            c.lldp.enabled = false;
+            c.link_wait = Duration::from_secs(2);
+            c.ipv4 = Ipv4Config::Static { address: Ipv4Addr::new(10, 98, 0, 2), prefix_len: 24, gateways: vec![], dns: vec![], domain: None };
+            c.expansion_address = Some(phone_addr);
+            c.pc_port = if bridged { dphone_net::PcPort::Bridged } else { dphone_net::PcPort::Disabled };
+            mgr.reconfigure(c).await;
+            let st = wait_for(&mgr, "the expansion interface", Duration::from_secs(10), |s| s.phase == Phase::Up && s.expansion.is_some() && s.bridged == bridged).await;
+            assert_eq!(st.expansion, Some(phone_addr));
+            let exp = nl.link_by_name(EXPANSION_IF).await.unwrap().expect("no exp interface");
+            assert_eq!(exp.kind.as_deref(), Some("vlan"));
+            let parent = idx(&mut nl, if bridged { "br0" } else { "pc" }).await;
+            assert_eq!(exp.parent, Some(parent));
+            assert!(nl.addrs(Some(false)).await.unwrap().iter().any(|a| a.index == exp.index && a.addr == IpAddr::V4(phone_addr) && a.prefix_len == 16));
+
+            // The phone's side, bound to the interface as the expansion
+            // subsystem binds its sockets.
+            let phone = std::net::UdpSocket::bind((phone_addr, 10025)).unwrap();
+            phone.set_nonblocking(true).unwrap();
+            dphone_net::qos::bind_to_device(&phone, EXPANSION_IF).unwrap();
+            let phone = UdpSocket::from_std(phone).unwrap();
+            let mut buf = [0u8; 64];
+            let mut answered = false;
+            for _ in 0..10 {
+                phone.send_to(b"to the module", (module_addr, 10025)).await.unwrap();
+                if let Ok(Ok((n, from))) = timeout(Duration::from_millis(300), module.recv_from(&mut buf)).await {
+                    assert_eq!((&buf[..n], from.ip()), (&b"to the module"[..], IpAddr::V4(phone_addr)));
+                    module.send_to(b"to the phone", from).await.unwrap();
+                    let (n, _) = timeout(Duration::from_secs(1), phone.recv_from(&mut buf)).await.expect("no answer from the module").unwrap();
+                    assert_eq!(&buf[..n], b"to the phone");
+                    answered = true;
+                    break;
+                }
+            }
+            assert!(answered, "the module was not reachable over {EXPANSION_IF} (bridged: {bridged})");
+            // Broadcast discovery from the module must not leave by the LAN jack.
+            module.set_broadcast(true).unwrap();
+            module.send_to(b"discover", (Ipv4Addr::new(172, 20, 255, 255), 10026)).await.unwrap();
+            let mut frame = [0u8; 256];
+            let leaked = timeout(Duration::from_millis(400), async {
+                loop {
+                    let n = lan_tap.recv(&mut frame).await.unwrap();
+                    if n >= 16 && u16::from_be_bytes([frame[14], frame[15]]) & 0xfff == EXPANSION_VID {
+                        return;
+                    }
+                }
+            })
+            .await
+            .is_ok();
+            assert!(!leaked, "expansion VLAN traffic reached the LAN jack (bridged: {bridged})");
+        }
+        nl.del_link(module_if).await.unwrap();
+    }
+    println!("netns: expansion-module VLAN ok, bridged and with the PC jack standing alone");
+
     // --- Reconfigure: manual VLAN, PC port disabled, DHCP -----------------
     let mut cfg3 = test_config();
     cfg3.vlan = VlanDiscovery::Manual(100);

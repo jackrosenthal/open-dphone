@@ -179,9 +179,11 @@ fn configured(ctx: &Context, config: Option<&SharedConfig>, mac: Option<MacAddr>
     cfg.pc_port = if bridged { PcPort::Bridged } else { PcPort::Disabled };
     cfg.pc_vlan_id = n.pc_vlan_id.filter(|v| (1..=4094).contains(v));
     cfg.pc_qos = n.pc_qos.min(7);
-    // Stock, new family only: an expansion module takes the PC VLAN away.
+    // Stock, new family only: an expansion module takes the PC VLAN away,
+    // and the phone joins the modules' private VLAN.
     if ctx.model.family() == crate::model::Family::New && merged.setting_bool("expansion_enable", false) {
         cfg.pc_vlan_id = None;
+        cfg.expansion_address = Some(dphone_hal::expansion::private_address(mac.map(|m| m.0).unwrap_or([0; 6])));
     }
     cfg.eapol_passthrough = n.dot1x_passthrough;
     // Stock enables the logoff together with pass-through, and has a
@@ -488,6 +490,16 @@ fn show(state: &NetState, active: &NetConfig, plain: &NetConfig, deadline: Optio
     }
     for a in &state.ipv6 {
         t.push_str(&format!("ipv6:      {a}\n"));
+    }
+    match (state.expansion, active.expansion_address) {
+        (Some(a), _) => t.push_str(&format!(
+            "expansion: {} {a}/{} (VLAN {})\n",
+            dphone_net::topology::EXPANSION_IF,
+            dphone_net::topology::EXPANSION_PREFIX,
+            dphone_net::topology::EXPANSION_VID
+        )),
+        (None, Some(_)) => t.push_str("expansion: enabled, but the interface is not up\n"),
+        (None, None) => {}
     }
     let dns: Vec<String> = state.dns.iter().map(|d| d.to_string()).collect();
     t.push_str(&format!("dns:       {}\n", dns.join(" ")));

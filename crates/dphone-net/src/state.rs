@@ -94,6 +94,9 @@ pub struct NetState {
     /// Whether SNTP has succeeded since boot.
     pub time_synced: bool,
     pub lldp_neighbors: Vec<Neighbor>,
+    /// The phone's address on the expansion-module VLAN, once the
+    /// interface for it exists.
+    pub expansion: Option<Ipv4Addr>,
     /// The most recent problem worth showing a user, if any.
     pub last_error: Option<String>,
 }

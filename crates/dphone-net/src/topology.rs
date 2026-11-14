@@ -20,6 +20,15 @@ pub const NATIVE_VID: u16 = 1;
 /// 802.1X PAE address.
 pub const GROUP_FWD_EAPOL: u16 = 1 << 3;
 
+/// The private VLAN the expansion modules (EXP100, EXP150) talk on.  Stock
+/// runs `vconfig add eth0 3182` for it.
+pub const EXPANSION_VID: u16 = 3182;
+/// The interface that carries the expansion VLAN.  The expansion subsystem
+/// waits for this name.
+pub const EXPANSION_IF: &str = "exp";
+/// Prefix length of the phone's address on the expansion VLAN.
+pub const EXPANSION_PREFIX: u8 = 16;
+
 /// One bridge VLAN table entry.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VlanEntry {
@@ -50,6 +59,16 @@ pub struct Plan {
     /// `pc_qos` with a PC VLAN, 0 otherwise (stock sets it only together
     /// with the PC VLAN, on a switch it has just reset).
     pub pc_prio: u8,
+    /// The interface to put the expansion VLAN device on, when expansion
+    /// modules are enabled: the bridge, or the PC port when it stands alone.
+    ///
+    /// Stock's switch passes the tagged VLAN everywhere and then drops UDP
+    /// ports 10024 to 10026 arriving on the LAN port
+    /// (`expansion-switch-setup.sh`).  Here the VLAN simply has no LAN
+    /// member: with a bridge only the PC port and the phone carry it, and
+    /// without one the device sits on the PC port alone, so nothing of the
+    /// expansion protocol can reach or leave the LAN jack.
+    pub expansion_parent: Option<String>,
 }
 
 fn valid_vid(v: u16) -> bool {
@@ -66,16 +85,21 @@ pub fn plan(cfg: &NetConfig, has_pc: bool, bridge_ok: bool, voice_vid: Option<u1
     let pc_vlan = cfg.pc_vlan_id.filter(|v| valid_vid(*v));
     let pc_wanted = has_pc && cfg.pc_port == PcPort::Bridged && cfg.pc_port_mode != PortMode::Off;
     let names = &cfg.ifaces;
+    // The modules plug into the PC jack, so that port must be usable.
+    let expansion = cfg.expansion_address.is_some() && has_pc && cfg.pc_port_mode != PortMode::Off;
 
     if !pc_wanted || !bridge_ok {
         return Plan {
             bridge: None,
-            pc_up: false,
+            // Up for the modules alone; a standalone port forwards nothing
+            // to the LAN jack.
+            pc_up: expansion,
             base_if: names.lan.clone(),
             add: Vec::new(),
             remove: Vec::new(),
             voice_vid,
             pc_prio: 0,
+            expansion_parent: if expansion { names.pc.clone() } else { None },
         };
     }
     let pc = names.pc.clone().expect("has_pc implies a PC port name");
@@ -85,7 +109,7 @@ pub fn plan(cfg: &NetConfig, has_pc: bool, bridge_ok: bool, voice_vid: Option<u1
         0
     };
 
-    if voice_vid.is_none() && pc_vlan.is_none() {
+    if voice_vid.is_none() && pc_vlan.is_none() && !expansion {
         // A plain transparent bridge, like the stock switch with VLANs off.
         return Plan {
             bridge: Some(BridgeOpts {
@@ -99,6 +123,7 @@ pub fn plan(cfg: &NetConfig, has_pc: bool, bridge_ok: bool, voice_vid: Option<u1
             remove: Vec::new(),
             voice_vid: None,
             pc_prio: 0,
+            expansion_parent: None,
         };
     }
 
@@ -158,6 +183,16 @@ pub fn plan(cfg: &NetConfig, has_pc: bool, bridge_ok: bool, voice_vid: Option<u1
             }
         }
     }
+    if expansion {
+        // Tagged between the PC jack and the phone; the LAN jack is not a
+        // member.
+        for (ifname, on_bridge) in [(pc.clone(), false), (names.bridge.clone(), true)] {
+            if !add.iter().any(|e: &VlanEntry| e.ifname == ifname && e.vid == EXPANSION_VID) {
+                add.push(VlanEntry { ifname, vid: EXPANSION_VID, flags: tagged, on_bridge });
+            }
+        }
+        add.retain(|e| !(e.ifname == names.lan && e.vid == EXPANSION_VID));
+    }
     Plan {
         bridge: Some(BridgeOpts {
             vlan_filtering: true,
@@ -170,6 +205,7 @@ pub fn plan(cfg: &NetConfig, has_pc: bool, bridge_ok: bool, voice_vid: Option<u1
         remove,
         voice_vid,
         pc_prio: if pc_vlan.is_some() { cfg.pc_qos.min(7) } else { 0 },
+        expansion_parent: expansion.then(|| names.bridge.clone()),
     }
 }
 
@@ -268,7 +304,8 @@ pub async fn teardown(nl: &mut Netlink, cfg: &NetConfig) {
         // VLAN devices this crate made are named `<base>.<vid>`.
         for l in &links {
             let ours = l.kind.as_deref() == Some("vlan")
-                && (l.name.starts_with(&format!("{}.", names.bridge))
+                && (l.name == EXPANSION_IF
+                    || l.name.starts_with(&format!("{}.", names.bridge))
                     || l.name.starts_with(&format!("{}.", names.lan)));
             if ours {
                 let _ = nl.del_link(l.index).await;
@@ -355,6 +392,34 @@ mod tests {
         );
         assert!(p.remove.is_empty());
         assert_eq!(vlan_ifname(&p.base_if, 100), "br0.100");
+    }
+
+    #[test]
+    fn expansion_vlan_stays_off_the_lan_jack() {
+        let mut c = cfg();
+        c.expansion_address = Some("172.20.2.3".parse().unwrap());
+        // Bridged: filtering on, the VLAN tagged on the PC jack and the
+        // phone only.
+        let p = plan(&c, true, true, None);
+        assert!(p.bridge.unwrap().vlan_filtering);
+        assert_eq!(p.expansion_parent.as_deref(), Some("br0"));
+        let members: Vec<_> = p.add.iter().filter(|e| e.vid == EXPANSION_VID).map(|e| (e.ifname.as_str(), e.on_bridge)).collect();
+        assert_eq!(members, [("pc", false), ("br0", true)]);
+        assert!(p.add.iter().all(|e| e.vid != EXPANSION_VID || e.flags == VlanFlags::default()));
+        // With a voice VLAN as well, the LAN jack gets that one only.
+        let p = plan(&c, true, true, Some(100));
+        assert!(p.add.iter().any(|e| e.ifname == "lan" && e.vid == 100));
+        assert!(!p.add.iter().any(|e| e.ifname == "lan" && e.vid == EXPANSION_VID));
+        // PC jack not bridged: the port comes up alone and carries the device.
+        c.pc_port = PcPort::Disabled;
+        let p = plan(&c, true, true, None);
+        assert_eq!((p.bridge, p.pc_up, p.expansion_parent.as_deref()), (None, true, Some("pc")));
+        assert_eq!(p.base_if, "lan");
+        // No PC port, or the port switched off: nothing to put it on.
+        assert_eq!(plan(&c, false, true, None).expansion_parent, None);
+        c.pc_port_mode = PortMode::Off;
+        let p = plan(&c, true, true, None);
+        assert_eq!((p.pc_up, p.expansion_parent), (false, None));
     }
 
     #[test]

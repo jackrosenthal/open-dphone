@@ -590,6 +590,17 @@ impl Runner {
                 self.fail("arranging VLANs on the bridge", &e);
             }
         }
+        // The expansion modules' private VLAN.
+        let mut expansion = None;
+        if let (Some(parent), Some(addr)) = (&plan.expansion_parent, cfg.expansion_address) {
+            match self.expansion_interface(parent, addr).await {
+                Ok(()) => expansion = Some(addr),
+                Err(e) => self.fail("creating the expansion-module interface", &e),
+            }
+        } else if cfg.expansion_address.is_some() {
+            log::warn!("net: expansion modules are enabled, but the PC jack is absent or switched off");
+        }
+        self.update(|s| s.expansion = expansion);
         let mut ip_if = plan.base_if.clone();
         if let Some(vid) = plan.voice_vid {
             let name = topology::vlan_ifname(&plan.base_if, vid);
@@ -820,6 +831,33 @@ impl Runner {
         }
         self.refresh_dns(&session);
         Ok(session)
+    }
+
+    /// Create the VLAN device the expansion subsystem waits for, with the
+    /// phone's private address on it.
+    async fn expansion_interface(&mut self, parent: &str, addr: Ipv4Addr) -> io::Result<()> {
+        let name = topology::EXPANSION_IF;
+        if let Some(old) = self.nl.link_by_name(name).await? {
+            let _ = self.nl.del_link(old.index).await;
+        }
+        let parent_index = self
+            .nl
+            .link_by_name(parent)
+            .await?
+            .map(|l| l.index)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("no interface {parent}")))?;
+        self.nl.add_vlan(name, parent_index, topology::EXPANSION_VID, &[], &[]).await?;
+        let index = self
+            .nl
+            .link_by_name(name)
+            .await?
+            .map(|l| l.index)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "the interface vanished"))?;
+        ipv6_sysctl(name, "disable_ipv6", "1");
+        self.nl.addr_add(index, IpAddr::V4(addr), topology::EXPANSION_PREFIX).await?;
+        self.nl.set_up(index, true).await?;
+        log::info!("net: {name} (VLAN {} on {parent}) has {addr}/{}", topology::EXPANSION_VID, topology::EXPANSION_PREFIX);
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1314,6 +1352,7 @@ impl Runner {
             st.ipv4 = None;
             st.ipv6.clear();
             st.dns.clear();
+            st.expansion = None;
             st.phase = Phase::Starting;
         });
     }

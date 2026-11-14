@@ -67,17 +67,10 @@ pub async fn start(ctx: &Context, opts: &Options) {
     let net = net::start(ctx, config.clone(), &hub);
     {
         let net = net.clone();
-        let mut last = config.as_ref().map(|c| c.lock().unwrap().config().network());
-        let last_cell = std::sync::Mutex::new(last.take());
-        hub.on_change(move |cfg| {
-            // Only a change in the network settings restarts bring-up.
-            let now = cfg.network();
-            let mut last = last_cell.lock().unwrap();
-            if last.as_ref() != Some(&now) {
-                *last = Some(now);
-                net.config_changed();
-            }
-        });
+        // The network task maps the merged configuration (network, time,
+        // and expansion settings) onto its own and acts only on a
+        // difference there, so every change is passed on.
+        hub.on_change(move |_cfg| net.config_changed());
     }
 
     // Subsystem liveness, and the kernel's crash records from before this boot.

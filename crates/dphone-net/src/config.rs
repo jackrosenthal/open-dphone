@@ -208,6 +208,11 @@ pub struct NetConfig {
     /// turns this on together with pass-through (`eapLogoffEnable`), and
     /// has `8021x_eapol_on_disconnect` for it besides.
     pub eapol_logoff: bool,
+    /// `expansion_enable`: the phone's address on the private VLAN of the
+    /// expansion modules behind the PC jack (`172.20.<MAC byte 4>.<MAC
+    /// byte 5>`, 16-bit prefix).  `Some` creates the interface
+    /// [`crate::topology::EXPANSION_IF`].
+    pub expansion_address: Option<Ipv4Addr>,
     pub vlan: VlanDiscovery,
     pub qos: QosConfig,
     pub ipv4: Ipv4Config,
@@ -249,6 +254,7 @@ impl NetConfig {
             pc_qos: 1,
             eapol_passthrough: false,
             eapol_logoff: false,
+            expansion_address: None,
             vlan: VlanDiscovery::None,
             qos: QosConfig::default(),
             ipv4: Ipv4Config::default(),

@@ -110,7 +110,6 @@ pub fn register(ctx: &Context) {
         ("state", "dump the state store", "dphone-state"),
         ("config", "config get <id> | config set <id> <value>", "dphone-config"),
         ("hal", "poke hardware: LEDs, tones, display patterns, DSP jobs", "dphone-hal"),
-        ("net", "show network state", "dphone-net"),
     ] {
         reg.register(name, help, move |_args, out: Output| async move {
             out.err(&format!("dphone {name}: not available: {owner} is not wired into this build\n")).await;
