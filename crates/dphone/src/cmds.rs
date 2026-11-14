@@ -154,19 +154,61 @@ fn lsmod() -> Result<(), String> {
     Ok(())
 }
 
+/// `reboot`, `halt`, and `poweroff`: `[-f] [--halt|--poweroff] [REASON...]`.
+///
+/// The reason goes to the stock `reboot_reason` file from here, before the
+/// init role is signaled: these names are handled in the calling process
+/// (they must work with the main role down), so the main role's own
+/// `reboot` command, which records a reason, is never reached from a shell,
+/// and the signal to PID 1 carries no text.
 fn shutdown(kind: Shutdown, args: &[String]) -> Result<(), String> {
-    let force = args.iter().any(|a| a == "-f");
-    if force {
-        sys::sync();
-        return Err(format!("reboot system call: {}", sys::reboot(kind)));
+    let paths = crate::paths::Paths::default();
+    let may_write = crate::paths::stock_writes_allowed() && !paths.recovery_flag().exists();
+    shutdown_with(kind, args, &paths, may_write, |kind, force| {
+        if force {
+            sys::sync();
+            return Err(format!("reboot system call: {}", sys::reboot(kind)));
+        }
+        let sig = match kind {
+            Shutdown::Reboot => libc::SIGTERM,
+            Shutdown::Halt => libc::SIGUSR1,
+            Shutdown::PowerOff => libc::SIGUSR2,
+        };
+        // The init role (PID 1) does the orderly part: it stops the main
+        // role, syncs, and unmounts nvdata before the system call.
+        sys::kill(1, sig).map_err(|e| format!("cannot signal PID 1: {e}"))
+    })
+}
+
+/// The part of [`shutdown`] that does not depend on being on a phone:
+/// parse the arguments, record the reason under `paths` (when `may_write`),
+/// then hand over to `go(kind, force)`.  The record is complete on flash
+/// (written to a temporary file, synced, renamed, directory synced) before
+/// `go` runs.
+fn shutdown_with(
+    mut kind: Shutdown,
+    args: &[String],
+    paths: &crate::paths::Paths,
+    may_write: bool,
+    go: impl FnOnce(Shutdown, bool) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut force = false;
+    let mut words = Vec::new();
+    for a in args {
+        match a.as_str() {
+            "-f" => force = true,
+            "--halt" => kind = Shutdown::Halt,
+            "--poweroff" => kind = Shutdown::PowerOff,
+            _ => words.push(a.as_str()),
+        }
     }
-    let sig = match kind {
-        Shutdown::Reboot => libc::SIGTERM,
-        Shutdown::Halt => libc::SIGUSR1,
-        Shutdown::PowerOff => libc::SIGUSR2,
-    };
-    // The init role (PID 1) does the orderly part.
-    sys::kill(1, sig).map_err(|e| format!("cannot signal PID 1: {e}"))
+    let reason = if words.is_empty() { "dphone: requested".to_string() } else { format!("dphone: {}", words.join(" ")) };
+    if may_write
+        && let Err(e) = crate::paths::write_atomic(&paths.reboot_reason(), format!("{reason}\n").as_bytes(), 0o644)
+    {
+        crate::errln!("warning: {}: {e}", paths.reboot_reason().display());
+    }
+    go(kind, force)
 }
 
 fn dmesg(args: &[String]) -> Result<(), String> {
@@ -265,5 +307,62 @@ mod tests {
             Some(Process { comm: "tmux: server (1)".into(), state: 'S', ppid: 1, ticks: 200, rss: 1190 })
         );
         assert_eq!(parse_stat("12 (x) R"), None);
+    }
+
+    fn args(words: &[&str]) -> Vec<String> {
+        words.iter().map(|w| w.to_string()).collect()
+    }
+
+    /// `dphone reboot REASON` (and `halt`, `poweroff`): the reason is in
+    /// `reboot_reason`, whole, by the time the init role is signaled or the
+    /// system call is made.
+    #[test]
+    fn the_reason_is_recorded_before_the_phone_goes_down() {
+        let dir = tempfile::tempdir().unwrap();
+        let nv = dir.path().join("nv");
+        std::fs::create_dir_all(&nv).unwrap();
+        let paths = crate::paths::Paths::new(&nv, dir.path().join("run"));
+        let file = paths.reboot_reason();
+        // What stock left behind.
+        std::fs::write(&file, "phonemenu: restart\n").unwrap();
+
+        let run = |kind, words: &[&str], may_write| {
+            let mut seen = None;
+            shutdown_with(kind, &args(words), &paths, may_write, |kind, force| {
+                seen = Some((kind, force, std::fs::read_to_string(&file).unwrap()));
+                Ok(())
+            })
+            .unwrap();
+            seen.expect("the hand-over ran")
+        };
+
+        assert_eq!(
+            run(Shutdown::Reboot, &["trying", "bank", "b"], true),
+            (Shutdown::Reboot, false, "dphone: trying bank b\n".to_string())
+        );
+        assert_eq!(run(Shutdown::Reboot, &[], true), (Shutdown::Reboot, false, "dphone: requested\n".to_string()));
+        // Options are not part of the reason, wherever they stand.
+        assert_eq!(
+            run(Shutdown::Reboot, &["going", "-f", "dark", "--halt"], true),
+            (Shutdown::Halt, true, "dphone: going dark\n".to_string())
+        );
+        assert_eq!(
+            run(Shutdown::PowerOff, &["done"], true),
+            (Shutdown::PowerOff, false, "dphone: done\n".to_string())
+        );
+        // No temporary file is left beside it.
+        let names: Vec<_> = std::fs::read_dir(&nv).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names, ["reboot_reason"]);
+
+        // An image that must leave stock's files alone, or a stand-in
+        // nvdata: the file stays, and the phone still goes down.
+        assert_eq!(
+            run(Shutdown::Reboot, &["not", "written"], false),
+            (Shutdown::Reboot, false, "dphone: done\n".to_string())
+        );
+
+        // A failure to hand over is reported.
+        let e = shutdown_with(Shutdown::Reboot, &[], &paths, true, |_, _| Err("cannot signal PID 1: no".into()));
+        assert_eq!(e, Err("cannot signal PID 1: no".to_string()));
     }
 }
