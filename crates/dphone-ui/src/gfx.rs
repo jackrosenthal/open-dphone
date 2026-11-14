@@ -519,8 +519,9 @@ impl Canvas {
     /// A softkey shape in `r`.  On the color skin: a rectangle whose
     /// bottom edge comes to a shallow point at the center, aimed at the
     /// physical key below (the last five rows of `r` are the point), with
-    /// an optional one-pixel outline.  On gray: a cell with rounded top
-    /// corners and a one-pixel gap at each side.
+    /// rounded corners and an optional one-pixel outline, all
+    /// anti-aliased by coverage.  On gray: a cell with rounded top corners
+    /// and a one-pixel gap at each side.
     pub fn softkey_shape(&mut self, r: IRect, fill: Rgb, edge: Option<Rgb>) {
         if self.gray {
             for j in 0..r.h {
@@ -533,33 +534,52 @@ impl Canvas {
             }
             return;
         }
+        /// Rows of the point.
         const POINT: i32 = 5;
+        /// One pixel in the fixed-point unit of the distances below.
+        const ONE: i32 = 256;
+        /// The radius of the outline's corners.
+        const RADIUS: i32 = 3 * ONE;
+        if r.w < 2 || r.h <= POINT {
+            return;
+        }
         let body = r.h - POINT;
         let edge = edge.unwrap_or(fill);
-        // The rectangular part: rows 0..body, with the top corners cut by
-        // one pixel.
-        self.span(r.y, r.x + 1, r.right() - 1, edge);
-        for j in 1..body - 1 {
-            self.span(r.y + j, r.x, r.right(), fill);
-            self.span(r.y + j, r.x, r.x + 1, edge);
-            self.span(r.y + j, r.right() - 1, r.right(), edge);
-        }
-        // The point: the bottom edge runs from each lower corner down to
-        // the center, anti-aliased, in sixteenths of a pixel.
-        let half = (r.w / 2).max(1);
-        for x in 0..r.w {
-            let d = x.min(r.w - 1 - x);
-            let edge_y = body * 16 - 8 + POINT * 16 * d / half;
-            for j in body - 1..r.h {
-                let t = edge_y - j * 16;
-                let (px, py) = (r.x + x, r.y + j);
-                if t >= 32 && d > 0 {
-                    self.put_blend(px, py, self.color(fill), 1, 1);
-                } else if t >= 16 {
-                    self.put_blend(px, py, self.color(edge), 1, 1);
-                } else if t > 0 {
-                    self.put_blend(px, py, self.color(edge), t as u32, 16);
+        // The outline is the top edge, the two sides, and two slanted
+        // edges from the lower corners (at `body`) to the center of the
+        // bottom of `r`.  The length of a slanted edge's direction vector
+        // (w, 2 * POINT), in fixed point, turns its line equation into a
+        // distance.
+        let slant_len = ((r.w * r.w + 4 * POINT * POINT) as u32 * (ONE * ONE) as u32).isqrt() as i32;
+        // Two edges that meet at a corner, rounded: where both distances
+        // are within the radius, the distance is from the corner's circle.
+        let round = |a: i32, b: i32| {
+            if a > -RADIUS && b > -RADIUS {
+                (((a + RADIUS) * (a + RADIUS) + (b + RADIUS) * (b + RADIUS)) as u32).isqrt() as i32 - RADIUS
+            } else {
+                a.max(b)
+            }
+        };
+        // How much of a pixel lies inside an outline whose edge is `d`
+        // from the pixel's center (negative inside), out of `ONE`.
+        let coverage = |d: i32| (ONE / 2 - d).clamp(0, ONE) as u32;
+        for j in 0..r.h {
+            let py = j * ONE + ONE / 2;
+            for x in 0..r.w {
+                // The shape is symmetric: fold onto the left half.
+                let px = x.min(r.w - 1 - x) * ONE + ONE / 2;
+                let side = -px;
+                let top = -py;
+                let slant = ((py - body * ONE) * r.w - 2 * POINT * px) * ONE / slant_len;
+                // The signed distance from the pixel's center to the
+                // outline, and to the inner edge of the one-pixel border.
+                let d = round(side, top).max(round(side, slant));
+                let outer = coverage(d);
+                if outer == 0 {
+                    continue;
                 }
+                let inner = coverage(d + ONE);
+                self.put_blend(r.x + x, r.y + j, blend(edge, fill, inner, outer), outer, ONE as u32);
             }
         }
     }
