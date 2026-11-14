@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# Binding draft.  Passes dt_binding_check apart from the missing "maintainers" entry.
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/input/brcm,bcmring-keypad.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Broadcom BCMRING (BCM11107 family) keypad matrix controller
+
+description:
+  Hardware-scanned, hardware-debounced key matrix controller ("KEYC") with
+  up to 10 rows of 9 columns.  The row and column numbers of linux,keymap
+  are the high and low nibble of the vendor scan code.  On the Digium
+  boards column c is pad GPIO 43 + c and row r is pad GPIO 52 + r, both on
+  mux function 1.
+
+allOf:
+  - $ref: /schemas/input/matrix-keymap.yaml#
+
+properties:
+  compatible:
+    const: brcm,bcmring-keypad
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    maxItems: 1
+    description:
+      Keypad bus-interface gate (chip control BusIntfClock bit 15).  Its
+      rate (the bus clock rate) feeds the scan prescaler.
+
+  keypad,num-rows:
+    maximum: 10
+
+  keypad,num-columns:
+    maximum: 9
+
+  debounce-delay-ms:
+    description:
+      Converted to the controller's 8-bit sample count at 9000 samples/s,
+      so at most 28 ms.  The vendor value is 200 samples (about 22 ms),
+      used when the property is absent.
+    maximum: 28
+
+  autorepeat: true
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - clocks
+  - keypad,num-rows
+  - keypad,num-columns
+  - linux,keymap
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/input/input.h>
+    keypad@8000d000 {
+        compatible = "brcm,bcmring-keypad";
+        reg = <0x8000d000 0x20>;
+        interrupts = <16>;
+        clocks = <&chipc 47>; /* BCMRING_CLK_BUSIF_LDK */
+        keypad,num-rows = <7>;
+        keypad,num-columns = <6>;
+        linux,keymap = <MATRIX_KEY(4, 4, KEY_NUMERIC_1)
+                        MATRIX_KEY(4, 3, KEY_NUMERIC_2)>;
+    };

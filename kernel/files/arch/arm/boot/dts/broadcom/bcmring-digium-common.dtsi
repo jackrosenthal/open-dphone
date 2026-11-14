@@ -1,0 +1,151 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * Parts common to the Digium/Sangoma D40, D45, D50, D70, D60, D62, and D65
+ * desk phones (Broadcom BCMRING SoCs).  DRAFT, never booted.
+ *
+ * Boot flow (read from the boot2 installed on a D60, a D40, and a D50; never
+ * exercised with this kernel): boot2 copies the zImage (with the DTB
+ * appended) from the k0/k1 NAND partition to the address in zImage header
+ * word 0x28, for a length of word 0x2c minus word 0x28, and enters it with
+ * r0 = 0, r1 = 0x92b, r2 = ATAG list (core, mem, revision, cmdline; at
+ * 0x00400004 on the D6x, 0x00200004 on the older models).  The two header
+ * words must be patched after the build (kernel-re/boot/d60bootimg.py).  With
+ * CONFIG_ARM_ATAG_DTB_COMPAT the decompressor folds the
+ * ATAG memory and command line into the tree, so /memory and bootargs in
+ * the board files are fallback values.  /memory must nevertheless be right:
+ * CONFIG_AUTO_ZRELADDR places the kernel from it before the ATAGs are
+ * merged.
+ *
+ * Include after the SoC .dtsi.
+ */
+
+/*
+ * Standard Linux key codes (digium-keys.h); the board input files include
+ * that header after this file.
+ */
+#define DIGIUM_KEYS_PROPOSED
+
+/ {
+	chosen {
+		stdout-path = "serial0:115200n8";
+		/*
+		 * boot2 appends its own command line (console, mtdparts=, root=).
+		 * panic=10: a panic, including the death of PID 1, reboots.
+		 */
+		bootargs = "console=ttyAMA0,115200n8 earlycon=pl011,0x80012000 panic=10";
+	};
+
+	/*
+	 * "External speaker op-amp" enable, vendor GPIO 32 on every model
+	 * (halaudio extensions config).  The vendor drives it high at probe
+	 * and it reads high on an idle D40, D50, and D60 under stock
+	 * firmware; that "high" means "enabled" is inferred, not measured.
+	 */
+	speaker_amp: speaker-amplifier {
+		compatible = "simple-audio-amplifier";
+		enable-gpios = <&gpio1 0 GPIO_ACTIVE_HIGH>;
+		sound-name-prefix = "Speaker Amp";
+	};
+
+	/*
+	 * Stands in for the shared-RAM bus gate in the DSP node.  The ramoops
+	 * console below lives in the same RAM; with the real gate, unbinding
+	 * the DSP driver (or a failed probe) would switch the RAM off under
+	 * it.  The gate is on at hand-off (boot1 puts its first stack in this
+	 * RAM), and the clock driver leaves unused gates alone.
+	 */
+	vram_gate_keep: clock-vram-keep {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+	};
+
+	reserved-memory {
+		/*
+		 * Persistent console in the top 16 KiB of the DSP shared RAM,
+		 * which keeps its contents across a reset.  The DSP rings end
+		 * at 0x4000a810 (new family) or 0x40008010 (old family).  The
+		 * region is outside /memory; "no-map" is there for the
+		 * binding.  Run on a D60 and a D40 (RAM boot, 2026-11-13).
+		 */
+		ramoops@4000c000 {
+			compatible = "ramoops";
+			reg = <0x4000c000 0x4000>;
+			console-size = <0x4000>;
+			/* ioremap(), not write-combining: every byte lands */
+			mem-type = <1>;
+			no-map;
+		};
+	};
+};
+
+&uart0 {
+	status = "okay";
+};
+
+&watchdog {
+	status = "okay";
+};
+
+&nand_controller {
+	status = "okay";
+
+	nand: nand@0 {
+		reg = <0>;
+		/* same MTD name as the vendor driver, for boot2's mtdparts= */
+		label = "bcm_umi-nand";
+	};
+};
+
+/*
+ * Ethernet: b53 DSA switch with the FIFO-bridge netdev as conduit.  CPU
+ * port 8, tag protocol "brcm" (chosen by b53 for this chip class; the
+ * Broadcom header register 02:03 reads 3 under the stock firmware of a D40,
+ * a D50, and a D60).  Core port 0 is the LAN jack and core port 1 the PC
+ * jack: with one cable, in the LAN jack, only port 0 had a link on a D60 and
+ * on a D40 (link status 01:00 = 0x101, i.e., ports 0 and 8).  A D50 also had
+ * its only link on port 0, but which jack its cable was in was not recorded.
+ * For the D45 and D70 the assignment rests on the vendor scripts, which are
+ * identical on all four old-family models and call port 0 "LAN" and port 1
+ * "PC"; the bitmap swap in the old-family vendor module is not exercised by
+ * them.  The IMP port runs at 1000 Mb/s on the 10/100 SoCs as well (speed
+ * status 01:04, port 8 field = 2).
+ *
+ * MAC address: none in hardware.  The factory address is the ENETCFG_MAC
+ * line of etc/enet.cfg in the JFFS2 file system of the "nvdata" partition,
+ * which no NVMEM layout can describe.  Userspace must read it and set it on
+ * the conduit and on both user ports (they copy the conduit's address when
+ * created, i.e., before userspace runs); until then the conduit has a random
+ * address.
+ */
+&enet {
+	status = "okay";
+};
+
+&switch {
+	status = "okay";
+};
+
+&switch_port0 {
+	label = "lan";
+};
+
+&switch_port1 {
+	label = "pc";
+};
+
+&apm {
+	status = "okay";
+};
+
+/*
+ * The SoC file gives the DSP the whole 64 KiB of shared RAM.  The driver
+ * uses only the mailbox and the four rings behind it; 0xc000 leaves the top
+ * 16 KiB to the ramoops console above.
+ */
+&vpm {
+	reg = <0x30800000 0x2000>, <0x30a00000 0x10000>,
+	      <0x40000000 0xc000>, <0x80003000 0x20>;
+	/* see vram_gate_keep above */
+	clocks = <&vram_gate_keep>;
+};

@@ -1,0 +1,48 @@
+diff --git a/sound/soc/bcm/Kconfig b/sound/soc/bcm/Kconfig
+index de4e8a0daf1ceb19a8959390e2044949df8e944a..fab5500f25a5cd6633d60e7a885589bc04cd4599 100644
+--- a/sound/soc/bcm/Kconfig
++++ b/sound/soc/bcm/Kconfig
+@@ -29,4 +29,24 @@ config SND_BCM63XX_I2S_WHISTLER
+ 
+ 	  If you don't know what to do here, say N
+ 
++config SND_SOC_BCMRING_APM
++	tristate "SoC audio support for the Broadcom BCMRING APM"
++	depends on ARCH_BCMRING || COMPILE_TEST
++	depends on HAS_IOMEM
++	select MFD_SYSCON
++	select REGMAP_MMIO
++	select SND_DMAENGINE_PCM
++	help
++	  Say Y or M to support the on-chip analog audio front end ("APM")
++	  of the Broadcom BCMRING SoCs (BCM11107 family).
++
++config SND_SOC_BCMRING_DIGIUM
++	tristate "Sound card for the Digium D-series phones (BCMRING APM)"
++	depends on SND_SOC_BCMRING_APM
++	depends on OF
++	help
++	  Say Y or M to get the sound card of the Digium/Sangoma D40, D45,
++	  D50, D60, D62, D65, and D70 desk phones: handset, headset, and
++	  speakerphone PCM devices on the on-chip APM audio front end.
++
+ endmenu
+diff --git a/sound/soc/bcm/Makefile b/sound/soc/bcm/Makefile
+index 0c1325a97b709ff7e5c8980fff6b9db581d0ecdf..47d3b81b81538e39d756949ffc4902880dc5f2bf 100644
+--- a/sound/soc/bcm/Makefile
++++ b/sound/soc/bcm/Makefile
+@@ -12,4 +12,12 @@ obj-$(CONFIG_SND_SOC_CYGNUS) += snd-soc-cygnus.o
+ # BCM63XX Platform Support
+ snd-soc-63xx-y := bcm63xx-i2s-whistler.o bcm63xx-pcm-whistler.o
+ 
+-obj-$(CONFIG_SND_BCM63XX_I2S_WHISTLER) += snd-soc-63xx.o
+\ No newline at end of file
++obj-$(CONFIG_SND_BCM63XX_I2S_WHISTLER) += snd-soc-63xx.o
++
++# BCMRING (BCM11107 family) APM
++snd-soc-bcmring-apm-y := bcmring-apm.o
++
++obj-$(CONFIG_SND_SOC_BCMRING_APM) += snd-soc-bcmring-apm.o
++
++snd-soc-bcmring-digium-card-y := bcmring-digium-card.o
++obj-$(CONFIG_SND_SOC_BCMRING_DIGIUM) += snd-soc-bcmring-digium-card.o

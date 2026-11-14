@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# Draft binding.  Passes dt_binding_check apart from the missing "maintainers" entry.
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/clock/brcm,bcmring-chipc.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Broadcom BCMRING chip-control clock and reset controller
+
+description:
+  The chip-control block of the BCM11107 family provides two PLLs, PLL
+  channel and divider clocks, bus-interface clock gates, and soft resets.
+  The same register block also holds straps, a few miscellaneous control
+  registers, pin multiplexing, and pad control.  The clock driver registers
+  the block's regmap as the syscon for this node, so other drivers can
+  reference it by phandle; the generic "syscon" compatible must not be
+  listed, because the regmap has to share the clock driver's lock.  Pin
+  multiplexing is described by pinctrl-single child nodes.  Clock and reset
+  IDs are in include/dt-bindings/clock/brcm,bcmring-chipc.h.
+
+properties:
+  compatible:
+    const: brcm,bcmring-chipc
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    items:
+      - description: 25 MHz reference crystal
+
+  clock-names:
+    items:
+      - const: xtal
+
+  '#clock-cells':
+    const: 1
+
+  '#reset-cells':
+    const: 1
+
+  '#address-cells':
+    const: 1
+
+  '#size-cells':
+    const: 1
+
+  ranges: true
+
+patternProperties:
+  '^pinctrl@[0-9a-f]+$':
+    type: object
+    $ref: /schemas/pinctrl/pinctrl-single.yaml#
+    description:
+      LCD/PIF pad ownership (offset 0x114) and the per-pad 4-bit function
+      fields (offset 0x118, eight registers, pads 0 to 60).
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - clock-names
+  - '#clock-cells'
+  - '#reset-cells'
+
+additionalProperties: false
+
+examples:
+  - |
+    clock-controller@80000000 {
+        compatible = "brcm,bcmring-chipc";
+        reg = <0x80000000 0x1000>;
+        clocks = <&xtal>;
+        clock-names = "xtal";
+        #clock-cells = <1>;
+        #reset-cells = <1>;
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges = <0 0x80000000 0x1000>;
+
+        pinctrl@118 {
+            compatible = "pinctrl-single";
+            reg = <0x118 0x20>;
+            #pinctrl-cells = <2>;
+            pinctrl-single,register-width = <32>;
+            pinctrl-single,function-mask = <0xf>;
+            pinctrl-single,bit-per-mux;
+        };
+    };

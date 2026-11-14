@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config ARCH_BCMRING
+	bool "Broadcom BCMRING (BCM11107 family) SoC support"
+	depends on ARCH_MULTI_V6
+	select ARM_AMBA
+	select ARM_VIC
+	select ARM_TIMER_SP804
+	select COMMON_CLK_BCMRING
+	select GPIOLIB
+	select MFD_SYSCON
+	select PINCTRL
+	select PINCTRL_SINGLE
+	select RESET_CONTROLLER
+	help
+	  Support for the Broadcom BCMRING ARM1176JZ-S SoCs (BCM11107,
+	  BCM11109, BCM11170, BCM11188, BCM11189, ...) as found in the
+	  Digium/Sangoma D40, D45, D50, D60, D62, D65, and D70 desk phones.

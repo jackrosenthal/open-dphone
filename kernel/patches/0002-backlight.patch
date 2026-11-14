@@ -1,0 +1,32 @@
+diff --git a/drivers/video/backlight/Kconfig b/drivers/video/backlight/Kconfig
+index dbf4ca23a9b6d8575a86e39618b312b4df43ea19..11e86ec2627dcc1bec6ee21fdb167a46105db001 100644
+--- a/drivers/video/backlight/Kconfig
++++ b/drivers/video/backlight/Kconfig
+@@ -503,6 +503,15 @@ config BACKLIGHT_LV5207LP
+ 	help
+ 	  If you have a Sanyo LV5207LP say Y to enable the backlight driver.
+ 
++config BACKLIGHT_BCMRING
++	tristate "Broadcom BCMRING PWM backlight"
++	depends on ARCH_BCMRING || COMPILE_TEST
++	depends on HAS_IOMEM
++	help
++	  Backlight driver for the one-register PWM block of the Broadcom
++	  BCMRING SoCs (BCM11107 family), with the GPIO handover that the
++	  boards use for fully-off and fully-on.
++
+ config BACKLIGHT_BD6107
+ 	tristate "Rohm BD6107 Backlight"
+ 	depends on I2C
+diff --git a/drivers/video/backlight/Makefile b/drivers/video/backlight/Makefile
+index 34469711c6cd957dae63c7072ade4830879aba1a..9a64848a90d7663ef3b7929bf6b839f787f7ecb3 100644
+--- a/drivers/video/backlight/Makefile
++++ b/drivers/video/backlight/Makefile
+@@ -26,6 +26,7 @@ obj-$(CONFIG_BACKLIGHT_APPLE)		+= apple_bl.o
+ obj-$(CONFIG_BACKLIGHT_APPLE_DWI)	+= apple_dwi_bl.o
+ obj-$(CONFIG_BACKLIGHT_AS3711)		+= as3711_bl.o
+ obj-$(CONFIG_BACKLIGHT_AW99706)		+= aw99706.o
++obj-$(CONFIG_BACKLIGHT_BCMRING)		+= bcmring-backlight.o
+ obj-$(CONFIG_BACKLIGHT_BD6107)		+= bd6107.o
+ obj-$(CONFIG_BACKLIGHT_CGBC)		+= cgbc_bl.o
+ obj-$(CONFIG_BACKLIGHT_CLASS_DEVICE)	+= backlight.o

@@ -1,0 +1,106 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# SKETCH ONLY.  Not validated with dt_binding_check.  Addresses and interrupt
+# numbers come from the vendor binaries (see NOTES.md); nothing here has been
+# tried on hardware.
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/net/brcm,bcmring-enet.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Broadcom BCMRING embedded-switch CPU port
+
+description: |
+  The BCMRING SoCs (BCM11107/11109/11170/11188/11189 and relatives) embed a
+  two-port plus IMP Broadcom ROBO switch.  The CPU reaches the IMP port
+  through a pair of FIFOs that are filled and drained by two dedicated
+  channels (2 and 3) of the SoC's second Synopsys DesignWare AHB DMA
+  controller.  Frames carry the 4-byte Broadcom tag after the source MAC
+  address, so this node is the conduit ("ethernet" phandle target) of the
+  brcm,bcmring-switch DSA switch node, which uses the "brcm" tag protocol.
+
+  The driver programs the two DMA channels itself because it needs
+  DesignWare features the generic dmaengine driver does not offer
+  (peripheral flow control with status write-back).  This node therefore
+  owns the whole of DMA controller 1: its register block ("dmac"), its
+  bus-interface clock gate, and the interrupt lines of channels 2 and 3.
+  At probe the driver switches the controller on and disables, masks, and
+  clears all eight channels; the controller's own snps,dma-spear1340 node
+  must stay disabled, and its other six channels are unavailable.  This is
+  the part of the SKETCH that will not pass upstream review as is: it
+  hands a general-purpose DMA controller to the Ethernet node.
+
+allOf:
+  - $ref: ethernet-controller.yaml#
+
+properties:
+  compatible:
+    const: brcm,bcmring-enet
+
+  reg:
+    items:
+      - description: Port FIFO bridge (Rx at 0x0, Tx at 0x10000)
+      - description: DesignWare DMA controller 1 register block
+
+  reg-names:
+    items:
+      - const: fifo
+      - const: dmac
+
+  interrupts:
+    items:
+      - description: DMA controller 1 channel 2 (Rx)
+      - description: DMA controller 1 channel 3 (Tx)
+
+  interrupt-names:
+    items:
+      - const: rx
+      - const: tx
+
+  clocks:
+    items:
+      - description: 100 MHz ESW clock (vendor chipc clock index 2)
+      - description: bus-interface gate of the switch block
+      - description: bus-interface gate of DMA controller 1
+
+  clock-names:
+    items:
+      - const: esw
+      - const: bus
+      - const: dmac
+
+required:
+  - compatible
+  - reg
+  - reg-names
+  - interrupts
+  - interrupt-names
+  - fixed-link
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/clock/brcm,bcmring-chipc.h>
+
+    /* vendor Linux IRQs 10 and 11 = inputs 10 and 11 of the first VIC */
+    ethernet@30480000 {
+        compatible = "brcm,bcmring-enet";
+        reg = <0x30480000 0x20000>, <0x30300000 0x400>;
+        reg-names = "fifo", "dmac";
+        interrupts = <10>, <11>;
+        interrupt-names = "rx", "tx";
+        clocks = <&chipc BCMRING_CLK_ESW>,
+                 <&chipc BCMRING_CLK_BUSIF_ESW>,
+                 <&chipc BCMRING_CLK_BUSIF_DMAC1>;
+        clock-names = "esw", "bus", "dmac";
+        phy-mode = "internal";
+        /*
+         * No address source in hardware.  local-mac-address from a boot
+         * loader is honored; otherwise userspace sets the address.
+         */
+
+        fixed-link {
+            speed = <1000>;
+            full-duplex;
+        };
+    };

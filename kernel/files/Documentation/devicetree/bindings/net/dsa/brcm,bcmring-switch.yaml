@@ -1,0 +1,123 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# SKETCH ONLY: not validated with dt_binding_check, never tested on hardware.
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/net/dsa/brcm,bcmring-switch.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Broadcom BCMRING integrated Ethernet switch
+
+description:
+  Three-port (two integrated PHY ports plus an internal IMP port) Robo-style
+  switch core found in BCM11107/BCM11109/BCM11170/BCM11188/BCM11189 SoCs.
+  Registers are memory mapped with one 8 byte slot per (page, register).
+
+allOf:
+  - $ref: dsa.yaml#/$defs/ethernet-ports
+
+properties:
+  compatible:
+    description:
+      The SoC-specific entry tells the driver whether the two integrated
+      PHYs may run 1000BASE-T (BCM11109, BCM11188) or only 10/100
+      (BCM11170, BCM11189); the PHYs have no nodes that could carry
+      max-speed.
+    items:
+      - enum:
+          - brcm,bcm11109-switch
+          - brcm,bcm11170-switch
+          - brcm,bcm11188-switch
+          - brcm,bcm11189-switch
+      - const: brcm,bcmring-switch
+
+  reg:
+    items:
+      - description: switch core, page/register slots (0x80000 bytes)
+      - description:
+          wrapper block (ready flag, PHY power-down, indirect MII accessor
+          for the integrated PHYs, IMP speed).  Owned entirely by this node;
+          the integrated PHYs appear on the DSA user MDIO bus with address
+          equal to the port number.
+
+  reg-names:
+    items:
+      - const: core
+      - const: wrapper
+
+  clocks:
+    items:
+      - description: switch core clock (vendor sets it to 100 MHz)
+      - description: bus-interface gate of the switch block
+
+  clock-names:
+    items:
+      - const: esw
+      - const: bus
+
+  resets:
+    items:
+      - description: switch clock reset
+      - description: switch core reset
+
+  reset-names:
+    items:
+      - const: clk
+      - const: core
+
+  brcm,chipc:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description:
+      Chip-control node.  When present, register 0 is read before each
+      switch register read, as the vendor driver does.  Single reads return
+      correct values without it (measured under the vendor firmware), so it
+      is expected to go away once that is confirmed for back-to-back reads.
+
+required:
+  - compatible
+  - reg
+  - reg-names
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/clock/brcm,bcmring-chipc.h>
+
+    ethernet-switch@30400000 {
+        compatible = "brcm,bcm11189-switch", "brcm,bcmring-switch";
+        reg = <0x30400000 0x80000>, <0x304a0000 0x100>;
+        reg-names = "core", "wrapper";
+        clocks = <&chipc BCMRING_CLK_ESW>, <&chipc BCMRING_CLK_BUSIF_ESW>;
+        clock-names = "esw", "bus";
+        resets = <&chipc BCMRING_RST_ESWCLK>, <&chipc BCMRING_RST_ESW>;
+        reset-names = "clk", "core";
+        brcm,chipc = <&chipc>;
+
+        ethernet-ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            port@0 {
+                reg = <0>;
+                label = "lan";
+                phy-mode = "internal";
+            };
+
+            port@1 {
+                reg = <1>;
+                label = "pc";
+                phy-mode = "internal";
+            };
+
+            port@8 {
+                reg = <8>;
+                ethernet = <&enet>;
+                phy-mode = "internal";
+
+                fixed-link {
+                    speed = <1000>;
+                    full-duplex;
+                };
+            };
+        };
+    };

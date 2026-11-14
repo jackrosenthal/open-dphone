@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# Draft binding.  Passes dt_binding_check apart from the missing "maintainers" entry.
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/mtd/brcm,bcmring-nand.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Broadcom BCMRING UMI NAND controller
+
+description:
+  Single-chip-select raw NAND controller of the BCM11107 family (vendor
+  driver name "bcm_umi-nand").  The ECC format is fixed by the boot ROM and
+  boot loaders (BCH-8 over 512-byte steps, 13 ECC bytes per step at OOB
+  offsets 16 * step + 3), so no nand-ecc-* properties are used.
+
+allOf:
+  - $ref: nand-controller.yaml#
+
+properties:
+  compatible:
+    const: brcm,bcmring-nand
+
+  reg:
+    items:
+      - description: UMI controller registers
+      - description: NAND command, address, and data aperture
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    maxItems: 1
+
+required:
+  - compatible
+  - reg
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    nand-controller@80001000 {
+        compatible = "brcm,bcmring-nand";
+        reg = <0x80001000 0x100>, <0x80001800 0x800>;
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        nand@0 {
+            reg = <0>;
+            label = "bcm_umi-nand";
+        };
+    };

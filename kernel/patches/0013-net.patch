@@ -1,0 +1,182 @@
+diff --git a/drivers/net/dsa/b53/Kconfig b/drivers/net/dsa/b53/Kconfig
+index 915008e8eff530642c03dfe1615608b754856a9d..e40115526bfb39ceaa9bafb3b18d2ed2d70f0d64 100644
+--- a/drivers/net/dsa/b53/Kconfig
++++ b/drivers/net/dsa/b53/Kconfig
+@@ -32,6 +32,15 @@ config B53_MMAP_DRIVER
+ 	  Select to enable support for memory-mapped switches like the BCM63XX
+ 	  integrated switches.
+ 
++config B53_BCMRING_DRIVER
++	tristate "B53 BCMRING integrated switch driver"
++	depends on B53 && HAS_IOMEM
++	depends on ARCH_BCMRING || COMPILE_TEST
++	select MFD_SYSCON
++	help
++	  Select to enable support for the memory-mapped switch core that is
++	  integrated in Broadcom BCMRING SoCs (BCM11107/11109/11170/1118x).
++
+ config B53_SRAB_DRIVER
+ 	tristate "B53 SRAB connected switch driver"
+ 	depends on B53 && HAS_IOMEM
+diff --git a/drivers/net/dsa/b53/Makefile b/drivers/net/dsa/b53/Makefile
+index b1be13023ae4c762fc1a014c6184d5e688611e93..0ea12458453f3801393a07d00df1805651dd9e20 100644
+--- a/drivers/net/dsa/b53/Makefile
++++ b/drivers/net/dsa/b53/Makefile
+@@ -4,5 +4,6 @@ obj-$(CONFIG_B53)		+= b53_common.o
+ obj-$(CONFIG_B53_SPI_DRIVER)	+= b53_spi.o
+ obj-$(CONFIG_B53_MDIO_DRIVER)	+= b53_mdio.o
+ obj-$(CONFIG_B53_MMAP_DRIVER)	+= b53_mmap.o
++obj-$(CONFIG_B53_BCMRING_DRIVER)	+= b53_bcmring.o
+ obj-$(CONFIG_B53_SRAB_DRIVER)	+= b53_srab.o
+ obj-$(CONFIG_B53_SERDES)	+= b53_serdes.o
+diff --git a/drivers/net/ethernet/broadcom/Kconfig b/drivers/net/ethernet/broadcom/Kconfig
+index f0bac0dd143900a68796d1e7ba09a040aadda28b..cec0f9672e8b42eedea1c24d7a09a768d33c0e72 100644
+--- a/drivers/net/ethernet/broadcom/Kconfig
++++ b/drivers/net/ethernet/broadcom/Kconfig
+@@ -52,6 +52,16 @@ config B44_PCI
+ 	depends on B44_PCI_AUTOSELECT && B44_PCICORE_AUTOSELECT
+ 	default y
+ 
++config BCMRING_ENET
++	tristate "Broadcom BCMRING embedded-switch CPU port support"
++	depends on ARCH_BCMRING || COMPILE_TEST
++	depends on HAS_IOMEM && HAS_DMA
++	select PHYLINK
++	help
++	  This driver supports the CPU (IMP) port FIFO bridge of the Ethernet
++	  switch embedded in Broadcom BCMRING SoCs (BCM11107 family).  It is
++	  the DSA conduit of the B53 BCMRING switch driver.
++
+ config BCM4908_ENET
+ 	tristate "Broadcom BCM4908 internal mac support"
+ 	depends on ARCH_BCMBCA || COMPILE_TEST
+diff --git a/drivers/net/ethernet/broadcom/Makefile b/drivers/net/ethernet/broadcom/Makefile
+index 10cc1c92ecfc68272048a931bbe8449fa1245c4f..82befc9c535d836b048fcd9544181721b3b96ac7 100644
+--- a/drivers/net/ethernet/broadcom/Makefile
++++ b/drivers/net/ethernet/broadcom/Makefile
+@@ -5,6 +5,7 @@
+ 
+ obj-$(CONFIG_B44) += b44.o
+ obj-$(CONFIG_BCM4908_ENET) += bcm4908_enet.o
++obj-$(CONFIG_BCMRING_ENET) += bcmring_enet.o
+ obj-$(CONFIG_BCM63XX_ENET) += bcm63xx_enet.o
+ obj-$(CONFIG_BCMGENET) += genet/
+ obj-$(CONFIG_BNX2) += bnx2.o
+diff --git a/drivers/net/phy/broadcom.c b/drivers/net/phy/broadcom.c
+index d1a4edb34ad2efc3b7eb55fea612acef3627d3a8..99bc886335dc118d19487488d94eed5cab636c9d 100644
+--- a/drivers/net/phy/broadcom.c
++++ b/drivers/net/phy/broadcom.c
+@@ -1260,6 +1260,68 @@ static void bcm54xx_link_change_notify(struct phy_device *phydev)
+ 	bcm_phy_write_exp(phydev, MII_BCM54XX_EXP_EXP08, ret);
+ }
+ 
++/*
++ * Gigabit PHY core integrated in the Ethernet switch of the BCMRING SoCs
++ * (BCM11107 family).  ID 0x0143bd91; the part name is not known, and the
++ * register model is that of the BCM54xx family (closest relatives: BCM50610
++ * and BCM50610M).  NEVER RUN ON HARDWARE under this driver.
++ *
++ * config_init reproduces the three fixups of the vendor kernel with the
++ * vendor's own values, and nothing else.  bcm54xx_config_init() is not used:
++ * its clock, LED, and model-specific paths are untested on this core.  The
++ * bcm-phy-lib helpers for auto power-down and downshift are not used either,
++ * because they write more than the vendor does (the single-link-pulse bit
++ * and the wirespeed retry shadow).  The auto power-down and wirespeed values
++ * were read back as written on a stock BCM11189 and a stock BCM11170; the
++ * expansion register fixup is known from the vendor code only.
++ *
++ * Registers 0x0d and 0x0e are not the Clause 45 access pair on this core
++ * (they read back zero), hence the *_mmd_unsupported callbacks: without
++ * them phylib's EEE probing would write both registers.  There is no
++ * interrupt support: the interrupt outputs end in two switch wrapper words
++ * of unknown layout that no vendor code uses.  Register 0x0f claims
++ * 1000BASE-T on the 10/100 SoCs as well, so that restriction has to come
++ * from the MAC side (the b53 BCMRING glue removes MAC_1000 there).
++ */
++#define BCMRING_GPHY_APD_WAKE_TIMER	0x0001	/* vendor sets it; name inferred */
++
++static int bcmring_gphy_config_init(struct phy_device *phydev)
++{
++	int val, ret;
++
++	/*
++	 * Vendor, gigabit SoCs only: clear bit 9 of expansion register 0x08
++	 * and leave the expansion selector at zero.  This is the BCM50610
++	 * "phy interop issue" fix.
++	 */
++	if (phydev->dev_flags & PHY_BRCM_BCMRING_GIGABIT) {
++		phy_lock_mdio_bus(phydev);
++		ret = __bcm_phy_modify_exp(phydev, MII_BCM54XX_EXP_EXP08,
++					   MII_BCM54XX_EXP_EXP08_EARLY_DAC_WAKE,
++					   0);
++		__phy_write(phydev, MII_BCM54XX_EXP_SEL, 0);
++		phy_unlock_mdio_bus(phydev);
++		if (ret < 0)
++			return ret;
++	}
++
++	/* Vendor: register 0x1c = 0xa821, auto power-down with wake timer */
++	ret = bcm_phy_write_shadow(phydev, BCM54XX_SHD_APD,
++				   BCM54XX_SHD_APD_EN |
++				   BCMRING_GPHY_APD_WAKE_TIMER);
++	if (ret < 0)
++		return ret;
++
++	/* Vendor: register 0x18 = 0x7007, read, write back | 0x8017 */
++	val = bcm54xx_auxctl_read(phydev, MII_BCM54XX_AUXCTL_SHDWSEL_MISC);
++	if (val < 0)
++		return val;
++
++	return bcm54xx_auxctl_write(phydev, MII_BCM54XX_AUXCTL_SHDWSEL_MISC,
++				    val | MII_BCM54XX_AUXCTL_MISC_WREN |
++				    MII_BCM54XX_AUXCTL_SHDWSEL_MISC_WIRESPEED_EN);
++}
++
+ static int lre_read_master_slave(struct phy_device *phydev)
+ {
+ 	int cfg = MASTER_SLAVE_CFG_UNKNOWN, state;
+@@ -1749,6 +1811,16 @@ static struct phy_driver broadcom_drivers[] = {
+ 	.config_intr    = bcm_phy_config_intr,
+ 	.handle_interrupt = bcm_phy_handle_interrupt,
+ 	.link_change_notify	= bcm54xx_link_change_notify,
++}, {
++	PHY_ID_MATCH_MODEL(PHY_ID_BCMRING_GPHY),
++	.name		= "Broadcom BCMRING GPHY",
++	.flags		= PHY_IS_INTERNAL,
++	/* PHY_GBIT_FEATURES by auto-detection; see the comment above */
++	.config_init	= bcmring_gphy_config_init,
++	.read_mmd	= genphy_read_mmd_unsupported,
++	.write_mmd	= genphy_write_mmd_unsupported,
++	.suspend	= genphy_suspend,
++	.resume		= genphy_resume,
+ } };
+ 
+ module_phy_driver(broadcom_drivers);
+@@ -1775,6 +1847,7 @@ static const struct mdio_device_id __maybe_unused broadcom_tbl[] = {
+ 	{ PHY_ID_MATCH_MODEL(PHY_ID_BCM53125) },
+ 	{ PHY_ID_MATCH_MODEL(PHY_ID_BCM53128) },
+ 	{ PHY_ID_MATCH_MODEL(PHY_ID_BCM89610) },
++	{ PHY_ID_MATCH_MODEL(PHY_ID_BCMRING_GPHY) },
+ 	{ }
+ };
+ 
+diff --git a/include/linux/brcmphy.h b/include/linux/brcmphy.h
+index 174687c4c80a8b12eb841cdb4e8865813bb34adc..a990056e8aab1559a9cfc7247c7b6d2ded37dbd9 100644
+--- a/include/linux/brcmphy.h
++++ b/include/linux/brcmphy.h
+@@ -31,6 +31,7 @@
+ #define PHY_ID_BCM54140			0xae025009
+ #define PHY_ID_BCM57780			0x03625d90
+ #define PHY_ID_BCM89610			0x03625cd0
++#define PHY_ID_BCMRING_GPHY		0x0143bd90
+ 
+ #define PHY_ID_BCM72113			0x35905310
+ #define PHY_ID_BCM72116			0x35905350
+@@ -72,6 +73,7 @@
+ #define PHY_BRCM_DIS_TXCRXC_NOENRGY	0x00000008
+ #define PHY_BRCM_EN_MASTER_MODE		0x00000010
+ #define PHY_BRCM_IDDQ_SUSPEND		0x00000020
++#define PHY_BRCM_BCMRING_GIGABIT	0x00000040
+ 
+ /* Broadcom BCM7xxx specific workarounds */
+ #define PHY_BRCM_7XXX_REV(x)		(((x) >> 8) & 0xff)

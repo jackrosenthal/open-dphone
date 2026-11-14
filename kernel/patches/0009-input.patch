@@ -1,0 +1,35 @@
+diff --git a/drivers/input/keyboard/Kconfig b/drivers/input/keyboard/Kconfig
+index d8c64f333462cd93e81004817d85293b49b9ca91..dc75a0ba99b124874d974143b80c1c091bc683d8 100644
+--- a/drivers/input/keyboard/Kconfig
++++ b/drivers/input/keyboard/Kconfig
+@@ -737,6 +737,18 @@ config KEYBOARD_BCM
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called bcm-keypad.
+ 
++config KEYBOARD_BCMRING
++	tristate "Broadcom BCMRING keypad controller"
++	depends on ARCH_BCMRING || COMPILE_TEST
++	depends on HAVE_CLK && HAS_IOMEM
++	select INPUT_MATRIXKMAP
++	help
++	  Say Y here to support the hardware key-scan controller of the
++	  Broadcom BCMRING SoCs (BCM11107 family).
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called bcmring-keypad.
++
+ config KEYBOARD_MT6779
+ 	tristate "MediaTek Keypad Support"
+ 	depends on ARCH_MEDIATEK || COMPILE_TEST
+diff --git a/drivers/input/keyboard/Makefile b/drivers/input/keyboard/Makefile
+index 60bb7baf802f7c0c2df8fed1a29786ebfddd7521..e186ebac239d8a1916f43f7daca607cf97850415 100644
+--- a/drivers/input/keyboard/Makefile
++++ b/drivers/input/keyboard/Makefile
+@@ -14,6 +14,7 @@ obj-$(CONFIG_KEYBOARD_APPLESPI)		+= applespi.o
+ obj-$(CONFIG_KEYBOARD_ATARI)		+= atakbd.o
+ obj-$(CONFIG_KEYBOARD_ATKBD)		+= atkbd.o
+ obj-$(CONFIG_KEYBOARD_BCM)		+= bcm-keypad.o
++obj-$(CONFIG_KEYBOARD_BCMRING)		+= bcmring-keypad.o
+ obj-$(CONFIG_KEYBOARD_CAP11XX)		+= cap11xx.o
+ obj-$(CONFIG_KEYBOARD_CHARLIEPLEX)	+= charlieplex_keypad.o
+ obj-$(CONFIG_KEYBOARD_CLPS711X)		+= clps711x-keypad.o

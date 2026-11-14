@@ -1,0 +1,168 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * Parts common to the color-display Digium/Sangoma phones D60, D62, and D65
+ * (vendor Linux 3.4.74, "new family").  DRAFT, never booted.  The three
+ * vendor kernels carry byte-identical panel parameters, power sequences,
+ * backlight parameters, keymaps, and lamp tables.
+ *
+ * Vendor GPIO numbers: 26 = panel power/standby (low = on), 42 = panel
+ * reset (low = reset), 35 = backlight (PWM output or GPIO).
+ */
+
+#define DIGIUM_AUDIO_D6X
+#include "bcmring-digium-audio.dtsi"
+#include "bcmring-digium-d6x-input.dtsi"
+
+/ {
+	/*
+	 * Vendor power-up: GPIO 26 low, GPIO 42 low for 6 ms, GPIO 42 high.
+	 * Power-down ends with GPIO 26 high.  What GPIO 26 switches on the
+	 * board is not known (a guess: the panel supply or a standby pin);
+	 * a fixed regulator reproduces the observed levels and ordering.
+	 */
+	panel_vdd: regulator-panel {
+		compatible = "regulator-fixed";
+		regulator-name = "panel-vdd";
+		gpio = <&gpio0 26 GPIO_ACTIVE_LOW>;
+		/* no enable-active-high: the GPIO is active low */
+		startup-delay-us = <6000>;
+	};
+
+	panel {
+		/*
+		 * The vendor platform data names the panel "Starry
+		 * Electronic 20810430060020 480 x 272".  No datasheet was
+		 * consulted; timings are the vendor kernel's and match the
+		 * TIM0/TIM1 values read on a running D60.
+		 */
+		compatible = "starry,20810430060020", "panel-dpi";
+		power-supply = <&panel_vdd>;
+		/* Reset released (high) = panel enabled.  GPIO 42. */
+		enable-gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>;
+		backlight = <&backlight>;
+
+		/*
+		 * TODO: the vendor waits 50 ms between raising the CLCD
+		 * power bit and turning the backlight on; panel-dpi has no
+		 * property for that.  If the first frames show garbage, give
+		 * this panel a panel-simple entry with delay.enable = 50.
+		 */
+
+		panel-timing {
+			/*
+			 * 60 Hz x (480+8+3+13) x (272+5+1+7).  The stock
+			 * firmware bypasses the PL111 divider and runs the
+			 * chipc LCD clock at this rate; mainline pl111 picks
+			 * the same arrangement through the clock framework
+			 * (nearest reachable rate 900 MHz / 104 = 8.654 MHz).
+			 */
+			clock-frequency = <8618400>;
+			hactive = <480>;
+			hfront-porch = <8>;
+			hsync-len = <3>;
+			hback-porch = <13>;
+			vactive = <272>;
+			vfront-porch = <5>;
+			vsync-len = <1>;
+			vback-porch = <7>;
+			hsync-active = <0>;	/* TIM2.IHS = 1 */
+			vsync-active = <0>;	/* TIM2.IVS = 1 */
+			de-active = <1>;	/* TIM2.IOE = 0 */
+			pixelclk-active = <1>;	/* TIM2.IPC = 0: drive on rising edge */
+		};
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&clcd_out>;
+			};
+		};
+	};
+};
+
+&clcd {
+	status = "okay";
+};
+
+&clcd_out {
+	remote-endpoint = <&panel_in>;
+};
+
+&backlight {
+	/*
+	 * New-family scale: 0..32, where 0 and 32 drive the pad low/high as
+	 * a GPIO and 1..31 are PWM duty steps (the driver's defaults).
+	 * Vendor platform data: 97 Hz; initial level 32 (register 0x80002040
+	 * reads 2 on a stock D60 at level 32: modulation off, select 1).
+	 */
+	max-brightness = <32>;
+	brcm,full-on-level = <32>;
+	brcm,pwm-frequency-hz = <97>;
+	default-brightness = <32>;
+	status = "okay";
+};
+
+&nand {
+	/*
+	 * Fallback copy of the table boot2 passes on a D60 with
+	 * mtdparts=bcm_umi-nand:...  (cmdlinepart wins when present).
+	 * The last 2 MiB (0x07e00000..0x07ffffff) are unpartitioned.
+	 * Assumed, not verified, to be the same on the D62 and D65.
+	 * It is the layout of a unit with no factory bad blocks: boot1
+	 * moves partition starts past bad blocks when it first writes the
+	 * table (seen on a D40, whose root1 starts 0x40000 later), so on
+	 * another unit only boot2's mtdparts= is reliable.
+	 */
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		partition@0 {
+			label = "boot1";
+			reg = <0x00000000 0x00020000>;
+			read-only;
+		};
+
+		partition@20000 {
+			label = "boot2";
+			reg = <0x00020000 0x00080000>;
+			read-only;
+		};
+
+		partition@a0000 {
+			label = "ctrl";
+			reg = <0x000a0000 0x00080000>;
+			read-only;
+		};
+
+		partition@120000 {
+			label = "nvdata";
+			reg = <0x00120000 0x00ee0000>;
+		};
+
+		partition@1000000 {
+			label = "k0";
+			reg = <0x01000000 0x00200000>;
+		};
+
+		partition@1200000 {
+			label = "k1";
+			reg = <0x01200000 0x00200000>;
+		};
+
+		partition@1400000 {
+			label = "root0";
+			reg = <0x01400000 0x02d00000>;
+		};
+
+		partition@4100000 {
+			label = "root1";
+			reg = <0x04100000 0x02d00000>;
+		};
+
+		partition@6e00000 {
+			label = "userdata";
+			reg = <0x06e00000 0x01000000>;
+		};
+	};
+};

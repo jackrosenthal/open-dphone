@@ -1,0 +1,44 @@
+diff --git a/drivers/remoteproc/Kconfig b/drivers/remoteproc/Kconfig
+index 5b56b2dcc725fcf327ec80e5298a8cfe8de30ba9..afa7b4e366daeaea883339dcd40eefe589cec957 100644
+--- a/drivers/remoteproc/Kconfig
++++ b/drivers/remoteproc/Kconfig
+@@ -23,6 +23,27 @@ config REMOTEPROC_CDEV
+ 
+ 	  It's safe to say N if you don't want to use this interface.
+ 
++config BCMRING_VPM_REMOTEPROC
++	tristate "Broadcom BCMRING voice DSP (VPM) support"
++	depends on ARCH_BCMRING || COMPILE_TEST
++	depends on OF && HAS_IOMEM
++	select MFD_SYSCON
++	help
++	  Say y or m here to support the voice DSP ("VPM", a CEVA
++	  TeakLite-III core) of the Broadcom BCM11107 SoC family (BCM11109,
++	  BCM11170, BCM11188, BCM11189) as found in Digium/Sangoma D-series
++	  desk phones.  The driver loads the vendor's firmware file, starts
++	  and stops the core, and offers its synchronous job interface
++	  (codecs, echo cancellers, band splitting) to the kernel and, through
++	  /dev/bcmring-vpm, to userspace.
++
++	  The firmware (dspapp1107_lcc.bin) is not redistributable and has to
++	  be copied from the phone's stock root file system.  The phones work
++	  without the DSP; it is an optional accelerator.
++
++	  To compile this driver as a module, choose M here: the module will
++	  be called bcmring_vpm.
++
+ config AMD_MBV_BRAM_REMOTEPROC
+ 	tristate "AMD MicroBlaze/V BRAM-based remoteproc support"
+ 	depends on OF && COMMON_CLK && (GPIOLIB || COMPILE_TEST)
+diff --git a/drivers/remoteproc/Makefile b/drivers/remoteproc/Makefile
+index 689686de0d41e6cc84347deda9d5b56d2cf42d36..d21f92ab5da956f606d41575d2983253b130b5d5 100644
+--- a/drivers/remoteproc/Makefile
++++ b/drivers/remoteproc/Makefile
+@@ -12,6 +12,7 @@ remoteproc-y				+= remoteproc_virtio.o
+ remoteproc-y				+= remoteproc_elf_loader.o
+ obj-$(CONFIG_REMOTEPROC_CDEV)		+= remoteproc_cdev.o
+ obj-$(CONFIG_AMD_MBV_BRAM_REMOTEPROC)	+= amd_mbv_bram_rproc.o
++obj-$(CONFIG_BCMRING_VPM_REMOTEPROC)	+= bcmring_vpm.o
+ obj-$(CONFIG_IMX_REMOTEPROC)		+= imx_rproc.o
+ obj-$(CONFIG_IMX_DSP_REMOTEPROC)	+= imx_dsp_rproc.o
+ obj-$(CONFIG_INGENIC_VPU_RPROC)		+= ingenic_rproc.o

@@ -1,0 +1,156 @@
+diff --git a/drivers/watchdog/Kconfig b/drivers/watchdog/Kconfig
+index f7d0a0c2c0ef1686754727bad0ba69883e2fc83e..5e0b3207579eb635ee3a1bcade00682a57484f1b 100644
+--- a/drivers/watchdog/Kconfig
++++ b/drivers/watchdog/Kconfig
+@@ -465,6 +465,21 @@ config ARM_SP805_WATCHDOG
+ 	  ARM Primecell SP805 Watchdog timer. This will reboot your system when
+ 	  the timeout is reached.
+ 
++config ARM_SP805_WATCHDOG_NEVER_STOP
++	bool "Never stop the SP805 watchdog"
++	depends on ARM_SP805_WATCHDOG
++	help
++	  With this option the driver has no way of switching the watchdog
++	  off: not on close, not through WDIOC_SETOPTIONS, not on reboot,
++	  halt, or power-off, not on suspend, and not when the driver is
++	  unbound.  A watchdog that the boot loader (or a previous kernel)
++	  left running is taken over and keeps running; once user space
++	  has opened the device, only user space keeps the system alive.
++
++	  This is meant for bring-up kernels whose only way back to a
++	  working system is the watchdog reset (kernel-re/ramboot).  Say N
++	  unless you know that you want this.
++
+ config ARM_SBSA_WATCHDOG
+ 	tristate "ARM SBSA Generic Watchdog"
+ 	depends on ARM64
+diff --git a/drivers/watchdog/sp805_wdt.c b/drivers/watchdog/sp805_wdt.c
+index c2125f204a137fb752b96cebacad19bf014d5907..2ca0b86d4cf5015ca4cb58c28548580e16e4adf5 100644
+--- a/drivers/watchdog/sp805_wdt.c
++++ b/drivers/watchdog/sp805_wdt.c
+@@ -59,6 +59,8 @@
+  * @wdd: instance of struct watchdog_device
+  * @lock: spin lock protecting dev structure and io access
+  * @base: base address of wdt
++ * @lock_ofs: offset of the lock register (WDTLOCK, or its alias when the
++ *	      block is decoded in a window smaller than 4 KiB)
+  * @clk: (optional) clock structure of wdt
+  * @rate: (optional) clock rate when provided via properties
+  * @adev: amba device structure of wdt
+@@ -68,6 +70,7 @@ struct sp805_wdt {
+ 	struct watchdog_device		wdd;
+ 	spinlock_t			lock;
+ 	void __iomem			*base;
++	unsigned int			lock_ofs;
+ 	struct clk			*clk;
+ 	u64				rate;
+ 	struct amba_device		*adev;
+@@ -138,13 +141,13 @@ wdt_restart(struct watchdog_device *wdd, unsigned long mode, void *cmd)
+ {
+ 	struct sp805_wdt *wdt = watchdog_get_drvdata(wdd);
+ 
+-	writel_relaxed(UNLOCK, wdt->base + WDTLOCK);
++	writel_relaxed(UNLOCK, wdt->base + wdt->lock_ofs);
+ 	writel_relaxed(0, wdt->base + WDTCONTROL);
+ 	writel_relaxed(0, wdt->base + WDTLOAD);
+ 	writel_relaxed(INT_ENABLE | RESET_ENABLE, wdt->base + WDTCONTROL);
+ 
+ 	/* Flush posted writes. */
+-	readl_relaxed(wdt->base + WDTLOCK);
++	readl_relaxed(wdt->base + wdt->lock_ofs);
+ 
+ 	return 0;
+ }
+@@ -165,7 +168,7 @@ static int wdt_config(struct watchdog_device *wdd, bool ping)
+ 
+ 	spin_lock(&wdt->lock);
+ 
+-	writel_relaxed(UNLOCK, wdt->base + WDTLOCK);
++	writel_relaxed(UNLOCK, wdt->base + wdt->lock_ofs);
+ 	writel_relaxed(wdt->load_val, wdt->base + WDTLOAD);
+ 	writel_relaxed(INT_MASK, wdt->base + WDTINTCLR);
+ 
+@@ -173,10 +176,10 @@ static int wdt_config(struct watchdog_device *wdd, bool ping)
+ 		writel_relaxed(INT_ENABLE | RESET_ENABLE, wdt->base +
+ 				WDTCONTROL);
+ 
+-	writel_relaxed(LOCK, wdt->base + WDTLOCK);
++	writel_relaxed(LOCK, wdt->base + wdt->lock_ofs);
+ 
+ 	/* Flush posted writes. */
+-	readl_relaxed(wdt->base + WDTLOCK);
++	readl_relaxed(wdt->base + wdt->lock_ofs);
+ 	spin_unlock(&wdt->lock);
+ 
+ 	return 0;
+@@ -198,14 +201,18 @@ static int wdt_disable(struct watchdog_device *wdd)
+ {
+ 	struct sp805_wdt *wdt = watchdog_get_drvdata(wdd);
+ 
++	/* See the help text of the option: there is no way to stop. */
++	if (IS_ENABLED(CONFIG_ARM_SP805_WATCHDOG_NEVER_STOP))
++		return -EBUSY;
++
+ 	spin_lock(&wdt->lock);
+ 
+-	writel_relaxed(UNLOCK, wdt->base + WDTLOCK);
++	writel_relaxed(UNLOCK, wdt->base + wdt->lock_ofs);
+ 	writel_relaxed(0, wdt->base + WDTCONTROL);
+-	writel_relaxed(LOCK, wdt->base + WDTLOCK);
++	writel_relaxed(LOCK, wdt->base + wdt->lock_ofs);
+ 
+ 	/* Flush posted writes. */
+-	readl_relaxed(wdt->base + WDTLOCK);
++	readl_relaxed(wdt->base + wdt->lock_ofs);
+ 	spin_unlock(&wdt->lock);
+ 
+ 	clk_disable_unprepare(wdt->clk);
+@@ -246,6 +253,14 @@ sp805_wdt_probe(struct amba_device *adev, const struct amba_id *id)
+ 	if (IS_ERR(wdt->base))
+ 		return PTR_ERR(wdt->base);
+ 
++	/*
++	 * Some integrations (Broadcom BCMRING) decode the block in a 2 KiB
++	 * window, so the registers at 0xC00 and above (and the PrimeCell ID,
++	 * which the AMBA bus already reads relative to the end of the
++	 * resource) alias down into it.
++	 */
++	wdt->lock_ofs = WDTLOCK & (resource_size(&adev->res) - 1);
++
+ 	/*
+ 	 * When driver probe with ACPI device, clock devices
+ 	 * are not available, so watchdog rate get from
+@@ -280,7 +295,8 @@ sp805_wdt_probe(struct amba_device *adev, const struct amba_id *id)
+ 	watchdog_set_nowayout(&wdt->wdd, nowayout);
+ 	watchdog_set_drvdata(&wdt->wdd, wdt);
+ 	watchdog_set_restart_priority(&wdt->wdd, 128);
+-	watchdog_stop_on_unregister(&wdt->wdd);
++	if (!IS_ENABLED(CONFIG_ARM_SP805_WATCHDOG_NEVER_STOP))
++		watchdog_stop_on_unregister(&wdt->wdd);
+ 
+ 	/*
+ 	 * If 'timeout-sec' devicetree property is specified, use that.
+@@ -295,11 +311,22 @@ sp805_wdt_probe(struct amba_device *adev, const struct amba_id *id)
+ 	 * bit to tell the wdt subsystem
+ 	 */
+ 	if (wdt_is_running(&wdt->wdd)) {
++		if (IS_ENABLED(CONFIG_ARM_SP805_WATCHDOG_NEVER_STOP))
++			dev_info(&adev->dev,
++				 "found running (load %u, value %u, control %#x); taking over with %u s, never stopped\n",
++				 readl_relaxed(wdt->base + WDTLOAD),
++				 readl_relaxed(wdt->base + WDTVALUE),
++				 readl_relaxed(wdt->base + WDTCONTROL),
++				 wdt->wdd.timeout);
+ 		wdt_enable(&wdt->wdd);
+ 		set_bit(WDOG_HW_RUNNING, &wdt->wdd.status);
++	} else if (IS_ENABLED(CONFIG_ARM_SP805_WATCHDOG_NEVER_STOP)) {
++		dev_info(&adev->dev, "found stopped (control %#x); left stopped until opened\n",
++			 readl_relaxed(wdt->base + WDTCONTROL));
+ 	}
+ 
+-	watchdog_stop_on_reboot(&wdt->wdd);
++	if (!IS_ENABLED(CONFIG_ARM_SP805_WATCHDOG_NEVER_STOP))
++		watchdog_stop_on_reboot(&wdt->wdd);
+ 	ret = watchdog_register_device(&wdt->wdd);
+ 	if (ret)
+ 		goto err;

@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * DRAFT board file for the Digium/Sangoma D60 (BCM11189, 128 MiB RAM,
+ * SLC NAND, 480x272 color display).
+ * Registers of this model were read on a running unit (stock firmware);
+ * nothing of this file has been booted.
+ */
+
+/dts-v1/;
+
+#include "bcm11189.dtsi"
+#include "bcmring-digium-common.dtsi"
+#include "bcmring-digium-d6x.dtsi"
+
+/ {
+	model = "Digium D60";
+	compatible = "digium,d60", "brcm,bcm11189", "brcm,bcm11107";
+
+	/*
+	 * 128 MiB of DDR at 0.  The vendor 3.4 kernels keep the first 4 MiB
+	 * away from Linux (CONFIG_BCM_RAM_START_RESERVED_SIZE=0x400000, kernel
+	 * at 0x00408000; boot2 itself runs at 0x4000).
+	 * boot2 on a D60 prints memstart 0x00400000, memsize 0x07c00000.
+	 */
+	memory@400000 {
+		device_type = "memory";
+		reg = <0x00400000 0x07c00000>;
+	};
+};
+
+/*
+ * Lamps: the D6x table (bcmring-digium-d6x-input.dtsi) is the vendor
+ * kernel's, which is the same for the D60, D62, and D65.  On a D60, lighting
+ * each stock LED name in turn under vendor firmware (2026-11-12) showed that
+ * nine names light something: msg-green, msg-red, line0-green, line0-red,
+ * line1-green, line1-red, headset-green, speaker-green, and mute-red.  The
+ * other eleven names light nothing and are removed here.  The colors of
+ * the nine were seen and are as named.  The D62 and D65 are untested and
+ * keep the full table.
+ */
+&ledm {
+	/delete-node/ led@0,0;	/* mute-green */
+	/delete-node/ led@1,0;	/* headset-red */
+	/delete-node/ led@1,2;	/* speaker-red */
+	/delete-node/ led@0,4;	/* line2-green */
+	/delete-node/ led@1,4;	/* line2-red */
+	/delete-node/ led@2,4;	/* line3-green */
+	/delete-node/ led@3,0;	/* line3-red */
+	/delete-node/ led@3,1;	/* line4-green */
+	/delete-node/ led@3,2;	/* line4-red */
+	/delete-node/ led@3,3;	/* line5-green */
+	/delete-node/ led@3,4;	/* line5-red */
+};

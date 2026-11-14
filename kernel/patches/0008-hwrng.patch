@@ -1,0 +1,31 @@
+diff --git a/drivers/char/hw_random/Kconfig b/drivers/char/hw_random/Kconfig
+index 1bf5e3f8a557bbfe4bcd5269b11a1a3b2e4ba765..51e27176d69cd57e7c26cf7bf63f6ff8b217663a 100644
+--- a/drivers/char/hw_random/Kconfig
++++ b/drivers/char/hw_random/Kconfig
+@@ -101,7 +101,8 @@ config HW_RANDOM_BA431
+ config HW_RANDOM_BCM2835
+ 	tristate "Broadcom BCM2835/BCM63xx Random Number Generator support"
+ 	depends on ARCH_BCM2835 || ARCH_BCM_NSP || ARCH_BCM_5301X || \
+-		   ARCH_BCMBCA || BCM63XX || BMIPS_GENERIC || COMPILE_TEST
++		   ARCH_BCMBCA || ARCH_BCMRING || BCM63XX || BMIPS_GENERIC || \
++		   COMPILE_TEST
+ 	default HW_RANDOM
+ 	help
+ 	  This driver provides kernel-side support for the Random Number
+diff --git a/drivers/char/hw_random/bcm2835-rng.c b/drivers/char/hw_random/bcm2835-rng.c
+index 6d6ac409efcfaf6c1f608db2e43501f5801660c0..ace3e096c153faa0f96499cae12c5906ebb3d997 100644
+--- a/drivers/char/hw_random/bcm2835-rng.c
++++ b/drivers/char/hw_random/bcm2835-rng.c
+@@ -136,6 +136,12 @@ static const struct of_device_id bcm2835_rng_of_match[] = {
+ 	{ .compatible = "brcm,bcm-nsp-rng", .data = &nsp_rng_of_data },
+ 	{ .compatible = "brcm,bcm5301x-rng", .data = &nsp_rng_of_data },
+ 	{ .compatible = "brcm,bcm6368-rng"},
++	/*
++	 * BCMRING (BCM11107 family): same registers by static analysis of
++	 * the vendor driver and by read-only register dumps; never run.  The
++	 * vendor driver masks the interrupt.
++	 */
++	{ .compatible = "brcm,bcmring-rng", .data = &nsp_rng_of_data },
+ 	{},
+ };
+ MODULE_DEVICE_TABLE(of, bcm2835_rng_of_match);

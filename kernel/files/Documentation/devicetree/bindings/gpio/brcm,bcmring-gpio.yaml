@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# Binding draft.  Passes dt_binding_check apart from the missing "maintainers" entry.
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/gpio/brcm,bcmring-gpio.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Broadcom BCMRING (BCM11107 family) GPIO bank
+
+description:
+  One 32-line GPIO bank with PL061-style interrupt registers at 0x404..0x41c
+  and a plain 32-bit data register at offset 0.  The SoC has two banks,
+  GPIO0 (lines 0..31) at 0x80004000 and GPIO1 (lines 32..60) at 0x80004800,
+  each with one combined interrupt.  Pad multiplexing is a separate
+  pinctrl-single node; reference it with gpio-ranges so that requesting a
+  line selects the GPIO function.
+
+properties:
+  compatible:
+    const: brcm,bcmring-gpio
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  gpio-controller: true
+
+  "#gpio-cells":
+    const: 2
+
+  ngpios:
+    minimum: 1
+    maximum: 32
+    default: 32
+
+  gpio-ranges: true
+
+  interrupt-controller: true
+
+  "#interrupt-cells":
+    const: 2
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - gpio-controller
+  - "#gpio-cells"
+  - interrupt-controller
+  - "#interrupt-cells"
+
+additionalProperties: false
+
+examples:
+  - |
+    gpio@80004800 {
+        compatible = "brcm,bcmring-gpio";
+        reg = <0x80004800 0x800>;
+        interrupts = <1>;
+        gpio-controller;
+        #gpio-cells = <2>;
+        ngpios = <29>;
+        gpio-ranges = <&pinmux 0 32 29>;
+        interrupt-controller;
+        #interrupt-cells = <2>;
+    };

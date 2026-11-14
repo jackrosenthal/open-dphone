@@ -1,0 +1,32 @@
+diff --git a/drivers/leds/Kconfig b/drivers/leds/Kconfig
+index d0d3182236be4cc75e911f3f6c93455d99527253..28a1a6463b5c49c7f24439ef8db0a1d46761def6 100644
+--- a/drivers/leds/Kconfig
++++ b/drivers/leds/Kconfig
+@@ -166,6 +166,15 @@ config LEDS_BCM6358
+ 	  This option enables support for LEDs connected to the BCM6358
+ 	  LED HW controller accessed via MMIO registers.
+ 
++config LEDS_BCMRING_LEDM
++	tristate "LED support for the Broadcom BCMRING LED matrix controller"
++	depends on LEDS_CLASS
++	depends on ARCH_BCMRING || COMPILE_TEST
++	depends on HAS_IOMEM
++	help
++	  This option enables support for LEDs driven by the LED matrix
++	  controller of the Broadcom BCMRING SoCs (BCM11107 family).
++
+ config LEDS_CHT_WCOVE
+ 	tristate "LED support for Intel Cherry Trail Whiskey Cove PMIC"
+ 	depends on LEDS_CLASS
+diff --git a/drivers/leds/Makefile b/drivers/leds/Makefile
+index a68244bd50fb1ac1272916ef1cc9a5ed3f162b97..e90bde260f36cb367f60905dd41d7053a1822007 100644
+--- a/drivers/leds/Makefile
++++ b/drivers/leds/Makefile
+@@ -20,6 +20,7 @@ obj-$(CONFIG_LEDS_AW200XX)		+= leds-aw200xx.o
+ obj-$(CONFIG_LEDS_AW2013)		+= leds-aw2013.o
+ obj-$(CONFIG_LEDS_BCM6328)		+= leds-bcm6328.o
+ obj-$(CONFIG_LEDS_BCM6358)		+= leds-bcm6358.o
++obj-$(CONFIG_LEDS_BCMRING_LEDM)		+= leds-bcmring-ledm.o
+ obj-$(CONFIG_LEDS_BD2606MVV)		+= leds-bd2606mvv.o
+ obj-$(CONFIG_LEDS_BD2802)		+= leds-bd2802.o
+ obj-$(CONFIG_LEDS_BLINKM)		+= leds-blinkm.o

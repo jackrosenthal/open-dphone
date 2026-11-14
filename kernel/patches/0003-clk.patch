@@ -1,0 +1,30 @@
+diff --git a/drivers/clk/bcm/Kconfig b/drivers/clk/bcm/Kconfig
+index a972d763eb77d9686c1c1493dc715eb368c5ec16..96a72fc8afc50f7d9821b5e0ba34c4ff9d48bacd 100644
+--- a/drivers/clk/bcm/Kconfig
++++ b/drivers/clk/bcm/Kconfig
+@@ -109,3 +109,16 @@ config CLK_RASPBERRYPI
+ 	help
+ 	  Enable common clock framework support for Raspberry Pi's firmware
+ 	  dependent clocks
++
++config COMMON_CLK_BCMRING
++	bool "Broadcom BCMRING chip-control clock and reset driver"
++	depends on ARCH_BCMRING || COMPILE_TEST
++	depends on OF && HAS_IOMEM
++	select MFD_SYSCON
++	select REGMAP_MMIO
++	select RESET_CONTROLLER
++	help
++	  Clock (PLL channels, dividers, bus-interface gates) and soft-reset
++	  controller in the chip-control block of BCMRING SoCs.  The driver
++	  also publishes the block as a syscon regmap for the few users of
++	  its miscellaneous registers.
+diff --git a/drivers/clk/bcm/Makefile b/drivers/clk/bcm/Makefile
+index d0b6f4b1fb089bd38ce4080521823a775b211222..a40c42858c9c58e3d4e49a51baee05aef8524293 100644
+--- a/drivers/clk/bcm/Makefile
++++ b/drivers/clk/bcm/Makefile
+@@ -17,3 +17,4 @@ obj-$(CONFIG_CLK_BCM_HR2)	+= clk-hr2.o
+ obj-$(CONFIG_CLK_BCM_NSP)	+= clk-nsp.o
+ obj-$(CONFIG_CLK_BCM_NS2)	+= clk-ns2.o
+ obj-$(CONFIG_CLK_BCM_SR)	+= clk-sr.o
++obj-$(CONFIG_COMMON_CLK_BCMRING)	+= clk-bcmring-chipc.o

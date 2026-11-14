@@ -1,0 +1,128 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# SKETCH -- not validated with dt-schema, not submitted anywhere.
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/remoteproc/brcm,bcmring-vpm.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Broadcom BCMRING (BCM11107 family) voice DSP ("VPM")
+
+description: |
+  A CEVA TeakLite-III core inside the BCM11107 family SoCs (BCM11109,
+  BCM11170, BCM11188, BCM11189).  It is a compute coprocessor: the host
+  sends it synchronous jobs (voice codecs, echo cancellation, band
+  splitting) through a mailbox and four rings in a RAM shared with the ARM,
+  with one interrupt in each direction.  It owns no audio hardware.
+
+  The core has a small on-chip program RAM and data RAM and runs the bulk of
+  its firmware from the lowest megabytes of DDR, which must not be part of
+  the memory given to the operating system.
+
+  The compatible selects the firmware generation: the BCM11109 and BCM11170
+  use one image, ring size, and channel count, the BCM11188 and BCM11189
+  another.
+
+  The firmware programs channel 0 of the first DMA controller by itself.
+  The dmas entry names that channel so that the operating system keeps the
+  controller enabled and gives the channel to nobody else; no transfer is
+  requested through it.
+
+properties:
+  compatible:
+    enum:
+      - brcm,bcm11109-vpm
+      - brcm,bcm11170-vpm
+      - brcm,bcm11188-vpm
+      - brcm,bcm11189-vpm
+
+  reg:
+    items:
+      - description: DSP program RAM
+      - description: DSP data RAM
+      - description: RAM shared between the DSP and the ARM (mailbox, rings)
+      - description: DSP control block ("VINTC"), host-to-DSP interrupt and
+          halt control
+
+  reg-names:
+    items:
+      - const: pram
+      - const: dram
+      - const: vram
+      - const: vintc
+
+  interrupts:
+    maxItems: 1
+    description: DSP-to-host interrupt
+
+  clocks:
+    items:
+      - description: bus-interface gate of the shared RAM
+
+  clock-names:
+    items:
+      - const: vram
+
+  dmas:
+    maxItems: 1
+    description: the DMA channel the DSP firmware drives by itself
+
+  dma-names:
+    items:
+      - const: vpm
+
+  memory-region:
+    maxItems: 1
+    description: the low DDR range the DSP executes from (no-map)
+
+  firmware-name:
+    maxItems: 1
+    description: firmware file; the vendor's name is dspapp1107_lcc.bin
+
+  brcm,chipc:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description:
+      Chip-control block.  The DSP clock enable with its phase-alignment
+      controls and the DSP reset-and-hold bits live there and have to be
+      driven in a fixed sequence.
+
+required:
+  - compatible
+  - reg
+  - reg-names
+  - interrupts
+  - clocks
+  - clock-names
+  - memory-region
+  - brcm,chipc
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/clock/brcm,bcmring-chipc.h>
+
+    reserved-memory {
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+
+        vpm_ddr: vpm@0 {
+            reg = <0x00000000 0x400000>;
+            no-map;
+        };
+    };
+
+    dsp@30800000 {
+        compatible = "brcm,bcm11189-vpm";
+        reg = <0x30800000 0x2000>, <0x30a00000 0x10000>,
+              <0x40000000 0x10000>, <0x80003000 0x20>;
+        reg-names = "pram", "dram", "vram", "vintc";
+        interrupts = <16>;
+        clocks = <&chipc BCMRING_CLK_BUSIF_VRAM>;
+        clock-names = "vram";
+        dmas = <&dma0 0 0 1 0x01>;
+        dma-names = "vpm";
+        memory-region = <&vpm_ddr>;
+        brcm,chipc = <&chipc>;
+        firmware-name = "dspapp1107_lcc.bin";
+    };

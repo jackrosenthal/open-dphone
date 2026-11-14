@@ -1,0 +1,107 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/leds/backlight/brcm,bcmring-backlight.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Broadcom BCMRING PWM backlight
+
+# SKETCH.  Not run through dt_binding_check.
+
+description:
+  The BCMRING SoCs (BCM11107 family, including BCM11188 and BCM11189) have
+  a one-register PWM block with a 5-bit duty cycle and four selectable
+  frequencies (about 48, 97, 195, and 390 Hz).  Boards use it to dim the
+  LCD backlight.  Because the duty field tops out at 31/32, fully on and
+  fully off are produced by switching the output pad to its GPIO function
+  and driving it.  Level 0 drives the pad low, levels from
+  brcm,full-on-level up to max-brightness drive it high, and the levels in
+  between are PWM duty steps.  The register directly follows the LED matrix
+  controller (brcm,bcmring-ledm) and shares its clocks.
+
+allOf:
+  - $ref: common.yaml#
+
+properties:
+  compatible:
+    const: brcm,bcmring-backlight
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    items:
+      - description: PWM modulator clock (vendor name LED_PWM)
+      - description: register interface gate (shared with the LED matrix)
+
+  clock-names:
+    items:
+      - const: pwm
+      - const: bus
+
+  gpios:
+    maxItems: 1
+    description:
+      The PWM output pad in its GPIO function, driven high for brightness
+      32 and low for brightness 0.
+
+  pinctrl-names:
+    items:
+      - const: default
+      - const: gpio
+
+  pinctrl-0:
+    description: Pad carries the PWM output (brightness 1 to 31).
+
+  pinctrl-1:
+    description: Pad is a GPIO (brightness 0 and 32).
+
+  brcm,pwm-frequency-hz:
+    description: Requested PWM frequency; rounded down to a supported one.
+    enum: [48, 97, 195, 390]
+    default: 97
+
+  default-brightness:
+    maximum: 32
+
+  max-brightness:
+    description:
+      Highest brightness level.  32 on the Digium D60/D62/D65 (the default),
+      31 on the D40/D45/D50/D70.
+    minimum: 2
+    maximum: 32
+    default: 32
+
+  brcm,full-on-level:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description:
+      Lowest level at which the pad is driven high as a GPIO instead of
+      carrying the PWM output.  Defaults to max-brightness.  The Digium
+      D40/D45/D50/D70 use 30 with max-brightness 31.
+    minimum: 2
+    maximum: 32
+
+required:
+  - compatible
+  - reg
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/clock/brcm,bcmring-chipc.h>
+
+    backlight@80002040 {
+        compatible = "brcm,bcmring-backlight";
+        reg = <0x80002040 0x4>;
+        clocks = <&chipc BCMRING_CLK_LED>, <&chipc BCMRING_CLK_BUSIF_LED>;
+        clock-names = "pwm", "bus";
+        gpios = <&gpio1 3 0>;
+        pinctrl-names = "default", "gpio";
+        pinctrl-0 = <&backlight_pwm_pin>;
+        pinctrl-1 = <&backlight_gpio_pin>;
+        brcm,pwm-frequency-hz = <97>;
+        max-brightness = <32>;
+        default-brightness = <32>;
+    };
+...

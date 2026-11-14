@@ -1,0 +1,690 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * DRAFT SoC description for the Broadcom BCMRING family (BCM11107 and its
+ * derivatives BCM11109, BCM11170, BCM11188, BCM11189).  Never booted.
+ *
+ * Sources: the memory map and interrupt numbers come from the GPL
+ * mach-bcmring headers that were in mainline Linux up to v3.5 (mm_addr.h,
+ * irqs.h), checked against the vendor kernels of the Digium phones and, for
+ * the BCM11189, against registers read on a running Digium D60.
+ *
+ * Interrupt numbering: vendor Linux IRQ n is <&intc0 n> for 0..31,
+ * <&intc1 (n - 32)> for 32..58, and <&sintc (n - 59)> for 59..74.
+ * The default interrupt parent is intc0.
+ *
+ * Clocks and resets are <&chipc ID> with the IDs of
+ * <dt-bindings/clock/brcm,bcmring-chipc.h>.
+ *
+ * Include one of bcm11109.dtsi, bcm11170.dtsi, bcm11188.dtsi, or
+ * bcm11189.dtsi rather than this file.
+ */
+
+#include <dt-bindings/clock/brcm,bcmring-chipc.h>
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+
+/* pinctrl-single "function 0" of the 4-bit pad mux fields: GPIO */
+#define BCMRING_PINMUX_GPIO	0
+
+/ {
+	#address-cells = <1>;
+	#size-cells = <1>;
+	interrupt-parent = <&intc0>;
+
+	aliases {
+		/* lets a boot loader fill in local-mac-address */
+		ethernet0 = &enet;
+		serial0 = &uart0;
+		serial1 = &uart1;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			device_type = "cpu";
+			/*
+			 * ARM1176 r0p7 (MIDR 0x410fb767 read on a BCM11189
+			 * and on two BCM11170s).
+			 * Whether the core has VFP is not known.
+			 */
+			compatible = "arm,arm1176jz-s";
+			reg = <0>;
+			clocks = <&chipc BCMRING_CLK_ARM>;
+		};
+	};
+
+	xtal: clock-xtal {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <25000000>;
+		clock-output-names = "xtal";
+	};
+
+	soc {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		/* On-chip RAM; the restart code runs a stub from here. */
+		aram: sram@30100000 {
+			compatible = "brcm,bcmring-aram";
+			reg = <0x30100000 0x10000>;
+		};
+
+		/*
+		 * Synopsys DW_ahb_dmac 2.12a (component ID 0x44571110,
+		 * version 0x3231322a), 8 channels, 2 AHB masters, one
+		 * interrupt line per channel (vendor IRQ = 8 * controller +
+		 * channel).  Needs the dw_dmac per-channel interrupt and
+		 * cyclic-transfer changes.  The identification and parameter
+		 * registers of both controllers read the same on a BCM11189
+		 * (D60) and on two BCM11170s (D40, D50); the other SoCs are
+		 * assumed alike.
+		 *
+		 * Consumer cells: <&dma0 REQUEST MEM_MASTER PERIPH_MASTER
+		 * CHANNEL_MASK>; memory is master 0 and peripherals are master
+		 * 1 (vendor "master interface 1" and "2"; CTL.SMS/DMS as read
+		 * from the running channels of all three phones).
+		 *
+		 * Explicit configuration rather than the driver's
+		 * auto-configuration, although DW_PARAMS (0x38282f08) has the
+		 * "encoded parameters" bit set, for two reasons:
+		 *  - the driver only reads snps,dma-protection-control on the
+		 *    explicit path, and the vendor sets HPROT privileged on
+		 *    the channels of this TrustZone-partitioned SoC (CFG high
+		 *    bit 2 is set in every live channel but the DSP's);
+		 *  - auto-configuration would get the data width wrong, see
+		 *    below.
+		 * The other values are what the parameter registers encode:
+		 *  - DW_PARAMS: 8 channels, 2 masters;
+		 *  - MAX_BLK_SIZE 0xaaaaaaaa: 4095 per channel;
+		 *  - DWC_PARAMS 0x3923dfc0 / 0x4923dfc0: multi-block on, LLP
+		 *    not hard-coded, maximum burst 32.
+		 *
+		 * data-width: both masters are 64 bits wide.  dw_dmac's field
+		 * positions make 32 bits of DW_PARAMS for the two masters that
+		 * exist (and 64 bits for the two that do not), but the vendor
+		 * kernel reads 64 from another field of the same word, and
+		 * the control words read from the running channels of all
+		 * three surveyed phones use 64-bit transfers on both masters
+		 * of both controllers: audio memory side (CTL 0x00904835 and
+		 * 0x1a204827, master 0), the source of the vendor's DSP
+		 * channel on master 1 (CTL 0x02000037), and both sides of the
+		 * Ethernet channels (0x1a408037, 0x18901037).  With <8 8>
+		 * dw_dmac programs the vendor's widths for audio (64-bit
+		 * memory side, 32-bit FIFO side) whenever the buffer address
+		 * and the period are multiples of 8 bytes, and 32-bit memory
+		 * accesses otherwise, which the vendor also runs on this
+		 * controller (NAND, CTL 0x00004825).
+		 */
+		dma0: dma-controller@30200000 {
+			compatible = "snps,dma-spear1340";
+			reg = <0x30200000 0x1000>;
+			interrupts = <0>, <1>, <2>, <3>, <4>, <5>, <6>, <7>;
+			clocks = <&chipc BCMRING_CLK_BUSIF_DMAC0>;
+			clock-names = "hclk";
+			#dma-cells = <4>;
+			dma-channels = <8>;
+			dma-requests = <16>;
+			dma-masters = <2>;
+			chan_allocation_order = <0>;
+			/* channel 0 gets the highest CFG.CH_PRIOR */
+			chan_priority = <0>;
+			block_size = <4095>;
+			data-width = <8 8>;
+			multi-block = <1 1 1 1 1 1 1 1>;
+			snps,max-burst-len = <32 32 32 32 32 32 32 32>;
+			snps,dma-protection-control = <1>;
+		};
+
+		/*
+		 * DMA1: channels 2 (receive) and 3 (transmit) are hard-wired
+		 * to the Ethernet FIFO bridge and are programmed by the
+		 * Ethernet driver itself, which maps this register block as
+		 * its "dmac" resource and holds the bus gate.  This node
+		 * documents the hardware and must stay disabled while that
+		 * is the case: dw_dmac resets and powers down the whole
+		 * controller.
+		 *
+		 * data-width: 64 bits on both masters, as on dma0 (same
+		 * parameter words).  The Ethernet channels run 64-bit
+		 * transfers on the memory master and on the bridge's master
+		 * under the stock firmware of all three surveyed phones.  A
+		 * dw_dmac bound here would also need <8 8> to accept the
+		 * bridge's 8-byte register width.
+		 */
+		dma1: dma-controller@30300000 {
+			compatible = "snps,dma-spear1340";
+			reg = <0x30300000 0x1000>;
+			interrupts = <8>, <9>, <10>, <11>, <12>, <13>, <14>, <15>;
+			clocks = <&chipc BCMRING_CLK_BUSIF_DMAC1>;
+			clock-names = "hclk";
+			#dma-cells = <4>;
+			dma-channels = <8>;
+			dma-requests = <16>;
+			dma-masters = <2>;
+			chan_allocation_order = <0>;
+			chan_priority = <0>;
+			block_size = <4095>;
+			data-width = <8 8>;
+			multi-block = <1 1 1 1 1 1 1 1>;
+			snps,max-burst-len = <32 32 32 32 32 32 32 32>;
+			snps,dma-protection-control = <1>;
+			status = "disabled";
+		};
+
+		/*
+		 * Embedded two-port + IMP switch (b53 register layout in
+		 * 8-byte slots).  This node owns the whole "wrapper" block at
+		 * 0x304a0000: core-ready flag, PHY power-down, the indirect
+		 * MII accessor for the two integrated PHYs (exposed as the
+		 * DSA user MDIO bus, PHY address = port number), and the IMP
+		 * speed register.  Nothing else maps that block.
+		 *
+		 * The SoC .dtsi files add the SoC-specific compatible.
+		 */
+		switch: ethernet-switch@30400000 {
+			compatible = "brcm,bcmring-switch";
+			reg = <0x30400000 0x80000>, <0x304a0000 0x100>;
+			reg-names = "core", "wrapper";
+			/* vendor: clock 2 set to 100 MHz, bus gate bit 8 */
+			clocks = <&chipc BCMRING_CLK_ESW>,
+				 <&chipc BCMRING_CLK_BUSIF_ESW>;
+			clock-names = "esw", "bus";
+			assigned-clocks = <&chipc BCMRING_CLK_ESW>;
+			assigned-clock-rates = <100000000>;
+			resets = <&chipc BCMRING_RST_ESWCLK>,
+				 <&chipc BCMRING_RST_ESW>;
+			reset-names = "clk", "core";
+			/*
+			 * Makes the driver read chipc register 0 before each
+			 * switch read, as the vendor kernel does.  Not needed
+			 * for correct values: single reads without it were
+			 * right on a D40, a D50, and a D60 under stock
+			 * firmware.  Kept until back-to-back reads have run
+			 * without it under mainline; then drop it.
+			 */
+			brcm,chipc = <&chipc>;
+			status = "disabled";
+
+			ethernet-ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				switch_port0: port@0 {
+					reg = <0>;
+					phy-mode = "internal";
+				};
+
+				switch_port1: port@1 {
+					reg = <1>;
+					phy-mode = "internal";
+				};
+
+				/* IMP port; tag protocol "brcm" (b53 default) */
+				port@8 {
+					reg = <8>;
+					ethernet = <&enet>;
+					phy-mode = "internal";
+
+					fixed-link {
+						speed = <1000>;
+						full-duplex;
+					};
+				};
+			};
+		};
+
+		/*
+		 * CPU side of the switch's IMP port: an Rx and a Tx FIFO
+		 * serviced by channels 2 and 3 of dma1.  The driver programs
+		 * them directly and owns the whole of dma1 (see the dma1
+		 * comment), hence the "dmac" resource overlapping the disabled
+		 * dma1 node and the dma1 bus gate among the clocks.  DSA
+		 * conduit of &switch.
+		 */
+		enet: ethernet@30480000 {
+			compatible = "brcm,bcmring-enet";
+			reg = <0x30480000 0x20000>, <0x30300000 0x400>;
+			reg-names = "fifo", "dmac";
+			interrupts = <10>, <11>;	/* dma1 channels 2, 3 */
+			interrupt-names = "rx", "tx";
+			clocks = <&chipc BCMRING_CLK_ESW>,
+				 <&chipc BCMRING_CLK_BUSIF_ESW>,
+				 <&chipc BCMRING_CLK_BUSIF_DMAC1>;
+			clock-names = "esw", "bus", "dmac";
+			assigned-clocks = <&chipc BCMRING_CLK_ESW>;
+			assigned-clock-rates = <100000000>;
+			phy-mode = "internal";
+			status = "disabled";
+
+			fixed-link {
+				speed = <1000>;
+				full-duplex;
+			};
+		};
+
+		/*
+		 * ARM PL111.  The ID registers read 0x00141111 on a BCM11189,
+		 * so the stock AMBA match works without an ID override.  The
+		 * vendor runs with the PL111 pixel divider bypassed and the
+		 * chipc "LCD" clock itself at the pixel rate.
+		 */
+		clcd: display-controller@30500000 {
+			compatible = "arm,pl111", "arm,primecell";
+			reg = <0x30500000 0x1000>;
+			interrupts = <30>;
+			interrupt-names = "combined";
+			clocks = <&chipc BCMRING_CLK_LCD>,
+				 <&chipc BCMRING_CLK_BUSIF_CLCD>;
+			clock-names = "clcdclk", "apb_pclk";
+			pinctrl-names = "default";
+			pinctrl-0 = <&clcd_pins>;
+			status = "disabled";
+
+			port {
+				clcd_out: endpoint {
+				};
+			};
+		};
+
+		/*
+		 * On-chip analog audio front end.  The SoC .dtsi files add
+		 * the SoC-specific compatible.  DMA cells: request line,
+		 * memory master, peripheral master, channel mask.
+		 *
+		 * Request lines 2 (capture 0), 3 (playback 0), 4 (capture
+		 * 1), and 5 (playback 1) are the CFG.SRC_PER/DEST_PER values
+		 * read from the running channels of a D40, a D50, and a D60.
+		 * The masks pin each stream to the channel that carries it
+		 * under the stock firmware of all three (playback 0 on
+		 * channel 2, capture 0 on 3, playback 1 on 4, capture 1 on
+		 * 5); that also keeps channel 0, which the vendor uses for
+		 * its DSP, and the never-used channel 1 out of it.  The vendor
+		 * addresses each FIFO as a window with an incrementing
+		 * address; dw_dmac uses the fixed address given here, the
+		 * first one of the window.
+		 */
+		apm: audio-codec@30600000 {
+			compatible = "brcm,bcm11107-apm";
+			reg = <0x30600000 0x600>,
+			      <0x30670000 0x4>, <0x30680000 0x4>,
+			      <0x30690000 0x4>, <0x306a0000 0x4>;
+			reg-names = "core", "rx0", "tx0", "rx1", "tx1";
+			interrupts = <28>;
+			clocks = <&chipc BCMRING_CLK_APM100>,
+				 <&chipc BCMRING_CLK_APM>;
+			clock-names = "apm100", "apm200";
+			resets = <&chipc BCMRING_RST_APM>,
+				 <&chipc BCMRING_RST_APM2>;
+			dmas = <&dma0 2 0 1 0x08>, <&dma0 3 0 1 0x04>,
+			       <&dma0 4 0 1 0x20>, <&dma0 5 0 1 0x10>;
+			dma-names = "rx0", "tx0", "rx1", "tx1";
+			/* audio clock/channel enables at chipc 0x7c */
+			brcm,chipc = <&chipc>;
+			#sound-dai-cells = <1>;
+			status = "disabled";
+		};
+
+		/*
+		 * Voice DSP ("VPM", a CEVA TeakLite-III core).  A compute
+		 * coprocessor for codecs, echo cancellation, and band
+		 * splitting, driven by synchronous jobs; it owns no audio
+		 * hardware.  UNVERIFIED under mainline.  All addresses are
+		 * verified in the vendor kernels and the mailbox and rings
+		 * were read on running phones.
+		 *
+		 * reg: the DSP's on-chip program RAM (the size is a guess
+		 * from the largest image, 8192 bytes), its 64 KiB data RAM,
+		 * the 64 KiB RAM shared with the ARM (mailbox and rings),
+		 * and the "VINTC" block, of which only the host-to-DSP
+		 * interrupt (+0x0c) and the halt control (+0x1c) are known.
+		 * The bulk of the firmware runs from the low DDR that the
+		 * boards keep out of /memory; the SoC .dtsi files describe
+		 * that range as reserved memory and add the SoC-specific
+		 * compatible (ring sizes and the firmware image differ
+		 * between the two SoC generations).
+		 *
+		 * The interrupt is raised by the DSP through the interrupt
+		 * controller's soft-interrupt register.
+		 *
+		 * dmas: the firmware programs channel 0 of dma0 by itself.
+		 * The driver only holds the channel, which keeps dw_dmac
+		 * from switching the controller off and from handing the
+		 * channel to anyone else.  Request line 0 is a placeholder;
+		 * no transfer is ever submitted.
+		 */
+		vpm: dsp@30800000 {
+			reg = <0x30800000 0x2000>, <0x30a00000 0x10000>,
+			      <0x40000000 0x10000>, <0x80003000 0x20>;
+			reg-names = "pram", "dram", "vram", "vintc";
+			interrupts = <16>;
+			clocks = <&chipc BCMRING_CLK_BUSIF_VRAM>;
+			clock-names = "vram";
+			dmas = <&dma0 0 0 1 0x01>;
+			dma-names = "vpm";
+			/* clock enable and phase, resets */
+			brcm,chipc = <&chipc>;
+			firmware-name = "dspapp1107_lcc.bin";
+			status = "disabled";
+		};
+
+		/*
+		 * Chip control: clocks, soft resets, straps, pin multiplexing
+		 * (0x114 and up), pad control.  The clock/reset driver owns
+		 * the block, registers its regmap as the syscon for this node
+		 * (so "syscon" must not be listed here), and populates the
+		 * pinctrl-single children below.
+		 */
+		chipc: clock-controller@80000000 {
+			compatible = "brcm,bcmring-chipc";
+			reg = <0x80000000 0x1000>;
+			clocks = <&xtal>;
+			clock-names = "xtal";
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges = <0 0x80000000 0x1000>;
+
+			/*
+			 * LcdPifMode: which block owns the shared LCD/PIF
+			 * pads.  1 = CLCD, 2 = PIF (old mainline
+			 * chipcHw_REG_{LCD,PIF}_PIN_ENABLE); the vendor
+			 * refuses both together.
+			 */
+			lcdpif_mux: pinctrl@114 {
+				compatible = "pinctrl-single";
+				reg = <0x114 0x4>;
+				#pinctrl-cells = <1>;
+				pinctrl-single,register-width = <32>;
+				pinctrl-single,function-mask = <0x3>;
+
+				clcd_pins: clcd-pins {
+					pinctrl-single,pins = <0x0 1>;
+				};
+			};
+
+			/*
+			 * Pad mux: eight 32-bit registers, one 4-bit function
+			 * field per pad, pads 0..60; pin number == GPIO
+			 * number.  Offsets in pinctrl-single,bits are
+			 * relative to 0x118.  Pull, slew, drive strength,
+			 * and input-type fields (0x138..0x178) are not
+			 * described; the vendor board code never writes
+			 * them.
+			 */
+			pinmux: pinctrl@118 {
+				compatible = "pinctrl-single";
+				reg = <0x118 0x20>;
+				#pinctrl-cells = <2>;
+				pinctrl-single,register-width = <32>;
+				pinctrl-single,function-mask = <0xf>;
+				pinctrl-single,bit-per-mux;
+				/* Requesting a GPIO switches its pad to function 0. */
+				pinctrl-single,gpio-range =
+					<&pinmux_gpio_range 0 61 BCMRING_PINMUX_GPIO>;
+
+				pinmux_gpio_range: gpio-range {
+					#pinctrl-single,gpio-range-cells = <3>;
+				};
+
+				/* GPIO 14 (TXD) and 15 (RXD), function 4 */
+				uart1_pins: uart1-pins {
+					pinctrl-single,bits =
+						<0x04 0x44000000 0xff000000>;
+				};
+
+				/*
+				 * GPIO 35 carries the backlight PWM output as
+				 * function 13 ("MISC") and is driven as a
+				 * GPIO for fully off and fully on.
+				 */
+				backlight_pwm_pin: backlight-pwm-pin {
+					pinctrl-single,bits =
+						<0x10 0x0000d000 0x0000f000>;
+				};
+
+				backlight_gpio_pin: backlight-gpio-pin {
+					pinctrl-single,bits =
+						<0x10 0x00000000 0x0000f000>;
+				};
+			};
+		};
+
+		nand_controller: nand-controller@80001000 {
+			compatible = "brcm,bcmring-nand";
+			/* UMI controller, NAND command/address/data aperture */
+			reg = <0x80001000 0x100>, <0x80001800 0x800>;
+			interrupt-parent = <&intc1>;
+			interrupts = <8>;	/* vendor IRQ 40, unused */
+			/* which gate feeds the block is a guess */
+			clocks = <&chipc BCMRING_CLK_BUSIF_NVI>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		/*
+		 * LED matrix controller.  Shares its bus gate and "LED_PWM"
+		 * clock with the backlight PWM register that directly
+		 * follows it at 0x80002040; the two nodes' reg ranges are
+		 * disjoint and both drivers map exactly their own range.
+		 */
+		ledm: led-controller@80002000 {
+			compatible = "brcm,bcmring-ledm";
+			reg = <0x80002000 0x40>;
+			clocks = <&chipc BCMRING_CLK_BUSIF_LED>,
+				 <&chipc BCMRING_CLK_LED>;
+			clock-names = "bus", "led";
+			#address-cells = <2>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		backlight: backlight@80002040 {
+			compatible = "brcm,bcmring-backlight";
+			reg = <0x80002040 0x4>;
+			clocks = <&chipc BCMRING_CLK_LED>,
+				 <&chipc BCMRING_CLK_BUSIF_LED>;
+			clock-names = "pwm", "bus";
+			gpios = <&gpio1 3 GPIO_ACTIVE_HIGH>;	/* GPIO 35 */
+			pinctrl-names = "default", "gpio";
+			pinctrl-0 = <&backlight_pwm_pin>;
+			pinctrl-1 = <&backlight_gpio_pin>;
+			status = "disabled";
+		};
+
+		/* GPIO 0..31; 2 KiB decode window */
+		gpio0: gpio@80004000 {
+			compatible = "brcm,bcmring-gpio";
+			reg = <0x80004000 0x800>;
+			interrupt-parent = <&intc1>;
+			interrupts = <0>;		/* vendor IRQ 32 */
+			gpio-controller;
+			#gpio-cells = <2>;
+			ngpios = <32>;
+			gpio-ranges = <&pinmux 0 0 32>;
+			interrupt-controller;
+			#interrupt-cells = <2>;
+		};
+
+		/* GPIO 32..60 */
+		gpio1: gpio@80004800 {
+			compatible = "brcm,bcmring-gpio";
+			reg = <0x80004800 0x800>;
+			interrupt-parent = <&intc1>;
+			interrupts = <1>;		/* vendor IRQ 33 */
+			gpio-controller;
+			#gpio-cells = <2>;
+			ngpios = <29>;
+			gpio-ranges = <&pinmux 0 32 29>;
+			interrupt-controller;
+			#interrupt-cells = <2>;
+		};
+
+		tzpc: tzpc@80008000 {
+			compatible = "brcm,bcmring-tzpc";
+			reg = <0x80008000 0x1000>;
+		};
+
+		/*
+		 * Random-number generator.  UNVERIFIED until a mainline
+		 * boot.  The match with the bcm2835-rng driver rests on the
+		 * vendor driver (control 0x00 bit 0 = enable, status 0x04
+		 * with the warm-up count in bits 19:0 and the words
+		 * available in bits 31:24, data 0x08, interrupt mask 0x10
+		 * written 1) and on the values an idle D40 and D60 show
+		 * under stock firmware (control 0x3, status 0x100fffff, mask
+		 * 0x1).  Differences: the vendor also sets control bit 1
+		 * (meaning inferred: double speed) and uses a longer warm-up
+		 * count; the mainline driver does neither.  A "secure"
+		 * peripheral, made accessible by the machine code's "set
+		 * unsecure" writes.  The vendor driver names no clock and no
+		 * bus gate, so none is listed; whether one is needed is not
+		 * known.  No "resets": the driver would pulse it, which the
+		 * vendor never does.  The interrupt number is from the
+		 * vendor's public headers and is not used by the driver.
+		 */
+		rng: rng@8000c000 {
+			compatible = "brcm,bcmring-rng";
+			reg = <0x8000c000 0x28>;
+			interrupt-parent = <&intc1>;
+			interrupts = <20>;		/* vendor IRQ 52 */
+		};
+
+		/*
+		 * Hardware key-scan controller.  A "secure" peripheral: its
+		 * interrupt only arrives on intc1 after the machine code's
+		 * "set unsecure" writes.  The prescaler counts the bus clock,
+		 * which is the parent of the gate.
+		 */
+		keypad: keypad@8000d000 {
+			compatible = "brcm,bcmring-keypad";
+			reg = <0x8000d000 0x20>;
+			interrupt-parent = <&intc1>;
+			interrupts = <16>;		/* vendor IRQ 48 */
+			clocks = <&chipc BCMRING_CLK_BUSIF_LDK>;
+			status = "disabled";
+		};
+
+		uart0: serial@80012000 {
+			compatible = "arm,pl011", "arm,primecell";
+			reg = <0x80012000 0x1000>;
+			interrupt-parent = <&intc1>;
+			interrupts = <14>;	/* vendor IRQ 46 */
+			clocks = <&chipc BCMRING_CLK_UART>,
+				 <&chipc BCMRING_CLK_BUSIF_UART0>;
+			clock-names = "uartclk", "apb_pclk";
+			status = "disabled";
+		};
+
+		uart1: serial@80013000 {
+			compatible = "arm,pl011", "arm,primecell";
+			reg = <0x80013000 0x1000>;
+			interrupt-parent = <&intc1>;
+			interrupts = <12>;	/* vendor IRQ 44 */
+			clocks = <&chipc BCMRING_CLK_UART>,
+				 <&chipc BCMRING_CLK_BUSIF_UART1>;
+			clock-names = "uartclk", "apb_pclk";
+			pinctrl-names = "default";
+			pinctrl-0 = <&uart1_pins>;
+			status = "disabled";
+		};
+
+		/*
+		 * ARM PL022 (ID 0x00241022 read on a BCM11189).  Boards add
+		 * the pad group and cs-gpios; the vendor kernel drives every
+		 * chip select as a GPIO.  The vendor driver sets the SSP
+		 * clock to 50 MHz.
+		 */
+		spi0: spi@80015000 {
+			compatible = "arm,pl022", "arm,primecell";
+			reg = <0x80015000 0x1000>;
+			interrupts = <26>;
+			clocks = <&chipc BCMRING_CLK_SPI>,
+				 <&chipc BCMRING_CLK_BUSIF_SPIH>;
+			clock-names = "sspclk", "apb_pclk";
+			assigned-clocks = <&chipc BCMRING_CLK_SPI>;
+			assigned-clock-rates = <50000000>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		/*
+		 * Four SP804-layout timers in one block.  Timers 0 and 1
+		 * count the 25 MHz crystal, timers 2 and 3 the bus clock.
+		 * The vendor uses timer 0 for ticks and timers 1 and 3 as
+		 * clock sources.  "arm,primecell" is left out on purpose:
+		 * the block's ID words sit at +0x7e0 of a 2 KiB window that
+		 * holds all four timers, and the sp804 clocksource driver
+		 * does not need the AMBA bus.
+		 */
+		timer01: timer@80017000 {
+			compatible = "arm,sp804";
+			reg = <0x80017000 0x40>;
+			interrupts = <22>, <23>;
+			clocks = <&xtal>, <&xtal>, <&chipc BCMRING_CLK_BUS>;
+			clock-names = "timer0clk", "timer1clk", "apb_pclk";
+		};
+
+		timer23: timer@80017040 {
+			compatible = "arm,sp804";
+			reg = <0x80017040 0x40>;
+			interrupts = <24>, <25>;
+			clocks = <&chipc BCMRING_CLK_BUS>,
+				 <&chipc BCMRING_CLK_BUS>,
+				 <&chipc BCMRING_CLK_BUS>;
+			clock-names = "timer0clk", "timer1clk", "apb_pclk";
+			status = "disabled";
+		};
+
+		/*
+		 * SP805 decoded in a 2 KiB window, so the lock register
+		 * aliases to +0x400 (handled by the sp805 driver from the
+		 * resource size) and the ID words are at +0x7e0.  The ID
+		 * reads 0x00141805 on a BCM11189: no override needed.
+		 * Counts the 25 MHz crystal.
+		 */
+		watchdog: watchdog@80017800 {
+			compatible = "arm,sp805", "arm,primecell";
+			reg = <0x80017800 0x800>;
+			interrupt-parent = <&intc1>;
+			interrupts = <13>;	/* vendor IRQ 45 */
+			clocks = <&xtal>, <&chipc BCMRING_CLK_BUS>;
+			clock-names = "wdog_clk", "apb_pclk";
+			status = "disabled";
+		};
+
+		/* Secure-side interrupt controller, vendor IRQs 59..74 */
+		sintc: interrupt-controller@80100000 {
+			compatible = "brcm,bcmring-sintc", "arm,pl192-vic";
+			reg = <0x80100000 0x1000>;
+			interrupt-controller;
+			#interrupt-cells = <1>;
+			valid-mask = <0x0000ffff>;
+		};
+
+		/* vendor IRQs 0..31 */
+		intc0: interrupt-controller@80200000 {
+			compatible = "brcm,bcmring-intc", "arm,pl192-vic";
+			reg = <0x80200000 0x1000>;
+			interrupt-controller;
+			#interrupt-cells = <1>;
+			valid-mask = <0xffffffff>;
+		};
+
+		/* vendor IRQs 32..58 */
+		intc1: interrupt-controller@80201000 {
+			compatible = "brcm,bcmring-intc", "arm,pl192-vic";
+			reg = <0x80201000 0x1000>;
+			interrupt-controller;
+			#interrupt-cells = <1>;
+			valid-mask = <0x07ffffff>;
+		};
+	};
+};

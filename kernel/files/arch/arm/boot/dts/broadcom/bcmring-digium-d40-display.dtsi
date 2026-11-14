@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * SKETCH of the display of the Digium/Sangoma D40, D45, and D50: one
+ * 240x120 grayscale SPI panel.  Never booted.  The three vendor kernels
+ * carry identical display driver code, tables, and board data.
+ *
+ * Requires bcmring-digium-gray.dtsi.
+ */
+
+&spi0 {
+	display@0 {
+		compatible = "digium,d40-lcd";
+		reg = <0>;
+		/*
+		 * Vendor board data: 10 MHz, mode 0.  With a 50 MHz SSP
+		 * clock the PL022 divider yields 8.33 MHz.
+		 */
+		spi-max-frequency = <10000000>;
+		dc-gpios = <&gpio0 22 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;	/* GPIO 42 */
+		backlight = <&backlight>;
+	};
+};
+
+&backlight {
+	/* Vendor probe default: level 7 of 31. */
+	default-brightness = <7>;
+};

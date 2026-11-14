@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * Broadcom BCM11188 (BCMRING family; Digium D62, D65).  DRAFT, never booted.
+ *
+ * Vendor capability table: PLL1 2.0 GHz, ARM 500 MHz, bus 166.67 MHz, UART clock 142.86 MHz.
+ * Gigabit-capable PHY ports, graphics engine and video decoder present.
+ * The rates are whatever the boot loader programmed; the clock driver reads
+ * them back, so nothing SoC-specific is needed for clocks here.  No
+ * register-layout difference between the four SoCs was found.
+ */
+
+#include "bcmring.dtsi"
+
+/ {
+	compatible = "brcm,bcm11188", "brcm,bcm11107";
+
+	/*
+	 * The voice DSP executes from the first 4 MiB of DDR (the vendor
+	 * loader's limit for this SoC generation) and uses memory above its
+	 * image there.  The boards' /memory starts above this range; the
+	 * node records why and gives the DSP driver its bounds.
+	 */
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		vpm_ddr: vpm@0 {
+			reg = <0x00000000 0x400000>;
+			no-map;
+		};
+	};
+};
+
+&switch {
+	compatible = "brcm,bcm11188-switch", "brcm,bcmring-switch";
+};
+
+&apm {
+	compatible = "brcm,bcm11188-apm", "brcm,bcm11107-apm";
+};
+
+&vpm {
+	compatible = "brcm,bcm11188-vpm";
+	memory-region = <&vpm_ddr>;
+	status = "okay";
+};

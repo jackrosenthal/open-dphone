@@ -1,0 +1,106 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * Per-model audio wiring of the Digium/Sangoma D-series phones: the sound
+ * card on top of the bcmring-apm driver.  DRAFT, never booted.
+ *
+ * Source of the per-model facts: the BCMRING_CUSTOM_halaudio_dev_list table
+ * built into each model's vendor kernel.  That table says which APM channel
+ * and which A/B port each logical device uses; it does not say what the
+ * port is physically wired to beyond the device name.
+ *
+ * A board file selects one of the wiring variants by defining exactly one
+ * of DIGIUM_AUDIO_D6X, DIGIUM_AUDIO_D45_D70, DIGIUM_AUDIO_D40_D50 before
+ * including this file.
+ *
+ * The card driver (sound/soc/bcm/bcmring-digium-card.c) pairs the APM DAIs
+ * with the dummy codec, because the APM is CPU DAI and converter in one
+ * component, and creates three PCM devices in the vendor's order: 0
+ * speakerphone (APM channel 1), 1 handset (channel 0), 2 headset (channel
+ * 1).  It owns the six board widgets named below and enables the pair that
+ * belongs to an open PCM, so the routes here decide which microphone
+ * input, which output driver, and whether the speaker amplifier are used.
+ * The D40 and D50 variant adds one GPIO that the card drives itself.
+ */
+
+/ {
+	sound {
+		compatible = "digium,bcmring-phone-audio";
+		model = "Digium Phone";
+		audio-cpu = <&apm>;
+		aux-devs = <&speaker_amp>;
+
+#if defined(DIGIUM_AUDIO_D6X)
+		/*
+		 * D60, D62, D65: handset = CH0 port A; speakerphone = CH1
+		 * port A; headset = CH1 port B.  On an idle D60 under stock
+		 * firmware the output drivers CH0 A, CH1 A, and CH1 B run
+		 * at the table's gains for these three devices and CH0 B is
+		 * muted.
+		 */
+		audio-routing =
+			"CH0 MIC A", "Handset Mic",
+			"Handset Mic", "CH0 MICBIAS",
+			"Handset Receiver", "CH0 OUT A",
+			"CH1 MIC A", "Speakerphone Mic",
+			"Speakerphone Mic", "CH1 MICBIAS",
+			"Speaker Amp INL", "CH1 OUT A",
+			"Loudspeaker", "Speaker Amp OUTL",
+			"CH1 MIC B", "Headset Mic",
+			"Headset Mic", "CH1 MICBIAS",
+			"Headset Receiver", "CH1 OUT B";
+#elif defined(DIGIUM_AUDIO_D45_D70)
+		/*
+		 * D45, D70: handset = CH0 port A; headset = CH1 port A;
+		 * speakerphone = CH1 port B.  The vendor "lineout" device
+		 * additionally uses CH1 OUT B with CH0 OUT B as its second
+		 * leg.
+		 */
+		audio-routing =
+			"CH0 MIC A", "Handset Mic",
+			"Handset Mic", "CH0 MICBIAS",
+			"Handset Receiver", "CH0 OUT A",
+			"CH1 MIC A", "Headset Mic",
+			"Headset Mic", "CH1 MICBIAS",
+			"Headset Receiver", "CH1 OUT A",
+			"CH1 MIC B", "Speakerphone Mic",
+			"Speakerphone Mic", "CH1 MICBIAS",
+			"Speaker Amp INL", "CH1 OUT B",
+			"Loudspeaker", "Speaker Amp OUTL";
+#elif defined(DIGIUM_AUDIO_D40_D50)
+		/*
+		 * D40, D50: the vendor table puts BOTH headset and
+		 * speakerphone on CH1 port A (handset = CH0 port A).  The
+		 * two are told apart by GPIO 34: the vendor application
+		 * (label "spkr") drives it to 1 for the speakerphone and to
+		 * 0 for the headset on every audio-device change and leaves
+		 * it alone for the handset; only the D40 and D50 binaries
+		 * contain that call, and GPIO 34 is an output on a live D40
+		 * (idle level low) and not on a live D60.  Those values are
+		 * verified; what the line does on the board (analog switch
+		 * select, headset amplifier mute, or a second loudspeaker
+		 * amplifier enable) is inferred and needs a listening test,
+		 * as does any required order against the speaker amplifier
+		 * enable (GPIO 32).  Besides this line, the only difference
+		 * between the two PCMs is the speaker amplifier enable.  The
+		 * APM registers of an idle D40 and D50 under stock firmware
+		 * agree with the table as far as they go: output drivers CH0
+		 * A and CH1 A running, CH0 B and CH1 B muted, both microphone
+		 * selectors on input A.
+		 */
+		speaker-select-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;
+		audio-routing =
+			"CH0 MIC A", "Handset Mic",
+			"Handset Mic", "CH0 MICBIAS",
+			"Handset Receiver", "CH0 OUT A",
+			"CH1 MIC A", "Headset Mic",
+			"CH1 MIC A", "Speakerphone Mic",
+			"Headset Mic", "CH1 MICBIAS",
+			"Speakerphone Mic", "CH1 MICBIAS",
+			"Headset Receiver", "CH1 OUT A",
+			"Speaker Amp INL", "CH1 OUT A",
+			"Loudspeaker", "Speaker Amp OUTL";
+#else
+#error "define one of DIGIUM_AUDIO_D6X, DIGIUM_AUDIO_D45_D70, DIGIUM_AUDIO_D40_D50"
+#endif
+	};
+};

@@ -1,0 +1,157 @@
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index ffbc7f3861315164ad99eaf6dab6a63f22baa8e4..f66184892335353d057803222a8f902f48b50496 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -375,6 +375,8 @@ source "arch/arm/mach-axxia/Kconfig"
+ 
+ source "arch/arm/mach-bcm/Kconfig"
+ 
++source "arch/arm/mach-bcmring/Kconfig"
++
+ source "arch/arm/mach-berlin/Kconfig"
+ 
+ source "arch/arm/mach-clps711x/Kconfig"
+@@ -1475,6 +1477,20 @@ config ARM_APPENDED_DTB
+ 	  location into r2 of a bootloader provided DTB is always preferable
+ 	  to this option.
+ 
++config ARM_APPENDED_DTB_MEM_START
++	bool "Take the start of RAM from the appended DTB"
++	depends on ARM_APPENDED_DTB && AUTO_ZRELADDR
++	help
++	  With an appended DTB the decompressor normally assumes that RAM
++	  starts at the 128 MiB boundary below the zImage, because the
++	  memory nodes of such a DTB may be placeholders that ATAGs fill in.
++
++	  Say Y here if the memory nodes of the appended DTB are correct
++	  and RAM does not start at such a boundary, e.g., because the
++	  first megabytes belong to a coprocessor (BCMRING).  The kernel
++	  is then decompressed to the start of the lowest memory region of
++	  the DTB, as it is for a DTB passed by the boot loader.
++
+ config ARM_ATAG_DTB_COMPAT
+ 	bool "Supplement the appended DTB with traditional ATAG information"
+ 	depends on ARM_APPENDED_DTB
+diff --git a/arch/arm/Kconfig.debug b/arch/arm/Kconfig.debug
+index 366f162e147d1199ddaebdb2c8cd6677e101efe0..e3336ff958b970fd4524f6fc2bc9c2fa82216318 100644
+--- a/arch/arm/Kconfig.debug
++++ b/arch/arm/Kconfig.debug
+@@ -1348,6 +1348,22 @@ choice
+ 		  If you have a ZC702 board and want early boot messages to
+ 		  appear on the USB serial adaptor, select this option.
+ 
++	config DEBUG_BCMRING_RAMLOG
++		bool "Kernel low-level debugging into on-chip RAM on BCMRING"
++		depends on ARCH_BCMRING
++		help
++		  Say Y here if you want the debug print routines to append
++		  their output to a one-page text ring in memory that keeps
++		  its contents across a reset (the on-chip ARAM of the
++		  BCMRING SoCs) instead of sending it to a UART.  The page is
++		  read back after the reset, e.g., from the stock firmware.
++
++		  This is a bring-up aid for boots without a serial cable
++		  (kernel-re/ramboot).  Together with EARLY_PRINTK and
++		  "earlyprintk keep_bootcon" on the command line, the page
++		  always holds the last 4080 characters of the kernel log.
++		  Leave it off in any kernel that is meant to be used.
++
+ 	config DEBUG_ICEDCC
+ 		bool "Kernel low-level debugging via EmbeddedICE DCC channel"
+ 		help
+@@ -1477,8 +1493,25 @@ config DEBUG_UART_FLOW_CONTROL
+ 	  control signal CTS (Clear To Send). If your debug UART supports
+ 	  this and your debug terminal will require it, enable this option.
+ 
++config DEBUG_BCMRING_RAMLOG_PHYS
++	hex "Physical address of the BCMRING debug log page"
++	depends on DEBUG_BCMRING_RAMLOG
++	default 0x3010f000
++	help
++	  Page-aligned physical address of the 4 KiB log page.  The
++	  default is the last page of the on-chip ARAM.
++
++config DEBUG_BCMRING_RAMLOG_VIRT
++	hex "Virtual address of the BCMRING debug log page"
++	depends on DEBUG_BCMRING_RAMLOG
++	default 0xf410f000
++	help
++	  Page-aligned virtual address at which the log page is mapped
++	  for the kernel proper.
++
+ config DEBUG_LL_INCLUDE
+ 	string
++	default "debug/bcmring-ramlog.S" if DEBUG_BCMRING_RAMLOG
+ 	default "debug/sa1100.S" if DEBUG_SA1100
+ 	default "debug/palmchip.S" if DEBUG_UART_8250_PALMCHIP
+ 	default "debug/8250.S" if DEBUG_LL_UART_8250 || DEBUG_UART_8250
+diff --git a/arch/arm/Makefile b/arch/arm/Makefile
+index 573813ef5e77a00050a7b4fa5802f276bc0c4958..9398bb45245810c7013c3cf38929c47f30fc79c9 100644
+--- a/arch/arm/Makefile
++++ b/arch/arm/Makefile
+@@ -179,6 +179,7 @@ machine-$(CONFIG_ARCH_ASPEED)           += aspeed
+ machine-$(CONFIG_ARCH_AT91)		+= at91
+ machine-$(CONFIG_ARCH_AXXIA)		+= axxia
+ machine-$(CONFIG_ARCH_BCM)		+= bcm
++machine-$(CONFIG_ARCH_BCMRING)		+= bcmring
+ machine-$(CONFIG_ARCH_BERLIN)		+= berlin
+ machine-$(CONFIG_ARCH_CLPS711X)		+= clps711x
+ machine-$(CONFIG_ARCH_DAVINCI)		+= davinci
+diff --git a/arch/arm/boot/compressed/head.S b/arch/arm/boot/compressed/head.S
+index 9f406e9c0ea6f74bc2d8fd71a7625977de891691..49ea302ed2bd32bcc65396c08f2ad1c40145f22b 100644
+--- a/arch/arm/boot/compressed/head.S
++++ b/arch/arm/boot/compressed/head.S
+@@ -292,7 +292,34 @@ not_angel:
+ 		ldr	r2, [r2]	@ get DTB signature
+ 		ldr	r3, =OF_DT_MAGIC
+ 		cmp	r2, r3		@ do we have a DTB there?
++#ifdef CONFIG_ARM_APPENDED_DTB_MEM_START
++		bne	2f
++		/* Its memory nodes are right: take the start of RAM from it. */
++		ldr	r2, [r1, #4]	@ get &_edata
++		add	r2, r2, r1	@ relocate it
++		ldr	sp, [r1]	@ get stack location
++		add	sp, sp, r1	@ apply relocation
++		/*
++		 * The appended DTB lies where the BSS and the stack will
++		 * be: use a stack above it, as the code below does.
++		 */
++		ldr	r3, [r2, #4]	@ DTB size, big endian
++#ifndef __ARMEB__
++		eor	ip, r3, r3, ror #16
++		bic	ip, ip, #0x00ff0000
++		mov	r3, r3, ror #8
++		eor	r3, r3, ip, lsr #8
++#endif
++		add	r3, r3, #7
++		bic	r3, r3, #7
++		add	sp, sp, r3
++		mov	r1, r2
++		bl	fdt_check_mem_start
++		b	1f
++2:
++#else
+ 		beq	1f		@ if yes, skip validation
++#endif
+ #endif /* CONFIG_ARM_APPENDED_DTB */
+ 
+ 		/*
+diff --git a/arch/arm/boot/dts/broadcom/Makefile b/arch/arm/boot/dts/broadcom/Makefile
+index 2552e11b5e3121b197f15bf5c8824c3f382c7593..6434595c0b6957be183da8a6ef792aa1f97de18d 100644
+--- a/arch/arm/boot/dts/broadcom/Makefile
++++ b/arch/arm/boot/dts/broadcom/Makefile
+@@ -18,6 +18,14 @@ DTC_FLAGS_bcm2711-rpi-4-b := -@
+ DTC_FLAGS_bcm2711-rpi-cm4-io := -@
+ DTC_FLAGS_bcm2835-rpi-zero := -@
+ DTC_FLAGS_bcm2835-rpi-zero-w := -@
++dtb-$(CONFIG_ARCH_BCMRING) += \
++	bcm11109-digium-d45.dtb \
++	bcm11109-digium-d70.dtb \
++	bcm11170-digium-d40.dtb \
++	bcm11170-digium-d50.dtb \
++	bcm11188-digium-d62.dtb \
++	bcm11188-digium-d65.dtb \
++	bcm11189-digium-d60.dtb
+ dtb-$(CONFIG_ARCH_BCM2835) += \
+ 	bcm2835-rpi-b.dtb \
+ 	bcm2835-rpi-a.dtb \

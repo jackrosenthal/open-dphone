@@ -1,0 +1,226 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/*
+ * Digium/Sangoma D40 and D45: keypad, hookswitch, and lamps.  FIRST DRAFT,
+ * untested.
+ *
+ * Generated from the D40 vendor kernel (Linux 2.6.27.18):
+ * BCMRING_CUSTOM_keypad_keymap (47 entries), the LED label table, and
+ * the ledm/keypad platform data.
+ * The D40 and D45 vendor kernels carry identical tables.
+ *
+ * Key codes: digium-keys.h keeps the vendor ASCII codes unless
+ * DIGIUM_KEYS_PROPOSED is defined before this file is included.  The DGK_
+ * names are the functions found by pressing the keys on a D60, a D40, and
+ * a D50; DGK_CH_<c> marks a character whose key is not identified.
+ */
+
+#include <dt-bindings/leds/common.h>
+#include "digium-keys.h"
+
+&pinmux {
+	/* Keypad: columns on GPIO 43, 44, 45, 46, 47, 48, 49, rows on GPIO 52, 53, 54, 55, 56, 57, 58, function 1. */
+	keypad_pins: keypad-pins {
+		pinctrl-single,bits =
+			<0x14 0x11111000 0xfffff000>,
+			<0x18 0x11110011 0xffff00ff>,
+			<0x1c 0x00000111 0x00000fff>;
+	};
+
+	/* LED matrix: columns on GPIO 0..7, rows on GPIO 16..20, function 5. */
+	ledm_pins: ledm-pins {
+		pinctrl-single,bits =
+			<0x00 0x55555555 0xffffffff>,
+			<0x08 0x00055555 0x000fffff>;
+	};
+};
+
+&keypad {
+	pinctrl-names = "default";
+	pinctrl-0 = <&keypad_pins>;
+	keypad,num-rows = <7>;
+	keypad,num-columns = <7>;
+	status = "okay";
+
+	/* MATRIX_KEY(row, column, code); vendor scan code = (row << 4) | column. */
+	linux,keymap = <
+		MATRIX_KEY(0, 0, DGK_MUTE)	/* scan 0x00, vendor 'm' (109) */
+		MATRIX_KEY(0, 1, DGK_SPEAKER)	/* scan 0x01, vendor 'f' (102) */
+		MATRIX_KEY(0, 2, DGK_HEADSET)	/* scan 0x02, vendor 'g' (103) */
+		MATRIX_KEY(0, 3, DGK_VOLUP)	/* scan 0x03, vendor '>' (62) */
+		MATRIX_KEY(0, 4, DGK_VOLDOWN)	/* scan 0x04, vendor '<' (60) */
+		MATRIX_KEY(0, 5, DGK_BLF8)	/* scan 0x05, vendor 'n' (110) */
+		MATRIX_KEY(0, 6, DGK_BLF1)	/* scan 0x06, vendor 'w' (119) */
+		MATRIX_KEY(1, 0, DGK_TRANSFER)	/* scan 0x10, vendor 't' (116) */
+		MATRIX_KEY(1, 1, DGK_SOFT1)	/* scan 0x11, vendor '(' (40) */
+		MATRIX_KEY(1, 2, DGK_POUND)	/* scan 0x12, vendor '#' (35) */
+		MATRIX_KEY(1, 3, DGK_0)	/* scan 0x13, vendor '0' (48) */
+		MATRIX_KEY(1, 4, DGK_STAR)	/* scan 0x14, vendor '*' (42) */
+		MATRIX_KEY(1, 5, DGK_BLF9)	/* scan 0x15, vendor 'o' (111) */
+		MATRIX_KEY(1, 6, DGK_BLF2)	/* scan 0x16, vendor 'x' (120) */
+		MATRIX_KEY(2, 0, DGK_MSGS)	/* scan 0x20, vendor 'a' (97) */
+		MATRIX_KEY(2, 1, DGK_SOFT2)	/* scan 0x21, vendor 'c' (99) */
+		MATRIX_KEY(2, 2, DGK_9)	/* scan 0x22, vendor '9' (57) */
+		MATRIX_KEY(2, 3, DGK_8)	/* scan 0x23, vendor '8' (56) */
+		MATRIX_KEY(2, 4, DGK_7)	/* scan 0x24, vendor '7' (55) */
+		MATRIX_KEY(2, 5, DGK_BLF10)	/* scan 0x25, vendor 'p' (112) */
+		MATRIX_KEY(2, 6, DGK_BLF3)	/* scan 0x26, vendor 'y' (121) */
+		MATRIX_KEY(3, 0, DGK_HOLD)	/* scan 0x30, vendor 'h' (104) */
+		MATRIX_KEY(3, 1, DGK_SOFT3)	/* scan 0x31, vendor 'e' (101) */
+		MATRIX_KEY(3, 2, DGK_6)	/* scan 0x32, vendor '6' (54) */
+		MATRIX_KEY(3, 3, DGK_5)	/* scan 0x33, vendor '5' (53) */
+		MATRIX_KEY(3, 4, DGK_4)	/* scan 0x34, vendor '4' (52) */
+		MATRIX_KEY(3, 5, DGK_INFO)	/* scan 0x35, vendor 'q' (113) */
+		MATRIX_KEY(3, 6, DGK_BLF4)	/* scan 0x36, vendor 'z' (122) */
+		MATRIX_KEY(4, 0, DGK_REDIAL)	/* scan 0x40, vendor 'd' (100) */
+		MATRIX_KEY(4, 1, DGK_SOFT4)	/* scan 0x41, vendor ')' (41) */
+		MATRIX_KEY(4, 2, DGK_3)	/* scan 0x42, vendor '3' (51) */
+		MATRIX_KEY(4, 3, DGK_2)	/* scan 0x43, vendor '2' (50) */
+		MATRIX_KEY(4, 4, DGK_1)	/* scan 0x44, vendor '1' (49) */
+		MATRIX_KEY(4, 5, DGK_CONF)	/* scan 0x45, vendor 'r' (114) */
+		MATRIX_KEY(4, 6, DGK_BLF5)	/* scan 0x46, vendor 'A' (65) */
+		MATRIX_KEY(5, 0, DGK_UP)	/* scan 0x50, vendor 'U' (85) */
+		MATRIX_KEY(5, 1, DGK_DOWN)	/* scan 0x51, vendor 'D' (68) */
+		MATRIX_KEY(5, 2, DGK_LEFT)	/* scan 0x52, vendor 'L' (76) */
+		MATRIX_KEY(5, 3, DGK_RIGHT)	/* scan 0x53, vendor 'R' (82) */
+		MATRIX_KEY(5, 4, DGK_LINE4)	/* scan 0x54, vendor 'k' (107) */
+		MATRIX_KEY(5, 5, DGK_LINE3)	/* scan 0x55, vendor 'u' (117) */
+		MATRIX_KEY(5, 6, DGK_BLF6)	/* scan 0x56, vendor 'F' (70) */
+		MATRIX_KEY(6, 0, DGK_CANCEL)	/* scan 0x60, vendor 'b' (98) */
+		MATRIX_KEY(6, 1, DGK_SELECT)	/* scan 0x61, vendor 'C' (67) */
+		MATRIX_KEY(6, 2, DGK_LINE2)	/* scan 0x62, vendor 'i' (105) */
+		MATRIX_KEY(6, 3, DGK_LINE1)	/* scan 0x63, vendor 'j' (106) */
+		MATRIX_KEY(6, 5, DGK_BLF7)	/* scan 0x65, vendor 'v' (118) */
+	>;
+};
+
+/ {
+	hook-switch {
+		compatible = "gpio-keys";
+
+		key-hook {
+			label = "hook";
+			/*
+			 * GPIO 51: bank 1, line 19.  Vendor reports !level.
+			 * Pressed (low) = handset on the cradle; lifting it
+			 * releases the key (key presses on a D60 and a D40).
+			 */
+			gpios = <&gpio1 19 GPIO_ACTIVE_LOW>;
+			linux,code = <DGK_HOOK>;
+			/* Vendor: 2 jiffies at HZ=100. */
+			debounce-interval = <20>;
+		};
+	};
+};
+
+&ledm {
+	pinctrl-names = "default";
+	pinctrl-0 = <&ledm_pins>;
+	/* The vendor driver always programs a 5 x 8 scan in parallel mode. */
+	brcm,scan-rows = <5>;
+	brcm,scan-columns = <8>;
+	brcm,clk-div = <2>;
+	brcm,res-div = <100>;
+	brcm,on-time = <2500>;
+	brcm,guard-time = <5>;
+	status = "okay";
+
+
+	led@0,0 {
+		/* vendor "line0-green", table index 0 */
+		reg = <0 0>;
+		color = <LED_COLOR_ID_GREEN>;
+		function = "line";
+		function-enumerator = <0>;
+	};
+
+	led@0,1 {
+		/* vendor "line0-red", table index 1 */
+		reg = <0 1>;
+		color = <LED_COLOR_ID_RED>;
+		function = "line";
+		function-enumerator = <0>;
+	};
+
+	led@0,2 {
+		/* vendor "line1-green", table index 2 */
+		reg = <0 2>;
+		color = <LED_COLOR_ID_GREEN>;
+		function = "line";
+		function-enumerator = <1>;
+	};
+
+	led@0,3 {
+		/* vendor "line1-red", table index 3 */
+		reg = <0 3>;
+		color = <LED_COLOR_ID_RED>;
+		function = "line";
+		function-enumerator = <1>;
+	};
+
+	led@1,0 {
+		/* vendor "msg-green", table index 8 */
+		reg = <1 0>;
+		color = <LED_COLOR_ID_GREEN>;
+		function = LED_FUNCTION_MAIL;
+	};
+
+	led@1,1 {
+		/* vendor "msg-red", table index 9 */
+		reg = <1 1>;
+		color = <LED_COLOR_ID_RED>;
+		function = LED_FUNCTION_MAIL;
+	};
+
+	led@1,2 {
+		/* vendor "mute-green", table index 10 */
+		reg = <1 2>;
+		color = <LED_COLOR_ID_GREEN>;
+		function = LED_FUNCTION_MUTE;
+	};
+
+	led@1,3 {
+		/* vendor "mute-red", table index 11 */
+		reg = <1 3>;
+		color = <LED_COLOR_ID_RED>;
+		function = LED_FUNCTION_MUTE;
+	};
+
+	led@2,0 {
+		/* vendor "headset-green", table index 16 */
+		reg = <2 0>;
+		color = <LED_COLOR_ID_GREEN>;
+		function = "headset";
+	};
+
+	led@2,1 {
+		/* vendor "headset-red", table index 17 */
+		reg = <2 1>;
+		color = <LED_COLOR_ID_RED>;
+		function = "headset";
+	};
+
+	led@2,2 {
+		/* vendor "speaker-green", table index 18 */
+		reg = <2 2>;
+		color = <LED_COLOR_ID_GREEN>;
+		function = "speaker";
+	};
+
+	led@2,3 {
+		/* vendor "speaker-red", table index 19 */
+		reg = <2 3>;
+		color = <LED_COLOR_ID_RED>;
+		function = "speaker";
+	};
+
+	/*
+	 * Positions the vendor table leaves as unnamed SDK placeholders, not
+	 * described here: 0,4 (LED4), 0,5 (LED5), 0,6 (LED6), 0,7 (LED7),
+	 * 1,4 (LED12), 1,5 (LED13), 1,6 (LED14), 1,7 (LED15),
+	 * 2,4 (LED20), 2,5 (LED21), 2,6 (LED22), 2,7 (LED23),
+	 * 3,0 (LED24), 3,1 (LED25), 3,2 (LED26), 3,3 (LED27),
+	 * 3,4 (LED28), 3,5 (LED29), 3,6 (LED30), 3,7 (LED31),
+	 * 4,0 (LED32), 4,1 (LED33), 4,2 (LED34), 4,3 (LED35),
+	 * 4,4 (LED36), 4,5 (LED37), 4,6 (LED38), 4,7 (LED39).
+	 */
+};

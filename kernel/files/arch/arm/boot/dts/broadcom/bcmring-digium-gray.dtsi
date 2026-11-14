@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * Parts common to the grayscale-display Digium/Sangoma phones D40, D45,
+ * D50, and D70 (vendor Linux 2.6.27.18, "old family").  DRAFT, never
+ * booted.  A D40 and a D50 were surveyed read-only under stock firmware
+ * (2026-11-12): the pad-mux words, SPI mode and divider, backlight
+ * register, and LED-matrix registers they showed are what this file and
+ * the *-display/*-input files program.  GPIO directions were not read.
+ *
+ * Vendor GPIO numbers: 25 = main panel chip select (low = selected),
+ * 21 = second chip select, 22 = D/C ("lcda0", low = command), 42 = main
+ * panel reset (low = reset), 35 = backlight (PWM output or GPIO).
+ *
+ * GPIO 20: the vendor SPI setup (SpiHw_Init) also "requests" GPIO 20 as a
+ * third chip select, but only as mux function 0, which the vendor gpiomux
+ * layer does not record as ownership; the LED matrix driver, which probes
+ * later, then switches the pad to function 5 (LED row 4), and the SPI host
+ * is registered with two chip selects.  The pad is therefore an LED row
+ * here (see the *-input.dtsi files) and is deliberately absent from
+ * cs-gpios.  Confirmed on a D40 and a D50: pad 20 reads function 5 under
+ * stock firmware (chip control 0x120 = 0x30055555).
+ *
+ * No fixed partition table is given, on purpose: partitions come from
+ * boot2's mtdparts=.  The table in NAND block 0 is per unit.  boot1 lays
+ * it out at first boot and moves partition starts past bad blocks, so the
+ * surveyed D40 (two bad blocks in root0) has root1 and userdata 0x40000
+ * higher than the surveyed D50.
+ */
+
+&pinmux {
+	/*
+	 * SSP clock and data: vendor "gpiomux group 16", which the old-family
+	 * table reduces to GPIO 23 and 24 (function 3).  GPIO 22, part of the
+	 * group on the new family, is the panel D/C GPIO here.
+	 */
+	spi_pins: spi-pins {
+		pinctrl-single,bits =
+			<0x08 0x30000000 0xf0000000>,
+			<0x0c 0x00000003 0x0000000f>;
+	};
+};
+
+&spi0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi_pins>;
+	/*
+	 * Listing GPIO 21 as chip select 1 makes the SPI core park it high on
+	 * the single-panel models, as the vendor driver does.
+	 */
+	cs-gpios = <&gpio0 25 GPIO_ACTIVE_LOW>, <&gpio0 21 GPIO_ACTIVE_LOW>;
+	status = "okay";
+};
+
+&backlight {
+	/*
+	 * Old-family scale: 0..31, where 0 drives the pad low as a GPIO and
+	 * 30 and 31 both drive it high as a GPIO; 1..29 are PWM duty steps.
+	 * Vendor platform data: 390 Hz.
+	 */
+	max-brightness = <31>;
+	brcm,full-on-level = <30>;
+	brcm,pwm-frequency-hz = <390>;
+	status = "okay";
+};

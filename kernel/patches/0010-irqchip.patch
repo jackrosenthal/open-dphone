@@ -1,0 +1,12 @@
+diff --git a/drivers/irqchip/Kconfig b/drivers/irqchip/Kconfig
+index 20b77fbc51ee03bd3f997031128284f75117f6c4..202bce1b028dc823df07c144237e159db4daef48 100644
+--- a/drivers/irqchip/Kconfig
++++ b/drivers/irqchip/Kconfig
+@@ -71,6 +71,7 @@ config ARM_VIC
+ config ARM_VIC_NR
+ 	int
+ 	default 4 if ARCH_S5PV210
++	default 3 if ARCH_BCMRING
+ 	default 2
+ 	depends on ARM_VIC
+ 	help

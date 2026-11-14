@@ -1,0 +1,33 @@
+diff --git a/drivers/mtd/nand/raw/Kconfig b/drivers/mtd/nand/raw/Kconfig
+index 1f4053e531fd88e2c25df663e82b122e0dc09bab..da3dce3c2b886f428ea7b2fd5c61865a1cff8f38 100644
+--- a/drivers/mtd/nand/raw/Kconfig
++++ b/drivers/mtd/nand/raw/Kconfig
+@@ -373,6 +373,16 @@ config MTD_NAND_PLATFORM
+ 	  devices. You will need to provide platform-specific functions
+ 	  via platform_data.
+ 
++config MTD_NAND_BCMRING
++	tristate "Broadcom BCMRING UMI NAND controller"
++	depends on ARCH_BCMRING || COMPILE_TEST
++	depends on HAS_IOMEM
++	select BCH
++	help
++	  NAND controller of the Broadcom BCMRING SoCs (vendor driver name
++	  "bcm_umi-nand").  Uses the vendor on-flash ECC format: BCH-8 over
++	  512-byte steps with 13 ECC bytes per step.
++
+ config MTD_NAND_CADENCE
+ 	tristate "Support Cadence NAND (HPNFC) controller"
+ 	depends on OF && HAS_IOMEM
+diff --git a/drivers/mtd/nand/raw/Makefile b/drivers/mtd/nand/raw/Makefile
+index 619760138d3223907bccfd425a72ba4cb8e776ec..b9748b59a4adf1af4367b097acd9a0f33471b47b 100644
+--- a/drivers/mtd/nand/raw/Makefile
++++ b/drivers/mtd/nand/raw/Makefile
+@@ -44,6 +44,7 @@ obj-$(CONFIG_MTD_NAND_XWAY)		+= xway_nand.o
+ obj-$(CONFIG_MTD_NAND_BCM47XXNFLASH)	+= bcm47xxnflash/
+ obj-$(CONFIG_MTD_NAND_SUNXI)		+= sunxi_nand.o
+ obj-$(CONFIG_MTD_NAND_HISI504)	        += hisi504_nand.o
++obj-$(CONFIG_MTD_NAND_BCMRING)		+= bcmring_nand.o
+ obj-$(CONFIG_MTD_NAND_BRCMNAND)		+= brcmnand/
+ obj-$(CONFIG_MTD_NAND_QCOM)		+= qcom_nandc.o
+ obj-$(CONFIG_MTD_NAND_MTK)		+= mtk_nand.o

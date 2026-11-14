@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * DRAFT board file for the Digium/Sangoma D70 (BCM11109, 256 MiB RAM,
+ * SLC NAND, grayscale SPI displays).
+ * Never booted, and no unit of this model has been examined on hardware.
+ */
+
+/dts-v1/;
+
+#include "bcm11109.dtsi"
+#include "bcmring-digium-common.dtsi"
+#include "bcmring-digium-gray.dtsi"
+#include "bcmring-digium-d70-display.dtsi"
+#include "bcmring-digium-d70-input.dtsi"
+#define DIGIUM_AUDIO_D45_D70
+#include "bcmring-digium-audio.dtsi"
+
+/ {
+	model = "Digium D70";
+	compatible = "digium,d70", "brcm,bcm11109", "brcm,bcm11107";
+
+	/*
+	 * 256 MiB of DDR at 0.  The vendor 2.6.27 kernels keep the first
+	 * 2 MiB away from Linux (CONFIG_BCM_RAM_START_RESERVED_SIZE=0x200000,
+	 * kernel at 0x00208000).  The memory ATAG values (start 0x00200000,
+	 * size 0x0fe00000) are read from the boot2 image in the firmware
+	 * package; the boot2 installed on a D40 and a D50 is an older build
+	 * than the packaged one, so the installed D70 boot2 may differ too.
+	 */
+	memory@200000 {
+		device_type = "memory";
+		reg = <0x00200000 0x0fe00000>;
+	};
+};

@@ -1,0 +1,55 @@
+diff --git a/Documentation/devicetree/bindings/dma/snps,dma-spear1340.yaml b/Documentation/devicetree/bindings/dma/snps,dma-spear1340.yaml
+index 18c0a7c18bc8569dc60814c4b2a2485ccaea513a..1d616e6f6426ac6f77095d5b07baba310fa35312 100644
+--- a/Documentation/devicetree/bindings/dma/snps,dma-spear1340.yaml
++++ b/Documentation/devicetree/bindings/dma/snps,dma-spear1340.yaml
+@@ -37,7 +37,12 @@ properties:
+     maxItems: 1
+ 
+   interrupts:
+-    maxItems: 1
++    description: |
++      Either the combined interrupt of the controller, or one interrupt per
++      DMA channel in ascending channel order when the SoC integration routes
++      the channel interrupts separately.
++    minItems: 1
++    maxItems: 8
+ 
+   clocks:
+     maxItems: 1
+diff --git a/Documentation/devicetree/bindings/rng/brcm,bcm2835.yaml b/Documentation/devicetree/bindings/rng/brcm,bcm2835.yaml
+index 6da674666d45610390e4819b8f26005df79a0326..caef5ccea03961fc8a9bb665ac3d9b70f74e47f0 100644
+--- a/Documentation/devicetree/bindings/rng/brcm,bcm2835.yaml
++++ b/Documentation/devicetree/bindings/rng/brcm,bcm2835.yaml
+@@ -18,6 +18,7 @@ properties:
+       - brcm,bcm-nsp-rng
+       - brcm,bcm5301x-rng
+       - brcm,bcm6368-rng
++      - brcm,bcmring-rng
+ 
+   reg:
+     maxItems: 1
+diff --git a/Documentation/devicetree/bindings/vendor-prefixes.yaml b/Documentation/devicetree/bindings/vendor-prefixes.yaml
+index ba2002969373433b1f48118872c46cf7bcfff276..82ce671717637b3a1ad21e17ebc9d47f8db0f9b5 100644
+--- a/Documentation/devicetree/bindings/vendor-prefixes.yaml
++++ b/Documentation/devicetree/bindings/vendor-prefixes.yaml
+@@ -439,6 +439,8 @@ patternProperties:
+     description: Digi International Inc.
+   "^digilent,.*":
+     description: Diglent, Inc.
++  "^digium,.*":
++    description: Digium, Inc. (now Sangoma Technologies)
+   "^dimonoff,.*":
+     description: Dimonoff inc.
+   "^diodes,.*":
+diff --git a/Documentation/userspace-api/ioctl/ioctl-number.rst b/Documentation/userspace-api/ioctl/ioctl-number.rst
+index 2fc53093752d1349dbc443839f8194dd747322c5..fbb4952394f1cb010ef1375f2ce4fe17ca40f469 100644
+--- a/Documentation/userspace-api/ioctl/ioctl-number.rst
++++ b/Documentation/userspace-api/ioctl/ioctl-number.rst
+@@ -384,6 +384,7 @@ Code  Seq#    Include File                                             Comments
+ 0xB8  01-02  uapi/misc/mrvl_cn10k_dpi.h                                Marvell CN10K DPI driver
+ 0xB8  all    uapi/linux/mshv.h                                         Microsoft Hyper-V /dev/mshv driver
+                                                                        <mailto:linux-hyperv@vger.kernel.org>
++0xB9  00-0F  uapi/linux/bcmring_vpm.h                                  Broadcom BCMRING voice DSP jobs
+ 0xBA  00-0F  uapi/linux/liveupdate.h                                   Pasha Tatashin
+                                                                        <mailto:pasha.tatashin@soleen.com>
+ 0xC0  00-0F  linux/usb/iowarrior.h

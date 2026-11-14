@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * SKETCH of the displays of the Digium/Sangoma D70: a 320x160 main panel
+ * and a 113x357 side display ("DSS", the rapid-dial/BLF label strip) on the
+ * same SPI bus.  Never booted.
+ *
+ * Additional vendor GPIO numbers: 21 = side display chip select (low =
+ * selected), 33 = side display reset (low = reset), 13 = side backlight
+ * enable (low = on), 8/26/27/28/29 = side backlight level, binary weighted
+ * with GPIO 8 as the least significant bit (low = bit set).
+ *
+ * Requires bcmring-digium-gray.dtsi.
+ */
+
+&spi0 {
+	display@0 {
+		compatible = "digium,d70-lcd";
+		/* Chip select 0: main panel.  Chip select 1: side display. */
+		reg = <0>, <1>;
+		spi-max-frequency = <10000000>;
+		dc-gpios = <&gpio0 22 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio1 10 GPIO_ACTIVE_LOW>,	/* GPIO 42 */
+			      <&gpio1 1 GPIO_ACTIVE_LOW>;	/* GPIO 33 */
+		backlight = <&backlight>;
+		dss-backlight-enable-gpios = <&gpio0 13 GPIO_ACTIVE_LOW>;
+		dss-backlight-level-gpios = <&gpio0 8 GPIO_ACTIVE_LOW>,
+					    <&gpio0 26 GPIO_ACTIVE_LOW>,
+					    <&gpio0 27 GPIO_ACTIVE_LOW>,
+					    <&gpio0 28 GPIO_ACTIVE_LOW>,
+					    <&gpio0 29 GPIO_ACTIVE_LOW>;
+	};
+};
+
+&backlight {
+	/* Vendor probe default: level 11 of 31. */
+	default-brightness = <11>;
+};

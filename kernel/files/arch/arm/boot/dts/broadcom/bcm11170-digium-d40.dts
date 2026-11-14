@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * DRAFT board file for the Digium/Sangoma D40 (BCM11170, 128 MiB RAM,
+ * SLC NAND, grayscale SPI display).
+ * Never booted.  One unit was surveyed read-only under stock firmware on
+ * 2026-11-12 (registers, boot partitions); see hw-survey.
+ */
+
+/dts-v1/;
+
+#include "bcm11170.dtsi"
+#include "bcmring-digium-common.dtsi"
+#include "bcmring-digium-gray.dtsi"
+#include "bcmring-digium-d40-display.dtsi"
+#include "bcmring-digium-d40-input.dtsi"
+#define DIGIUM_AUDIO_D40_D50
+#include "bcmring-digium-audio.dtsi"
+
+/ {
+	model = "Digium D40";
+	compatible = "digium,d40", "brcm,bcm11170", "brcm,bcm11107";
+
+	/*
+	 * 128 MiB of DDR at 0.  The vendor 2.6.27 kernels keep the first
+	 * 2 MiB away from Linux (CONFIG_BCM_RAM_START_RESERVED_SIZE=0x200000,
+	 * kernel at 0x00208000).  The boot2 installed on the surveyed unit
+	 * passes exactly this range in ATAG_MEM (start 0x00200000, size
+	 * 0x07e00000) and puts the tag list at 0x00200004; the stock kernel
+	 * reports 126 MiB.
+	 */
+	memory@200000 {
+		device_type = "memory";
+		reg = <0x00200000 0x07e00000>;
+	};
+};

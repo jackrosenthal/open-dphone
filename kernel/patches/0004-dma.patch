@@ -1,0 +1,605 @@
+diff --git a/drivers/dma/dw/core.c b/drivers/dma/dw/core.c
+index dd75f97a33b3d3dfeb6b5d37d2cc85ca5a15c4d8..fe692bd8fec11408b4f315310fae3f3e87121e28 100644
+--- a/drivers/dma/dw/core.c
++++ b/drivers/dma/dw/core.c
+@@ -117,6 +117,7 @@ static void dwc_initialize(struct dw_dma_chan *dwc)
+ 	struct dw_dma *dw = to_dw_dma(dwc->chan.device);
+ 
+ 	dw->initialize_chan(dwc);
++	set_bit(DW_DMA_IS_INITIALIZED, &dwc->flags);
+ 
+ 	/* Enable interrupts */
+ 	channel_set_bit(dw, MASK.XFER, dwc->mask);
+@@ -208,6 +209,19 @@ static void dwc_dostart(struct dw_dma_chan *dwc, struct dw_desc *first)
+ 
+ 	dwc_initialize(dwc);
+ 
++	if (first->cyclic) {
++		/*
++		 * A ring of blocks never raises the transfer complete
++		 * interrupt, the periods are signalled by the block one.
++		 * Drop stale status of an earlier transfer on this channel
++		 * so that it is not taken for a failure of this one.
++		 */
++		set_bit(DW_DMA_IS_CYCLIC, &dwc->flags);
++		dma_writel(dw, CLEAR.XFER, dwc->mask);
++		dma_writel(dw, CLEAR.BLOCK, dwc->mask);
++		channel_set_bit(dw, MASK.BLOCK, dwc->mask);
++	}
++
+ 	channel_writel(dwc, LLP, first->txd.phys | lms);
+ 	channel_writel(dwc, CTL_LO, DWC_CTLL_LLP_D_EN | DWC_CTLL_LLP_S_EN);
+ 	channel_writel(dwc, CTL_HI, 0);
+@@ -461,14 +475,83 @@ static void dwc_handle_error(struct dw_dma *dw, struct dw_dma_chan *dwc)
+ 	dwc_descriptor_complete(dwc, bad_desc, true);
+ }
+ 
++/*
++ * Called from the tasklet for a channel which runs a cyclic transfer. Returns
++ * true if the transfer goes on, i.e. the block interrupt is still wanted.
++ */
++static bool dwc_handle_cyclic(struct dw_dma *dw, struct dw_dma_chan *dwc,
++			      u32 status_block, u32 status_err, u32 status_xfer)
++{
++	struct dmaengine_desc_callback cb = { };
++	unsigned long flags;
++
++	spin_lock_irqsave(&dwc->lock, flags);
++
++	/* The transfer may have been terminated in the meantime */
++	if (!test_bit(DW_DMA_IS_CYCLIC, &dwc->flags) ||
++	    list_empty(&dwc->active_list)) {
++		spin_unlock_irqrestore(&dwc->lock, flags);
++		return false;
++	}
++
++	/*
++	 * Error and transfer complete interrupts are not expected for a ring
++	 * of blocks and are most likely caused by a bad address or by a wrong
++	 * configuration. There is no way to report this to the client, so stop
++	 * the channel and leave the descriptor in place until the client
++	 * terminates the transfer.
++	 */
++	if (unlikely((status_err | status_xfer) & dwc->mask)) {
++		dev_err(chan2dev(&dwc->chan),
++			"cyclic DMA unexpected %s interrupt, stopping DMA transfer\n",
++			status_err & dwc->mask ? "error" : "xfer");
++		dwc_dump_chan_regs(dwc);
++
++		dwc_chan_disable(dw, dwc);
++
++		/* Make sure DMA does not restart by loading a new list */
++		channel_writel(dwc, LLP, 0);
++		channel_writel(dwc, CTL_LO, 0);
++		channel_writel(dwc, CTL_HI, 0);
++
++		channel_clear_bit(dw, MASK.BLOCK, dwc->mask);
++		dma_writel(dw, CLEAR.BLOCK, dwc->mask);
++		dma_writel(dw, CLEAR.ERROR, dwc->mask);
++		dma_writel(dw, CLEAR.XFER, dwc->mask);
++
++		spin_unlock_irqrestore(&dwc->lock, flags);
++		return false;
++	}
++
++	if (status_block & dwc->mask) {
++		dma_writel(dw, CLEAR.BLOCK, dwc->mask);
++		dmaengine_desc_get_callback(&dwc_first_active(dwc)->txd, &cb);
++	}
++
++	spin_unlock_irqrestore(&dwc->lock, flags);
++
++	/*
++	 * One call even if more than one period has elapsed since the last
++	 * one; the client is expected to read the position with
++	 * dmaengine_tx_status().
++	 */
++	dmaengine_desc_callback_invoke(&cb, NULL);
++
++	return true;
++}
++
+ static void dw_dma_tasklet(struct tasklet_struct *t)
+ {
+ 	struct dw_dma *dw = from_tasklet(dw, t, tasklet);
+ 	struct dw_dma_chan *dwc;
++	u32 status_block;
+ 	u32 status_xfer;
+ 	u32 status_err;
++	u8 cyclic_mask = 0;
++	u8 live_mask = 0;
+ 	unsigned int i;
+ 
++	status_block = dma_readl(dw, RAW.BLOCK);
+ 	status_xfer = dma_readl(dw, RAW.XFER);
+ 	status_err = dma_readl(dw, RAW.ERROR);
+ 
+@@ -476,22 +559,58 @@ static void dw_dma_tasklet(struct tasklet_struct *t)
+ 
+ 	for (i = 0; i < dw->dma.chancnt; i++) {
+ 		dwc = &dw->chan[i];
+-		if (test_bit(DW_DMA_IS_CYCLIC, &dwc->flags))
+-			dev_vdbg(dw->dma.dev, "Cyclic xfer is not implemented\n");
+-		else if (status_err & (1 << i))
++
++		/*
++		 * A channel which never got a transfer from this driver has
++		 * nothing to complete. It may be held by a client only to
++		 * keep it away from other users while another master on the
++		 * bus programs it directly; whatever status it shows is not
++		 * ours, and it must not be stopped or get its interrupts
++		 * unmasked.
++		 */
++		if (!test_bit(DW_DMA_IS_INITIALIZED, &dwc->flags))
++			continue;
++		live_mask |= dwc->mask;
++
++		if (test_bit(DW_DMA_IS_CYCLIC, &dwc->flags)) {
++			if (dwc_handle_cyclic(dw, dwc, status_block, status_err,
++					      status_xfer))
++				cyclic_mask |= dwc->mask;
++		} else if (status_err & (1 << i)) {
+ 			dwc_handle_error(dw, dwc);
+-		else if (status_xfer & (1 << i))
++		} else if (status_xfer & (1 << i)) {
+ 			dwc_scan_descriptors(dw, dwc);
++		}
+ 	}
+ 
+ 	/* Re-enable interrupts */
+-	channel_set_bit(dw, MASK.XFER, dw->all_chan_mask);
+-	channel_set_bit(dw, MASK.ERROR, dw->all_chan_mask);
++	channel_set_bit(dw, MASK.XFER, live_mask);
++	channel_set_bit(dw, MASK.ERROR, live_mask);
++	if (cyclic_mask)
++		channel_set_bit(dw, MASK.BLOCK, cyclic_mask);
++}
++
++/*
++ * Channels this driver has started a transfer on. The interrupt masks of the
++ * others are not ours to change: such a channel may be programmed by another
++ * master on the bus which relies on its interrupt staying unmasked.
++ */
++static u8 dw_dma_live_mask(struct dw_dma *dw)
++{
++	unsigned int i;
++	u8 mask = 0;
++
++	for (i = 0; i < dw->dma.chancnt; i++)
++		if (test_bit(DW_DMA_IS_INITIALIZED, &dw->chan[i].flags))
++			mask |= dw->chan[i].mask;
++
++	return mask;
+ }
+ 
+ static irqreturn_t dw_dma_interrupt(int irq, void *dev_id)
+ {
+ 	struct dw_dma *dw = dev_id;
++	u8 live_mask = dw_dma_live_mask(dw);
+ 	u32 status;
+ 
+ 	/* Check if we have any interrupt from the DMAC which is not in use */
+@@ -509,22 +628,28 @@ static irqreturn_t dw_dma_interrupt(int irq, void *dev_id)
+ 	 * Just disable the interrupts. We'll turn them back on in the
+ 	 * softirq handler.
+ 	 */
+-	channel_clear_bit(dw, MASK.XFER, dw->all_chan_mask);
+-	channel_clear_bit(dw, MASK.BLOCK, dw->all_chan_mask);
+-	channel_clear_bit(dw, MASK.ERROR, dw->all_chan_mask);
++	channel_clear_bit(dw, MASK.XFER, live_mask);
++	channel_clear_bit(dw, MASK.BLOCK, live_mask);
++	channel_clear_bit(dw, MASK.ERROR, live_mask);
+ 
+-	status = dma_readl(dw, STATUS_INT);
++	/*
++	 * Nothing of ours may be pending now. A channel which is not ours may
++	 * still show its transfer, block or error status: leave that alone.
++	 */
++	status = dma_readl(dw, STATUS.SRC_TRAN) | dma_readl(dw, STATUS.DST_TRAN) |
++		 ((dma_readl(dw, STATUS.XFER) | dma_readl(dw, STATUS.BLOCK) |
++		   dma_readl(dw, STATUS.ERROR)) & live_mask);
+ 	if (status) {
+ 		dev_err(dw->dma.dev,
+ 			"BUG: Unexpected interrupts pending: 0x%x\n",
+ 			status);
+ 
+ 		/* Try to recover */
+-		channel_clear_bit(dw, MASK.XFER, (1 << 8) - 1);
+-		channel_clear_bit(dw, MASK.BLOCK, (1 << 8) - 1);
++		channel_clear_bit(dw, MASK.XFER, live_mask);
++		channel_clear_bit(dw, MASK.BLOCK, live_mask);
+ 		channel_clear_bit(dw, MASK.SRC_TRAN, (1 << 8) - 1);
+ 		channel_clear_bit(dw, MASK.DST_TRAN, (1 << 8) - 1);
+-		channel_clear_bit(dw, MASK.ERROR, (1 << 8) - 1);
++		channel_clear_bit(dw, MASK.ERROR, live_mask);
+ 	}
+ 
+ 	tasklet_schedule(&dw->tasklet);
+@@ -532,6 +657,42 @@ static irqreturn_t dw_dma_interrupt(int irq, void *dev_id)
+ 	return IRQ_HANDLED;
+ }
+ 
++/*
++ * Some integrations do not combine the interrupt outputs of the controller
++ * but route one line per channel to the interrupt controller. The handler
++ * above only looks at the controller-wide status, so it serves any number of
++ * lines.
++ */
++static int dw_dma_irq_line(struct dw_dma_chip *chip, unsigned int i)
++{
++	return chip->nr_irqs ? chip->irqs[i] : chip->irq;
++}
++
++static void dw_dma_free_irqs(struct dw_dma_chip *chip, unsigned int nr)
++{
++	while (nr--)
++		free_irq(dw_dma_irq_line(chip, nr), chip->dw);
++}
++
++static int dw_dma_request_irqs(struct dw_dma_chip *chip)
++{
++	unsigned int nr = chip->nr_irqs ?: 1;
++	struct dw_dma *dw = chip->dw;
++	unsigned int i;
++	int ret;
++
++	for (i = 0; i < nr; i++) {
++		ret = request_irq(dw_dma_irq_line(chip, i), dw_dma_interrupt,
++				  IRQF_SHARED, dw->name, dw);
++		if (ret) {
++			dw_dma_free_irqs(chip, i);
++			return ret;
++		}
++	}
++
++	return 0;
++}
++
+ /*----------------------------------------------------------------------*/
+ 
+ static struct dma_async_tx_descriptor *
+@@ -760,6 +921,139 @@ dwc_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
+ 	return NULL;
+ }
+ 
++static struct dma_async_tx_descriptor *
++dwc_prep_dma_cyclic(struct dma_chan *chan, dma_addr_t buf_addr, size_t buf_len,
++		    size_t period_len, enum dma_transfer_direction direction,
++		    unsigned long flags)
++{
++	struct dw_dma_chan	*dwc = to_dw_dma_chan(chan);
++	struct dw_dma		*dw = to_dw_dma(chan->device);
++	struct dma_slave_config	*sconfig = &dwc->dma_sconfig;
++	struct dw_desc		*prev = NULL;
++	struct dw_desc		*first = NULL;
++	u32			ctllo;
++	u8			lms = DWC_LLP_LMS(dwc->dws.m_master);
++	dma_addr_t		reg;
++	unsigned int		reg_width;
++	unsigned int		mem_width;
++	size_t			offset;
++
++	if (unlikely(!is_slave_direction(direction) || !buf_len || !period_len))
++		return NULL;
++
++	if (unlikely(buf_len % period_len))
++		return NULL;
++
++	/*
++	 * The hardware has to walk the ring of blocks on its own; restarting
++	 * the channel from the interrupt handler for every block would leave
++	 * gaps in the stream.
++	 */
++	if (dwc->nollp) {
++		dev_dbg(chan2dev(chan),
++			"cyclic transfers need multi block support\n");
++		return NULL;
++	}
++
++	dwc->direction = direction;
++
++	switch (direction) {
++	case DMA_MEM_TO_DEV:
++		reg_width = __ffs(sconfig->dst_addr_width);
++		reg = sconfig->dst_addr;
++		mem_width = __ffs(sconfig->src_addr_width | buf_addr | period_len);
++		ctllo = dw->prepare_ctllo(dwc)
++				| DWC_CTLL_DST_WIDTH(reg_width)
++				| DWC_CTLL_SRC_WIDTH(mem_width)
++				| DWC_CTLL_DST_FIX
++				| DWC_CTLL_SRC_INC;
++
++		ctllo |= sconfig->device_fc ? DWC_CTLL_FC(DW_DMA_FC_P_M2P) :
++			DWC_CTLL_FC(DW_DMA_FC_D_M2P);
++		break;
++	case DMA_DEV_TO_MEM:
++		reg_width = __ffs(sconfig->src_addr_width);
++		reg = sconfig->src_addr;
++		mem_width = __ffs(sconfig->dst_addr_width | buf_addr | period_len);
++
++		/* The block size is counted in units of the source width */
++		if (period_len & (BIT(reg_width) - 1))
++			return NULL;
++
++		ctllo = dw->prepare_ctllo(dwc)
++				| DWC_CTLL_SRC_WIDTH(reg_width)
++				| DWC_CTLL_DST_WIDTH(mem_width)
++				| DWC_CTLL_DST_INC
++				| DWC_CTLL_SRC_FIX;
++
++		ctllo |= sconfig->device_fc ? DWC_CTLL_FC(DW_DMA_FC_P_P2M) :
++			DWC_CTLL_FC(DW_DMA_FC_D_P2M);
++		break;
++	default:
++		return NULL;
++	}
++
++	for (offset = 0; offset < buf_len; offset += period_len) {
++		dma_addr_t	mem = buf_addr + offset;
++		size_t		len = period_len;
++
++		/* A period takes more than one block if it exceeds the block size */
++		while (len) {
++			struct dw_desc	*desc;
++			size_t		dlen;
++			u32		ctlhi;
++
++			desc = dwc_desc_get(dwc);
++			if (!desc)
++				goto err_desc_get;
++
++			if (direction == DMA_MEM_TO_DEV) {
++				ctlhi = dw->bytes2block(dwc, len, mem_width, &dlen);
++				lli_write(desc, sar, mem);
++				lli_write(desc, dar, reg);
++			} else {
++				ctlhi = dw->bytes2block(dwc, len, reg_width, &dlen);
++				lli_write(desc, sar, reg);
++				lli_write(desc, dar, mem);
++			}
++			lli_write(desc, ctlhi, ctlhi);
++			lli_write(desc, ctllo, ctllo);
++			desc->len = dlen;
++
++			if (!first) {
++				first = desc;
++			} else {
++				lli_write(prev, llp, desc->txd.phys | lms);
++				list_add_tail(&desc->desc_node, &first->tx_list);
++			}
++			prev = desc;
++
++			mem += dlen;
++			len -= dlen;
++		}
++
++		if (flags & DMA_PREP_INTERRUPT)
++			/* Trigger interrupt after the last block of each period */
++			lli_set(prev, ctllo, DWC_CTLL_INT_EN);
++	}
++
++	/* Close the ring; every block keeps the block chaining enabled */
++	lli_write(prev, llp, first->txd.phys | lms);
++
++	first->txd.flags = flags;
++	first->total_len = buf_len;
++	first->residue = buf_len;
++	first->cyclic = true;
++
++	return &first->txd;
++
++err_desc_get:
++	dev_err(chan2dev(chan),
++		"not enough descriptors available. Direction %d\n", direction);
++	dwc_desc_put(dwc, first);
++	return NULL;
++}
++
+ bool dw_dma_filter(struct dma_chan *chan, void *param)
+ {
+ 	struct dw_dma_chan *dwc = to_dw_dma_chan(chan);
+@@ -952,6 +1246,11 @@ static int dwc_terminate_all(struct dma_chan *chan)
+ 
+ 	dwc_chan_resume(dwc, true);
+ 
++	if (test_and_clear_bit(DW_DMA_IS_CYCLIC, &dwc->flags)) {
++		channel_clear_bit(dw, MASK.BLOCK, dwc->mask);
++		dma_writel(dw, CLEAR.BLOCK, dwc->mask);
++	}
++
+ 	/* active_list entries will end up before queued entries */
+ 	list_splice_init(&dwc->queue, &list);
+ 	list_splice_init(&dwc->active_list, &list);
+@@ -976,6 +1275,45 @@ static struct dw_desc *dwc_find_desc(struct dw_dma_chan *dwc, dma_cookie_t c)
+ 	return NULL;
+ }
+ 
++/*
++ * Bytes left until the end of the buffer of a running cyclic transfer.
++ * Called with dwc->lock held.
++ */
++static u32 dwc_get_cyclic_residue(struct dw_dma_chan *dwc, struct dw_desc *desc)
++{
++	unsigned int retries = 3;
++	struct dw_desc *child;
++	u32 residue = desc->total_len;
++	u32 llp, sent;
++
++	/*
++	 * Right after the start the hardware has not fetched the first block
++	 * yet and the registers still hold what dwc_dostart() wrote. A block
++	 * of a slave transfer never has an all-zero transfer type.
++	 */
++	if (channel_readl(dwc, CTL_LO) == (DWC_CTLL_LLP_D_EN | DWC_CTLL_LLP_S_EN))
++		return residue;
++
++	/* The pair has to belong to the same block */
++	do {
++		llp = channel_readl(dwc, LLP);
++		sent = dwc_get_sent(dwc);
++	} while (llp != channel_readl(dwc, LLP) && --retries);
++
++	/* The LLP register points to the successor of the block in progress */
++	if (lli_read(desc, llp) == llp)
++		return residue - min_t(u32, sent, desc->len);
++
++	residue -= desc->len;
++	list_for_each_entry(child, &desc->tx_list, desc_node) {
++		if (lli_read(child, llp) == llp)
++			return residue - min_t(u32, sent, child->len);
++		residue -= child->len;
++	}
++
++	return desc->total_len;
++}
++
+ static u32 dwc_get_residue_and_status(struct dw_dma_chan *dwc, dma_cookie_t cookie,
+ 				      enum dma_status *status)
+ {
+@@ -988,7 +1326,10 @@ static u32 dwc_get_residue_and_status(struct dw_dma_chan *dwc, dma_cookie_t cook
+ 	desc = dwc_find_desc(dwc, cookie);
+ 	if (desc) {
+ 		if (desc == dwc_first_active(dwc)) {
+-			residue = desc->residue;
++			if (desc->cyclic)
++				residue = dwc_get_cyclic_residue(dwc, desc);
++			else
++				residue = desc->residue;
+ 			if (test_bit(DW_DMA_IS_SOFT_LLP, &dwc->flags) && residue)
+ 				residue -= dwc_get_sent(dwc);
+ 			if (test_bit(DW_DMA_IS_PAUSED, &dwc->flags))
+@@ -1016,7 +1357,9 @@ dwc_tx_status(struct dma_chan *chan,
+ 	if (ret == DMA_COMPLETE)
+ 		return ret;
+ 
+-	dwc_scan_descriptors(to_dw_dma(chan->device), dwc);
++	/* A cyclic transfer never completes, there is nothing to reap */
++	if (!test_bit(DW_DMA_IS_CYCLIC, &dwc->flags))
++		dwc_scan_descriptors(to_dw_dma(chan->device), dwc);
+ 
+ 	ret = dma_cookie_status(chan, cookie, txstate);
+ 	if (ret == DMA_COMPLETE)
+@@ -1113,6 +1456,7 @@ static void dwc_free_chan_resources(struct dma_chan *chan)
+ 
+ 	/* Clear custom channel configuration */
+ 	memset(&dwc->dws, 0, sizeof(struct dw_dma_slave));
++	clear_bit(DW_DMA_IS_INITIALIZED, &dwc->flags);
+ 
+ 	/* Disable interrupts */
+ 	channel_clear_bit(dw, MASK.XFER, dwc->mask);
+@@ -1227,8 +1571,7 @@ int do_dma_probe(struct dw_dma_chip *chip)
+ 
+ 	tasklet_setup(&dw->tasklet, dw_dma_tasklet);
+ 
+-	ret = request_irq(chip->irq, dw_dma_interrupt, IRQF_SHARED,
+-			  dw->name, dw);
++	ret = dw_dma_request_irqs(chip);
+ 	if (ret)
+ 		goto err_pdata;
+ 
+@@ -1316,6 +1659,16 @@ int do_dma_probe(struct dw_dma_chip *chip)
+ 	dw->dma.device_prep_dma_memcpy = dwc_prep_dma_memcpy;
+ 	dw->dma.device_prep_slave_sg = dwc_prep_slave_sg;
+ 
++	/* Cyclic transfers are only offered if a channel can chain blocks */
++	for (i = 0; i < pdata->nr_channels; i++) {
++		if (dw->chan[i].nollp)
++			continue;
++
++		dma_cap_set(DMA_CYCLIC, dw->dma.cap_mask);
++		dw->dma.device_prep_dma_cyclic = dwc_prep_dma_cyclic;
++		break;
++	}
++
+ 	dw->dma.device_caps = dwc_caps;
+ 	dw->dma.device_config = dwc_config;
+ 	dw->dma.device_pause = dwc_pause;
+@@ -1353,7 +1706,7 @@ int do_dma_probe(struct dw_dma_chip *chip)
+ 	return 0;
+ 
+ err_dma_register:
+-	free_irq(chip->irq, dw);
++	dw_dma_free_irqs(chip, chip->nr_irqs ?: 1);
+ err_pdata:
+ 	pm_runtime_put_sync_suspend(chip->dev);
+ 	return ret;
+@@ -1369,7 +1722,7 @@ int do_dma_remove(struct dw_dma_chip *chip)
+ 	do_dw_dma_off(dw);
+ 	dma_async_device_unregister(&dw->dma);
+ 
+-	free_irq(chip->irq, dw);
++	dw_dma_free_irqs(chip, chip->nr_irqs ?: 1);
+ 	tasklet_kill(&dw->tasklet);
+ 
+ 	list_for_each_entry_safe(dwc, _dwc, &dw->dma.channels,
+diff --git a/drivers/dma/dw/platform.c b/drivers/dma/dw/platform.c
+index c63fa52036d7ff184300834dc852b17b9cc1c22a..f4fccac843a2b6dd2395501b49cc13c1629cfdc8 100644
+--- a/drivers/dma/dw/platform.c
++++ b/drivers/dma/dw/platform.c
+@@ -27,6 +27,7 @@ static int dw_probe(struct platform_device *pdev)
+ 	struct dw_dma_chip_pdata *data;
+ 	struct dw_dma_chip *chip;
+ 	struct device *dev = &pdev->dev;
++	unsigned int i;
+ 	int ret;
+ 
+ 	match = device_get_match_data(dev);
+@@ -45,6 +46,21 @@ static int dw_probe(struct platform_device *pdev)
+ 	if (chip->irq < 0)
+ 		return chip->irq;
+ 
++	/* One combined interrupt, or several lines (one per channel) */
++	ret = platform_irq_count(pdev);
++	if (ret < 0)
++		return ret;
++	if (ret > DW_DMA_MAX_NR_CHANNELS)
++		return dev_err_probe(dev, -EINVAL, "too many interrupts: %d\n", ret);
++	if (ret > 1) {
++		chip->nr_irqs = ret;
++		for (i = 0; i < chip->nr_irqs; i++) {
++			chip->irqs[i] = platform_get_irq(pdev, i);
++			if (chip->irqs[i] < 0)
++				return chip->irqs[i];
++		}
++	}
++
+ 	chip->regs = devm_platform_ioremap_resource(pdev, 0);
+ 	if (IS_ERR(chip->regs))
+ 		return PTR_ERR(chip->regs);
+diff --git a/drivers/dma/dw/regs.h b/drivers/dma/dw/regs.h
+index 5969d9cc8d7ae2da1e95f03c7805dc98818e5f7f..cec8fa30d74bd59fc1a639b66b2f162d91d1ab75 100644
+--- a/drivers/dma/dw/regs.h
++++ b/drivers/dma/dw/regs.h
+@@ -397,6 +397,7 @@ struct dw_desc {
+ 	size_t				len;
+ 	size_t				total_len;
+ 	u32				residue;
++	bool				cyclic;
+ };
+ 
+ #define to_dw_desc(h)	list_entry(h, struct dw_desc, desc_node)
+diff --git a/include/linux/dma/dw.h b/include/linux/dma/dw.h
+index 9752f3745f764293990ea6f40677ca0ef2980840..d1e7dcecbe8659265616c3157221da155aa82482 100644
+--- a/include/linux/dma/dw.h
++++ b/include/linux/dma/dw.h
+@@ -21,7 +21,10 @@ struct dw_dma;
+  * struct dw_dma_chip - representation of DesignWare DMA controller hardware
+  * @dev:		struct device of the DMA controller
+  * @id:			instance ID
+- * @irq:		irq line
++ * @irq:		irq line (the first one if the controller has several)
++ * @nr_irqs:	number of entries in @irqs, or zero if @irq is the only line
++ * @irqs:	irq lines of a controller that has more than one, typically one
++ *		per channel
+  * @regs:		memory mapped I/O space
+  * @clk:		hclk clock
+  * @dw:			struct dw_dma that is filed by dw_dma_probe()
+@@ -31,6 +34,8 @@ struct dw_dma_chip {
+ 	struct device	*dev;
+ 	int		id;
+ 	int		irq;
++	unsigned int	nr_irqs;
++	int		irqs[DW_DMA_MAX_NR_CHANNELS];
+ 	void __iomem	*regs;
+ 	struct clk	*clk;
+ 	struct dw_dma	*dw;

@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# SKETCH -- not validated with dt-schema, not submitted anywhere.
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/sound/digium,bcmring-phone-audio.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Digium/Sangoma D-series desk phone sound card
+
+description: |
+  Sound card of the D40, D45, D50, D60, D62, D65, and D70 phones.  The
+  converters are the two channels of the on-chip BCMRING APM
+  (brcm,bcm11107-apm); there is no external codec.  The card has three PCM
+  devices: 0 speakerphone (APM channel 1), 1 handset (APM channel 0), and 2
+  headset (APM channel 1).
+
+  The card defines the board widgets "Speakerphone Mic", "Loudspeaker",
+  "Handset Mic", "Handset Receiver", "Headset Mic", and "Headset Receiver",
+  and connects only the pair that belongs to an open PCM device.
+  audio-routing connects them to the APM pins ("CH0 MIC A", "CH0 MIC B",
+  "CH1 MIC A", "CH1 MIC B", "CH0 OUT A", "CH0 OUT B", "CH1 OUT A",
+  "CH1 OUT B", and the supplies "CH0 MICBIAS", "CH1 MICBIAS") and to the
+  widgets of the auxiliary devices.  APM pins that are not routed are
+  treated as not connected.
+
+allOf:
+  - $ref: sound-card-common.yaml#
+
+properties:
+  compatible:
+    const: digium,bcmring-phone-audio
+
+  audio-cpu:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: The APM node.
+
+  aux-devs:
+    $ref: /schemas/types.yaml#/definitions/phandle-array
+    description: The speaker amplifier (simple-audio-amplifier).
+
+  speaker-select-gpios:
+    maxItems: 1
+    description:
+      D40 and D50 only, where the headset and the speakerphone use the same
+      APM microphone input and output driver.  Driven active while the
+      speakerphone PCM device is in use and inactive while the headset PCM
+      device is in use; left unchanged for the handset.  The stock firmware
+      drives the line this way; its electrical function (analog switch,
+      mute, or amplifier enable) is inferred, not known.
+
+required:
+  - compatible
+  - model
+  - audio-routing
+  - audio-cpu
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    sound {
+        compatible = "digium,bcmring-phone-audio";
+        model = "Digium Phone";
+        audio-cpu = <&apm>;
+        aux-devs = <&speaker_amp>;
+        audio-routing =
+            "CH0 MIC A", "Handset Mic",
+            "Handset Mic", "CH0 MICBIAS",
+            "Handset Receiver", "CH0 OUT A",
+            "CH1 MIC A", "Speakerphone Mic",
+            "Speakerphone Mic", "CH1 MICBIAS",
+            "Speaker Amp INL", "CH1 OUT A",
+            "Loudspeaker", "Speaker Amp OUTL",
+            "CH1 MIC B", "Headset Mic",
+            "Headset Mic", "CH1 MICBIAS",
+            "Headset Receiver", "CH1 OUT B";
+    };

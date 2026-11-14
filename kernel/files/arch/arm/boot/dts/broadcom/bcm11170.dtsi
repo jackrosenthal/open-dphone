@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * Broadcom BCM11170 (BCMRING family; Digium D40, D50).  DRAFT, never booted.
+ *
+ * Vendor capability table: PLL1 1.2 GHz, ARM 300 MHz, bus 100 MHz, UART clock 100 MHz.  10/100 PHY
+ * ports only, no touch-screen controller.
+ * The rates are whatever the boot loader programmed; the clock driver reads
+ * them back, so nothing SoC-specific is needed for clocks here.  No
+ * register-layout difference between the four SoCs was found.
+ *
+ * Chip-control dumps of a D40 and a D50 under stock firmware (chip ID
+ * 0x111700b0) decode with the clock driver's arithmetic to PLL1 1199.9 MHz
+ * (fractional, like the BCM11189's), ARM 300 MHz, bus 100 MHz, UART, switch,
+ * and VPM-side clocks at their table values, SPI 50 MHz, and the LED clock
+ * at 25 MHz (12.5 MHz on a BCM11189).
+ */
+
+#include "bcmring.dtsi"
+
+/ {
+	compatible = "brcm,bcm11170", "brcm,bcm11107";
+
+	/*
+	 * The voice DSP executes from the first 2 MiB of DDR (the vendor
+	 * loader's limit for this SoC generation) and uses memory above its
+	 * image there.  The boards' /memory starts above this range; the
+	 * node records why and gives the DSP driver its bounds.
+	 */
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		vpm_ddr: vpm@0 {
+			reg = <0x00000000 0x200000>;
+			no-map;
+		};
+	};
+};
+
+&switch {
+	compatible = "brcm,bcm11170-switch", "brcm,bcmring-switch";
+};
+
+&apm {
+	compatible = "brcm,bcm11170-apm", "brcm,bcm11107-apm";
+};
+
+&vpm {
+	compatible = "brcm,bcm11170-vpm";
+	memory-region = <&vpm_ddr>;
+	status = "okay";
+};
