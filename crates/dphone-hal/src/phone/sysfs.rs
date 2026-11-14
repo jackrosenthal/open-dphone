@@ -30,9 +30,39 @@ pub struct SysBacklight {
     side_lcd: Option<PathBuf>,
 }
 
-/// Top of the stock percent-to-value contrast table for the main gray
-/// panels (`DEFAULT_MAIN_CONTRAST_TABLE`: 0, 5, 10, ... 506).
-const MAIN_CONTRAST_TOP: u32 = 506;
+/// Highest contrast level: the stock `contrast` setting runs 0..=10.
+pub const CONTRAST_LEVELS: u8 = 10;
+
+/// First raw value and step of the stock level-to-value contrast table.
+///
+/// The stock phone application (`lcd_set_contrast` in `/app/bin/phone`)
+/// indexes an eleven-entry table with the `contrast` setting and hands the
+/// entry to the panel driver as the raw controller value: 240, 242, ... 260
+/// on the D40, D45, and D50 (of 0..=511), 324, 328, ... 364 on the D70's
+/// main panel, and 120, 122, ... 140 on the D70's side display (of
+/// 0..=255).  The usable window is that narrow: far below it the glass
+/// shows nothing at all, far above it everything is dark.
+const fn contrast_table(model: Model, screen: Screen) -> (u32, u32) {
+    match (model, screen) {
+        (Model::D70, Screen::Side) => (120, 2),
+        (Model::D70, Screen::Main) => (324, 4),
+        _ => (240, 2),
+    }
+}
+
+/// The raw controller value for a contrast level (0..=10).
+pub const fn contrast_raw(model: Model, screen: Screen, level: u8) -> u32 {
+    let (first, step) = contrast_table(model, screen);
+    let level = if level > CONTRAST_LEVELS { CONTRAST_LEVELS } else { level };
+    first + step * level as u32
+}
+
+/// The contrast level nearest to a raw controller value.
+pub const fn contrast_level(model: Model, screen: Screen, raw: u32) -> u8 {
+    let (first, step) = contrast_table(model, screen);
+    let level = (raw.saturating_sub(first) + step / 2) / step;
+    if level > CONTRAST_LEVELS as u32 { CONTRAST_LEVELS } else { level as u8 }
+}
 
 impl SysBacklight {
     pub fn open(model: Model) -> Result<SysBacklight> {
@@ -66,13 +96,6 @@ impl SysBacklight {
         }
         .ok_or(HalError::Unsupported("no contrast control for that screen"))
     }
-
-    /// Raw value that 100 percent maps to.
-    fn contrast_top(&self, screen: Screen) -> Result<u32> {
-        let p = self.lcd(screen)?.join("max_contrast");
-        let max = read_u32(&p).map_err(|e| HalError::io(p.display().to_string(), e))?;
-        Ok(if max == 511 { MAIN_CONTRAST_TOP } else { max })
-    }
 }
 
 fn write_value(path: &Path, v: u32) -> Result<()> {
@@ -102,24 +125,20 @@ impl Backlight for SysBacklight {
         write_value(&dir.join("brightness"), level as u32)
     }
 
-    /// Contrast is a percentage (0..=100), as in the stock settings; it is
-    /// scaled to the panel's raw range the way the stock tables do for the
-    /// main panels (linear to 506) and linearly for the D70 side display
-    /// (whose stock table is not monotonic and is not reproduced).
+    /// Contrast is the stock setting's level (0..=10), mapped to the raw
+    /// controller value by the stock tables (see [`contrast_raw`]).
     fn max_contrast(&self, screen: Screen) -> u8 {
-        if self.lcd(screen).is_ok() { 100 } else { 0 }
+        if self.lcd(screen).is_ok() { CONTRAST_LEVELS } else { 0 }
     }
 
     fn contrast(&self, screen: Screen) -> Result<u8> {
-        let top = self.contrast_top(screen)?.max(1);
         let p = self.lcd(screen)?.join("contrast");
         let raw = read_u32(&p).map_err(|e| HalError::io(p.display().to_string(), e))?;
-        Ok(((raw * 100 + top / 2) / top).min(100) as u8)
+        Ok(contrast_level(self.model, screen, raw))
     }
 
     fn set_contrast(&mut self, screen: Screen, level: u8) -> Result<()> {
-        let top = self.contrast_top(screen)?;
-        let raw = (level.min(100) as u32 * top + 50) / 100;
+        let raw = contrast_raw(self.model, screen, level);
         write_value(&self.lcd(screen)?.join("contrast"), raw)
     }
 }
@@ -227,6 +246,38 @@ impl Lamps for SysLamps {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The stock tables, as read from `/app/bin/phone` of 2_9_26.
+    #[test]
+    fn contrast_levels_follow_the_stock_tables() {
+        let small: Vec<u32> = (0..=10).map(|l| contrast_raw(Model::D40, Screen::Main, l)).collect();
+        assert_eq!(small, [240, 242, 244, 246, 248, 250, 252, 254, 256, 258, 260]);
+        for m in [Model::D45, Model::D50] {
+            assert_eq!(contrast_raw(m, Screen::Main, 5), 250);
+        }
+        let large: Vec<u32> = (0..=10).map(|l| contrast_raw(Model::D70, Screen::Main, l)).collect();
+        assert_eq!(large, [324, 328, 332, 336, 340, 344, 348, 352, 356, 360, 364]);
+        let side: Vec<u32> = (0..=10).map(|l| contrast_raw(Model::D70, Screen::Side, l)).collect();
+        assert_eq!(side, [120, 122, 124, 126, 128, 130, 132, 134, 136, 138, 140]);
+        // Above the scale is the top of the scale, never a larger raw value.
+        assert_eq!(contrast_raw(Model::D40, Screen::Main, 200), 260);
+    }
+
+    #[test]
+    fn contrast_levels_read_back() {
+        for (m, s) in [(Model::D40, Screen::Main), (Model::D70, Screen::Main), (Model::D70, Screen::Side)] {
+            for l in 0..=10 {
+                assert_eq!(contrast_level(m, s, contrast_raw(m, s, l)), l);
+            }
+            assert_eq!(contrast_level(m, s, 0), 0);
+            assert_eq!(contrast_level(m, s, 511), 10);
+        }
+        // The driver's power-on values: the top of the small scale, and the
+        // middle of the D70's two.
+        assert_eq!(contrast_level(Model::D40, Screen::Main, 260), 10);
+        assert_eq!(contrast_level(Model::D70, Screen::Main, 344), 5);
+        assert_eq!(contrast_level(Model::D70, Screen::Side, 130), 5);
+    }
 
     #[test]
     fn led_names() {

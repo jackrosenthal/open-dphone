@@ -128,8 +128,8 @@ pub trait Backlight: Send {
     fn max_brightness(&self, screen: Screen) -> u8;
     fn brightness(&self, screen: Screen) -> Result<u8>;
     fn set_brightness(&mut self, screen: Screen, level: u8) -> Result<()>;
-    /// Highest contrast level: 100 (contrast is a percentage, as in the
-    /// stock settings), or 0 when the panel has no contrast control.
+    /// Highest contrast level: 10 (the scale of the stock `contrast`
+    /// setting, 0..=10), or 0 when the panel has no contrast control.
     fn max_contrast(&self, screen: Screen) -> u8;
     fn contrast(&self, screen: Screen) -> Result<u8>;
     fn set_contrast(&mut self, screen: Screen, level: u8) -> Result<()>;

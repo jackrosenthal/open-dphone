@@ -139,7 +139,7 @@ impl SimHandle {
                     frame: Frame { info, pixels: vec![0; info.len()] },
                     power: true,
                     brightness: model.backlight_max(),
-                    contrast: 50,
+                    contrast: 5,
                 })
             })
             .collect();
@@ -487,7 +487,7 @@ impl Backlight for SimDev {
         self.with_screen(screen, |s| s.brightness = level.min(max))
     }
     fn max_contrast(&self, _: Screen) -> u8 {
-        if self.0.model().is_color() { 0 } else { 100 }
+        if self.0.model().is_color() { 0 } else { 10 }
     }
     fn contrast(&self, screen: Screen) -> Result<u8> {
         self.with_screen(screen, |s| s.contrast)

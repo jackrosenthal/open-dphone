@@ -32,7 +32,7 @@ const groups: { title: string; items: Item[] }[] = [
     title: "Display",
     items: [
       { id: "brightness", label: "Brightness", type: "number", min: 0, max: 10 },
-      { id: "contrast", label: "Contrast", type: "number", min: 0, max: 31, grayOnly: true },
+      { id: "contrast", label: "Contrast", type: "number", min: 0, max: 10, grayOnly: true },
       { id: "backlight_timeout", label: "Backlight timeout (seconds)", type: "number", min: 0, max: 86400, hint: "0 keeps it on." },
       { id: "dim_backlight", label: "Dim the backlight when idle", type: "bool" },
       { id: "small_clock", label: "Small clock on the idle screen", type: "bool" },
