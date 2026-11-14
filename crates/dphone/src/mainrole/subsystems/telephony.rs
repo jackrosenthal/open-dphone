@@ -602,6 +602,7 @@ async fn run(
         audio.set_listener(Box::new(move |e| match e {
             CallMediaEvent::Dtmf { call, digit } => sip.media_event(MediaEvent::Dtmf { call, digit }),
             CallMediaEvent::RtpTimeout { call } => sip.media_event(MediaEvent::RtpTimeout { call }),
+            CallMediaEvent::Stats { call, stats } => sip.media_event(MediaEvent::Stats { call, stats }),
             CallMediaEvent::Failed { call, error } => {
                 warn!("sip: media for call {call:?} failed: {error}");
                 sip.media_event(MediaEvent::RtpTimeout { call });

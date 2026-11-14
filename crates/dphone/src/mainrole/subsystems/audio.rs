@@ -60,6 +60,8 @@ pub struct Stream {
 pub enum CallMediaEvent {
     Dtmf { call: CallId, digit: char },
     RtpTimeout { call: CallId },
+    /// The stream's packet counters, every few seconds.
+    Stats { call: CallId, stats: dphone_state::MediaStats },
     Failed { call: CallId, error: String },
 }
 
@@ -918,7 +920,17 @@ async fn events(service: AudioService, mut rx: tokio::sync::mpsc::UnboundedRecei
                     tell(CallMediaEvent::RtpTimeout { call });
                 }
             }
-            Ee::Stats { .. } => {}
+            Ee::Stats { id, stats } => {
+                if let Some(call) = call_of(id) {
+                    let stats = dphone_state::MediaStats {
+                        rx_packets: stats.packets_received,
+                        tx_packets: stats.packets_sent,
+                        rx_lost: stats.packets_lost.max(0) as u32,
+                        jitter_ms: stats.jitter_ms.min(u32::from(u16::MAX)) as u16,
+                    };
+                    tell(CallMediaEvent::Stats { call, stats });
+                }
+            }
             Ee::StreamError { id, error } => {
                 warn!("audio: stream {id}: {error}");
                 if let Some(call) = call_of(id) {
