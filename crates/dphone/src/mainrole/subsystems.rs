@@ -34,6 +34,7 @@ use crate::diag::Output;
 
 pub mod apps;
 pub mod audio;
+pub mod ehs;
 pub mod hal;
 pub mod net;
 pub mod remote;
@@ -113,6 +114,16 @@ pub async fn start(ctx: &Context, opts: &Options) {
     {
         let audio = audio.clone();
         hub.on_change(move |cfg| audio.apply_config(cfg));
+    }
+
+    // The EHS headset adapter on UART A, when the configuration gives it the
+    // UART (`serial_console` off); otherwise the serial console keeps it.
+    {
+        let ehs = ehs::start(ctx, hal.clone());
+        if let Some(cfg) = config.as_ref().map(|c| c.lock().unwrap().config()) {
+            ehs.apply_config(&cfg);
+        }
+        hub.on_change(move |cfg| ehs.apply_config(cfg));
     }
 
     // 6. The main role's own command domains: Config, Network, Update, System.

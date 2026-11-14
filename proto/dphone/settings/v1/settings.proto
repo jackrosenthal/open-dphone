@@ -21,4 +21,10 @@ message DphoneSettings {
   // which follows the server as the stock firmware does.  Meant for
   // development against a server that provisions stock firmware.
   optional bool ignore_provisioned_firmware = 2;
+  // Keep the serial console on UART A.  Default: true.  The console and an
+  // electronic hook switch (EHS) headset adapter use the same UART and
+  // cannot share it: while this is true the adapter is not driven; set it
+  // to false to run EHS (the stock "ehs" setting then picks the adapter
+  // type) and give up the console.
+  optional bool serial_console = 3;
 }

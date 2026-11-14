@@ -421,6 +421,13 @@ impl Config {
         settings::resolve(self.settings.ignore_provisioned_firmware, p, frozen, false)
     }
 
+    /// Whether the serial console keeps UART A (default on).  When off, the
+    /// UART belongs to the EHS headset adapter (setting `ehs`).
+    pub fn serial_console(&self) -> Resolved<bool> {
+        let (p, frozen) = self.provisioned_bool(settings::PROVISIONED_SERIAL_CONSOLE);
+        settings::resolve(self.settings.serial_console, p, frozen, true)
+    }
+
     /// SSH public keys supplied by the provisioning server, in
     /// `authorized_keys` line form.  They are accepted in addition to the
     /// keys added on the phone (`/nvdata/root/.ssh/authorized_keys`) and

@@ -388,6 +388,9 @@ impl Supervisor {
         if proc_.healthy {
             self.note_healthy();
         }
+        // The main role may have claimed the UART for EHS; with it gone the
+        // serial console is the way in, so the claim goes too.
+        let _ = std::fs::remove_file(self.paths.console_claimed());
         let ran = now.saturating_sub(proc_.started);
         let clean = libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0;
         if libc::WIFSIGNALED(status) {

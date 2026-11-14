@@ -215,3 +215,16 @@ mod tests {
         assert_eq!(data, "");
     }
 }
+
+/// Turn kernel messages on the console on or off (`klogctl` console-on and
+/// console-off).  Off leaves only emergencies.  Used while the EHS adapter
+/// has the UART the console is on.
+pub fn kernel_console(on: bool) {
+    const SYSLOG_ACTION_CONSOLE_OFF: libc::c_int = 6;
+    const SYSLOG_ACTION_CONSOLE_ON: libc::c_int = 7;
+    let action = if on { SYSLOG_ACTION_CONSOLE_ON } else { SYSLOG_ACTION_CONSOLE_OFF };
+    // SAFETY: these actions take no buffer.
+    if unsafe { libc::klogctl(action, std::ptr::null_mut(), 0) } < 0 {
+        log::warn!("klogctl console {}: {}", if on { "on" } else { "off" }, std::io::Error::last_os_error());
+    }
+}
