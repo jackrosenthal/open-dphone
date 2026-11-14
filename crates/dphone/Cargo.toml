@@ -74,3 +74,7 @@ harness = false
 [[test]]
 name = "pcport"
 harness = false
+
+[[test]]
+name = "staticaddr"
+harness = false

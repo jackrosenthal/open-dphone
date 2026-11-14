@@ -144,23 +144,37 @@ const BROWSE_EVERY: Duration = Duration::from_secs(30);
 /// and the servers announced over mDNS.  The network is browsed when it
 /// comes up and, while the phone waits for a server, every
 /// [`BROWSE_EVERY`]; the last result is passed along with every report.
+///
+/// Another address is another network to the client: it is told that the
+/// network went down and came up, whether or not the time without an
+/// address was seen here, so the session is made anew from the address the
+/// phone has now.  (The network subsystem takes the new session as the
+/// server's answer at a static address the server gave.)
 pub async fn feed_discovery(ctx: Context, net: NetHandle, dpma: DpmaHandle) {
     let sub = ctx.store.subscribe([Topic::Network, Topic::Provisioning]);
     let mut mdns: Vec<DiscoveredServer> = Vec::new();
     let mut told: Option<(bool, Option<String>, Vec<DiscoveredServer>)> = None;
+    let mut told_address: Option<std::net::Ipv4Addr> = None;
     let mut was_up = false;
     let mut browse_at = tokio::time::Instant::now();
     loop {
-        let (up, option66) = if ctx.sim {
-            (true, None)
+        let (address, option66) = if ctx.sim {
+            (None, None)
         } else {
-            ctx.store.read::<dphone_state::Network, _>(|n| (n.ipv4.address.is_some(), Some(n.dhcp_tftp_server.clone()).filter(|s| !s.is_empty())))
+            ctx.store.read::<dphone_state::Network, _>(|n| (n.ipv4.address, Some(n.dhcp_tftp_server.clone()).filter(|s| !s.is_empty())))
         };
+        let up = ctx.sim || address.is_some();
         let waiting = ctx.store.read::<Provisioning, _>(|p| p.phase == ProvisionPhase::AwaitingServer);
         let now = tokio::time::Instant::now();
         let browse = up && !ctx.sim && (!was_up || (waiting && now >= browse_at));
         was_up = up;
         let report = (up, option66, mdns.clone());
+        if up && address != told_address && told.as_ref().is_some_and(|t| t.0) {
+            info!("dpma: the phone's address changed; the session starts over");
+            dpma.network(false, report.1.clone(), report.2.clone());
+            told = None;
+        }
+        told_address = address;
         if told.as_ref() != Some(&report) {
             dpma.network(report.0, report.1.clone(), report.2.clone());
             told = Some(report);

@@ -8,7 +8,7 @@
 use std::net::Ipv4Addr;
 
 use crate::model::Model;
-use crate::settings::{self, DphoneSettings, Resolved};
+use crate::settings::{self, DphoneSettings, Resolved, SettingSource};
 use crate::xml::Element;
 
 /// One merged configuration.  Cheap to share behind an `Arc`.
@@ -218,6 +218,40 @@ pub struct NetworkSettings {
     pub rtp_dscp_lldp: Option<u8>,
     pub dot1x_passthrough: bool,
     pub dot1x_eapol_on_disconnect: bool,
+}
+
+/// A static IPv4 arrangement in effect; see [`Config::static_ipv4`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StaticIpv4 {
+    pub address: Ipv4Addr,
+    pub prefix_len: u8,
+    pub gateway: Option<Ipv4Addr>,
+    pub dns: Vec<Ipv4Addr>,
+    pub domain: Option<String>,
+    /// [`SettingSource::Local`]: stock's network settings, as the phone's
+    /// menu and the web UI write them.  [`SettingSource::Provisioned`]:
+    /// the server's `dphone_static_address`.
+    pub source: SettingSource,
+    /// The server froze its address: the local settings have no effect.
+    pub locked: bool,
+}
+
+/// A host's address: not unspecified, loopback, multicast, or reserved.
+fn host_ipv4(text: &str) -> Option<Ipv4Addr> {
+    let a: Ipv4Addr = text.trim().parse().ok()?;
+    let first = a.octets()[0];
+    (first != 0 && first != 127 && first < 224).then_some(a)
+}
+
+/// `a.b.c.d/n` for a host on a network: `n` is 1 to 30, and the address is
+/// neither the network's own nor its broadcast address.
+fn host_with_prefix(text: &str) -> Option<(Ipv4Addr, u8)> {
+    let (address, prefix) = text.trim().split_once('/')?;
+    let address = host_ipv4(address)?;
+    let prefix: u8 = prefix.parse().ok().filter(|p| (1..=30).contains(p))?;
+    let host_mask = u32::MAX >> prefix;
+    let host = u32::from(address) & host_mask;
+    (host != 0 && host != host_mask).then_some((address, prefix))
 }
 
 /// A provisioned network profile (`<networks><network .../></networks>`).
@@ -449,6 +483,55 @@ impl Config {
     pub fn metrics_enabled(&self) -> Resolved<bool> {
         let (p, frozen) = self.provisioned_bool(settings::PROVISIONED_METRICS_ENABLED);
         settings::resolve(self.settings.metrics_enabled, p, frozen, true)
+    }
+
+    /// The static IPv4 arrangement in effect, or `None` for DHCP.
+    ///
+    /// The sources combine as for the other Open DPhone settings: a frozen
+    /// provisioned address wins, then a static address in stock's network
+    /// settings (`network_enable_dhcp` off with an address and a mask),
+    /// then an ordinary provisioned address.  Stock's settings saying DHCP
+    /// is their default and counts as nothing set.  A provisioned address
+    /// that is not `a.b.c.d/n` for a host is ignored, gateway and DNS
+    /// servers with it; a gateway or DNS server that is not an address is
+    /// left out.
+    pub fn static_ipv4(&self) -> Option<StaticIpv4> {
+        let provisioned = self.setting(settings::PROVISIONED_STATIC_ADDRESS).and_then(host_with_prefix).map(|(address, prefix_len)| {
+            let mut dns: Vec<Ipv4Addr> = Vec::new();
+            for server in self.setting(settings::PROVISIONED_STATIC_DNS).unwrap_or("").split(',').filter_map(host_ipv4) {
+                if !dns.contains(&server) {
+                    dns.push(server);
+                }
+            }
+            StaticIpv4 {
+                address,
+                prefix_len,
+                gateway: self.setting(settings::PROVISIONED_STATIC_GATEWAY).and_then(host_ipv4),
+                dns,
+                domain: None,
+                source: SettingSource::Provisioned,
+                locked: self.setting_frozen(settings::PROVISIONED_STATIC_ADDRESS),
+            }
+        });
+        let n = self.network();
+        let prefix = n.subnet_mask.map(u32::from).filter(|m| m.leading_ones() + m.trailing_zeros() == 32).map(|m| m.leading_ones() as u8);
+        let local = match (n.dhcp, n.static_ip, prefix) {
+            (false, Some(address), Some(prefix_len)) => Some(StaticIpv4 {
+                address,
+                prefix_len,
+                gateway: n.gateway,
+                dns: n.dns,
+                domain: n.domain,
+                source: SettingSource::Local,
+                locked: false,
+            }),
+            _ => None,
+        };
+        match (provisioned, local) {
+            (Some(p), _) if p.locked => Some(p),
+            (_, Some(l)) => Some(l),
+            (p, None) => p,
+        }
     }
 
     /// SSH public keys supplied by the provisioning server, in

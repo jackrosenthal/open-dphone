@@ -272,6 +272,58 @@ fn provisioned_settings_precedence_and_source() {
 }
 
 #[test]
+fn provisioned_static_address_and_the_stock_network_settings() {
+    use std::net::Ipv4Addr;
+    use SettingSource::*;
+    let (_d, _nv, mut s) = store();
+    let address = |c: &dphone_config::Config| c.static_ipv4().map(|a| (a.address, a.prefix_len, a.source, a.locked));
+    // Nothing set, and what every phone that went through stock's setup
+    // has in ui-config.xml: DHCP.
+    assert_eq!(s.config().static_ipv4(), None);
+    let c = s.set_many(&[("network_enable_dhcp", "1"), ("network_static_ip_address", ""), ("network_subnet_mask", "")]).unwrap();
+    assert_eq!(c.static_ipv4(), None);
+
+    // The server's address applies over that, with its gateway and DNS
+    // servers; what is not an address is left out.
+    let c = s
+        .apply_fetched(&provisioned(
+            r#"<setting id="dphone_static_address" value="10.10.14.120/23"/><setting id="dphone_static_gateway" value="10.10.14.1"/><setting id="dphone_static_dns" value="10.10.14.1, 10.10.14.2,dns,10.10.14.1"/>"#,
+        ))
+        .unwrap();
+    let a = c.static_ipv4().unwrap();
+    assert_eq!((a.address, a.prefix_len, a.source, a.locked), (Ipv4Addr::new(10, 10, 14, 120), 23, Provisioned, false));
+    assert_eq!(a.gateway, Some(Ipv4Addr::new(10, 10, 14, 1)));
+    assert_eq!(a.dns, [Ipv4Addr::new(10, 10, 14, 1), Ipv4Addr::new(10, 10, 14, 2)]);
+    // Stock's own view of the network settings is untouched.
+    assert!(c.network().dhcp);
+
+    // A static address set on the phone beats an ordinary provisioned one...
+    let c = s
+        .set_many(&[("network_enable_dhcp", "0"), ("network_static_ip_address", "192.168.7.9"), ("network_subnet_mask", "255.255.255.0"), ("network_default_gateway", "192.168.7.1")])
+        .unwrap();
+    let a = c.static_ipv4().unwrap();
+    assert_eq!((a.address, a.prefix_len, a.gateway, a.source), (Ipv4Addr::new(192, 168, 7, 9), 24, Some(Ipv4Addr::new(192, 168, 7, 1)), Local));
+    // ...but not a frozen one.
+    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_static_address" value="10.10.14.120/23" conflict="freeze"/>"#)).unwrap();
+    assert_eq!(address(&c), Some((Ipv4Addr::new(10, 10, 14, 120), 23, Provisioned, true)));
+    // The server lets go: the phone's own address, then DHCP again.
+    let c = s.apply_fetched(&provisioned("")).unwrap();
+    assert_eq!(address(&c), Some((Ipv4Addr::new(192, 168, 7, 9), 24, Local, false)));
+    let c = s.set("network_enable_dhcp", "1").unwrap();
+    assert_eq!(c.static_ipv4(), None);
+
+    // An address that is not one for a host is ignored whole.
+    for bad in ["10.10.14.120", "10.10.14.120/32", "10.10.14.0/23", "10.10.15.255/23", "224.0.0.9/4", "0.0.0.1/8", "10.10.14.120/255.255.254.0", "ten/8", ""] {
+        let c = s
+            .apply_fetched(&provisioned(&format!(r#"<setting id="dphone_static_address" value="{bad}"/><setting id="dphone_static_gateway" value="10.10.14.1"/>"#)))
+            .unwrap();
+        assert_eq!(c.static_ipv4(), None, "{bad:?}");
+    }
+    // The IDs cannot be written into ui-config.xml.
+    assert!(s.set("dphone_static_address", "10.0.0.2/8").is_err());
+}
+
+#[test]
 fn provisioned_ssh_keys_combine_with_local_ones() {
     let (dir, nv, mut s) = store();
     let mirror = "open/provisioned_authorized_keys";

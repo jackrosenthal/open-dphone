@@ -19,6 +19,19 @@
 //!   told otherwise (`dphone net configured`, a settings change, a restart
 //!   of the main role, or a reboot), so settings that are themselves at
 //!   fault cannot loop.
+//! - A static address from the provisioning server (`dphone_static_address`)
+//!   is an address at once, wrong or not, so for it "has an address" is not
+//!   enough: it counts once the provisioning server has answered the phone
+//!   at that address (the DPMA session is attached again after the address
+//!   came up).  Until then the same time runs, and the same fallback
+//!   follows, with two differences that the server's part in it calls for.
+//!   The second try waits until the server answers the plain arrangement,
+//!   so a server that was down (a power cut that restarts the phones and
+//!   the PBX together) is not taken for a bad address; and where the plain
+//!   arrangement gets no address either (a network without DHCP), the
+//!   static address is tried again after the same time, in turns, since
+//!   nothing is lost by it.  A static address set on the phone itself is
+//!   applied as stock applies it, without any of this.
 
 use std::net::Ipv4Addr;
 use std::sync::Arc;
@@ -28,7 +41,8 @@ use dphone_net::{
     AddressSource, Ipv4Config, Ipv6Config, MacAddr, NetConfig, NetManager, NetState, PcPort, Phase, PortMode,
     VlanDiscovery,
 };
-use dphone_state::{HealthStatus, Subsystem};
+use dphone_config::SettingSource;
+use dphone_state::{HealthStatus, Subsystem, Topic};
 use log::{error, info, warn};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
@@ -256,19 +270,21 @@ fn map_config(
     cfg.qos.rtp_dscp = Some(n.rtp_dscp);
     cfg.qos.sip_pcp = Some(n.sip_qos);
     cfg.qos.sip_dscp = Some(n.sip_dscp);
-    cfg.ipv4 = match (n.dhcp, n.static_ip, n.subnet_mask.and_then(dphone_net::config::netmask_to_prefix)) {
-        (false, Some(address), Some(prefix_len)) => Ipv4Config::Static {
-            address,
-            prefix_len,
-            gateways: n.gateway.into_iter().collect(),
-            dns: n.dns.clone(),
-            domain: n.domain.clone(),
+    // Stock's network settings, or the provisioning server's address; the
+    // precedence is `Config::static_ipv4`'s.
+    cfg.ipv4 = match (merged.static_ipv4(), n.dhcp) {
+        (Some(s), _) => Ipv4Config::Static {
+            address: s.address,
+            prefix_len: s.prefix_len,
+            gateways: s.gateway.into_iter().collect(),
+            dns: s.dns,
+            domain: s.domain,
         },
-        (false, _, _) => {
+        (None, false) => {
             warn!("net: static addressing configured without a usable address and mask; using DHCP");
             Ipv4Config::Dhcp { arp_check: !n.disable_arping, requested_ip: None }
         }
-        (true, _, _) => Ipv4Config::Dhcp { arp_check: !n.disable_arping, requested_ip: last_address },
+        (None, true) => Ipv4Config::Dhcp { arp_check: !n.disable_arping, requested_ip: last_address },
     };
     cfg.ipv6 = match (n.ipv6_enabled, n.dhcp) {
         (false, _) => Ipv6Config::Disabled,
@@ -290,6 +306,15 @@ fn map_config(
     cfg.ntp.prefer_option42 = t.ntp_prefer_option42;
     cfg.ntp.resync = Duration::from_secs(t.ntp_resync_secs as u64);
     cfg
+}
+
+/// Whether `active` has the provisioning server's static address: the one
+/// that counts only once the server has answered the phone there.
+fn awaits_server(active: &NetConfig, config: Option<&SharedConfig>) -> bool {
+    let Ipv4Config::Static { address, .. } = &active.ipv4 else { return false };
+    config
+        .and_then(|c| c.lock().ok().and_then(|s| s.config().static_ipv4()))
+        .is_some_and(|s| s.source == SettingSource::Provisioned && s.address == *address)
 }
 
 /// The address stock held last (`/nvdata/etc/ip-addr-eth0`), to ask the
@@ -363,8 +388,55 @@ async fn run(
     let mut pc_override: Option<PcPort> = None;
     let mut deadline = (active != plain).then(|| Instant::now() + fallback);
     let mut was_up = false;
+    // The provisioning server's answer, for a static address it gave (see
+    // the module documentation).  `confirmed`: the DPMA session was seen
+    // detached and then attached since the present address came up.  The
+    // discovery feed reports every new address to the DPMA client as the
+    // network going down and up, so the session of the address before is
+    // never taken for an answer at this one; a detachment missed here
+    // leaves the address unconfirmed, which errs toward the fallback.
+    let prov_sub = ctx.store.subscribe(Topic::Provisioning);
+    let mut address: Option<Ipv4Addr> = None;
+    let mut seen_detached = false;
+    let mut confirmed = false;
+    // The fallback in force followed a static address that the server did
+    // not answer at.
+    let mut static_failed = false;
     loop {
+        // The server's answer, looked at after every event.
+        let attached = ctx.store.read::<dphone_state::Provisioning, _>(|p| p.attached);
+        if !attached {
+            seen_detached = true;
+        } else if seen_detached && address.is_some() && !confirmed {
+            confirmed = true;
+            if active != plain && awaits_server(&active, config.as_ref()) {
+                info!("net: the provisioning server answers at the static address ({})", describe(&active));
+                deadline = None;
+                if fb == Fallback::Retrying {
+                    fb = Fallback::None;
+                    static_failed = false;
+                }
+            } else if active == plain && fb == Fallback::Waiting && static_failed && !ctx.safe {
+                // The server answers the plain arrangement: its silence
+                // may have been its own, not the address's.
+                active = configured(&ctx, config.as_ref(), mac);
+                last_configured = active.clone();
+                if active == plain {
+                    fb = Fallback::None;
+                    static_failed = false;
+                } else {
+                    fb = Fallback::Retrying;
+                    info!(
+                        "net: the provisioning server answers the plain arrangement; trying the settings once more ({})",
+                        describe(&active)
+                    );
+                    deadline = Some(Instant::now() + fallback);
+                    manager.reconfigure(active.clone()).await;
+                }
+            }
+        }
         tokio::select! {
+            _ = prov_sub.changed() => {}
             changed = state_rx.changed() => {
                 if changed.is_err() {
                     error!("net: the network manager task ended");
@@ -376,6 +448,14 @@ async fn run(
                 *qos_slot.lock().unwrap() = state.qos;
                 publish(&ctx, &state, &active);
                 let up = state.has_address();
+                let now_address = state.ipv4.as_ref().map(|v| v.address);
+                if now_address != address {
+                    // Another address (or none): the server has not
+                    // answered at it yet.
+                    address = now_address;
+                    confirmed = false;
+                    seen_detached = !ctx.store.read::<dphone_state::Provisioning, _>(|p| p.attached);
+                }
                 // The merge selects the network profile (and with it the
                 // accounts) by the phone's address, as stock does.
                 if let (Some(config), Some(v4)) = (&config, state.ipv4.as_ref()) {
@@ -401,8 +481,18 @@ async fn run(
                     info!("net: up on {} {addr}", state.interface);
                     ctx.health.satisfy("net");
                     ctx.store.set_health(Subsystem::Net, HealthStatus::Ok);
-                    deadline = None;
+                    // The server's static address has more to show than
+                    // being there: its time keeps running.
+                    let awaited = active != plain && awaits_server(&active, config.as_ref());
+                    if !awaited {
+                        deadline = None;
+                    } else if deadline.is_none() {
+                        deadline = Some(Instant::now() + fallback);
+                    }
                     match fb {
+                        // After a static address the server did not answer
+                        // at, the second try waits for the server.
+                        Fallback::Waiting if static_failed => {}
                         Fallback::Waiting if !ctx.safe => {
                             // The network answers: the outage may have
                             // been its fault, not the settings'.
@@ -420,9 +510,10 @@ async fn run(
                                 manager.reconfigure(active.clone()).await;
                             }
                         }
-                        Fallback::Retrying if active != plain => {
+                        Fallback::Retrying if active != plain && !awaited => {
                             info!("net: the settings have an address again ({})", describe(&active));
                             fb = Fallback::None;
+                            static_failed = false;
                         }
                         _ => {}
                     }
@@ -436,23 +527,53 @@ async fn run(
             }
             _ = async { tokio::time::sleep_until(deadline.unwrap_or_else(Instant::now)).await }, if deadline.is_some() => {
                 deadline = None;
-                // A settings change that the manager applied without a new
-                // bring-up re-arms the timer while the address stays.
-                if manager.snapshot().has_address() {
+                let has_address = manager.snapshot().has_address();
+                if active == plain {
+                    // Armed on the plain arrangement only after a static
+                    // address the server did not answer at.  Nothing
+                    // answers here either: back to the settings, in turns.
+                    if fb == Fallback::Waiting && static_failed && !has_address && !ctx.safe {
+                        active = configured(&ctx, config.as_ref(), mac);
+                        last_configured = active.clone();
+                        fb = Fallback::None;
+                        static_failed = false;
+                        if active != plain {
+                            info!(
+                                "net: no address after {fallback_secs} s with plain DHCP on lan either; back to the settings ({})",
+                                describe(&active)
+                            );
+                            deadline = Some(Instant::now() + fallback);
+                            manager.reconfigure(active.clone()).await;
+                        }
+                    }
                     continue;
                 }
+                let unanswered = has_address && awaits_server(&active, config.as_ref()) && !confirmed;
+                // A settings change that the manager applied without a new
+                // bring-up re-arms the timer while the address stays.
+                if has_address && !unanswered {
+                    continue;
+                }
+                let what = if unanswered { "no answer from the provisioning server" } else { "no address" };
                 if fb == Fallback::Retrying {
                     fb = Fallback::Final;
                     warn!(
-                        "net: no address after {fallback_secs} s with {} on the second try either; falling back to plain DHCP on lan and staying there until 'dphone net configured', a settings change, or a restart",
+                        "net: {what} after {fallback_secs} s with {} on the second try either; falling back to plain DHCP on lan and staying there until 'dphone net configured', a settings change, or a restart",
                         describe(&active)
                     );
                 } else {
                     fb = Fallback::Waiting;
                     warn!(
-                        "net: no address after {fallback_secs} s with {}; falling back to plain DHCP on lan (the settings are tried once more when that has an address)",
-                        describe(&active)
+                        "net: {what} after {fallback_secs} s with {}; falling back to plain DHCP on lan (the settings are tried once more when {})",
+                        describe(&active),
+                        if unanswered { "the server answers there" } else { "that has an address" }
                     );
+                }
+                static_failed = unanswered;
+                // Where the plain arrangement gets no address either, the
+                // static address gets its turn again.
+                if unanswered && fb == Fallback::Waiting {
+                    deadline = Some(Instant::now() + fallback);
                 }
                 active = plain.clone();
                 pc_override = None;
@@ -462,7 +583,8 @@ async fn run(
                 let Some(cmd) = cmd else { return };
                 match cmd {
                     Cmd::Show(reply) => {
-                        let _ = reply.send(show(&manager.snapshot(), &active, &plain, deadline, fb));
+                        let awaited = active != plain && awaits_server(&active, config.as_ref());
+                        let _ = reply.send(show(&manager.snapshot(), &active, &plain, deadline, fb, awaited.then_some(confirmed), static_failed));
                     }
                     Cmd::SyncTime => manager.sync_time().await,
                     Cmd::Browse(window, reply) => {
@@ -477,6 +599,7 @@ async fn run(
                         active = plain.clone();
                         pc_override = None;
                         fb = Fallback::None;
+                        static_failed = false;
                         deadline = None;
                         manager.reconfigure(active.clone()).await;
                         let _ = reply.send("plain configuration applied\n".into());
@@ -497,6 +620,7 @@ async fn run(
                             if fb != Fallback::None {
                                 info!("net: the settings changed; the fallback ends");
                                 fb = Fallback::None;
+                                static_failed = false;
                             }
                             let reasons = active.restart_reasons(&now);
                             let restart = !reasons.is_empty();
@@ -522,6 +646,7 @@ async fn run(
                         active = configured(&ctx, config.as_ref(), mac);
                         last_configured = active.clone();
                         fb = Fallback::None;
+                        static_failed = false;
                         deadline = (active != plain).then(|| Instant::now() + fallback);
                         manager.reconfigure(active.clone()).await;
                         let _ = reply.send(format!("applied: {}\n", describe(&active)));
@@ -558,6 +683,7 @@ async fn run(
                         pc_override = (!save).then_some(next.pc_port);
                         active = next;
                         fb = Fallback::None;
+                        static_failed = false;
                         deadline = (active != plain).then(|| Instant::now() + fallback);
                         manager.reconfigure(active.clone()).await;
                         text.push_str(&format!(
@@ -591,20 +717,42 @@ fn describe(cfg: &NetConfig) -> String {
     format!("{ip}, {vlan}, {pc}")
 }
 
-fn show(state: &NetState, active: &NetConfig, plain: &NetConfig, deadline: Option<Instant>, fb: Fallback) -> String {
+/// `answered`: for the provisioning server's static address, whether the
+/// server has answered the phone there; `None` for any other arrangement.
+/// `static_failed`: the fallback followed such an address without an answer.
+fn show(
+    state: &NetState,
+    active: &NetConfig,
+    plain: &NetConfig,
+    deadline: Option<Instant>,
+    fb: Fallback,
+    answered: Option<bool>,
+    static_failed: bool,
+) -> String {
     let mut t = String::new();
     t.push_str(&format!("config:    {}{}\n", describe(active), if active == plain { " (plain)" } else { "" }));
-    if let Some(d) = deadline {
-        t.push_str(&format!(
-            "fallback:  to plain in {} s unless an address arrives\n",
-            d.saturating_duration_since(Instant::now()).as_secs()
-        ));
+    match answered {
+        Some(true) => t.push_str("static:    from the provisioning server, which answers at this address\n"),
+        Some(false) => t.push_str("static:    from the provisioning server, which has not answered at this address yet\n"),
+        None => {}
     }
-    match fb {
-        Fallback::None => {}
-        Fallback::Waiting => t.push_str("fallback:  plain after the settings got no address; they are tried once more when this has an address\n"),
-        Fallback::Retrying => t.push_str("fallback:  the settings are on their second try\n"),
-        Fallback::Final => t.push_str("fallback:  plain after the settings got no address twice; stays until 'dphone net configured', a settings change, or a restart\n"),
+    if let Some(d) = deadline {
+        let left = d.saturating_duration_since(Instant::now()).as_secs();
+        if active == plain {
+            t.push_str(&format!("fallback:  back to the settings in {left} s unless an address arrives\n"));
+        } else if answered == Some(false) && state.has_address() {
+            t.push_str(&format!("fallback:  to plain in {left} s unless the provisioning server answers\n"));
+        } else {
+            t.push_str(&format!("fallback:  to plain in {left} s unless an address arrives\n"));
+        }
+    }
+    match (fb, static_failed) {
+        (Fallback::None, _) => {}
+        (Fallback::Waiting, false) => t.push_str("fallback:  plain after the settings got no address; they are tried once more when this has an address\n"),
+        (Fallback::Waiting, true) => t.push_str("fallback:  plain after the provisioning server did not answer at the static address; that is tried once more when the server answers here\n"),
+        (Fallback::Retrying, _) => t.push_str("fallback:  the settings are on their second try\n"),
+        (Fallback::Final, false) => t.push_str("fallback:  plain after the settings got no address twice; stays until 'dphone net configured', a settings change, or a restart\n"),
+        (Fallback::Final, true) => t.push_str("fallback:  plain after the provisioning server did not answer at the static address twice; stays until 'dphone net configured', a settings change, or a restart\n"),
     }
     t.push_str(&format!("phase:     {}\n", words(&state.phase)));
     t.push_str(&format!("hostname:  {}\n", active.hostname));
@@ -927,6 +1075,59 @@ mod tests {
         assert_ne!(before, after);
         // ...and all of them are ones a running session adopts.
         assert_eq!(before.restart_reasons(&after), Vec::<&str>::new());
+    }
+
+    /// The provisioning server's static address: it applies over the DHCP
+    /// setting every phone holds in ui-config.xml, arriving and leaving are
+    /// both reasons to bring the network up again, and only that address
+    /// (not one set on the phone) waits for the server's answer.
+    #[test]
+    fn provisioned_static_address_maps_and_restarts() {
+        const STATIC: &str = r#"<setting id="dphone_static_address" value="10.10.14.120/23" />
+<setting id="dphone_static_gateway" value="10.10.14.1" />
+<setting id="dphone_static_dns" value="10.10.14.1,10.10.14.2" />
+</config>"#;
+        let (_dir, mut store) = store();
+        store.set_many(&[("network_enable_dhcp", "1"), ("network_static_ip_address", ""), ("network_subnet_mask", "")]).unwrap();
+        let dhcp = mapped(&store);
+        assert!(matches!(dhcp.ipv4, Ipv4Config::Dhcp { .. }));
+        store.apply_fetched(&FETCHED.replace("</config>", STATIC)).unwrap();
+        let fixed = mapped(&store);
+        assert_eq!(
+            fixed.ipv4,
+            Ipv4Config::Static {
+                address: Ipv4Addr::new(10, 10, 14, 120),
+                prefix_len: 23,
+                gateways: vec![Ipv4Addr::new(10, 10, 14, 1)],
+                dns: vec![Ipv4Addr::new(10, 10, 14, 1), Ipv4Addr::new(10, 10, 14, 2)],
+                domain: None,
+            }
+        );
+        assert_eq!(describe(&fixed), "static 10.10.14.120/23, VLAN from LLDP, PC jack bridged");
+        assert_eq!(dhcp.restart_reasons(&fixed), ["IPv4 addressing"]);
+        let shared: SharedConfig = Arc::new(std::sync::Mutex::new(store));
+        assert!(awaits_server(&fixed, Some(&shared)));
+        assert!(!awaits_server(&dhcp, Some(&shared)));
+        assert!(!awaits_server(&fixed, None));
+
+        // A static address set on the phone wins, and is applied as stock
+        // applies it.
+        let mut store = shared.lock().unwrap();
+        store
+            .set_many(&[("network_enable_dhcp", "0"), ("network_static_ip_address", "192.168.7.9"), ("network_subnet_mask", "255.255.255.0")])
+            .unwrap();
+        let local = mapped(&store);
+        assert_eq!(describe(&local), "static 192.168.7.9/24, VLAN from LLDP, PC jack bridged");
+        drop(store);
+        assert!(!awaits_server(&local, Some(&shared)));
+        let mut store = shared.lock().unwrap();
+        store.set("network_enable_dhcp", "1").unwrap();
+
+        // The server takes its address away: DHCP again.
+        store.apply_fetched(FETCHED).unwrap();
+        let back = mapped(&store);
+        assert!(matches!(back.ipv4, Ipv4Config::Dhcp { .. }));
+        assert_eq!(fixed.restart_reasons(&back), ["IPv4 addressing"]);
     }
 
     #[test]

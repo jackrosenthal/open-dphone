@@ -75,6 +75,15 @@ pub const PROVISIONED_SSH_ENABLED: &str = "dphone_ssh_enabled";
 pub const PROVISIONED_IGNORE_FIRMWARE: &str = "dphone_ignore_provisioned_firmware";
 pub const PROVISIONED_SERIAL_CONSOLE: &str = "dphone_serial_console";
 pub const PROVISIONED_METRICS_ENABLED: &str = "dphone_metrics_enabled";
+/// Setting IDs a provisioning server uses for a static IPv4 arrangement:
+/// the address as `a.b.c.d/prefix length`, the gateway, and the DNS servers
+/// as a comma-separated list.  Stock firmware does not know them.  (Stock's
+/// own `network_*` IDs cannot carry a provisioned address: every phone
+/// holds them in `ui-config.xml`, which is merged after the fetched
+/// configuration.)
+pub const PROVISIONED_STATIC_ADDRESS: &str = "dphone_static_address";
+pub const PROVISIONED_STATIC_GATEWAY: &str = "dphone_static_gateway";
+pub const PROVISIONED_STATIC_DNS: &str = "dphone_static_dns";
 /// Element a provisioning server uses for SSH public keys:
 /// `<dphone_ssh_authorized_keys><key id="1" value="ssh-ed25519 AAAA... name"/></dphone_ssh_authorized_keys>`.
 pub const PROVISIONED_SSH_KEYS: &str = "dphone_ssh_authorized_keys";
