@@ -37,6 +37,7 @@ pub mod audio;
 pub mod ehs;
 pub mod expansion;
 pub mod hal;
+pub mod liveness;
 pub mod net;
 pub mod paging;
 pub mod remote;
@@ -77,6 +78,9 @@ pub async fn start(ctx: &Context, opts: &Options) {
             }
         });
     }
+
+    // Subsystem liveness, and the kernel's crash records from before this boot.
+    liveness::start(ctx);
 
     // Remote syslog, as soon as the network can carry it.
     {

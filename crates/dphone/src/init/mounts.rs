@@ -28,6 +28,8 @@ const EARLY: &[Mount] = &[
     Mount { source: "tmpfs", target: "/tmp", fstype: "tmpfs", flags: libc::MS_NOSUID | libc::MS_NODEV, data: "mode=1777,size=40m", optional: false },
     Mount { source: "tmpfs", target: "/run", fstype: "tmpfs", flags: NSE | libc::MS_NODEV, data: "mode=0755,size=4m", optional: false },
     Mount { source: "tmpfs", target: "/var", fstype: "tmpfs", flags: NSE | libc::MS_NODEV, data: "mode=0755,size=4m", optional: true },
+    // Kernel crash records (ramoops), when the kernel has them.
+    Mount { source: "pstore", target: "/sys/fs/pstore", fstype: "pstore", flags: NSE | libc::MS_NODEV, data: "", optional: true },
 ];
 
 /// Mount everything in the early table.  Failures are logged and skipped:
@@ -41,7 +43,8 @@ pub fn mount_early() {
             Ok(()) => {}
             // Already mounted (e.g., devtmpfs auto-mounted by the kernel).
             Err(e) if e.raw_os_error() == Some(libc::EBUSY) => {}
-            Err(e) if m.optional && e.kind() == io::ErrorKind::NotFound => {}
+            // No mount point in this rootfs, or no such filesystem in this kernel.
+            Err(e) if m.optional && (e.kind() == io::ErrorKind::NotFound || e.raw_os_error() == Some(libc::ENODEV)) => {}
             Err(e) => warn!("mount {} on {}: {e}", m.fstype, m.target),
         }
     }
