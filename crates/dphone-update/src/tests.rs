@@ -434,6 +434,16 @@ fn refusals_leave_the_flash_untouched() {
     let e = assert_refused_untouched(Model::D60, CMD_A, &nand, &bad, none());
     assert!(matches!(&e, UpdateError::Image(m) if m.contains("zImage")), "{e}");
 
+    // A bootstrap update (OTA type 1), which would rewrite the boot loader:
+    // a well-formed type header (its own CRC is right) in front of the
+    // image, inside a good EFF for this model.
+    let mut ota = eff::ota::pack(&new.kernel, &new.rootfs, "d", "n").unwrap();
+    ota[4..8].copy_from_slice(&1u32.to_be_bytes());
+    ota[8..12].copy_from_slice(&eff::ota::type_crc(eff::ota::OTA_MAGIC, 1).to_be_bytes());
+    let bootstrap = eff::envelope::pack(&EffHeader::new("D60", "3_0_0").unwrap(), &ota, [2; 8]).unwrap();
+    let e = assert_refused_untouched(Model::D60, CMD_A, &nand, &bootstrap, none());
+    assert!(matches!(&e, UpdateError::Image(m) if m.contains("OTA type 1")), "{e}");
+
     // Too large once bad blocks are counted: 6-block slot, 3 bad, kernel
     // needs 4.
     for b in [0, 2, 5] {
