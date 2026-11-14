@@ -402,6 +402,16 @@ fn find_card() -> Result<u32> {
     first.ok_or_else(|| HalError::Unavailable("no ALSA card".into()))
 }
 
+/// The number of the card with this name, if present.
+fn find_card_named(name: &str) -> Option<u32> {
+    (0..8).find(|n| {
+        let Ok(f) = open_control(*n) else { return false };
+        // SAFETY: plain bytes and integers; zero is valid.
+        let mut info: SndCtlCardInfo = unsafe { std::mem::zeroed() };
+        ioctl(f.as_raw_fd(), SNDRV_CTL_IOCTL_CARD_INFO, &mut info).is_ok() && cstr(&info.name) == name
+    })
+}
+
 struct Ctl {
     id: SndCtlElemId,
     info: ControlInfo,
@@ -571,6 +581,28 @@ impl Audio for AlsaAudio {
 
     fn mixer(&mut self) -> Result<Box<dyn Mixer>> {
         Ok(Box::new(AlsaMixer::open(self.card)?))
+    }
+
+    fn open_bluetooth(&mut self, config: PcmConfig) -> Result<Box<dyn Pcm>> {
+        let card = find_card_named(crate::BLUETOOTH_CARD)
+            .ok_or_else(|| HalError::Unavailable(format!("no ALSA card named {}", crate::BLUETOOTH_CARD)))?;
+        // The card has one device, number 0 (the number `Speaker` has on
+        // the phone's own card), and its own busy flags.
+        let device = PcmDevice::Speaker;
+        let mut pcm = AlsaPcm { device, config, capture: None, playback: None, open_set: Default::default() };
+        if config.playback {
+            let (s, period, periods) = Stream::open(card, device, true, crate::BLUETOOTH_RATE, &config)?;
+            pcm.config.period_frames = period;
+            pcm.config.periods = periods;
+            pcm.playback = Some(s);
+        }
+        if config.capture {
+            let (s, period, periods) = Stream::open(card, device, false, crate::BLUETOOTH_RATE, &config)?;
+            pcm.config.period_frames = period;
+            pcm.config.periods = periods;
+            pcm.capture = Some(s);
+        }
+        Ok(Box::new(pcm))
     }
 }
 

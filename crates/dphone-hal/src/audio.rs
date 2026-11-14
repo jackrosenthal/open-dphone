@@ -114,6 +114,11 @@ pub trait Mixer: Send {
     fn set(&mut self, name: &str, values: &[i32]) -> Result<()>;
 }
 
+/// Name of the ALSA card that carries Bluetooth headset audio (D65).
+pub const BLUETOOTH_CARD: &str = "Digium Bluetooth";
+/// Sample rate of the Bluetooth voice device.
+pub const BLUETOOTH_RATE: u32 = 8000;
+
 /// The sound card.
 pub trait Audio: Send {
     /// Native sample rate in Hz.
@@ -121,6 +126,13 @@ pub trait Audio: Send {
     /// Opens a device.  Fails with [`crate::HalError::Invalid`] if a
     /// conflicting device is open.
     fn open(&mut self, device: PcmDevice, config: PcmConfig) -> Result<Box<dyn Pcm>>;
+    /// Opens the Bluetooth headset's voice device: the card named
+    /// [`BLUETOOTH_CARD`] (D65), mono, 16-bit, at [`BLUETOOTH_RATE`].  It
+    /// carries the headset's microphone and earpiece while the Bluetooth
+    /// voice link is up.  Other models and backends have none.
+    fn open_bluetooth(&mut self, _config: PcmConfig) -> Result<Box<dyn Pcm>> {
+        Err(crate::HalError::Unsupported("Bluetooth audio"))
+    }
     fn mixer(&mut self) -> Result<Box<dyn Mixer>>;
 }
 
