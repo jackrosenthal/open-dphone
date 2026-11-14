@@ -520,6 +520,16 @@ async fn run(
     let media: Arc<dyn MediaControl> =
         Arc::new(SipMedia { audio: audio.clone(), store: ctx.store.clone(), ringtone: ringtone.clone() });
     let resolver: Arc<dyn dphone_sip::Resolver> = Arc::new(NetResolver(net.clone()));
+    // SIP sockets carry the network's SIP marks (DSCP and priority), read
+    // when each socket is made and again when the configuration changes.
+    {
+        let net = net.clone();
+        dphone_sip::set_socket_marker(Arc::new(move |fd| {
+            if let Err(e) = dphone_net::qos::mark_socket(&fd, dphone_net::TrafficClass::Sip, &net.qos()) {
+                warn!("sip: cannot mark a socket: {e}");
+            }
+        }));
+    }
 
     let sip: SipHandle = loop {
         match dphone_sip::start(ctx.store.clone(), current.clone(), media.clone(), Some(resolver.clone())).await {

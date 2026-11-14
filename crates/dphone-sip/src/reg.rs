@@ -270,8 +270,37 @@ impl Core {
         let (reg, post, resolver) = (a.reg.clone(), self.tx.clone(), self.resolver.clone());
         let (acct, generation) = (a.cfg.id, a.generation);
         let (proxy, transport) = (a.cfg.outbound_proxy.clone(), h.transport);
+        let (inner, streams, host, port) = (self.inner.clone(), self.streams.clone(), h.server.clone(), h.effective_port());
         tokio::spawn(async move {
             let mut reg = reg.lock().await;
+            // The stack opens TCP connections itself and gives no access to
+            // the socket, but it uses a connection it is handed.  So for
+            // TCP the connection to the registrar is opened and marked
+            // here first.
+            if transport == Transport::Tcp {
+                let target = match SipUri::parse(&format!("sip:{proxy}")) {
+                    Some(u) if !proxy.is_empty() => (u.host, u.port.unwrap_or(5060)),
+                    _ => (host, port),
+                };
+                if let Ok(addr) = resolver.resolve(&target.0, target.1, transport).await {
+                    let key = rsipstack::transport::SipAddr { r#type: Some(rsipstack::sip::Transport::Tcp), addr: addr.into() }.to_string();
+                    if !streams.lock().unwrap().contains(&key) {
+                        let dial = tokio::time::timeout(Duration::from_secs(10), tokio::net::TcpStream::connect(addr)).await;
+                        if let Ok(Ok(stream)) = dial {
+                            crate::mark(&stream);
+                            let local = stream.local_addr().unwrap_or(addr);
+                            let local = rsipstack::transport::SipAddr {
+                                r#type: Some(rsipstack::sip::Transport::Tcp),
+                                addr: local.into(),
+                            };
+                            if let Ok(conn) = rsipstack::transport::tcp::TcpConnection::from_stream(stream, local, None) {
+                                inner.transport_layer.add_connection(rsipstack::transport::SipConnection::Tcp(conn));
+                                streams.lock().unwrap().insert(key);
+                            }
+                        }
+                    }
+                }
+            }
             if !proxy.is_empty() {
                 let u = SipUri::parse(&format!("sip:{proxy}"));
                 let port = u.as_ref().and_then(|u| u.port).unwrap_or(if transport == Transport::Tls { 5061 } else { 5060 });

@@ -84,6 +84,31 @@ pub struct IncomingMessage {
     pub body: Vec<u8>,
 }
 
+/// Applies the network's QoS marking (DSCP, socket priority) to a SIP
+/// socket.  The integrator supplies it from the network subsystem.
+pub type SocketMarker = Arc<dyn Fn(std::os::fd::BorrowedFd<'_>) + Send + Sync>;
+
+static MARKER: std::sync::Mutex<Option<SocketMarker>> = std::sync::Mutex::new(None);
+
+/// Sets how SIP sockets are marked.  It applies to sockets made from now
+/// on, and to the UDP socket again at every [`SipHandle::reconfigure`].
+///
+/// Marked: the UDP socket; TCP connections this crate opens toward a
+/// registrar; TLS connections in both directions.  Not marked: TCP
+/// connections the stack accepts or opens by itself (it creates those
+/// sockets internally and offers no hook), which in practice means
+/// accepted TCP connections and TCP to targets other than a registrar.
+pub fn set_socket_marker(marker: SocketMarker) {
+    *MARKER.lock().unwrap() = Some(marker);
+}
+
+pub(crate) fn mark(socket: &impl std::os::fd::AsFd) {
+    let marker = MARKER.lock().unwrap().clone();
+    if let Some(m) = marker {
+        m(socket.as_fd());
+    }
+}
+
 /// Name resolution for signaling targets.  The integrator implements this
 /// over `dphone-net`'s resolver (which can follow NAPTR/SRV); without one
 /// the system resolver is used.
@@ -185,8 +210,10 @@ pub async fn start(
 
     let resolver = resolver.unwrap_or_else(|| Arc::new(SystemResolver));
     let elsewhere = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let streams = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
     let endpoint = EndpointBuilder::new()
         .with_inspector(Box::new(crate::core::CancelWatch(elsewhere.clone())))
+        .with_transport_inspector(Box::new(crate::core::StreamWatch(streams.clone())))
         .with_user_agent(&cfg.user_agent())
         .with_domain_resolver(Box::new(StackResolver(resolver.clone())))
         .build();
@@ -198,17 +225,16 @@ pub async fn start(
     // instances on one machine stay apart.
     let bind_ip = if cfg.local_ip.is_loopback() { cfg.local_ip } else { any };
     let external = Some(SocketAddr::new(cfg.local_ip, cfg.local_port));
-    let udp = UdpConnection::create_connection(
-        SocketAddr::new(bind_ip, cfg.local_port),
-        if cfg.local_port != 0 { external } else { None },
-        None,
-    )
-    .await
-    .map_err(|e| format!("cannot bind the SIP port {}: {e}", cfg.local_port))?;
-    let local_port = match SocketAddr::try_from(udp.get_addr().addr.to_owned()) {
-        Ok(a) => a.port(),
-        Err(_) => cfg.local_port,
-    };
+    // The socket is made here, not by the stack, so it can be marked.
+    let socket = tokio::net::UdpSocket::bind(SocketAddr::new(bind_ip, cfg.local_port))
+        .await
+        .map_err(|e| format!("cannot bind the SIP port {}: {e}", cfg.local_port))?;
+    mark(&socket);
+    let socket = Arc::new(socket);
+    let udp = UdpConnection::from_socket(socket.clone(), if cfg.local_port != 0 { external } else { None }, None)
+        .await
+        .map_err(|e| format!("cannot use the SIP socket: {e}"))?;
+    let local_port = socket.local_addr().map(|a| a.port()).unwrap_or(cfg.local_port);
     endpoint.inner.transport_layer.add_transport(udp.into());
     let mut incoming = endpoint.incoming_transactions().map_err(|e| e.to_string())?;
     let inner = endpoint.inner.clone();
@@ -275,6 +301,8 @@ pub async fn start(
         park_extension: cfg.park_extension.clone(),
         blf_dialogs: HashMap::new(),
         elsewhere,
+        streams,
+        udp: socket,
         tcp_listening: None,
         tls_listening: None,
     };
@@ -325,6 +353,8 @@ impl Core {
             },
             Ev::Media(m) => self.on_media(m),
             Ev::Reconfigure(cfg) => {
+                // The marks in force may have changed with the network.
+                mark(&*self.udp);
                 #[cfg(feature = "tls")]
                 tls::install(cfg.tls.clone());
                 self.park_extension = cfg.park_extension.clone();

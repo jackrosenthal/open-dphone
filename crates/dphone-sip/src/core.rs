@@ -191,6 +191,11 @@ pub(crate) struct Core {
     pub blf_dialogs: std::collections::HashMap<String, crate::bodies::DialogInfo>,
     /// Call-IDs of CANCELs that said the call was answered elsewhere.
     pub elsewhere: Arc<std::sync::Mutex<Vec<String>>>,
+    /// Registrars (as `TCP host:port`) to which a TCP connection of ours,
+    /// marked, is open.
+    pub streams: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+    /// The UDP signaling socket, kept to mark it again.
+    pub udp: Arc<tokio::net::UdpSocket>,
     /// Stream ports we accept connections on.
     pub tcp_listening: Option<u16>,
     pub tls_listening: Option<u16>,
@@ -553,5 +558,21 @@ impl rsipstack::transaction::endpoint::MessageInspector for CancelWatch {
             }
         }
         msg
+    }
+}
+
+/// Forgets our TCP connections when they close, so the next REGISTER
+/// opens (and marks) a new one.
+pub(crate) struct StreamWatch(pub Arc<std::sync::Mutex<std::collections::HashSet<String>>>);
+
+#[async_trait::async_trait]
+impl rsipstack::transaction::endpoint::TransportEventInspector for StreamWatch {
+    async fn handle(&self, event: rsipstack::transport::TransportEvent) -> Option<rsipstack::transport::TransportEvent> {
+        if let rsipstack::transport::TransportEvent::Closed(conn) = &event {
+            if let Some(addr) = conn.get_remote_addr() {
+                self.0.lock().unwrap().remove(&addr.to_string());
+            }
+        }
+        Some(event)
     }
 }

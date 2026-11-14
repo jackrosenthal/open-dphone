@@ -117,6 +117,7 @@ pub async fn connect(policy: &TlsConfig, server_name: &str, addr: SocketAddr) ->
         .map_err(|_| format!("connecting to {addr} timed out"))?
         .map_err(|e| format!("cannot connect to {addr}: {e}"))?;
     let _ = tcp.set_nodelay(true);
+    crate::mark(&tcp);
     let local = tcp.local_addr().map_err(|e| e.to_string())?;
     let name = if server_name.is_empty() {
         ServerName::IpAddress(addr.ip().into())
@@ -193,6 +194,7 @@ pub async fn listen(
                     continue;
                 }
             };
+            crate::mark(&tcp);
             let (acceptor, inner) = (acceptor.clone(), inner.clone());
             tokio::spawn(async move {
                 let stream = match tokio::time::timeout(std::time::Duration::from_secs(20), acceptor.accept(tcp)).await {

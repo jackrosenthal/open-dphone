@@ -224,3 +224,68 @@ async fn accepts_connections_over_tls() {
     assert!(answer.starts_with("SIP/2.0 200"), "{answer}");
     assert!(std::net::TcpStream::connect(("127.0.0.1", quiet)).is_err(), "no listener without a certificate");
 }
+
+/// Installs a marker that sets a DSCP and records each socket it saw as
+/// (local port, peer port or 0).
+type Marks = Arc<Mutex<Vec<(u16, u16)>>>;
+
+fn marks() -> Marks {
+    static LOG: std::sync::OnceLock<Marks> = std::sync::OnceLock::new();
+    LOG.get_or_init(|| {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let seen = log.clone();
+        dphone_sip::set_socket_marker(Arc::new(move |fd| {
+            let sock = socket2::SockRef::from(&fd);
+            sock.set_tos_v4(26 << 2).expect("DSCP can be set");
+            let port = |a: std::io::Result<socket2::SockAddr>| a.ok().and_then(|a| a.as_socket()).map(|a| a.port()).unwrap_or(0);
+            seen.lock().unwrap().push((port(sock.local_addr()), port(sock.peer_addr())));
+        }));
+        log
+    })
+    .clone()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sip_sockets_are_marked() {
+    let log = marks();
+    // A TCP registrar and a TLS registrar.
+    let tcp = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let tcp_port = tcp.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((s, _)) = tcp.accept().await {
+            tokio::spawn(serve(s, Arc::new(Mutex::new(Vec::new()))));
+        }
+    });
+    assert!(registered(Transport::Tcp, tcp_port, TlsConfig::default()).await);
+    let seen = log.lock().unwrap().clone();
+    // The UDP socket (no peer) and our TCP connection to the registrar.
+    assert!(seen.iter().any(|(local, peer)| *local != 0 && *peer == 0), "the UDP socket: {seen:?}");
+    assert!(seen.iter().any(|(_, peer)| *peer == tcp_port), "the TCP connection to the registrar: {seen:?}");
+    // One connection, used for the challenge-free REGISTER: not one per request.
+    assert_eq!(seen.iter().filter(|(_, peer)| *peer == tcp_port).count(), 1);
+
+    // TLS toward a registrar: the connector marks before the handshake.
+    let certs: Vec<_> = rustls_pemfile::certs(&mut &CERT[..]).flatten().collect();
+    let key = rustls_pemfile::private_key(&mut &KEY[..]).unwrap().unwrap();
+    let server = rustls::ServerConfig::builder_with_provider(Arc::new(rustls_rustcrypto::provider()))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .unwrap();
+    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server));
+    let tls = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let tls_port = tls.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((s, _)) = tls.accept().await {
+            let acceptor = acceptor.clone();
+            tokio::spawn(async move {
+                if let Ok(t) = acceptor.accept(s).await {
+                    serve(t, Arc::new(Mutex::new(Vec::new()))).await;
+                }
+            });
+        }
+    });
+    assert!(registered(Transport::Tls, tls_port, TlsConfig::default()).await);
+    assert!(log.lock().unwrap().iter().any(|(_, peer)| *peer == tls_port), "the TLS connection to the registrar");
+}
