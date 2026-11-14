@@ -709,6 +709,13 @@ fn spawn_handlers(store: &Store, hal: Hal, config: Arc<Mutex<ConfigStore>>) {
             log::warn!("simulated factory reset; nothing happens");
             Ok(Reply::Done)
         }
+        Command::EraseNvdata => {
+            if store.get::<st::System>().phase != st::Phase::Recovery {
+                return Err(CommandError::Denied("nvdata is mounted; use a factory reset instead".into()));
+            }
+            log::warn!("simulated nvdata erase; nothing happens");
+            Ok(Reply::Done)
+        }
         Command::SetTime { unix_secs } => {
             log::info!("simulated clock set to {unix_secs}");
             Ok(Reply::Done)
@@ -722,10 +729,14 @@ struct Args {
     http: u16,
     https: Option<u16>,
     nvdata: Option<PathBuf>,
+    /// Start with web configuration switched off (`web_ui_enabled` 0).
+    web_disabled: bool,
+    /// Start in recovery (nvdata could not be mounted).
+    recovery: bool,
 }
 
 fn args() -> Args {
-    let mut a = Args { model: Model::D60, http: 8480, https: Some(8443), nvdata: None };
+    let mut a = Args { model: Model::D60, http: 8480, https: Some(8443), nvdata: None, web_disabled: false, recovery: false };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         let mut value = || it.next().unwrap_or_else(|| panic!("{arg} needs a value"));
@@ -734,7 +745,9 @@ fn args() -> Args {
             "--port" => a.http = value().parse().expect("port"),
             "--https-port" => a.https = Some(value().parse().expect("port")).filter(|p| *p != 0),
             "--nvdata" => a.nvdata = Some(value().into()),
-            other => panic!("unknown argument {other}; use --model, --port, --https-port, --nvdata"),
+            "--web-disabled" => a.web_disabled = true,
+            "--recovery" => a.recovery = true,
+            other => panic!("unknown argument {other}; use --model, --port, --https-port, --nvdata, --web-disabled, --recovery"),
         }
     }
     a
@@ -766,6 +779,13 @@ fn main() -> std::io::Result<()> {
     let config = Arc::new(Mutex::new(config));
 
     fabricate(&store, model);
+    if args.recovery {
+        store.update::<st::System, _>(|s| s.phase = st::Phase::Recovery);
+    }
+    let switch = dphone_web::WebSwitch::from_config(&config.lock().unwrap().config());
+    if args.web_disabled {
+        switch.set(false);
+    }
     let hal = Hal::sim(model);
     let sim = hal.sim.clone().expect("sim backend");
     spawn_handlers(&store, hal, config.clone());
@@ -806,6 +826,7 @@ fn main() -> std::io::Result<()> {
         }
     });
     let server = WebServer::new(store, config, options)
+        .with_switch(switch)
         .with_screen(Arc::new(SimScreen(sim)))
         .with_firmware_sink(Box::new(sink));
 

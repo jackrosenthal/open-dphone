@@ -27,10 +27,12 @@ fn defaults_with_no_file() {
     let c = s.config();
     let off = Resolved { value: false, source: SettingSource::Default, locked: false };
     let on = Resolved { value: true, ..off };
-    assert_eq!((c.ssh_enabled(), c.ignore_provisioned_firmware()), (on, off));
+    assert_eq!((c.ssh_enabled(), c.ignore_provisioned_firmware()), (off, off));
+    assert_eq!((c.serial_console(), c.metrics_enabled()), (on, on));
     let a = c.access();
-    // SSH on; the server's firmware is followed, as on stock.
-    assert!(a.ssh_enabled && !a.ignore_provisioned_firmware);
+    // SSH off; web configuration on; the server's firmware is followed, as
+    // on stock.
+    assert!(!a.ssh_enabled && a.web_ui_enabled && !a.ignore_provisioned_firmware);
     // Opening the store does not create the file.
     assert!(!nv.exists(FILE));
 }
@@ -56,19 +58,22 @@ fn update_round_trip_presence_and_generation() {
     assert_eq!(c.generation(), g0 + 1);
     assert_eq!(std::fs::metadata(nv.path(FILE)).unwrap().modified().unwrap(), before);
 
-    // Explicit true differs from unset, though both read as enabled.
+    // Explicit false differs from unset, though both read as disabled.
+    assert_eq!(c.dphone_settings().ssh_enabled, Some(false));
     let c = s.update_dphone_settings(|d| d.ssh_enabled = Some(true)).unwrap();
     assert_eq!(c.generation(), g0 + 2);
     assert_eq!(c.dphone_settings().ssh_enabled, Some(true));
+    assert!(c.access().ssh_enabled);
     assert!(nv.read_string(FILE).unwrap().unwrap().contains("ssh_enabled: true"));
     let c = s.update_dphone_settings(|d| d.ssh_enabled = None).unwrap();
     assert_eq!(c.generation(), g0 + 3);
     assert_eq!(c.dphone_settings().ssh_enabled, None);
-    assert!(c.access().ssh_enabled);
+    assert!(!c.access().ssh_enabled);
     assert!(!nv.read_string(FILE).unwrap().unwrap().contains("ssh_enabled"));
 
     // Survives a restart.
     s.update_dphone_settings(|d| {
+        d.ssh_enabled = Some(true);
         d.ignore_provisioned_firmware = Some(true);
     })
     .unwrap();
@@ -120,19 +125,19 @@ fn malformed_file_is_set_aside_and_defaults_apply() {
     let dir = TempDir::new("settings-bad");
     let nv = Nvdata::new(dir.path().join("nvdata"));
     nv.ensure_layout().unwrap();
-    let bad = b"ssh_enabled: false\nignore_provisioned_firmware: {{{ not text format\n";
+    let bad = b"ssh_enabled: true\nignore_provisioned_firmware: {{{ not text format\n";
     nv.write(FILE, bad).unwrap();
     let mut s = reopen(&dir, &nv);
     // Configuration still comes up, on defaults.
     let c = s.config();
-    assert!(c.access().ssh_enabled && !c.access().ignore_provisioned_firmware);
+    assert!(!c.access().ssh_enabled && !c.access().ignore_provisioned_firmware);
     assert_eq!(c.setting("phone_model"), Some("D60"));
     // The bad file is kept for inspection, not deleted and not left in place.
     assert!(!nv.exists(FILE));
     assert_eq!(nv.read("dphone_settings.txtpb.bad").unwrap().unwrap(), bad);
     // And the store keeps working.
-    let c = s.update_dphone_settings(|d| d.ssh_enabled = Some(false)).unwrap();
-    assert!(!c.access().ssh_enabled);
+    let c = s.update_dphone_settings(|d| d.ssh_enabled = Some(true)).unwrap();
+    assert!(c.access().ssh_enabled);
     assert!(nv.exists(FILE));
 }
 
@@ -180,7 +185,7 @@ fn legacy_open_layer_is_migrated_once() {
 fn factory_reset_returns_the_settings_to_defaults() {
     let (dir, nv, mut s) = store();
     s.update_dphone_settings(|d| {
-        d.ssh_enabled = Some(false);
+        d.ssh_enabled = Some(true);
         d.ignore_provisioned_firmware = Some(true);
     })
     .unwrap();
@@ -191,7 +196,7 @@ fn factory_reset_returns_the_settings_to_defaults() {
     assert!(!nv.exists("dphone_settings.txtpb.bad"));
     let s = reopen(&dir, &nv);
     assert_eq!(*s.dphone_settings(), DphoneSettings::default());
-    assert!(s.config().access().ssh_enabled);
+    assert!(!s.config().access().ssh_enabled && !s.config().access().ignore_provisioned_firmware);
 }
 
 // ---- provisioning from DPMA ------------------------------------------------
@@ -243,8 +248,25 @@ fn provisioned_settings_precedence_and_source() {
     assert_eq!(c.ssh_enabled(), Resolved { value: true, source: Local, locked: false });
     assert_eq!(c.ignore_provisioned_firmware(), Resolved { value: false, source: Default, locked: false });
 
+    // `metrics_enabled` follows the same rules; its default is on.
+    assert_eq!(c.metrics_enabled(), Resolved { value: true, source: Default, locked: false });
+    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_metrics_enabled" value="0"/>"#)).unwrap();
+    assert_eq!(c.metrics_enabled(), Resolved { value: false, source: Provisioned, locked: false });
+    let c = s.update_dphone_settings(|d| d.metrics_enabled = Some(true)).unwrap();
+    assert_eq!(c.metrics_enabled(), Resolved { value: true, source: Local, locked: false });
+    assert!(nv.read_string(FILE).unwrap().unwrap().contains("metrics_enabled: true"));
+    let c = s
+        .apply_fetched(&provisioned(r#"<setting id="dphone_metrics_enabled" value="0" conflict="freeze"/>"#))
+        .unwrap();
+    assert_eq!(c.metrics_enabled(), Resolved { value: false, source: Provisioned, locked: true });
+    let c = s.apply_fetched(&provisioned("")).unwrap();
+    assert_eq!(c.metrics_enabled(), Resolved { value: true, source: Local, locked: false });
+    let c = s.update_dphone_settings(|d| d.metrics_enabled = None).unwrap();
+    assert_eq!(c.metrics_enabled(), Resolved { value: true, source: Default, locked: false });
+
     // The provisioned IDs cannot be written through the generic path into
     // ui-config.xml.
+    assert!(s.set("dphone_metrics_enabled", "0").is_err());
     assert!(s.set("dphone_ssh_enabled", "1").is_err());
     assert!(!nv.exists("ui-config.xml"));
 }

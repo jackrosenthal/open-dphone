@@ -14,7 +14,8 @@ export function App() {
       .getSession({})
       .then((r) => {
         const info = r.session!;
-        setSession(info.authenticated ? { status: "authenticated", info } : { status: "anonymous", info });
+        if (info.webDisabled) setSession({ status: "disabled" });
+        else setSession(info.authenticated ? { status: "authenticated", info } : { status: "anonymous", info });
       })
       .catch(() => setSession({ status: "anonymous" }));
   }, []);
@@ -23,6 +24,13 @@ export function App() {
     return (
       <div className="flex h-screen items-center justify-center text-slate-400">
         <Spinner className="size-8" />
+      </div>
+    );
+  }
+  if (session.status === "disabled") {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <p className="text-center text-slate-700 dark:text-slate-300">Web configuration is disabled.</p>
       </div>
     );
   }

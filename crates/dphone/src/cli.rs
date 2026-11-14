@@ -81,7 +81,7 @@ pub fn run(args: Vec<OsString>) -> i32 {
 /// as PID 1.
 fn run_init_test(args: &[String]) -> i32 {
     const USAGE: &str = "usage: dphone init --supervise-only --nvdata DIR --run-dir DIR \
-[--grace SECS] [--beat-timeout SECS] [--unhealthy-reboot SECS] -- PROGRAM [ARGS...]\n\
+[--grace SECS] [--beat-timeout SECS] [--unhealthy-reboot SECS] [--rollback-marker FILE] -- PROGRAM [ARGS...]\n\
 (the init role proper runs only as PID 1)\n";
     let mut nvdata = None;
     let mut run_dir = None;
@@ -89,6 +89,7 @@ fn run_init_test(args: &[String]) -> i32 {
     let mut beat = init::BEAT_TIMEOUT_SECS;
     let mut unhealthy = init::UNHEALTHY_REBOOT_SECS;
     let mut supervise_only = false;
+    let mut rollback_marker = None;
     let mut command = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -100,6 +101,7 @@ fn run_init_test(args: &[String]) -> i32 {
             "--grace" => grace = num(&mut it).unwrap_or(grace),
             "--beat-timeout" => beat = num(&mut it).unwrap_or(beat),
             "--unhealthy-reboot" => unhealthy = num(&mut it).unwrap_or(unhealthy),
+            "--rollback-marker" => rollback_marker = it.next().map(std::path::PathBuf::from),
             "--" => {
                 command = it.cloned().collect();
                 break;
@@ -120,5 +122,6 @@ fn run_init_test(args: &[String]) -> i32 {
         start_grace: grace,
         beat_timeout: beat,
         unhealthy_reboot: unhealthy,
+        rollback_marker,
     })
 }

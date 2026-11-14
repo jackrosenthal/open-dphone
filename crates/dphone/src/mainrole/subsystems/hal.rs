@@ -16,6 +16,35 @@ use crate::mainrole::{Context, state_model};
 
 pub type SharedHal = Arc<Mutex<Hal>>;
 
+/// The hardware random number generator, checked once at start.
+///
+/// Nothing in the main role draws from `/dev/hwrng` itself: the kernel's
+/// `hwrng` thread feeds the device into the kernel pool (seen on the D60:
+/// the `[hwrng]` thread runs, `rng_quality` is 1024, and "crng init done"
+/// is logged), and every key the phone makes comes from that pool through
+/// the operating system's generator.  What is worth knowing is whether the
+/// device is there and answers, since the hardware layer falls back to
+/// `/dev/urandom` without saying so.
+fn rng_line(hal: &mut Hal, sim: bool) -> String {
+    let mut probe = [0u8; 16];
+    let read = hal.rng.fill(&mut probe);
+    if sim {
+        return "rng: simulated\n".to_string();
+    }
+    let present = std::path::Path::new("/dev/hwrng").exists();
+    match (present, read) {
+        (true, Ok(())) => "rng: /dev/hwrng\n".to_string(),
+        (true, Err(e)) => {
+            warn!("hal: /dev/hwrng does not answer: {e}");
+            format!("rng: /dev/hwrng does not answer: {e}\n")
+        }
+        (false, _) => {
+            warn!("hal: no /dev/hwrng; the kernel pool has no hardware source");
+            "rng: no /dev/hwrng (the kernel pool has no hardware source)\n".to_string()
+        }
+    }
+}
+
 pub async fn start(ctx: &Context) -> Option<SharedHal> {
     let model = state_model(ctx.model);
     let sim = ctx.sim;
@@ -27,7 +56,7 @@ pub async fn start(ctx: &Context) -> Option<SharedHal> {
         hal
     })
     .await;
-    let hal = match built {
+    let mut hal = match built {
         Ok(hal) => hal,
         Err(e) => {
             error!("hal: {e}; continuing without hardware access");
@@ -57,6 +86,7 @@ pub async fn start(ctx: &Context) -> Option<SharedHal> {
             ));
         }
     }
+    inventory.push_str(&rng_line(&mut hal, sim));
     let lamps: Vec<String> = hal.lamps.lamps().iter().map(|l| format!("{l:?}")).collect();
     inventory.push_str(&format!("lamps: {}\n", lamps.join(" ")));
     let inventory: Arc<str> = inventory.into();

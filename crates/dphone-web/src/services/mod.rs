@@ -169,11 +169,14 @@ service!(ScreenService {
 service!(SystemService {
     unary reboot(RebootRequest) -> RebootResponse = system::reboot;
     unary factory_reset(FactoryResetRequest) -> FactoryResetResponse = system::factory_reset;
+    unary erase_nvdata(EraseNvdataRequest) -> EraseNvdataResponse = system::erase_nvdata;
     unary set_time(SetTimeRequest) -> SetTimeResponse = system::set_time;
     unary create_backup(CreateBackupRequest) -> CreateBackupResponse = system::create_backup;
     unary restore_backup(RestoreBackupRequest) -> RestoreBackupResponse = system::restore_backup;
     unary get_serial_console(GetSerialConsoleRequest) -> GetSerialConsoleResponse = ssh::get_serial_console;
     unary set_serial_console(SetSerialConsoleRequest) -> SetSerialConsoleResponse = ssh::set_serial_console;
+    unary get_metrics_enabled(GetMetricsEnabledRequest) -> GetMetricsEnabledResponse = ssh::get_metrics_enabled;
+    unary set_metrics_enabled(SetMetricsEnabledRequest) -> SetMetricsEnabledResponse = ssh::set_metrics_enabled;
 });
 
 service!(ShellService {

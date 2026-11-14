@@ -3,6 +3,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { Badge, Button, Card, ConfirmButton, Empty, Toggle, td, th } from "../components/ui";
 import { SettingSource, type BoolSetting } from "../gen/dphone/v1/config_pb";
 import { SshService, type SshStatus } from "../gen/dphone/v1/ssh_pb";
+import { SystemService } from "../gen/dphone/v1/system_pb";
 import { ErrorNote } from "./common";
 
 /// What to say beside one of Open DPhone's own settings about where its
@@ -11,6 +12,20 @@ export function settingOrigin(s: BoolSetting | undefined): string {
   if (s?.locked) return "Set by the provisioning server.";
   if (s?.source === SettingSource.PROVISIONED) return "Provisioned.";
   return "";
+}
+
+/// The switch for the unauthenticated `/metrics` endpoint.
+function MetricsSwitch({ onError }: { onError: (e: unknown) => void }) {
+  const loaded = useQuery(SystemService.method.getMetricsEnabled, {});
+  const set = useMutation(SystemService.method.setMetricsEnabled, { onError, onSuccess: () => (onError(undefined), loaded.refetch()) });
+  const setting = loaded.data?.metricsEnabled;
+  const origin = settingOrigin(setting);
+  return (
+    <>
+      <Toggle label="Metrics" checked={setting?.value ?? false} disabled={!setting || setting.locked || set.isPending} onChange={(v) => set.mutate({ metricsEnabled: v })} />
+      {origin && <span className="text-xs text-slate-500 dark:text-slate-400">{origin}</span>}
+    </>
+  );
 }
 
 export function SshCard() {
@@ -52,6 +67,7 @@ export function SshCard() {
           <Toggle label="SSH server" checked={enabled?.value ?? false} disabled={!ssh || enabled?.locked || enable.isPending} onChange={(v) => enable.mutate({ enabled: v })} />
           {origin && <span className="text-xs text-slate-500 dark:text-slate-400">{origin}</span>}
           {stopped && <Badge tone="red">Not listening</Badge>}
+          <MetricsSwitch onError={setError} />
         </div>
 
         <div className="border-t border-slate-100 pt-4 dark:border-slate-800">

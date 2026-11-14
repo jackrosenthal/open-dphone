@@ -6,20 +6,21 @@
 //!
 //! ## When it runs
 //!
-//! On every image, by default.  One input can turn it off: the user's
-//! "SSH server" switch, handed to [`set_enabled`] by whoever reads the
-//! settings (this module does not know where the switch is stored).  The
-//! switch applies at once, by closing or reopening the listening socket.
-//! Turning SSH off leaves established sessions running, as stopping `sshd`
-//! does, so that whoever turned it off from an SSH session is not cut off
-//! mid-command; they end when their clients disconnect.  Until the settings
-//! have been read, and whenever they cannot be read (including safe mode),
-//! the server is on: it is the way in when things are broken.
+//! Off by default, on every image.  One input turns it on: the "SSH
+//! server" switch, handed to [`set_enabled`] by whoever reads the settings
+//! (this module does not know where the switch is stored).  The switch
+//! applies at once, by opening or closing the listening socket; while it is
+//! off there is no listening socket at all, and there is none before the
+//! settings have been read.  Turning SSH off leaves established sessions
+//! running, as stopping `sshd` does, so that whoever turned it off from an
+//! SSH session is not cut off mid-command; they end when their clients
+//! disconnect.
 //!
 //! Who may log in is decided by keys alone: the files named by
 //! [`authorized_key_files`], read at each attempt.  No key is compiled in.
-//! In the host simulator the server runs only when `--ssh-port N` or
-//! `--ssh-listen ADDR` is given, and `--no-ssh` turns it off for tests.
+//! In the host simulator the server exists only when `--ssh-port N` or
+//! `--ssh-listen ADDR` is given (and listens there when switched on), and
+//! `--no-ssh` leaves it out for tests.
 
 pub mod keys;
 pub mod pty;
@@ -72,7 +73,7 @@ pub fn listen_address(ctx: &Context, opts: &Options) -> Option<SocketAddr> {
 /// The run-time switch: whether the server listens.
 fn switch() -> &'static watch::Sender<bool> {
     static SWITCH: OnceLock<watch::Sender<bool>> = OnceLock::new();
-    SWITCH.get_or_init(|| watch::channel(true).0)
+    SWITCH.get_or_init(|| watch::channel(false).0)
 }
 
 /// Turn the listener on or off (the user's "SSH server" switch).  Takes
@@ -121,20 +122,19 @@ async fn bind(listen: SocketAddr) -> std::io::Result<TcpListener> {
     }
 }
 
-/// Start the server.  Returns the bound address.
-pub async fn start(ctx: &Context, listen: SocketAddr) -> std::io::Result<SocketAddr> {
+/// Start the server.  It listens on `listen` once (and while) it is
+/// switched on; nothing is bound before that.
+pub async fn start(ctx: &Context, listen: SocketAddr) -> std::io::Result<()> {
     let host_key = keys::load_or_create_host_key(&ctx.paths.ssh_host_key())?;
     let config = Arc::new(server_config(host_key));
-    let listener = bind(listen).await?;
-    let addr = listener.local_addr()?;
     if keys::authorized_keys(&authorized_key_files(&ctx.paths)).is_empty() {
         info!("ssh: no authorized keys yet; nobody can log in until one is added");
     }
     let ctx = ctx.clone();
     let active = Arc::new(AtomicUsize::new(0));
     let serve: Serve = Arc::new(move |socket, peer| connection(&ctx, &config, &active, socket, peer));
-    tokio::spawn(supervise(listener, addr, serve));
-    Ok(addr)
+    tokio::spawn(supervise(None, listen, serve));
+    Ok(())
 }
 
 /// What to do with an accepted connection (spawn its task, or refuse it).
@@ -142,9 +142,9 @@ type Serve = Arc<dyn Fn(TcpStream, SocketAddr) + Send + Sync>;
 
 /// Listen while SSH is switched on: accept until it is switched off, close
 /// the listening socket, and bind it again when it is switched back on.
-async fn supervise(listener: TcpListener, addr: SocketAddr, serve: Serve) {
+async fn supervise(listener: Option<TcpListener>, mut addr: SocketAddr, serve: Serve) {
     let mut switch = switch().subscribe();
-    let mut listener = Some(listener);
+    let mut listener = listener;
     loop {
         if !*switch.borrow_and_update() {
             // Switched off: no listening socket at all, until switched on.
@@ -158,6 +158,8 @@ async fn supervise(listener: TcpListener, addr: SocketAddr, serve: Serve) {
             Some(l) => l,
             None => match bind(addr).await {
                 Ok(l) => {
+                    // With port 0 (tests), keep the port the first bind got.
+                    addr = l.local_addr().unwrap_or(addr);
                     info!("ssh listening on {addr}");
                     l
                 }
@@ -260,7 +262,8 @@ mod tests {
                 }
             });
         });
-        tokio::spawn(supervise(listener, addr, serve));
+        set_enabled(true);
+        tokio::spawn(supervise(Some(listener), addr, serve));
 
         // On: served.
         assert!(enabled());

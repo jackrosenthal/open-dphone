@@ -112,6 +112,11 @@ impl Sessions {
         self.inner.lock().unwrap().sessions.remove(token);
     }
 
+    /// Ends every session.
+    pub fn clear(&self) {
+        self.inner.lock().unwrap().sessions.clear();
+    }
+
     /// Ends every session except `keep` (after a password change).
     pub fn remove_all_except(&self, keep: &str) {
         self.inner.lock().unwrap().sessions.retain(|t, _| t == keep);

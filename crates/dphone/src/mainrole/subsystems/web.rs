@@ -8,11 +8,12 @@ use dphone_hal::{PixelFormat, Screen};
 use dphone_state::{HealthStatus, Subsystem};
 use dphone_web::{
     FileFirmwareSink, FirmwareInfo, MirrorFormat, MirrorFrame, MirrorScreen, PtyShellHost, ScreenSource, WebOptions,
-    WebServer,
+    WebServer, WebSwitch,
 };
 use log::{error, info, warn};
 
 use super::SharedConfig;
+use super::system::ConfigHub;
 use super::ui::ScreenTap;
 use crate::mainrole::{Context, Options};
 
@@ -66,17 +67,38 @@ fn inspect(path: &std::path::Path) -> std::io::Result<FirmwareInfo> {
     })
 }
 
-pub fn start(ctx: &Context, opts: &Options, config: Option<SharedConfig>, tap: Option<Arc<ScreenTap>>) {
+pub fn start(
+    ctx: &Context,
+    opts: &Options,
+    config: Option<SharedConfig>,
+    hub: &ConfigHub,
+    tap: Option<Arc<ScreenTap>>,
+) {
     let Some(config) = config else {
         error!("web: no configuration; the web UI is not started");
         ctx.store.set_health(Subsystem::Web, HealthStatus::Failed("no configuration".into()));
         return;
     };
-    let access = config.lock().unwrap().config().access();
-    if !access.web_ui_enabled {
-        info!("web: disabled by configuration (web_ui_enabled)");
-        ctx.store.set_health(Subsystem::Web, HealthStatus::Stopped);
-        return;
+    // The server always runs.  `web_ui_enabled` off leaves a page saying
+    // that web configuration is disabled and refuses everything else;
+    // `metrics_enabled` (Open DPhone settings) decides whether `/metrics`
+    // is served, independently.  Both follow the configuration as it
+    // changes.
+    let switch = WebSwitch::from_config(&config.lock().unwrap().config());
+    let describe = |s: &WebSwitch| {
+        let on = |b| if b { "enabled" } else { "disabled" };
+        format!("web configuration {} (web_ui_enabled), metrics {} (metrics_enabled)", on(s.enabled()), on(s.metrics_enabled()))
+    };
+    info!("web: {}", describe(&switch));
+    {
+        let switch = switch.clone();
+        hub.on_change(move |cfg| {
+            let before = (switch.enabled(), switch.metrics_enabled());
+            switch.follow(cfg);
+            if before != (switch.enabled(), switch.metrics_enabled()) {
+                info!("web: {}", describe(&switch));
+            }
+        });
     }
     let mut options = WebOptions::default();
     if ctx.sim {
@@ -96,6 +118,7 @@ pub fn start(ctx: &Context, opts: &Options, config: Option<SharedConfig>, tap: O
         loop {
             let mut server = WebServer::new(ctx.store.clone(), config.clone(), options.clone())
                 .with_firmware_sink(Box::new(FileFirmwareSink::new(options.upload_dir.clone()).with_inspector(inspect)))
+                .with_switch(switch.clone())
                 .with_shell(Arc::new(shell_host(&ctx)));
             if let Some(tap) = &tap {
                 server = server.with_screen(Arc::new(Mirror(tap.clone())));

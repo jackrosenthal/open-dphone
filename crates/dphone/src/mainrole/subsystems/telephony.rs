@@ -311,6 +311,10 @@ fn sip_config(ctx: &Context, cfg: &Config, nv: &Nvdata, local_ip: IpAddr) -> Sip
         out.tls.server_cert_der = cert;
         out.tls.server_key_der = key;
     }
+    // Servers are checked against the trust bundle in `/nvdata/certs`
+    // unless `allow_insecure_ssl` is set, as on stock.
+    out.tls.verify = !sip.allow_insecure_ssl;
+    out.tls.roots_pem = super::trust::roots(nv, cfg);
     if let Some(park) = cfg.setting("parking_lot_extension").filter(|p| !p.is_empty()) {
         out.park_extension = park.to_string();
     }

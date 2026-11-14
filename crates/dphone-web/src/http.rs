@@ -99,6 +99,7 @@ async fn serve<S>(app: Arc<App>, stream: S, peer: IpAddr, secure: bool)
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
+    let switch = app.switch.clone();
     let service = hyper::service::service_fn(move |req| {
         let app = app.clone();
         async move { Ok::<_, Infallible>(handle(app, peer, secure, req).await) }
@@ -108,8 +109,16 @@ where
         .header_read_timeout(HEADER_TIMEOUT)
         .keep_alive(true)
         .serve_connection(TokioIo::new(stream), service);
-    if let Err(e) = conn.await {
-        log::trace!("connection from {peer}: {e}");
+    // A connection does not outlive web configuration being switched off:
+    // a stream (the shell, the screen mirror, a status watch) would
+    // otherwise go on.
+    tokio::select! {
+        r = conn => {
+            if let Err(e) = r {
+                log::trace!("connection from {peer}: {e}");
+            }
+        }
+        _ = switch.turned_off() => log::debug!("connection from {peer} closed: web configuration disabled"),
     }
 }
 
@@ -137,9 +146,21 @@ async fn handle(app: Arc<App>, peer: IpAddr, secure: bool, req: Request<Incoming
 async fn route(app: Arc<App>, peer: IpAddr, secure: bool, req: Request<Incoming>) -> Response<Body> {
     let path = req.uri().path().to_owned();
     match *req.method() {
-        // Open to any scraper on the network by design: see `metrics`.
-        Method::GET | Method::HEAD if path == "/metrics" => crate::metrics::respond(&app, &req),
+        // Open to any scraper on the network by design (see `metrics`),
+        // unless switched off; independent of web configuration.
+        Method::GET | Method::HEAD if path == "/metrics" => {
+            if app.switch.metrics_enabled() {
+                crate::metrics::respond(&app, &req)
+            } else {
+                plain(StatusCode::NOT_FOUND, "not found\n")
+            }
+        }
         Method::GET | Method::HEAD => static_file(&req, &path),
+        // Web configuration disabled: the frontend may ask for the state
+        // (and is told only that); nothing else is answered.
+        Method::POST if !app.switch.enabled() && path != "/dphone.v1.AuthService/GetSession" => {
+            rpc::error_response(ConnectError::permission_denied("web configuration is disabled"), req.headers())
+        }
         Method::POST => {
             if !same_origin(&req) {
                 return rpc::error_response(
@@ -152,6 +173,7 @@ async fn route(app: Arc<App>, peer: IpAddr, secure: bool, req: Request<Incoming>
                 .get(header::COOKIE)
                 .and_then(|v| v.to_str().ok())
                 .and_then(auth::cookie_token)
+                .filter(|_| app.switch.enabled())
                 .and_then(|t| app.sessions.touch(t));
             let ctx = Ctx { app, session, peer, secure, headers: ResponseHeaders::default() };
             if path.starts_with("/dphone.v1.") {

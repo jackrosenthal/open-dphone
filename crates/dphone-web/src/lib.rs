@@ -239,6 +239,83 @@ pub trait SshControl: Send + Sync {
 }
 
 /// Server settings.
+/// The two switches of the web server, both changeable while it runs; the
+/// server listens whatever they say.
+///
+/// - Web configuration (stock's `web_ui_enabled`).  Off, the frontend's
+///   files are still served so that it can say that web configuration is
+///   disabled, but there is no login and no RPC other than
+///   `AuthService/GetSession` (which reports the state), no upload, and so
+///   no shell and no screen mirror.  Switching off also ends every session,
+///   shell, and open connection.
+/// - The metrics endpoint (`metrics_enabled` in the Open DPhone settings).
+///   Off, `GET /metrics` answers 404.
+///
+/// The two are independent.
+#[derive(Clone)]
+pub struct WebSwitch {
+    web: Arc<tokio::sync::watch::Sender<bool>>,
+    metrics: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl WebSwitch {
+    /// Web configuration as given; the metrics endpoint on.
+    pub fn new(enabled: bool) -> Self {
+        WebSwitch {
+            web: Arc::new(tokio::sync::watch::Sender::new(enabled)),
+            metrics: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+        }
+    }
+
+    /// Both switches as a merged configuration has them.
+    pub fn from_config(config: &dphone_config::Config) -> Self {
+        let switch = WebSwitch::new(true);
+        switch.follow(config);
+        switch
+    }
+
+    /// Take both switches from a merged configuration.
+    pub fn follow(&self, config: &dphone_config::Config) {
+        self.set(config.access().web_ui_enabled);
+        self.set_metrics(config.metrics_enabled().value);
+    }
+
+    pub fn set(&self, enabled: bool) {
+        self.web.send_if_modified(|v| std::mem::replace(v, enabled) != enabled);
+    }
+
+    pub fn enabled(&self) -> bool {
+        *self.web.borrow()
+    }
+
+    pub fn set_metrics(&self, enabled: bool) {
+        self.metrics.store(enabled, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn metrics_enabled(&self) -> bool {
+        self.metrics.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Resolves at the next switch to off.
+    pub(crate) async fn turned_off(&self) {
+        let mut rx = self.web.subscribe();
+        loop {
+            if rx.changed().await.is_err() {
+                return std::future::pending().await;
+            }
+            if !*rx.borrow() {
+                return;
+            }
+        }
+    }
+}
+
+impl Default for WebSwitch {
+    fn default() -> Self {
+        WebSwitch::new(true)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct WebOptions {
     /// Plain HTTP listener; `None` to disable.
@@ -284,6 +361,7 @@ pub(crate) struct App {
     pub store: Store,
     pub config: Arc<Mutex<ConfigStore>>,
     pub options: WebOptions,
+    pub switch: WebSwitch,
     pub sessions: auth::Sessions,
     pub screen: Option<Arc<dyn ScreenSource>>,
     pub firmware: Box<dyn FirmwareSink>,
@@ -309,11 +387,19 @@ pub struct WebServer {
     keys: Option<Box<dyn KeyStore>>,
     shell: Option<Arc<dyn ShellHost>>,
     ssh: Option<Arc<dyn SshControl>>,
+    switch: WebSwitch,
 }
 
 impl WebServer {
     pub fn new(store: Store, config: Arc<Mutex<ConfigStore>>, options: WebOptions) -> Self {
-        WebServer { store, config, options, screen: None, firmware: None, backup: None, keys: None, shell: None, ssh: None }
+        WebServer { store, config, options, screen: None, firmware: None, backup: None, keys: None, shell: None, ssh: None, switch: WebSwitch::default() }
+    }
+
+    /// The switches for web configuration and the metrics endpoint (both
+    /// on unless given).
+    pub fn with_switch(mut self, switch: WebSwitch) -> Self {
+        self.switch = switch;
+        self
     }
 
     /// Attaches the screen mirror's picture source.
@@ -373,6 +459,7 @@ impl WebServer {
         };
         let app = Arc::new(App {
             sessions: auth::Sessions::new(self.options.session_idle),
+            switch: self.switch,
             store: self.store,
             config: self.config,
             options: self.options,
@@ -472,10 +559,21 @@ impl BoundServer {
                 tokio::time::sleep(Duration::from_secs(5)).await;
             }
         };
+        // Switched off: nobody stays logged in and no shell stays open.
+        // (Open connections end by themselves; see `http::serve`.)
+        let switched_off = async {
+            loop {
+                app.switch.turned_off().await;
+                log::info!("web configuration disabled");
+                app.sessions.clear();
+                app.shells.close_all();
+            }
+        };
         tokio::select! {
             r = plain => r,
             r = secure => r,
             _ = beat => Ok(()),
+            _ = switched_off => Ok(()),
             _ = app.metrics.run() => Ok(()),
         }
     }

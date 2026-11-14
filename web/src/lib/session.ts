@@ -6,6 +6,8 @@ import type { Session } from "../gen/dphone/v1/auth_pb";
 
 export type SessionState =
   | { status: "loading" }
+  // Web configuration is switched off on the phone: there is no login.
+  | { status: "disabled" }
   | { status: "anonymous"; info?: Session }
   | { status: "authenticated"; info: Session };
 

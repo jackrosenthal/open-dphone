@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use dphone_hal::{Audio as HalAudioCard, PcmConfig, PcmDevice};
 use dphone_media::engine::{Command as Ec, Engine, EngineOptions, Event as Ee, PayloadCodec, SrtpConfig, StreamConfig};
-use dphone_media::ring::{BuiltinRing, RingSource};
+use dphone_media::ring::RingSource;
 use dphone_media::tone::ToneSpec;
 use dphone_media::{AudioDevice, AudioPath as MPath, DtmfMode, GainControl, VpmDsp, VpmDspOptions};
 use dphone_state::{
@@ -306,15 +306,14 @@ impl AudioService {
         self.refresh();
     }
 
-    /// Start or stop the ringer.  `name` picks a built-in ring.
+    /// Start or stop the ringer.  `name` picks a built-in ring or a user
+    /// ringtone.
     pub fn ring(&self, name: Option<&str>) {
         {
             let mut inner = self.inner.lock().unwrap();
             inner.ringing = name.is_some();
-            let source = name.map(|n| {
-                let ring = BuiltinRing::ALL.into_iter().find(|r| r.name().eq_ignore_ascii_case(n)).unwrap_or(BuiltinRing::Classic);
-                RingSource::Builtin(ring)
-            });
+            // A built-in ring, or a user ringtone from `/nvdata/ringtones`.
+            let source = name.map(super::ringtones::source);
             let level = self.store.read::<Audio, _>(|a| a.ringer_volume);
             let _ = inner.send(Ec::PlayRing(source, ring_gain_q12(level)));
         }

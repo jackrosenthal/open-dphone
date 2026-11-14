@@ -446,4 +446,11 @@ impl Shells {
     pub fn remove(&self, id: &str) {
         self.sessions.lock().unwrap().remove(id);
     }
+
+    /// Ends every shell.
+    pub fn close_all(&self) {
+        for (_, session) in self.sessions.lock().unwrap().drain() {
+            session.request_close();
+        }
+    }
 }

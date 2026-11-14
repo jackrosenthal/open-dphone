@@ -204,3 +204,33 @@ pub async fn set_serial_console(
     log::info!("serial console switched {} from the web UI ({})", if on { "on" } else { "off" }, ctx.peer);
     Ok(pb::SetSerialConsoleResponse { serial_console: Some(setting).into() })
 }
+
+// -------------------------------------------------------------- metrics
+
+pub async fn get_metrics_enabled(
+    ctx: Ctx,
+    _req: pb::GetMetricsEnabledRequest,
+) -> Result<pb::GetMetricsEnabledResponse, ConnectError> {
+    let setting = with_config(&ctx.app, false, |c| Ok(bool_setting(c.config().metrics_enabled()))).await?;
+    Ok(pb::GetMetricsEnabledResponse { metrics_enabled: Some(setting).into() })
+}
+
+pub async fn set_metrics_enabled(
+    ctx: Ctx,
+    req: pb::SetMetricsEnabledRequest,
+) -> Result<pb::SetMetricsEnabledResponse, ConnectError> {
+    let on = req.metrics_enabled;
+    let switch = ctx.app.switch.clone();
+    let setting = with_config(&ctx.app, true, move |c| {
+        if c.config().metrics_enabled().locked {
+            return Err(locked());
+        }
+        let config = c.update_dphone_settings(|s| s.metrics_enabled = Some(on)).map_err(config_error)?;
+        // In effect at once, whoever else follows the configuration.
+        switch.follow(&config);
+        Ok(bool_setting(config.metrics_enabled()))
+    })
+    .await?;
+    log::info!("metrics endpoint switched {} from the web UI ({})", if on { "on" } else { "off" }, ctx.peer);
+    Ok(pb::SetMetricsEnabledResponse { metrics_enabled: Some(setting).into() })
+}

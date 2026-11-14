@@ -7,6 +7,9 @@ import "dphone/v1/config.proto";
 service SystemService {
   rpc Reboot(RebootRequest) returns (RebootResponse);
   rpc FactoryReset(FactoryResetRequest) returns (FactoryResetResponse);
+  // Recovery only (the nvdata partition could not be mounted): erase the
+  // partition and reboot.  Refused while nvdata is mounted.
+  rpc EraseNvdata(EraseNvdataRequest) returns (EraseNvdataResponse);
   rpc SetTime(SetTimeRequest) returns (SetTimeResponse);
   // A backup of the local configuration, as a gzip-compressed tar archive.
   rpc CreateBackup(CreateBackupRequest) returns (CreateBackupResponse);
@@ -15,6 +18,10 @@ service SystemService {
   // (EHS) headset adapter.  The two cannot share the port.
   rpc GetSerialConsole(GetSerialConsoleRequest) returns (GetSerialConsoleResponse);
   rpc SetSerialConsole(SetSerialConsoleRequest) returns (SetSerialConsoleResponse);
+  // Whether GET /metrics (the Prometheus scrape endpoint, no login) is
+  // served.
+  rpc GetMetricsEnabled(GetMetricsEnabledRequest) returns (GetMetricsEnabledResponse);
+  rpc SetMetricsEnabled(SetMetricsEnabledRequest) returns (SetMetricsEnabledResponse);
 }
 
 message RebootRequest {}
@@ -27,6 +34,13 @@ message FactoryResetRequest {
 }
 
 message FactoryResetResponse {}
+
+message EraseNvdataRequest {
+  // Must be the phone's model name (e.g., "D60"), as a guard.
+  string confirm = 1;
+}
+
+message EraseNvdataResponse {}
 
 message SetTimeRequest {
   uint64 unix_secs = 1;
@@ -63,4 +77,18 @@ message SetSerialConsoleRequest {
 
 message SetSerialConsoleResponse {
   BoolSetting serial_console = 1;
+}
+
+message GetMetricsEnabledRequest {}
+
+message GetMetricsEnabledResponse {
+  BoolSetting metrics_enabled = 1;
+}
+
+message SetMetricsEnabledRequest {
+  bool metrics_enabled = 1;
+}
+
+message SetMetricsEnabledResponse {
+  BoolSetting metrics_enabled = 1;
 }

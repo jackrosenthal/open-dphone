@@ -559,9 +559,16 @@ impl ConfigStore {
     /// BLF items: the local `/nvdata/blf_items.xml` if present, else the
     /// merged configuration's.
     pub fn blf_items(&self) -> Result<Vec<BlfItem>, ConfigError> {
-        match self.nv.blf_items() {
-            Ok(Some(doc)) => Ok(parse_blf_items(&doc)),
-            Ok(None) | Err(_) => Ok(self.current.blf_items()),
+        Ok(Self::blf_items_from(&self.nv, &self.current))
+    }
+
+    /// The same choice for a caller that holds a merged configuration and
+    /// the nvdata handle rather than the store: `/nvdata/blf_items.xml`
+    /// when it exists and parses, else `config`'s items.
+    pub fn blf_items_from(nv: &Nvdata, config: &Config) -> Vec<BlfItem> {
+        match nv.blf_items() {
+            Ok(Some(doc)) => parse_blf_items(&doc),
+            Ok(None) | Err(_) => config.blf_items(),
         }
     }
 

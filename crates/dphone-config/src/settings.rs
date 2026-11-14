@@ -33,7 +33,7 @@ pub const SETTINGS_FILE_BAD: &str = "dphone_settings.txtpb.bad";
 
 /// Field names of [`DphoneSettings`]; anything else in the file is carried
 /// through as text.  A test checks this list against the generated code.
-const KNOWN_FIELDS: &[&str] = &["ssh_enabled", "ignore_provisioned_firmware", "serial_console"];
+const KNOWN_FIELDS: &[&str] = &["ssh_enabled", "ignore_provisioned_firmware", "serial_console", "metrics_enabled"];
 
 const HEADER: &str = "# Open DPhone settings (dphone.settings.v1.DphoneSettings, protobuf text format).\n\
                       # A field that is absent takes its default.\n";
@@ -74,6 +74,7 @@ pub(crate) fn resolve<T: Copy>(local: Option<T>, provisioned: Option<T>, frozen:
 pub const PROVISIONED_SSH_ENABLED: &str = "dphone_ssh_enabled";
 pub const PROVISIONED_IGNORE_FIRMWARE: &str = "dphone_ignore_provisioned_firmware";
 pub const PROVISIONED_SERIAL_CONSOLE: &str = "dphone_serial_console";
+pub const PROVISIONED_METRICS_ENABLED: &str = "dphone_metrics_enabled";
 /// Element a provisioning server uses for SSH public keys:
 /// `<dphone_ssh_authorized_keys><key id="1" value="ssh-ed25519 AAAA... name"/></dphone_ssh_authorized_keys>`.
 pub const PROVISIONED_SSH_KEYS: &str = "dphone_ssh_authorized_keys";
@@ -179,6 +180,7 @@ mod tests {
             ssh_enabled: Some(true),
             ignore_provisioned_firmware: Some(true),
             serial_console: Some(true),
+            metrics_enabled: Some(true),
         };
         let text = encode_to_string_pretty(&all);
         let names: Vec<&str> = text.lines().map(|l| l.split(':').next().unwrap()).collect();

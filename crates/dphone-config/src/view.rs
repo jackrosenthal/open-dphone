@@ -424,10 +424,10 @@ impl Config {
         (v, v.is_some() && self.setting_frozen(id))
     }
 
-    /// Whether the SSH server runs (default on), and where that came from.
+    /// Whether the SSH server runs (default off), and where that came from.
     pub fn ssh_enabled(&self) -> Resolved<bool> {
         let (p, frozen) = self.provisioned_bool(settings::PROVISIONED_SSH_ENABLED);
-        settings::resolve(self.settings.ssh_enabled, p, frozen, true)
+        settings::resolve(self.settings.ssh_enabled, p, frozen, false)
     }
 
     /// Whether provisioned firmware is ignored (default off: the server's
@@ -442,6 +442,13 @@ impl Config {
     pub fn serial_console(&self) -> Resolved<bool> {
         let (p, frozen) = self.provisioned_bool(settings::PROVISIONED_SERIAL_CONSOLE);
         settings::resolve(self.settings.serial_console, p, frozen, true)
+    }
+
+    /// Whether the unauthenticated `GET /metrics` endpoint is served
+    /// (default on).  Independent of `web_ui_enabled`.
+    pub fn metrics_enabled(&self) -> Resolved<bool> {
+        let (p, frozen) = self.provisioned_bool(settings::PROVISIONED_METRICS_ENABLED);
+        settings::resolve(self.settings.metrics_enabled, p, frozen, true)
     }
 
     /// SSH public keys supplied by the provisioning server, in

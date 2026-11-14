@@ -206,6 +206,9 @@ pub enum Command {
 
     Reboot { reason: String },
     FactoryReset,
+    /// Recovery only (nvdata could not be mounted): erase the nvdata
+    /// partition and reboot, so that the next boot mounts it empty.
+    EraseNvdata,
     /// Set the wall clock (Unix seconds).
     SetTime { unix_secs: u64 },
 }
@@ -236,7 +239,7 @@ impl Command {
                 Domain::Apps
             }
             InstallFirmware { .. } | ConfirmTrial | Rollback => Domain::Update,
-            Reboot { .. } | FactoryReset | SetTime { .. } => Domain::System,
+            Reboot { .. } | FactoryReset | EraseNvdata | SetTime { .. } => Domain::System,
             StartPage { .. } | StopPage => Domain::Paging,
             SetBluetooth { .. } | BluetoothDiscovery { .. } | BluetoothPair { .. }
             | BluetoothAnswerPairing { .. } | BluetoothUnpair { .. } | BluetoothConnect { .. }

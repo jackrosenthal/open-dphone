@@ -50,6 +50,41 @@ pub fn mount() -> NvdataState {
     }
 }
 
+/// What a factory reset keeps besides stock's own list
+/// (`dphone_config::nvdata::FACTORY_RESET_KEEP`), relative to the nvdata
+/// root.
+///
+/// Stock's `factory-reset.sh` keeps `etc/enet.cfg`, `reboot_reason`,
+/// `phoneservice_lockdown`, the two G.729 files, and `if-setup-debug`, and
+/// removes every directory but `etc`; so it removes `open/`, and so do we
+/// (host keys, authorized keys, the provisioning identity, call log, and the
+/// Open DPhone settings file all go, as stock's own equivalents do).  The
+/// one addition is the trial-boot record: it is not user data, and a reset
+/// that removed it would leave an unconfirmed image installed with nothing
+/// to roll it back.  The DSP firmware is in the root file system and is
+/// not affected.
+pub const FACTORY_RESET_KEEP: &[&str] = &["open/trial"];
+
+/// Perform a factory reset that was requested before the last shutdown
+/// (stock's marker file `factory-reset`), before anything reads nvdata.
+/// Returns whether one ran.  On an error the marker stays, so the next boot
+/// tries again.
+pub fn run_pending_factory_reset(root: &std::path::Path) -> bool {
+    let nv = dphone_config::Nvdata::new(root);
+    match dphone_config::ConfigStore::run_pending_factory_reset(&nv, FACTORY_RESET_KEEP) {
+        Ok(false) => false,
+        Ok(true) => {
+            sys::sync();
+            warn!("factory reset performed");
+            true
+        }
+        Err(e) => {
+            error!("factory reset: {e}");
+            false
+        }
+    }
+}
+
 fn try_mount(flags: libc::c_ulong) -> io::Result<String> {
     let proc_mtd = std::fs::read_to_string("/proc/mtd")?;
     let index = mtd_index(&proc_mtd, "nvdata")
@@ -84,5 +119,58 @@ mod tests {
         assert_eq!(mtd_index(text, "nvdata"), Some(3));
         assert_eq!(mtd_index(text, "ctrl"), Some(2));
         assert_eq!(mtd_index(text, "data"), None);
+    }
+
+    #[test]
+    fn factory_reset_runs_once_and_keeps_the_trial_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let put = |rel: &str| {
+            let p = root.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, b"x").unwrap();
+        };
+        for f in [
+            "etc/enet.cfg",
+            "etc/.passwd",
+            "ui-config.xml",
+            "fetched-config.xml",
+            "dphone_settings.txtpb",
+            "root/.ssh/authorized_keys",
+            "open/trial",
+            "open/ssh_host_ed25519_key",
+            "open/kv/calllog.json",
+            "ringtones/Mine.sln16",
+            "certs/certs.crt",
+        ] {
+            put(f);
+        }
+        // Not requested: nothing happens.
+        assert!(!run_pending_factory_reset(root));
+        assert!(root.join("ui-config.xml").exists());
+
+        put("factory-reset");
+        assert!(run_pending_factory_reset(root));
+        for kept in ["etc/enet.cfg", "open/trial"] {
+            assert!(root.join(kept).exists(), "{kept} must survive");
+        }
+        for gone in [
+            "etc/.passwd",
+            "ui-config.xml",
+            "fetched-config.xml",
+            "dphone_settings.txtpb",
+            "root/.ssh/authorized_keys",
+            "open/ssh_host_ed25519_key",
+            "open/kv/calllog.json",
+            "ringtones/Mine.sln16",
+            "certs/certs.crt",
+            "factory-reset",
+        ] {
+            assert!(!root.join(gone).exists(), "{gone} must be removed");
+        }
+        // The marker is gone, so the next boot does not reset again.
+        put("ui-config.xml");
+        assert!(!run_pending_factory_reset(root));
+        assert!(root.join("ui-config.xml").exists());
     }
 }

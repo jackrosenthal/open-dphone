@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/v1/auth.proto.
  */
 export const file_dphone_v1_auth: GenFile = /*@__PURE__*/
-  fileDesc("ChRkcGhvbmUvdjEvYXV0aC5wcm90bxIJZHBob25lLnYxIo4BCgdTZXNzaW9uEhUKDWF1dGhlbnRpY2F0ZWQYASABKAgSEgoKY3NyZl90b2tlbhgCIAEoCRIMCgR1c2VyGAMgASgJEg0KBW1vZGVsGAQgASgJEg8KB3ZlcnNpb24YBSABKAkSEAoIaG9zdG5hbWUYBiABKAkSGAoQZGVmYXVsdF9wYXNzd29yZBgHIAEoCCIuCgxMb2dpblJlcXVlc3QSDAoEdXNlchgBIAEoCRIQCghwYXNzd29yZBgCIAEoCSI0Cg1Mb2dpblJlc3BvbnNlEiMKB3Nlc3Npb24YASABKAsyEi5kcGhvbmUudjEuU2Vzc2lvbiIPCg1Mb2dvdXRSZXF1ZXN0IhAKDkxvZ291dFJlc3BvbnNlIhMKEUdldFNlc3Npb25SZXF1ZXN0IjkKEkdldFNlc3Npb25SZXNwb25zZRIjCgdzZXNzaW9uGAEgASgLMhIuZHBob25lLnYxLlNlc3Npb24iRwoVQ2hhbmdlUGFzc3dvcmRSZXF1ZXN0EhgKEGN1cnJlbnRfcGFzc3dvcmQYASABKAkSFAoMbmV3X3Bhc3N3b3JkGAIgASgJIhgKFkNoYW5nZVBhc3N3b3JkUmVzcG9uc2UyqgIKC0F1dGhTZXJ2aWNlEjoKBUxvZ2luEhcuZHBob25lLnYxLkxvZ2luUmVxdWVzdBoYLmRwaG9uZS52MS5Mb2dpblJlc3BvbnNlEj0KBkxvZ291dBIYLmRwaG9uZS52MS5Mb2dvdXRSZXF1ZXN0GhkuZHBob25lLnYxLkxvZ291dFJlc3BvbnNlEkkKCkdldFNlc3Npb24SHC5kcGhvbmUudjEuR2V0U2Vzc2lvblJlcXVlc3QaHS5kcGhvbmUudjEuR2V0U2Vzc2lvblJlc3BvbnNlElUKDkNoYW5nZVBhc3N3b3JkEiAuZHBob25lLnYxLkNoYW5nZVBhc3N3b3JkUmVxdWVzdBohLmRwaG9uZS52MS5DaGFuZ2VQYXNzd29yZFJlc3BvbnNlYgZwcm90bzM");
+  fileDesc("ChRkcGhvbmUvdjEvYXV0aC5wcm90bxIJZHBob25lLnYxIqQBCgdTZXNzaW9uEhUKDWF1dGhlbnRpY2F0ZWQYASABKAgSEgoKY3NyZl90b2tlbhgCIAEoCRIMCgR1c2VyGAMgASgJEg0KBW1vZGVsGAQgASgJEg8KB3ZlcnNpb24YBSABKAkSEAoIaG9zdG5hbWUYBiABKAkSGAoQZGVmYXVsdF9wYXNzd29yZBgHIAEoCBIUCgx3ZWJfZGlzYWJsZWQYCCABKAgiLgoMTG9naW5SZXF1ZXN0EgwKBHVzZXIYASABKAkSEAoIcGFzc3dvcmQYAiABKAkiNAoNTG9naW5SZXNwb25zZRIjCgdzZXNzaW9uGAEgASgLMhIuZHBob25lLnYxLlNlc3Npb24iDwoNTG9nb3V0UmVxdWVzdCIQCg5Mb2dvdXRSZXNwb25zZSITChFHZXRTZXNzaW9uUmVxdWVzdCI5ChJHZXRTZXNzaW9uUmVzcG9uc2USIwoHc2Vzc2lvbhgBIAEoCzISLmRwaG9uZS52MS5TZXNzaW9uIkcKFUNoYW5nZVBhc3N3b3JkUmVxdWVzdBIYChBjdXJyZW50X3Bhc3N3b3JkGAEgASgJEhQKDG5ld19wYXNzd29yZBgCIAEoCSIYChZDaGFuZ2VQYXNzd29yZFJlc3BvbnNlMqoCCgtBdXRoU2VydmljZRI6CgVMb2dpbhIXLmRwaG9uZS52MS5Mb2dpblJlcXVlc3QaGC5kcGhvbmUudjEuTG9naW5SZXNwb25zZRI9CgZMb2dvdXQSGC5kcGhvbmUudjEuTG9nb3V0UmVxdWVzdBoZLmRwaG9uZS52MS5Mb2dvdXRSZXNwb25zZRJJCgpHZXRTZXNzaW9uEhwuZHBob25lLnYxLkdldFNlc3Npb25SZXF1ZXN0Gh0uZHBob25lLnYxLkdldFNlc3Npb25SZXNwb25zZRJVCg5DaGFuZ2VQYXNzd29yZBIgLmRwaG9uZS52MS5DaGFuZ2VQYXNzd29yZFJlcXVlc3QaIS5kcGhvbmUudjEuQ2hhbmdlUGFzc3dvcmRSZXNwb25zZWIGcHJvdG8z");
 
 /**
  * @generated from message dphone.v1.Session
@@ -56,6 +56,14 @@ export type Session = Message<"dphone.v1.Session"> & {
    * @generated from field: bool default_password = 7;
    */
   defaultPassword: boolean;
+
+  /**
+   * Web configuration is disabled on this phone: there is no login, and
+   * every other field is empty.
+   *
+   * @generated from field: bool web_disabled = 8;
+   */
+  webDisabled: boolean;
 };
 
 /**
@@ -197,7 +205,8 @@ export const ChangePasswordResponseSchema: GenMessage<ChangePasswordResponse> = 
 
 /**
  * Web login.  Login, Logout, and GetSession are the only RPCs that work
- * without a session.
+ * without a session.  While web configuration is disabled (`web_ui_enabled`
+ * is 0), GetSession is the only RPC of any service that is answered.
  *
  * @generated from service dphone.v1.AuthService
  */

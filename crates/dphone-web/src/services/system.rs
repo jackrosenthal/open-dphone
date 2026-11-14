@@ -414,6 +414,16 @@ pub async fn factory_reset(ctx: Ctx, req: pb::FactoryResetRequest) -> Result<pb:
     Ok(pb::FactoryResetResponse {})
 }
 
+pub async fn erase_nvdata(ctx: Ctx, req: pb::EraseNvdataRequest) -> Result<pb::EraseNvdataResponse, ConnectError> {
+    let model = ctx.app.store.model();
+    if !req.confirm.trim().eq_ignore_ascii_case(model.name()) {
+        return Err(ConnectError::invalid_argument(format!("type {} to confirm erasing nvdata", model.name())));
+    }
+    log::warn!("erasing nvdata requested from {}", ctx.peer);
+    command(&ctx.app.store, Command::EraseNvdata).await?;
+    Ok(pb::EraseNvdataResponse {})
+}
+
 pub async fn set_time(ctx: Ctx, req: pb::SetTimeRequest) -> Result<pb::SetTimeResponse, ConnectError> {
     // 2020-01-01 to 2100-01-01: anything else is a mistake.
     if !(1_577_836_800..4_102_444_800).contains(&req.unix_secs) {

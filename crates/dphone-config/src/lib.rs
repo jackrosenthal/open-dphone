@@ -25,6 +25,7 @@ pub mod model;
 pub mod nvdata;
 pub mod settings;
 pub mod store;
+pub mod trust;
 pub mod view;
 pub mod xml;
 

@@ -21,6 +21,7 @@ fn session_message(ctx: &Ctx, session: Option<&sess::Session>, default_password:
         version: sys.version.dotted(),
         hostname: sys.hostname.clone(),
         default_password,
+        ..Default::default()
     }
 }
 
@@ -70,6 +71,11 @@ pub async fn logout(ctx: Ctx, _req: pb::LogoutRequest) -> Result<pb::LogoutRespo
 }
 
 pub async fn get_session(ctx: Ctx, _req: pb::GetSessionRequest) -> Result<pb::GetSessionResponse, ConnectError> {
+    // Disabled: the state and nothing else, whatever cookie came along.
+    if !ctx.app.switch.enabled() {
+        let session = pb::Session { web_disabled: true, ..Default::default() };
+        return Ok(pb::GetSessionResponse { session: Some(session).into() });
+    }
     let default_password = match &ctx.session {
         Some(s) => check_password(&ctx, s.user.clone(), DEFAULT_PASSWORD.to_owned()).await.unwrap_or(false),
         None => false,

@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/v1/system.proto.
  */
 export const file_dphone_v1_system: GenFile = /*@__PURE__*/
-  fileDesc("ChZkcGhvbmUvdjEvc3lzdGVtLnByb3RvEglkcGhvbmUudjEiDwoNUmVib290UmVxdWVzdCIQCg5SZWJvb3RSZXNwb25zZSImChNGYWN0b3J5UmVzZXRSZXF1ZXN0Eg8KB2NvbmZpcm0YASABKAkiFgoURmFjdG9yeVJlc2V0UmVzcG9uc2UiIwoOU2V0VGltZVJlcXVlc3QSEQoJdW5peF9zZWNzGAEgASgEIhEKD1NldFRpbWVSZXNwb25zZSIVChNDcmVhdGVCYWNrdXBSZXF1ZXN0IjkKFENyZWF0ZUJhY2t1cFJlc3BvbnNlEhAKCGZpbGVuYW1lGAEgASgJEg8KB2FyY2hpdmUYAiABKAwiJwoUUmVzdG9yZUJhY2t1cFJlcXVlc3QSDwoHYXJjaGl2ZRgBIAEoDCI+ChVSZXN0b3JlQmFja3VwUmVzcG9uc2USDQoFZmlsZXMYASABKA0SFgoOcmVzdGFydF9uZWVkZWQYAiABKAgiGQoXR2V0U2VyaWFsQ29uc29sZVJlcXVlc3QiSgoYR2V0U2VyaWFsQ29uc29sZVJlc3BvbnNlEi4KDnNlcmlhbF9jb25zb2xlGAEgASgLMhYuZHBob25lLnYxLkJvb2xTZXR0aW5nIjEKF1NldFNlcmlhbENvbnNvbGVSZXF1ZXN0EhYKDnNlcmlhbF9jb25zb2xlGAEgASgIIkoKGFNldFNlcmlhbENvbnNvbGVSZXNwb25zZRIuCg5zZXJpYWxfY29uc29sZRgBIAEoCzIWLmRwaG9uZS52MS5Cb29sU2V0dGluZzLABAoNU3lzdGVtU2VydmljZRI9CgZSZWJvb3QSGC5kcGhvbmUudjEuUmVib290UmVxdWVzdBoZLmRwaG9uZS52MS5SZWJvb3RSZXNwb25zZRJPCgxGYWN0b3J5UmVzZXQSHi5kcGhvbmUudjEuRmFjdG9yeVJlc2V0UmVxdWVzdBofLmRwaG9uZS52MS5GYWN0b3J5UmVzZXRSZXNwb25zZRJACgdTZXRUaW1lEhkuZHBob25lLnYxLlNldFRpbWVSZXF1ZXN0GhouZHBob25lLnYxLlNldFRpbWVSZXNwb25zZRJPCgxDcmVhdGVCYWNrdXASHi5kcGhvbmUudjEuQ3JlYXRlQmFja3VwUmVxdWVzdBofLmRwaG9uZS52MS5DcmVhdGVCYWNrdXBSZXNwb25zZRJSCg1SZXN0b3JlQmFja3VwEh8uZHBob25lLnYxLlJlc3RvcmVCYWNrdXBSZXF1ZXN0GiAuZHBob25lLnYxLlJlc3RvcmVCYWNrdXBSZXNwb25zZRJbChBHZXRTZXJpYWxDb25zb2xlEiIuZHBob25lLnYxLkdldFNlcmlhbENvbnNvbGVSZXF1ZXN0GiMuZHBob25lLnYxLkdldFNlcmlhbENvbnNvbGVSZXNwb25zZRJbChBTZXRTZXJpYWxDb25zb2xlEiIuZHBob25lLnYxLlNldFNlcmlhbENvbnNvbGVSZXF1ZXN0GiMuZHBob25lLnYxLlNldFNlcmlhbENvbnNvbGVSZXNwb25zZWIGcHJvdG8z", [file_dphone_v1_config]);
+  fileDesc("ChZkcGhvbmUvdjEvc3lzdGVtLnByb3RvEglkcGhvbmUudjEiDwoNUmVib290UmVxdWVzdCIQCg5SZWJvb3RSZXNwb25zZSImChNGYWN0b3J5UmVzZXRSZXF1ZXN0Eg8KB2NvbmZpcm0YASABKAkiFgoURmFjdG9yeVJlc2V0UmVzcG9uc2UiJQoSRXJhc2VOdmRhdGFSZXF1ZXN0Eg8KB2NvbmZpcm0YASABKAkiFQoTRXJhc2VOdmRhdGFSZXNwb25zZSIjCg5TZXRUaW1lUmVxdWVzdBIRCgl1bml4X3NlY3MYASABKAQiEQoPU2V0VGltZVJlc3BvbnNlIhUKE0NyZWF0ZUJhY2t1cFJlcXVlc3QiOQoUQ3JlYXRlQmFja3VwUmVzcG9uc2USEAoIZmlsZW5hbWUYASABKAkSDwoHYXJjaGl2ZRgCIAEoDCInChRSZXN0b3JlQmFja3VwUmVxdWVzdBIPCgdhcmNoaXZlGAEgASgMIj4KFVJlc3RvcmVCYWNrdXBSZXNwb25zZRINCgVmaWxlcxgBIAEoDRIWCg5yZXN0YXJ0X25lZWRlZBgCIAEoCCIZChdHZXRTZXJpYWxDb25zb2xlUmVxdWVzdCJKChhHZXRTZXJpYWxDb25zb2xlUmVzcG9uc2USLgoOc2VyaWFsX2NvbnNvbGUYASABKAsyFi5kcGhvbmUudjEuQm9vbFNldHRpbmciMQoXU2V0U2VyaWFsQ29uc29sZVJlcXVlc3QSFgoOc2VyaWFsX2NvbnNvbGUYASABKAgiSgoYU2V0U2VyaWFsQ29uc29sZVJlc3BvbnNlEi4KDnNlcmlhbF9jb25zb2xlGAEgASgLMhYuZHBob25lLnYxLkJvb2xTZXR0aW5nIhoKGEdldE1ldHJpY3NFbmFibGVkUmVxdWVzdCJMChlHZXRNZXRyaWNzRW5hYmxlZFJlc3BvbnNlEi8KD21ldHJpY3NfZW5hYmxlZBgBIAEoCzIWLmRwaG9uZS52MS5Cb29sU2V0dGluZyIzChhTZXRNZXRyaWNzRW5hYmxlZFJlcXVlc3QSFwoPbWV0cmljc19lbmFibGVkGAEgASgIIkwKGVNldE1ldHJpY3NFbmFibGVkUmVzcG9uc2USLwoPbWV0cmljc19lbmFibGVkGAEgASgLMhYuZHBob25lLnYxLkJvb2xTZXR0aW5nMs4GCg1TeXN0ZW1TZXJ2aWNlEj0KBlJlYm9vdBIYLmRwaG9uZS52MS5SZWJvb3RSZXF1ZXN0GhkuZHBob25lLnYxLlJlYm9vdFJlc3BvbnNlEk8KDEZhY3RvcnlSZXNldBIeLmRwaG9uZS52MS5GYWN0b3J5UmVzZXRSZXF1ZXN0Gh8uZHBob25lLnYxLkZhY3RvcnlSZXNldFJlc3BvbnNlEkwKC0VyYXNlTnZkYXRhEh0uZHBob25lLnYxLkVyYXNlTnZkYXRhUmVxdWVzdBoeLmRwaG9uZS52MS5FcmFzZU52ZGF0YVJlc3BvbnNlEkAKB1NldFRpbWUSGS5kcGhvbmUudjEuU2V0VGltZVJlcXVlc3QaGi5kcGhvbmUudjEuU2V0VGltZVJlc3BvbnNlEk8KDENyZWF0ZUJhY2t1cBIeLmRwaG9uZS52MS5DcmVhdGVCYWNrdXBSZXF1ZXN0Gh8uZHBob25lLnYxLkNyZWF0ZUJhY2t1cFJlc3BvbnNlElIKDVJlc3RvcmVCYWNrdXASHy5kcGhvbmUudjEuUmVzdG9yZUJhY2t1cFJlcXVlc3QaIC5kcGhvbmUudjEuUmVzdG9yZUJhY2t1cFJlc3BvbnNlElsKEEdldFNlcmlhbENvbnNvbGUSIi5kcGhvbmUudjEuR2V0U2VyaWFsQ29uc29sZVJlcXVlc3QaIy5kcGhvbmUudjEuR2V0U2VyaWFsQ29uc29sZVJlc3BvbnNlElsKEFNldFNlcmlhbENvbnNvbGUSIi5kcGhvbmUudjEuU2V0U2VyaWFsQ29uc29sZVJlcXVlc3QaIy5kcGhvbmUudjEuU2V0U2VyaWFsQ29uc29sZVJlc3BvbnNlEl4KEUdldE1ldHJpY3NFbmFibGVkEiMuZHBob25lLnYxLkdldE1ldHJpY3NFbmFibGVkUmVxdWVzdBokLmRwaG9uZS52MS5HZXRNZXRyaWNzRW5hYmxlZFJlc3BvbnNlEl4KEVNldE1ldHJpY3NFbmFibGVkEiMuZHBob25lLnYxLlNldE1ldHJpY3NFbmFibGVkUmVxdWVzdBokLmRwaG9uZS52MS5TZXRNZXRyaWNzRW5hYmxlZFJlc3BvbnNlYgZwcm90bzM", [file_dphone_v1_config]);
 
 /**
  * @generated from message dphone.v1.RebootRequest
@@ -73,6 +73,38 @@ export const FactoryResetResponseSchema: GenMessage<FactoryResetResponse> = /*@_
   messageDesc(file_dphone_v1_system, 3);
 
 /**
+ * @generated from message dphone.v1.EraseNvdataRequest
+ */
+export type EraseNvdataRequest = Message<"dphone.v1.EraseNvdataRequest"> & {
+  /**
+   * Must be the phone's model name (e.g., "D60"), as a guard.
+   *
+   * @generated from field: string confirm = 1;
+   */
+  confirm: string;
+};
+
+/**
+ * Describes the message dphone.v1.EraseNvdataRequest.
+ * Use `create(EraseNvdataRequestSchema)` to create a new message.
+ */
+export const EraseNvdataRequestSchema: GenMessage<EraseNvdataRequest> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_system, 4);
+
+/**
+ * @generated from message dphone.v1.EraseNvdataResponse
+ */
+export type EraseNvdataResponse = Message<"dphone.v1.EraseNvdataResponse"> & {
+};
+
+/**
+ * Describes the message dphone.v1.EraseNvdataResponse.
+ * Use `create(EraseNvdataResponseSchema)` to create a new message.
+ */
+export const EraseNvdataResponseSchema: GenMessage<EraseNvdataResponse> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_system, 5);
+
+/**
  * @generated from message dphone.v1.SetTimeRequest
  */
 export type SetTimeRequest = Message<"dphone.v1.SetTimeRequest"> & {
@@ -87,7 +119,7 @@ export type SetTimeRequest = Message<"dphone.v1.SetTimeRequest"> & {
  * Use `create(SetTimeRequestSchema)` to create a new message.
  */
 export const SetTimeRequestSchema: GenMessage<SetTimeRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_system, 4);
+  messageDesc(file_dphone_v1_system, 6);
 
 /**
  * @generated from message dphone.v1.SetTimeResponse
@@ -100,7 +132,7 @@ export type SetTimeResponse = Message<"dphone.v1.SetTimeResponse"> & {
  * Use `create(SetTimeResponseSchema)` to create a new message.
  */
 export const SetTimeResponseSchema: GenMessage<SetTimeResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_system, 5);
+  messageDesc(file_dphone_v1_system, 7);
 
 /**
  * @generated from message dphone.v1.CreateBackupRequest
@@ -113,7 +145,7 @@ export type CreateBackupRequest = Message<"dphone.v1.CreateBackupRequest"> & {
  * Use `create(CreateBackupRequestSchema)` to create a new message.
  */
 export const CreateBackupRequestSchema: GenMessage<CreateBackupRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_system, 6);
+  messageDesc(file_dphone_v1_system, 8);
 
 /**
  * @generated from message dphone.v1.CreateBackupResponse
@@ -135,7 +167,7 @@ export type CreateBackupResponse = Message<"dphone.v1.CreateBackupResponse"> & {
  * Use `create(CreateBackupResponseSchema)` to create a new message.
  */
 export const CreateBackupResponseSchema: GenMessage<CreateBackupResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_system, 7);
+  messageDesc(file_dphone_v1_system, 9);
 
 /**
  * @generated from message dphone.v1.RestoreBackupRequest
@@ -152,7 +184,7 @@ export type RestoreBackupRequest = Message<"dphone.v1.RestoreBackupRequest"> & {
  * Use `create(RestoreBackupRequestSchema)` to create a new message.
  */
 export const RestoreBackupRequestSchema: GenMessage<RestoreBackupRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_system, 8);
+  messageDesc(file_dphone_v1_system, 10);
 
 /**
  * @generated from message dphone.v1.RestoreBackupResponse
@@ -174,7 +206,7 @@ export type RestoreBackupResponse = Message<"dphone.v1.RestoreBackupResponse"> &
  * Use `create(RestoreBackupResponseSchema)` to create a new message.
  */
 export const RestoreBackupResponseSchema: GenMessage<RestoreBackupResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_system, 9);
+  messageDesc(file_dphone_v1_system, 11);
 
 /**
  * @generated from message dphone.v1.GetSerialConsoleRequest
@@ -187,7 +219,7 @@ export type GetSerialConsoleRequest = Message<"dphone.v1.GetSerialConsoleRequest
  * Use `create(GetSerialConsoleRequestSchema)` to create a new message.
  */
 export const GetSerialConsoleRequestSchema: GenMessage<GetSerialConsoleRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_system, 10);
+  messageDesc(file_dphone_v1_system, 12);
 
 /**
  * @generated from message dphone.v1.GetSerialConsoleResponse
@@ -206,7 +238,7 @@ export type GetSerialConsoleResponse = Message<"dphone.v1.GetSerialConsoleRespon
  * Use `create(GetSerialConsoleResponseSchema)` to create a new message.
  */
 export const GetSerialConsoleResponseSchema: GenMessage<GetSerialConsoleResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_system, 11);
+  messageDesc(file_dphone_v1_system, 13);
 
 /**
  * @generated from message dphone.v1.SetSerialConsoleRequest
@@ -223,7 +255,7 @@ export type SetSerialConsoleRequest = Message<"dphone.v1.SetSerialConsoleRequest
  * Use `create(SetSerialConsoleRequestSchema)` to create a new message.
  */
 export const SetSerialConsoleRequestSchema: GenMessage<SetSerialConsoleRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_system, 12);
+  messageDesc(file_dphone_v1_system, 14);
 
 /**
  * @generated from message dphone.v1.SetSerialConsoleResponse
@@ -240,7 +272,71 @@ export type SetSerialConsoleResponse = Message<"dphone.v1.SetSerialConsoleRespon
  * Use `create(SetSerialConsoleResponseSchema)` to create a new message.
  */
 export const SetSerialConsoleResponseSchema: GenMessage<SetSerialConsoleResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_system, 13);
+  messageDesc(file_dphone_v1_system, 15);
+
+/**
+ * @generated from message dphone.v1.GetMetricsEnabledRequest
+ */
+export type GetMetricsEnabledRequest = Message<"dphone.v1.GetMetricsEnabledRequest"> & {
+};
+
+/**
+ * Describes the message dphone.v1.GetMetricsEnabledRequest.
+ * Use `create(GetMetricsEnabledRequestSchema)` to create a new message.
+ */
+export const GetMetricsEnabledRequestSchema: GenMessage<GetMetricsEnabledRequest> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_system, 16);
+
+/**
+ * @generated from message dphone.v1.GetMetricsEnabledResponse
+ */
+export type GetMetricsEnabledResponse = Message<"dphone.v1.GetMetricsEnabledResponse"> & {
+  /**
+   * @generated from field: dphone.v1.BoolSetting metrics_enabled = 1;
+   */
+  metricsEnabled?: BoolSetting | undefined;
+};
+
+/**
+ * Describes the message dphone.v1.GetMetricsEnabledResponse.
+ * Use `create(GetMetricsEnabledResponseSchema)` to create a new message.
+ */
+export const GetMetricsEnabledResponseSchema: GenMessage<GetMetricsEnabledResponse> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_system, 17);
+
+/**
+ * @generated from message dphone.v1.SetMetricsEnabledRequest
+ */
+export type SetMetricsEnabledRequest = Message<"dphone.v1.SetMetricsEnabledRequest"> & {
+  /**
+   * @generated from field: bool metrics_enabled = 1;
+   */
+  metricsEnabled: boolean;
+};
+
+/**
+ * Describes the message dphone.v1.SetMetricsEnabledRequest.
+ * Use `create(SetMetricsEnabledRequestSchema)` to create a new message.
+ */
+export const SetMetricsEnabledRequestSchema: GenMessage<SetMetricsEnabledRequest> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_system, 18);
+
+/**
+ * @generated from message dphone.v1.SetMetricsEnabledResponse
+ */
+export type SetMetricsEnabledResponse = Message<"dphone.v1.SetMetricsEnabledResponse"> & {
+  /**
+   * @generated from field: dphone.v1.BoolSetting metrics_enabled = 1;
+   */
+  metricsEnabled?: BoolSetting | undefined;
+};
+
+/**
+ * Describes the message dphone.v1.SetMetricsEnabledResponse.
+ * Use `create(SetMetricsEnabledResponseSchema)` to create a new message.
+ */
+export const SetMetricsEnabledResponseSchema: GenMessage<SetMetricsEnabledResponse> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_system, 19);
 
 /**
  * @generated from service dphone.v1.SystemService
@@ -261,6 +357,17 @@ export const SystemService: GenService<{
     methodKind: "unary";
     input: typeof FactoryResetRequestSchema;
     output: typeof FactoryResetResponseSchema;
+  },
+  /**
+   * Recovery only (the nvdata partition could not be mounted): erase the
+   * partition and reboot.  Refused while nvdata is mounted.
+   *
+   * @generated from rpc dphone.v1.SystemService.EraseNvdata
+   */
+  eraseNvdata: {
+    methodKind: "unary";
+    input: typeof EraseNvdataRequestSchema;
+    output: typeof EraseNvdataResponseSchema;
   },
   /**
    * @generated from rpc dphone.v1.SystemService.SetTime
@@ -306,6 +413,25 @@ export const SystemService: GenService<{
     methodKind: "unary";
     input: typeof SetSerialConsoleRequestSchema;
     output: typeof SetSerialConsoleResponseSchema;
+  },
+  /**
+   * Whether GET /metrics (the Prometheus scrape endpoint, no login) is
+   * served.
+   *
+   * @generated from rpc dphone.v1.SystemService.GetMetricsEnabled
+   */
+  getMetricsEnabled: {
+    methodKind: "unary";
+    input: typeof GetMetricsEnabledRequestSchema;
+    output: typeof GetMetricsEnabledResponseSchema;
+  },
+  /**
+   * @generated from rpc dphone.v1.SystemService.SetMetricsEnabled
+   */
+  setMetricsEnabled: {
+    methodKind: "unary";
+    input: typeof SetMetricsEnabledRequestSchema;
+    output: typeof SetMetricsEnabledResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_dphone_v1_system, 0);

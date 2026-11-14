@@ -324,3 +324,111 @@ fn contacts_document() {
     assert_eq!((c.id.as_str(), c.first_name.as_str(), c.subscribe_to.as_deref()), ("1001", "Reception", Some("1001")));
     assert_eq!(c.primary_number().unwrap().dial, "1001");
 }
+
+#[test]
+fn local_blf_items_file_takes_precedence() {
+    let (_d, mut s) = store(Model::D60);
+    s.apply_fetched(
+        r#"<config><smart_blf><blf_items><blf_item location="main" index="0" contact_id="merged"/></blf_items></smart_blf></config>"#,
+    )
+    .unwrap();
+    let ids = |items: Vec<dphone_config::view::BlfItem>| items.into_iter().filter_map(|i| i.contact_id).collect::<Vec<_>>();
+    assert_eq!(ids(s.blf_items().unwrap()), ["merged"]);
+    assert_eq!(ids(ConfigStore::blf_items_from(s.nvdata(), &s.config())), ["merged"]);
+
+    let local = Element::parse(
+        r#"<config><smart_blf><blf_items><blf_item location="main" index="0" contact_id="local-1"/><blf_item location="side" index="3" contact_id="local-2"/></blf_items></smart_blf></config>"#,
+    )
+    .unwrap();
+    s.nvdata().write_blf_items(&local).unwrap();
+    assert_eq!(ids(s.blf_items().unwrap()), ["local-1", "local-2"]);
+    assert_eq!(ids(ConfigStore::blf_items_from(s.nvdata(), &s.config())), ["local-1", "local-2"]);
+    // The merged configuration itself is unchanged.
+    assert_eq!(ids(s.config().blf_items()), ["merged"]);
+
+    s.nvdata().remove("blf_items.xml").unwrap();
+    assert_eq!(ids(s.blf_items().unwrap()), ["merged"]);
+}
+
+#[test]
+fn provisioned_certificates_are_kept_in_stocks_layout() {
+    let (_d, mut s) = store(Model::D60);
+    let nv = s.nvdata().clone();
+    let base = b"# base bundle\n-----BEGIN CERTIFICATE-----\nQkFTRQ==\n-----END CERTIFICATE-----\n";
+
+    // Nothing provisioned and no base bundle: nothing is created.
+    assert!(nv.update_trust(&s.config(), None).unwrap().is_empty());
+    assert_eq!(nv.trust_bundle().unwrap(), None);
+
+    // (Siblings are told apart by `id`, as everywhere in the merge.)
+    let cfg = s
+        .apply_fetched(
+            r#"<config><certs>
+                 <cert id="a" label="pbx-ca" md5="0123456789abcdef0123456789abcdef">Q0E=</cert>
+                 <cert id="b" label="second">Q0Ey</cert>
+                 <clientcert label="phone.crt" md5="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">Q0VSVA==</clientcert>
+                 <clientkey id="a" label="phone.key" type="rsa">S0VZ</clientkey>
+                 <clientkey id="b" label="plain.key">S0VZMg==</clientkey>
+                 <clientkey id="c" label="../escape">eA==</clientkey>
+               </certs></config>"#,
+        )
+        .unwrap();
+    let certs = cfg.provisioned_certs();
+    assert_eq!((certs.trusted.len(), certs.client_certs.len(), certs.client_keys.len()), (2, 1, 3));
+
+    let change = nv.update_trust(&cfg, Some(base)).unwrap();
+    let mut written = change.written.clone();
+    written.sort();
+    assert_eq!(written, [
+        "certs/certs.crt",
+        "clientcerts/phone.crt",
+        "clientcerts/phone.key",
+        "clientcerts/plain.key",
+        "md5s/pbx-ca",
+        "md5s/phone.crt",
+    ]);
+    assert_eq!(change.skipped.len(), 1, "{:?}", change.skipped);
+
+    // The bundle: the base, then each certificate as stock wraps it.
+    let mut expect = base.to_vec();
+    expect.extend_from_slice(b"\n-----BEGIN CERTIFICATE-----\nQ0E=\n-----END CERTIFICATE-----\n");
+    expect.extend_from_slice(b"\n-----BEGIN CERTIFICATE-----\nQ0Ey\n-----END CERTIFICATE-----\n");
+    assert_eq!(nv.trust_bundle().unwrap().unwrap(), expect);
+    assert_eq!(dphone_config::trust::trust_bundle(&cfg, Some(base)), expect);
+    assert_eq!(
+        nv.client_cert("phone.crt").unwrap().unwrap(),
+        b"\n-----BEGIN CERTIFICATE-----\nQ0VSVA==\n-----END CERTIFICATE-----\n"
+    );
+    assert_eq!(
+        nv.client_cert("phone.key").unwrap().unwrap(),
+        b"\n-----BEGIN RSA PRIVATE KEY-----\nS0VZ\n-----END RSA PRIVATE KEY-----\n"
+    );
+    assert_eq!(
+        nv.client_cert("plain.key").unwrap().unwrap(),
+        b"\n-----BEGIN PRIVATE KEY-----\nS0VZMg==\n-----END PRIVATE KEY-----\n"
+    );
+    assert_eq!(nv.cached_md5("pbx-ca").unwrap().as_deref(), Some("0123456789abcdef0123456789abcdef"));
+    assert!(!nv.path("escape").exists() && !nv.path("clientcerts/../escape").exists());
+
+    // Unchanged configuration: nothing is written again.
+    assert!(nv.update_trust(&cfg, Some(base)).unwrap().is_empty());
+
+    // A certificate withdrawn by the server leaves the bundle.
+    let cfg = s.apply_fetched(r#"<config><certs><cert id="b" label="second">Q0Ey</cert></certs></config>"#).unwrap();
+    assert_eq!(nv.update_trust(&cfg, Some(base)).unwrap().written, ["certs/certs.crt"]);
+    let text = String::from_utf8(nv.trust_bundle().unwrap().unwrap()).unwrap();
+    assert!(text.contains("Q0Ey") && !text.contains("Q0E=\n"));
+}
+
+#[test]
+fn user_ringtones_are_the_sln16_files() {
+    let (_d, s) = store(Model::D60);
+    let nv = s.nvdata();
+    assert!(nv.user_ringtones().unwrap().is_empty());
+    nv.write("ringtones/Mine.sln16", &[1, 0, 2, 0]).unwrap();
+    nv.write("ringtones/notes.txt", b"x").unwrap();
+    assert_eq!(nv.user_ringtones().unwrap(), ["Mine"]);
+    assert_eq!(nv.user_ringtone("Mine").unwrap().unwrap(), [1, 0, 2, 0]);
+    assert_eq!(nv.user_ringtone("Other").unwrap(), None);
+    assert!(nv.user_ringtone("../etc/enet.cfg").is_err());
+}

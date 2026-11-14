@@ -1,7 +1,10 @@
 //! `GET /metrics`: a Prometheus scrape endpoint.
 //!
 //! The endpoint is served on both listeners **without authentication**, so
-//! that a stock Prometheus can scrape the phone with no credentials.  For
+//! that a stock Prometheus can scrape the phone with no credentials.  It is
+//! on by default and can be switched off (`metrics_enabled` in the Open
+//! DPhone settings, or `dphone_metrics_enabled` from provisioning; it then
+//! answers 404), independently of whether web configuration is enabled.  For
 //! that reason it carries nothing that identifies a person or a peer: no
 //! names, numbers, SIP identities, host names, addresses, key or token
 //! material, or free-form text.  Labels are the firmware version, the model,

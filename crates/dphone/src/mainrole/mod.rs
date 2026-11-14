@@ -17,7 +17,7 @@ use log::{error, info, warn};
 use tokio::sync::watch;
 
 use crate::diag::Registry;
-use crate::init::{BEAT_ALIVE, BEAT_HEALTHY, HEARTBEAT_FD_ENV, MODEL_ENV, RECOVERY_ENV};
+use crate::init::{BEAT_ALIVE, BEAT_HEALTHY, BEAT_SAFE, HEARTBEAT_FD_ENV, MODEL_ENV, RECOVERY_ENV};
 use crate::model::Model;
 use crate::paths::Paths;
 use crate::sys::{self, Shutdown};
@@ -35,7 +35,7 @@ pub struct Options {
     pub model: Option<Model>,
     pub nvdata: Option<PathBuf>,
     pub run_dir: Option<PathBuf>,
-    /// Listen address for SSH; giving one turns SSH on.
+    /// Listen address for SSH (the simulator has no SSH server without one).
     pub ssh_listen: Option<SocketAddr>,
     pub no_ssh: bool,
     /// Start only SSH, the network, and diagnostics.
@@ -51,8 +51,8 @@ usage: dphone main [options]
   --model <d40..d70>    model to run as (default: detected, or d60 with --sim)
   --nvdata <dir>        nvdata directory (default /nvdata)
   --run-dir <dir>       runtime directory (default /run/dphone)
-  --ssh-port <port>     enable SSH on this port (all addresses)
-  --ssh-listen <addr>   enable SSH on this address, e.g. 127.0.0.1:2222
+  --ssh-port <port>     SSH port (all addresses), used while ssh_enabled is on
+  --ssh-listen <addr>   SSH address, e.g. 127.0.0.1:2222, used while ssh_enabled is on
   --no-ssh              do not start SSH
   --web-port <port>     HTTP port of the web UI (default 80; 8080 with --sim)
   --safe                start only SSH, the network, and diagnostics
@@ -291,19 +291,18 @@ async fn run_async(opts: Options) -> i32 {
     // 2. Heartbeat to the init role.
     ctx.health.require("core");
     if let Some(fd) = beat_fd {
-        tokio::spawn(heartbeat(fd, ctx.health.clone()));
+        tokio::spawn(heartbeat(fd, ctx.health.clone(), ctx.safe));
     }
 
     // 3. Signals.
     tokio::spawn(signals(ctx.clone()));
 
-    // 4. SSH, before anything that could fail: whatever else breaks, the
-    //    way in stays up.  (It listens on the wildcard address, so it does
-    //    not need the network to be configured yet.)
+    // 4. SSH, before anything that could fail.  It is off by default and
+    //    binds nothing here: the listener opens when the settings, read in
+    //    the next step, say `ssh_enabled` (`subsystems::apply_ssh_switch`).
     if let Some(listen) = crate::ssh::listen_address(&ctx, &opts) {
         match crate::ssh::start(&ctx, listen).await {
-            Ok(addr) => {
-                info!("ssh listening on {addr}");
+            Ok(()) => {
                 ctx.store.set_health(dphone_state::Subsystem::Ssh, dphone_state::HealthStatus::Ok);
             }
             Err(e) => {
@@ -312,7 +311,7 @@ async fn run_async(opts: Options) -> i32 {
             }
         }
     } else {
-        info!("ssh disabled");
+        info!("ssh: not started");
     }
 
     // 5. Subsystems from the other crates, in dependency order.
@@ -337,7 +336,9 @@ async fn run_async(opts: Options) -> i32 {
 
 /// Write beats to the init role.  This task runs on the same single-threaded
 /// runtime as everything else, so a stalled event loop stops the beats.
-async fn heartbeat(fd: i32, health: Health) {
+/// In safe mode "healthy" is never sent: the reduced main role being up says
+/// nothing about the phone working, and must not confirm a trial boot.
+async fn heartbeat(fd: i32, health: Health, safe: bool) {
     use std::io::Write;
     // SAFETY: the init role opened this descriptor for us; nothing else in
     // this process owns it.
@@ -346,7 +347,11 @@ async fn heartbeat(fd: i32, health: Health) {
     let mut tick = tokio::time::interval(BEAT_INTERVAL);
     loop {
         tick.tick().await;
-        let beat = if health.is_healthy() { BEAT_HEALTHY } else { BEAT_ALIVE };
+        let beat = match (health.is_healthy(), safe) {
+            (true, false) => BEAT_HEALTHY,
+            (true, true) => BEAT_SAFE,
+            (false, _) => BEAT_ALIVE,
+        };
         // A full pipe (init busy) or a closed one is not our problem to fix.
         let _ = pipe.write(&[beat]);
     }

@@ -61,7 +61,7 @@ pub fn start(ctx: &Context, parts: Parts) {
     let Parts { config, hub, net, mtd } = parts;
     tokio::spawn(config_domain(ctx.clone(), config.clone(), hub));
     tokio::spawn(network_domain(ctx.store.clone(), net));
-    tokio::spawn(system_domain(ctx.clone(), config));
+    tokio::spawn(system_domain(ctx.clone(), config, mtd.clone()));
     tokio::spawn(update_domain(ctx.clone(), mtd.clone()));
     tokio::spawn(confirm_trial_when_healthy(ctx.clone()));
 
@@ -83,22 +83,28 @@ async fn config_domain(ctx: Context, config: Option<SharedConfig>, hub: ConfigHu
             responder.reply(Err(CommandError::Failed("the configuration could not be loaded".into())));
             continue;
         };
+        // Every one of these writes nvdata (the merged `config.xml` at the
+        // least), and a JFFS2 write can take long when the volume collects
+        // garbage: they run on the blocking pool, not on the runtime thread
+        // that carries the network and the heartbeat.
         let result = match cmd {
-            Command::ReloadConfig => config.lock().unwrap().reload().map_err(|e| CommandError::Failed(e.to_string())),
+            Command::ReloadConfig | Command::ReloadContacts => {
+                // (Contact lists are read from disk by their users; a reload
+                // of the merge picks up changed sources.)
+                write_config(config, |store| store.reload()).await
+            }
             Command::SetSettings { settings } => {
                 if read_only && settings.iter().any(|(id, _)| !id.starts_with("open_")) {
                     Err(CommandError::Denied(
                         "this image leaves stock-owned nvdata files untouched; settings cannot be saved".into(),
                     ))
                 } else {
-                    let pairs: Vec<(&str, &str)> = settings.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
-                    config.lock().unwrap().set_many(&pairs).map_err(|e| CommandError::Failed(e.to_string()))
+                    write_config(config, move |store| {
+                        let pairs: Vec<(&str, &str)> = settings.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+                        store.set_many(&pairs)
+                    })
+                    .await
                 }
-            }
-            Command::ReloadContacts => {
-                // Contact lists are read from disk by their users; a reload
-                // of the merge picks up changed sources.
-                config.lock().unwrap().reload().map_err(|e| CommandError::Failed(e.to_string()))
             }
             other => Err(CommandError::Invalid(format!("not a configuration command: {other:?}"))),
         };
@@ -116,6 +122,21 @@ async fn config_domain(ctx: Context, config: Option<SharedConfig>, hub: ConfigHu
             }
         }
     }
+}
+
+/// Run a configuration-store operation that writes nvdata on the blocking
+/// pool and wait for it without holding up the runtime thread.
+pub async fn write_config<T: Send + 'static>(
+    config: &SharedConfig,
+    op: impl FnOnce(&mut dphone_config::ConfigStore) -> Result<T, dphone_config::ConfigError> + Send + 'static,
+) -> Result<T, CommandError> {
+    let config = config.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut store = config.lock().map_err(|_| CommandError::Failed("configuration store poisoned".into()))?;
+        op(&mut store).map_err(|e| CommandError::Failed(e.to_string()))
+    })
+    .await
+    .unwrap_or_else(|e| Err(CommandError::Failed(format!("configuration write did not finish: {e}"))))
 }
 
 async fn network_domain(store: Store, net: NetHandle) {
@@ -138,7 +159,22 @@ async fn network_domain(store: Store, net: NetHandle) {
     }
 }
 
-async fn system_domain(ctx: Context, config: Option<SharedConfig>) {
+/// Erase the nvdata partition.  Only in recovery, where the partition could
+/// not be mounted and `/nvdata` is a stand-in: JFFS2 mounts an erased
+/// partition as an empty volume at the next boot.
+fn erase_nvdata(ctx: &Context, mtd: Option<&SharedMtd>) -> Result<(), CommandError> {
+    if ctx.recovery.is_none() {
+        return Err(CommandError::Denied("nvdata is mounted; use a factory reset instead".into()));
+    }
+    let mtd = mtd.ok_or_else(|| CommandError::Failed("flash is not available".into()))?;
+    let mut mtd = mtd.lock().map_err(|_| CommandError::Failed("flash lock poisoned".into()))?;
+    let mut part = mtd.open("nvdata").map_err(|e| CommandError::Failed(e.to_string()))?;
+    let bad = dphone_hal::erase_all(part.as_mut(), |_, _| {}).map_err(|e| CommandError::Failed(e.to_string()))?;
+    warn!("recovery: nvdata erased ({bad} bad block(s) skipped)");
+    Ok(())
+}
+
+async fn system_domain(ctx: Context, config: Option<SharedConfig>, mtd: Option<SharedMtd>) {
     let rx = ctx.store.handle(Domain::System);
     while let Some(envelope) = rx.next().await {
         let (cmd, responder) = envelope.split();
@@ -152,19 +188,32 @@ async fn system_domain(ctx: Context, config: Option<SharedConfig>) {
                 if !super::stock_writes_allowed(&ctx) {
                     Err(CommandError::Denied("this image leaves stock-owned nvdata files untouched".into()))
                 } else {
-                    // Stock's marker file: the reset runs at the next start,
-                    // before anything reads the configuration.
+                    // Stock's marker file: the init role performs the reset
+                    // at the next boot, right after mounting nvdata
+                    // (`init::nvdata::run_pending_factory_reset`).
                     let nv = match &config {
                         Some(c) => c.lock().unwrap().nvdata().clone(),
                         None => dphone_config::Nvdata::new(ctx.paths.nvdata.clone()),
                     };
-                    match nv.request_factory_reset() {
-                        Ok(()) => {
+                    match tokio::task::spawn_blocking(move || nv.request_factory_reset()).await {
+                        Ok(Ok(())) => {
                             shutdown_soon(&ctx, "factory reset".to_string());
                             Ok(Reply::Done)
                         }
+                        Ok(Err(e)) => Err(CommandError::Failed(e.to_string())),
                         Err(e) => Err(CommandError::Failed(e.to_string())),
                     }
+                }
+            }
+            Command::EraseNvdata => {
+                let (ctx2, mtd) = (ctx.clone(), mtd.clone());
+                match tokio::task::spawn_blocking(move || erase_nvdata(&ctx2, mtd.as_ref())).await {
+                    Ok(Ok(())) => {
+                        shutdown_soon(&ctx, "nvdata erased".to_string());
+                        Ok(Reply::Done)
+                    }
+                    Ok(Err(e)) => Err(e),
+                    Err(e) => Err(CommandError::Failed(e.to_string())),
                 }
             }
             Command::SetTime { unix_secs } => match crate::sys::set_clock(unix_secs as i64) {
@@ -290,12 +339,13 @@ fn install(
 }
 
 /// The main role's half of trial confirmation (the init role does the same
-/// on a healthy heartbeat; either may come first).
+/// on a healthy heartbeat; either may come first).  Safe mode confirms
+/// nothing: it starts neither the UI nor telephony.
 async fn confirm_trial_when_healthy(ctx: Context) {
     loop {
         tokio::time::sleep(Duration::from_secs(5)).await;
         if ctx.health.is_healthy() {
-            if !ctx.sim && ctx.recovery.is_none() {
+            if !ctx.sim && !ctx.safe && ctx.recovery.is_none() {
                 let _ = trial::mark_healthy(&ctx.paths.open_dir(), Some(&ctx.store));
             }
             ctx.store.heartbeat(Subsystem::Core);

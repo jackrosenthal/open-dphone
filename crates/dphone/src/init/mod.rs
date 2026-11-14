@@ -20,12 +20,17 @@
 //! [`HEARTBEAT_FD`] (also named in the environment variable
 //! [`HEARTBEAT_FD_ENV`]).  It writes [`BEAT_ALIVE`] at least every few
 //! seconds while its event loop turns, and [`BEAT_HEALTHY`] once it considers
-//! the phone healthy (network up, UI running).
+//! the phone healthy (network up, UI running).  A main role in safe mode
+//! writes [`BEAT_SAFE`] in place of [`BEAT_HEALTHY`]: it is up, but it is not
+//! the phone, so it never confirms a trial boot.
 //!
 //! - No beat for [`START_GRACE_SECS`] after start, or for
 //!   [`BEAT_TIMEOUT_SECS`] later: the main role is killed and restarted.
 //! - Exit or kill: restart with exponential backoff up to
-//!   [`MAX_BACKOFF_SECS`].
+//!   [`MAX_BACKOFF_SECS`].  After [`SAFE_MODE_AFTER_CRASHES`] failures in a
+//!   row the main role is started in safe mode, except during a trial boot:
+//!   there the full main role is tried until
+//!   [`trial::MAX_TRIAL_CRASHES`] failures roll the phone back.
 //! - No beat from any main-role instance for [`UNHEALTHY_REBOOT_SECS`]: clean
 //!   reboot, since a restart did not help.  Suppressed while
 //!   `/run/dphone/no-reboot` exists, so a serial-console user can keep
@@ -70,6 +75,8 @@ pub const MODEL_ENV: &str = "DPHONE_MODEL";
 
 pub const BEAT_ALIVE: u8 = b'h';
 pub const BEAT_HEALTHY: u8 = b'H';
+/// Up and reachable, in safe mode.  Never confirms a trial boot.
+pub const BEAT_SAFE: u8 = b'S';
 
 pub const START_GRACE_SECS: u64 = 120;
 pub const BEAT_TIMEOUT_SECS: u64 = 30;
@@ -114,6 +121,16 @@ pub struct TestOptions {
     pub start_grace: u64,
     pub beat_timeout: u64,
     pub unhealthy_reboot: u64,
+    /// Stands in for the flash: a rollback writes the bank it selects
+    /// (`0` or `1`) to this file.  Without it there is no rollback hook.
+    pub rollback_marker: Option<PathBuf>,
+}
+
+static TEST_ROLLBACK_MARKER: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+fn test_rollback_hook(record: &TrialRecord) -> std::io::Result<()> {
+    let path = TEST_ROLLBACK_MARKER.get().ok_or_else(|| std::io::Error::other("no rollback marker"))?;
+    std::fs::write(path, record.previous_bank.to_string())
 }
 
 /// Entry point as PID 1.  Never returns.
@@ -135,6 +152,13 @@ pub fn run(hooks: Hooks) -> ! {
 
     let nv_state = nvdata::mount();
     wd.feed();
+    // A factory reset asked for before the last shutdown, first thing after
+    // the mount as on stock.  Not on the stand-in tmpfs, and not in an image
+    // that must leave stock's files as they are.
+    if nv_state == NvdataState::Mounted && crate::paths::stock_writes_allowed() {
+        nvdata::run_pending_factory_reset(std::path::Path::new(crate::paths::NVDATA));
+        wd.feed();
+    }
 
     let paths = Paths::default();
     restore_clock(&paths);
@@ -167,7 +191,12 @@ pub fn run(hooks: Hooks) -> ! {
 pub fn run_supervisor_test(opts: TestOptions) -> i32 {
     crate::logging::init_ring(log::LevelFilter::Info, true);
     let wd = Watchdog::never();
-    let mut sup = Supervisor::new(Hooks::default(), opts.paths, wd, opts.main_command, false);
+    let mut hooks = Hooks::default();
+    if let Some(marker) = opts.rollback_marker {
+        let _ = TEST_ROLLBACK_MARKER.set(marker);
+        hooks.rollback = Some(test_rollback_hook);
+    }
+    let mut sup = Supervisor::new(hooks, opts.paths, wd, opts.main_command, false);
     sup.start_grace = opts.start_grace;
     sup.beat_timeout = opts.beat_timeout;
     sup.unhealthy_reboot = opts.unhealthy_reboot;
@@ -193,6 +222,8 @@ struct MainProc {
     started: u64,
     last_beat: Option<u64>,
     healthy: bool,
+    /// It reported being up in safe mode.
+    safe_up: bool,
     is_override: bool,
     killed: bool,
 }
@@ -384,9 +415,13 @@ impl Supervisor {
         let Some(mut proc_) = self.main.take() else { return };
         let now = sys::monotonic_secs();
         // Take any last beats (a healthy report just before exit still counts).
+        let was = (proc_.healthy, proc_.safe_up);
         Self::drain_beats(&mut proc_, now);
-        if proc_.healthy {
+        if proc_.healthy && !was.0 {
             self.note_healthy();
+        }
+        if proc_.safe_up && !was.1 {
+            self.note_safe_up();
         }
         // The main role may have claimed the UART for EHS; with it gone the
         // serial console is the way in, so the claim goes too.
@@ -419,6 +454,13 @@ impl Supervisor {
         let backoff = (1u64 << (self.crashes - 1).min(6)).min(MAX_BACKOFF_SECS);
         self.next_start = now + backoff;
         info!("restarting main role in {backoff} s (failure {} in a row)", self.crashes);
+        self.roll_back_if_failing();
+    }
+
+    /// During a trial boot, a main role that has failed
+    /// [`trial::MAX_TRIAL_CRASHES`] times in a row is reason enough to go
+    /// back at once.
+    fn roll_back_if_failing(&mut self) {
         if self.trial.is_some() && self.crashes >= trial::MAX_TRIAL_CRASHES {
             self.roll_back("main role keeps failing during trial boot");
         }
@@ -434,6 +476,9 @@ impl Supervisor {
                     if buf[..n].contains(&BEAT_HEALTHY) {
                         proc_.healthy = true;
                     }
+                    if buf[..n].contains(&BEAT_SAFE) {
+                        proc_.safe_up = true;
+                    }
                 }
                 Err(_) => return,
             }
@@ -442,14 +487,29 @@ impl Supervisor {
 
     fn read_beats(&mut self, now: u64) {
         let Some(proc_) = self.main.as_mut() else { return };
-        let was_healthy = proc_.healthy;
+        let was = (proc_.healthy, proc_.safe_up);
         Self::drain_beats(proc_, now);
         if proc_.last_beat == Some(now) {
             self.last_alive = now;
         }
-        if proc_.healthy && !was_healthy {
+        let is = (proc_.healthy, proc_.safe_up);
+        if is.0 && !was.0 {
             info!("main role reports healthy");
             self.note_healthy();
+        }
+        if is.1 && !was.1 {
+            info!("main role is up in safe mode");
+            self.note_safe_up();
+        }
+    }
+
+    /// A safe-mode main role is up.  That ends the run of failures, so the
+    /// full main role gets another try after the next exit, but it says
+    /// nothing about the image on trial: the record stays, and during a
+    /// trial the failures keep counting toward the rollback.
+    fn note_safe_up(&mut self) {
+        if self.trial.is_none() {
+            self.crashes = 0;
         }
     }
 
@@ -524,8 +584,10 @@ impl Supervisor {
         }
         // After repeated failures, ask for the reduced main role (SSH,
         // network, diagnostics only), so a broken subsystem cannot keep the
-        // phone unreachable.
-        if self.crashes >= SAFE_MODE_AFTER_CRASHES {
+        // phone unreachable.  Not during a trial boot: the image on trial
+        // has to show that its full main role works, and one that keeps
+        // failing is rolled back instead (`roll_back_if_failing`).
+        if self.crashes >= SAFE_MODE_AFTER_CRASHES && self.trial.is_none() {
             warn!("main role failed {} times in a row; starting it in safe mode", self.crashes);
             cmd.env(SAFE_ENV, "1");
         }
@@ -556,7 +618,7 @@ impl Supervisor {
                 // handle does not wait.
                 drop(child);
                 info!("started main role: {} (pid {pid})", argv.join(" "));
-                self.main = Some(MainProc { pid, beat, started: now, last_beat: None, healthy: false, is_override, killed: false });
+                self.main = Some(MainProc { pid, beat, started: now, last_beat: None, healthy: false, safe_up: false, is_override, killed: false });
             }
             Err(e) => {
                 error!("cannot start main role {program}: {e}");
@@ -565,6 +627,7 @@ impl Supervisor {
                 }
                 self.crashes += 1;
                 self.next_start = now + (1u64 << (self.crashes - 1).min(6)).min(MAX_BACKOFF_SECS);
+                self.roll_back_if_failing();
             }
         }
     }

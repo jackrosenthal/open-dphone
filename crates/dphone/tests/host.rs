@@ -287,6 +287,184 @@ fn supervisor_confirms_trial_and_restarts_main() {
     wait_for("main role stopped", Duration::from_secs(10), || unsafe { libc::kill(third, 0) } != 0);
 }
 
+/// Start the supervisor alone, with `main` as the main role's command line
+/// and a pending trial whose previous bank is 1.  Returns the supervisor,
+/// the trial record's path, the rollback marker's path, and the log.
+fn start_trial_supervisor(dir: &Path, main: &[&str]) -> (KillOnDrop, PathBuf, PathBuf, PathBuf) {
+    let nv = dir.join("nv");
+    let run = dir.join("run");
+    std::fs::create_dir_all(nv.join("open")).unwrap();
+    std::fs::create_dir_all(&run).unwrap();
+    let trial = nv.join("open/trial");
+    std::fs::write(&trial, "pending=1\nprevious_bank=1\nboots=0\nmax_boots=3\n").unwrap();
+    let marker = dir.join("rolled-back-to");
+    let log = dir.join("log");
+    let sup = Command::new(BIN)
+        .args(["init", "--supervise-only", "--nvdata"])
+        .arg(&nv)
+        .arg("--run-dir")
+        .arg(&run)
+        .args(["--grace", "20", "--beat-timeout", "3", "--rollback-marker"])
+        .arg(&marker)
+        .arg("--")
+        .arg(BIN)
+        .args(main)
+        .stdin(Stdio::null())
+        .stderr(std::fs::File::create(&log).unwrap())
+        .spawn()
+        .unwrap();
+    (KillOnDrop(sup), trial, marker, log)
+}
+
+/// An image whose main role fails at every start is not kept: during the
+/// trial the full main role is retried (never the safe-mode one, which
+/// would come up and look fine), and after `MAX_TRIAL_CRASHES` failures the
+/// supervisor selects the previous bank and reboots.
+#[test]
+fn crash_looping_main_role_during_a_trial_rolls_back() {
+    let dir = temp();
+    // `dphone main` with an option it does not know exits with status 2.
+    let (mut sup, trial, marker, log) = start_trial_supervisor(dir.path(), &["main", "--no-such-option"]);
+    let _show_log = ShowOnPanic(log.clone());
+
+    // Restart delays are 1, 2, 4, and 8 s before the fifth failure.
+    wait_for("the supervisor to give up and reboot", Duration::from_secs(40), || sup.0.try_wait().unwrap().is_some());
+    assert_eq!(sup.0.try_wait().unwrap().unwrap().code(), Some(0));
+
+    assert_eq!(std::fs::read_to_string(&marker).expect("the rollback hook ran"), "1", "previous bank selected");
+    assert!(!trial.exists(), "the trial record is gone after the rollback");
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert_eq!(text.matches("started main role").count(), 5, "{text}");
+    assert!(!text.contains("safe mode"), "safe mode must not be tried during a trial:\n{text}");
+    assert!(!text.contains("trial boot confirmed"), "{text}");
+    assert!(text.contains("reverted to bank 1"), "{text}");
+    let reason = std::fs::read_to_string(dir.path().join("nv/reboot_reason")).unwrap();
+    assert_eq!(reason, "init: main role keeps failing during trial boot, reverted to bank 1\n");
+}
+
+/// A main role in safe mode comes up and says so, and that does not confirm
+/// a trial boot.
+#[test]
+fn safe_mode_does_not_confirm_a_trial() {
+    let dir = temp();
+    let nv = dir.path().join("nv");
+    let run = dir.path().join("run");
+    let (nv_s, run_s) = (nv.to_str().unwrap().to_owned(), run.to_str().unwrap().to_owned());
+    let (_sup, trial, marker, log) = start_trial_supervisor(
+        dir.path(),
+        &["main", "--sim", "--safe", "--no-ssh", "--nvdata", &nv_s, "--run-dir", &run_s],
+    );
+    let _show_log = ShowOnPanic(log.clone());
+    let logged = |what: &str| std::fs::read_to_string(&log).unwrap_or_default().contains(what);
+    wait_for("the safe-mode main role to report", Duration::from_secs(20), || logged("main role is up in safe mode"));
+    // Well past the main role's own confirmation check (every 5 s).
+    std::thread::sleep(Duration::from_secs(7));
+    assert!(trial.exists(), "the trial record must stay");
+    assert!(!logged("trial boot confirmed") && !logged("main role reports healthy"));
+    assert!(!marker.exists(), "nothing failed, so nothing is rolled back");
+}
+
+/// A loopback port nothing listens on right now.
+fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+}
+
+fn listening(port: u16) -> bool {
+    std::net::TcpStream::connect(("127.0.0.1", port)).is_ok()
+}
+
+/// One HTTP/1.1 exchange; returns the status and the body.
+fn http(port: u16, method: &str, path: &str, body: &str) -> (u16, String) {
+    use std::io::{Read, Write};
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    write!(
+        s,
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    )
+    .unwrap();
+    let mut raw = String::new();
+    let _ = s.read_to_string(&mut raw);
+    let status = raw.split(' ').nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
+    (status, raw.split_once("\r\n\r\n").map(|(_, b)| b.to_owned()).unwrap_or_default())
+}
+
+/// With nothing set, the phone does not listen for SSH at any point; the
+/// listener opens when `ssh_enabled` is turned on, and closes again.
+#[test]
+fn ssh_is_off_until_the_setting_turns_it_on() {
+    let dir = temp();
+    let port = free_port();
+    let listen = format!("127.0.0.1:{port}");
+    let (main, socket) = start_main(dir.path(), &["--ssh-listen", &listen]);
+    let _main = main;
+    wait_for("diag socket", Duration::from_secs(10), || socket.exists());
+    wait_for("healthy", Duration::from_secs(10), || diag(&socket, &["health"]).0 == 0);
+    let log = || diag(&socket, &["log", "-n", "100000"]).1;
+    assert!(!listening(port), "SSH listens although nothing turned it on");
+    assert!(!log().contains("ssh listening"), "{}", log());
+
+    let settings = dir.path().join("nv/dphone_settings.txtpb");
+    std::fs::write(&settings, "ssh_enabled: true\n").unwrap();
+    assert_eq!(diag(&socket, &["config", "reload"]).0, 0);
+    wait_for("the SSH listener", Duration::from_secs(10), || listening(port));
+
+    std::fs::write(&settings, "ssh_enabled: false\n").unwrap();
+    assert_eq!(diag(&socket, &["config", "reload"]).0, 0);
+    wait_for("the SSH listener to close", Duration::from_secs(10), || !listening(port));
+}
+
+/// The web server listens whatever `web_ui_enabled` and `metrics_enabled`
+/// say, and follows both while the main role runs.
+#[cfg(feature = "web")]
+#[test]
+fn web_configuration_and_metrics_switch_at_run_time() {
+    let dir = temp();
+    let port = free_port();
+    let (main, socket) = start_main(dir.path(), &["--no-ssh", "--web-port", &port.to_string()]);
+    let _main = main;
+    wait_for("diag socket", Duration::from_secs(10), || socket.exists());
+    wait_for("the web server", Duration::from_secs(20), || listening(port));
+    let session = || http(port, "POST", "/dphone.v1.AuthService/GetSession", "{}");
+    let login = || http(port, "POST", "/dphone.v1.AuthService/Login", r#"{"user":"admin","password":"789"}"#).0;
+    let shell = || http(port, "POST", "/dphone.v1.ShellService/OpenShell", "{}").0;
+    let metrics = || http(port, "GET", "/metrics", "").0;
+    let set = |id: &str, value: &str| assert_eq!(diag(&socket, &["config", "set", id, value]).0, 0);
+
+    // Defaults: web configuration on, metrics on.
+    assert!(session().1.contains("\"model\""), "{:?}", session());
+    assert_eq!((login(), metrics()), (200, 200));
+
+    // Web configuration off: a page, the state, metrics, and nothing else.
+    set("web_ui_enabled", "0");
+    wait_for("web configuration to be disabled", Duration::from_secs(10), || login() == 403);
+    let (status, body) = session();
+    assert_eq!(status, 200);
+    assert!(body.contains(r#"{"session":{"webDisabled":true}}"#) && !body.contains("model"), "{body}");
+    assert_eq!((shell(), metrics()), (403, 200));
+    assert_eq!(http(port, "GET", "/", "").0, 200);
+    assert_eq!(http(port, "POST", "/dphone.v1.StatusService/GetStatus", "{}").0, 403);
+    assert_eq!(http(port, "POST", "/upload/firmware", "x").0, 403);
+
+    // Metrics off as well: the settings file, then a reload.
+    let settings = dir.path().join("nv/dphone_settings.txtpb");
+    std::fs::write(&settings, "metrics_enabled: false\n").unwrap();
+    assert_eq!(diag(&socket, &["config", "reload"]).0, 0);
+    wait_for("metrics to be disabled", Duration::from_secs(10), || metrics() == 404);
+    assert_eq!(login(), 403);
+
+    // Web configuration back on; metrics still off.
+    set("web_ui_enabled", "1");
+    wait_for("web configuration to be enabled", Duration::from_secs(10), || login() == 200);
+    assert_eq!((shell(), metrics()), (401, 404));
+
+    // Metrics back on.
+    std::fs::write(&settings, "metrics_enabled: true\n").unwrap();
+    assert_eq!(diag(&socket, &["config", "reload"]).0, 0);
+    wait_for("metrics to be enabled", Duration::from_secs(10), || metrics() == 200);
+}
+
 fn have(tool: &str) -> bool {
     Command::new(tool).arg("-V").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok()
 }
@@ -315,6 +493,8 @@ fn ssh_exec_and_sftp_with_openssh_client() {
     // No key file yet: the server starts with nobody able to log in.
     std::fs::create_dir_all(d.join("nv/root/.ssh")).unwrap();
     std::fs::create_dir_all(d.join("nv/open")).unwrap();
+    // SSH is off unless the settings turn it on.
+    std::fs::write(d.join("nv/dphone_settings.txtpb"), "ssh_enabled: true\n").unwrap();
 
     let nv = d.join("nv");
     let run = d.join("run");

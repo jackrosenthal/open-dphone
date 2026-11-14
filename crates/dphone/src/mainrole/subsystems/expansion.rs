@@ -78,7 +78,7 @@ fn settings(config: &Config, nv: &Nvdata, supported: bool) -> Settings {
             contacts.extend(groups.into_iter().flat_map(|g| g.contacts));
         }
     }
-    for item in config.blf_items() {
+    for item in dphone_config::ConfigStore::blf_items_from(nv, config) {
         if item.location != "expansion" || item.blank {
             continue;
         }

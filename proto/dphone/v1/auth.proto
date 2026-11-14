@@ -3,7 +3,8 @@ syntax = "proto3";
 package dphone.v1;
 
 // Web login.  Login, Logout, and GetSession are the only RPCs that work
-// without a session.
+// without a session.  While web configuration is disabled (`web_ui_enabled`
+// is 0), GetSession is the only RPC of any service that is answered.
 service AuthService {
   rpc Login(LoginRequest) returns (LoginResponse);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
@@ -22,6 +23,9 @@ message Session {
   string hostname = 6;
   // The phone is still using the default password.
   bool default_password = 7;
+  // Web configuration is disabled on this phone: there is no login, and
+  // every other field is empty.
+  bool web_disabled = 8;
 }
 
 message LoginRequest {

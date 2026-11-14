@@ -15,7 +15,7 @@ package dphone.settings.v1;
 // it conflict="freeze"; otherwise the value in this file if the field is
 // present; otherwise the provisioned value; otherwise the default.
 message DphoneSettings {
-  // Run the SSH server.  Default: true.
+  // Run the SSH server.  Default: false.
   optional bool ssh_enabled = 1;
   // Ignore the firmware a provisioning server asks for.  Default: false,
   // which follows the server as the stock firmware does.  Meant for
@@ -27,4 +27,8 @@ message DphoneSettings {
   // to false to run EHS (the stock "ehs" setting then picks the adapter
   // type) and give up the console.
   optional bool serial_console = 3;
+  // Serve the Prometheus scrape endpoint, GET /metrics, which needs no
+  // login.  Default: true.  Independent of the stock web_ui_enabled
+  // setting, which turns web configuration on and off.
+  optional bool metrics_enabled = 4;
 }

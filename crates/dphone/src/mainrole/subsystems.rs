@@ -44,9 +44,11 @@ pub mod net;
 pub mod paging;
 pub mod provisioning;
 pub mod remote;
+pub mod ringtones;
 pub mod syslog;
 pub mod system;
 pub mod telephony;
+pub mod trust;
 pub mod ui;
 #[cfg(feature = "web")]
 pub mod web;
@@ -85,6 +87,12 @@ pub async fn start(ctx: &Context, opts: &Options) {
         hub.on_change(move |cfg| syslog.apply_config(cfg));
     }
 
+    // The SSH switch: opens or closes the listener, now and on every later
+    // configuration change.  SSH is off unless `ssh_enabled` says otherwise,
+    // in safe mode as at any other time.
+    apply_ssh_switch(ctx, config.as_ref());
+    hub.on_change(|cfg| crate::ssh::set_enabled(ssh_enabled(cfg)));
+
     if ctx.safe {
         warn!("safe mode: hardware, audio, telephony, UI, apps, and web are not started");
         ctx.diag.register("hal", "poke hardware (not available in safe mode)", |_a, out: Output| async move {
@@ -95,14 +103,6 @@ pub async fn start(ctx: &Context, opts: &Options) {
         finish(ctx);
         return;
     }
-
-    // The SSH switch: opens or closes the listener, now and on every later
-    // configuration change.  Not consulted in safe mode or when the
-    // configuration cannot be read: SSH stays on.
-    if let Some(cfg) = config.as_ref().map(|c| c.lock().unwrap().config()) {
-        crate::ssh::set_enabled(ssh_enabled(&cfg));
-    }
-    hub.on_change(|cfg| crate::ssh::set_enabled(ssh_enabled(cfg)));
 
     // 4. dphone-hal: `phone` backend, or `sim` when `ctx.sim`.
     let hal = hal::start(ctx).await;
@@ -117,6 +117,7 @@ pub async fn start(ctx: &Context, opts: &Options) {
     });
 
     // 5. dphone-vpm / dphone-media: the DSP, then the audio thread.
+    ringtones::init(&ctx.paths.nvdata);
     let audio = audio::start(ctx, hal.clone()).await;
     if let Some(cfg) = config.as_ref().map(|c| c.lock().unwrap().config()) {
         audio.apply_config(&cfg);
@@ -139,6 +140,9 @@ pub async fn start(ctx: &Context, opts: &Options) {
     // 6. The main role's own command domains: Config, Network, Update, System.
     let firmware_mtd = mtd.clone();
     system::start(ctx, system::Parts { config: config.clone(), hub: hub.clone(), net: net.clone(), mtd });
+
+    // Provisioned certificates, kept in nvdata for the TLS users below.
+    trust::start(ctx, config.clone(), &hub);
 
     // 7. dphone-sip and dphone-dpma: accounts, provisioning.
     let telephony = telephony::start(ctx, config.clone(), &hub, net.clone(), audio.clone());
@@ -171,7 +175,7 @@ pub async fn start(ctx: &Context, opts: &Options) {
 
     // 9. dphone-web: HTTP(S) and Connect RPC.
     #[cfg(feature = "web")]
-    web::start(ctx, opts, config.clone(), ui.as_ref().map(|u| u.tap.clone()));
+    web::start(ctx, opts, config.clone(), &hub, ui.as_ref().map(|u| u.tap.clone()));
     #[cfg(not(feature = "web"))]
     let _ = opts;
 
@@ -202,10 +206,26 @@ pub async fn start(ctx: &Context, opts: &Options) {
 
 /// Whether the SSH server should listen.  This is the one place that reads
 /// the switch from the configuration; the SSH module only takes the answer
-/// (`crate::ssh::set_enabled`).  SSH is on by default; the switch is
-/// `ssh_enabled` in `/nvdata/dphone_settings.txtpb`.
+/// (`crate::ssh::set_enabled`).  SSH is off by default; the switch is
+/// `ssh_enabled` in `/nvdata/dphone_settings.txtpb`, or the provisioned
+/// `dphone_ssh_enabled`.
 fn ssh_enabled(config: &dphone_config::Config) -> bool {
     config.ssh_enabled().value
+}
+
+/// Set the SSH switch at start.  When the configuration could not be
+/// loaded, the settings file alone decides (it does not depend on the XML
+/// merge), so that a phone whose owner turned SSH on stays reachable then.
+fn apply_ssh_switch(ctx: &Context, config: Option<&SharedConfig>) {
+    let enabled = match config {
+        Some(c) => ssh_enabled(&c.lock().unwrap().config()),
+        None => std::fs::read_to_string(ctx.paths.nvdata.join(dphone_config::settings::SETTINGS_FILE))
+            .ok()
+            .and_then(|text| dphone_config::SettingsDocument::parse(&text).ok())
+            .and_then(|doc| doc.settings.ssh_enabled)
+            .unwrap_or(false),
+    };
+    crate::ssh::set_enabled(enabled);
 }
 
 fn finish(ctx: &Context) {
@@ -293,6 +313,11 @@ fn start_config(ctx: &Context, hub: &system::ConfigHub) -> Option<SharedConfig> 
     ctx.store.set_health(Subsystem::Config, HealthStatus::Starting);
     let nv = Nvdata::new(ctx.paths.nvdata.clone());
     let read_only = !stock_writes_allowed(ctx);
+    // On a phone the init role performs a requested factory reset right
+    // after mounting nvdata.  The simulator has no init role above it.
+    if ctx.sim {
+        crate::init::nvdata::run_pending_factory_reset(&ctx.paths.nvdata);
+    }
     let model = config_model(ctx);
     let tmp = ctx.paths.run.clone();
     // The merge is plain computation over files; run it where a panic in it
@@ -346,7 +371,13 @@ fn start_config(ctx: &Context, hub: &system::ConfigHub) -> Option<SharedConfig> 
             let state = state.clone();
             let hub = hub.clone();
             async move {
-                let (code, text, err, changed) = config_command(&handle, read_only, &args);
+                // `set` and `reload` write nvdata: off the runtime thread.
+                let (code, text, err, changed) = {
+                    let handle = handle.clone();
+                    tokio::task::spawn_blocking(move || config_command(&handle, read_only, &args))
+                        .await
+                        .unwrap_or_else(|e| (1, String::new(), format!("dphone config: {e}\n"), None))
+                };
                 // A change made here is a change like any other: every
                 // subsystem that follows the configuration hears of it.
                 if let Some(cfg) = changed {

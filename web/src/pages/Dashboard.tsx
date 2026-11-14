@@ -9,6 +9,7 @@ import { addressSourceNames, codecNames, discoverySourceNames, label, netPhaseNa
 import { useStatus } from "../lib/status";
 import { RegistrationBadge, callStateLabel } from "./common";
 import { ExpansionCard } from "./Expansion";
+import { Recovery } from "./Recovery";
 
 const healthTone = {
   [HealthState.UNSPECIFIED]: "gray",
@@ -29,6 +30,7 @@ export function Dashboard() {
     );
   }
   const sys = status.system!;
+  if (sys.phase === SystemPhase.RECOVERY) return <Recovery model={sys.model} />;
   const net = status.network!;
   const prov = status.provisioning!;
   const calls = status.calls!;
@@ -38,7 +40,7 @@ export function Dashboard() {
     <>
       <PageHeader
         title="Dashboard"
-        actions={sys.phase !== SystemPhase.RUNNING && <Badge tone={sys.phase === SystemPhase.RECOVERY ? "red" : "amber"}>{label(systemPhaseNames, sys.phase, SystemPhase[sys.phase])}</Badge>}
+        actions={sys.phase !== SystemPhase.RUNNING && <Badge tone="amber">{label(systemPhaseNames, sys.phase, SystemPhase[sys.phase])}</Badge>}
       />
       <div className="grid gap-5 lg:grid-cols-2">
         <Card title="Lines" actions={<Link to="/accounts" className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">Manage</Link>}>

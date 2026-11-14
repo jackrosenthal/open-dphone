@@ -22,6 +22,9 @@ pub const WEB_REALM: &str = "Digium Phone Admin Login";
 /// The only web user stock creates.
 pub const WEB_USER: &str = "admin";
 
+/// File name suffix of a user ringtone in `ringtones/`.
+pub const RINGTONE_SUFFIX: &str = ".sln16";
+
 /// Files stock's factory reset keeps (relative to the nvdata root).
 pub const FACTORY_RESET_KEEP: &[&str] = &[
     "etc/enet.cfg",
@@ -193,7 +196,7 @@ pub fn md5_hex(data: &[u8]) -> String {
     hex(&Md5::digest(data))
 }
 
-fn valid_name(name: &str) -> bool {
+pub(crate) fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && name != "."
         && name != ".."
@@ -201,7 +204,7 @@ fn valid_name(name: &str) -> bool {
         && !name.contains(['/', '\\', '\0'])
 }
 
-fn bad_name(name: &str) -> io::Error {
+pub(crate) fn bad_name(name: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, format!("invalid name {name:?}"))
 }
 
@@ -526,6 +529,27 @@ impl Nvdata {
 
     pub fn ringtone_names(&self) -> io::Result<Vec<String>> {
         self.list("ringtones")
+    }
+
+    /// IDs of the user ringtones: stock keeps each as
+    /// `ringtones/<id>.sln16` (its web upload converts with
+    /// `sox ... -t raw -c 1 -r 16k -s -b 16`), and the ID is what
+    /// `active_ringtone` holds.
+    pub fn user_ringtones(&self) -> io::Result<Vec<String>> {
+        Ok(self
+            .ringtone_names()?
+            .into_iter()
+            .filter_map(|n| n.strip_suffix(RINGTONE_SUFFIX).filter(|id| !id.is_empty()).map(str::to_owned))
+            .collect())
+    }
+
+    /// A user ringtone's samples: signed 16-bit little-endian, mono,
+    /// 16 kHz, no header.  `Ok(None)` when there is no such ringtone.
+    pub fn user_ringtone(&self, id: &str) -> io::Result<Option<Vec<u8>>> {
+        if !valid_name(id) {
+            return Err(bad_name(id));
+        }
+        self.read(&format!("ringtones/{id}{RINGTONE_SUFFIX}"))
     }
 
     // ---- open/: state stock does not know about --------------------------

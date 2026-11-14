@@ -73,9 +73,16 @@ impl Display for TapDisplay {
     }
 }
 
-fn ui_config(_ctx: &Context, cfg: Option<&Config>) -> UiConfig {
-    let mut out = UiConfig::default();
-    out.ringtones = dphone_media::ring::BuiltinRing::ALL.iter().map(|r| r.name().to_string()).collect();
+fn ui_config(ctx: &Context, cfg: Option<&Config>) -> UiConfig {
+    let mut ringtones: Vec<String> = dphone_media::ring::BuiltinRing::ALL.iter().map(|r| r.name().to_string()).collect();
+    // The user's own ringtones in `/nvdata/ringtones`, after the built-in
+    // ones (a file named like a built-in ring is not offered twice).
+    for name in super::ringtones::names(&ctx.paths.nvdata) {
+        if !ringtones.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
+            ringtones.push(name);
+        }
+    }
+    let mut out = UiConfig { ringtones, ..UiConfig::default() };
     out.ringtone = out.ringtones.first().cloned().unwrap_or_default();
     let Some(cfg) = cfg else { return out };
     out.time_24h = cfg.setting("time_short_format").is_some_and(|f| f.contains('H') || f.contains('k'));
@@ -109,6 +116,9 @@ pub async fn start(
     hub: &ConfigHub,
 ) -> Option<UiParts> {
     ctx.store.set_health(Subsystem::Ui, HealthStatus::Starting);
+    // Declared before anything can return: a phone without its UI is not
+    // healthy, whatever the reason, and must not confirm a trial boot.
+    ctx.health.require("ui");
     let Some(hal) = hal else {
         error!("ui: no hardware layer; the UI is not started");
         ctx.store.set_health(Subsystem::Ui, HealthStatus::Failed("no hardware layer".into()));
@@ -117,7 +127,6 @@ pub async fn start(
     let tap = Arc::new(ScreenTap::default());
     let current = config.as_ref().map(|c| c.lock().unwrap().config());
     let cfg = ui_config(ctx, current.as_deref());
-    ctx.health.require("ui");
     let health = ctx.health.clone();
     let store = ctx.store.clone();
     // The UI is built on its own thread as well as run there: taking over

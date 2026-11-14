@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/settings/v1/settings.proto.
  */
 export const file_dphone_settings_v1_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSK0AQoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBARIbCg5zZXJpYWxfY29uc29sZRgDIAEoCEgCiAEBQg4KDF9zc2hfZW5hYmxlZEIeChxfaWdub3JlX3Byb3Zpc2lvbmVkX2Zpcm13YXJlQhEKD19zZXJpYWxfY29uc29sZWIGcHJvdG8z");
+  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSLmAQoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBARIbCg5zZXJpYWxfY29uc29sZRgDIAEoCEgCiAEBEhwKD21ldHJpY3NfZW5hYmxlZBgEIAEoCEgDiAEBQg4KDF9zc2hfZW5hYmxlZEIeChxfaWdub3JlX3Byb3Zpc2lvbmVkX2Zpcm13YXJlQhEKD19zZXJpYWxfY29uc29sZUISChBfbWV0cmljc19lbmFibGVkYgZwcm90bzM");
 
 /**
  * Settings that only Open DPhone has.  Stored on the phone in protobuf text
@@ -55,6 +55,15 @@ export type DphoneSettings = Message<"dphone.settings.v1.DphoneSettings"> & {
    * @generated from field: optional bool serial_console = 3;
    */
   serialConsole?: boolean | undefined;
+
+  /**
+   * Serve the Prometheus scrape endpoint, GET /metrics, which needs no
+   * login.  Default: true.  Independent of the stock web_ui_enabled
+   * setting, which turns web configuration on and off.
+   *
+   * @generated from field: optional bool metrics_enabled = 4;
+   */
+  metricsEnabled?: boolean | undefined;
 };
 
 /**
