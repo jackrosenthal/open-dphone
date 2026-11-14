@@ -268,6 +268,20 @@ impl AudioService {
         self.refresh();
     }
 
+    /// A Bluetooth headset's voice link came up or went down.  While it is
+    /// up the headset path uses the Bluetooth voice device; a headset path
+    /// that is open now is reopened on the other device.
+    pub fn bluetooth_voice(&self, up: bool) {
+        if BLUETOOTH_VOICE.swap(up, std::sync::atomic::Ordering::Relaxed) == up {
+            return;
+        }
+        let inner = self.inner.lock().unwrap();
+        if inner.path == AudioPath::Headset {
+            let _ = inner.send(Ec::SetPath(None));
+            let _ = inner.send(Ec::SetPath(Some(MPath::Headset)));
+        }
+    }
+
     pub fn tone(&self, tone: Option<Tone>) {
         {
             let mut inner = self.inner.lock().unwrap();
@@ -494,6 +508,36 @@ struct CardDevice {
     model: dphone_state::Model,
     pcm: Option<Box<dyn dphone_hal::Pcm>>,
     open: Option<MPath>,
+    /// The open device is the Bluetooth headset's, at 8 kHz: this many
+    /// engine samples per Bluetooth sample.
+    bluetooth: Option<usize>,
+    /// Conversion buffer, and the last sample read (for interpolation).
+    narrow: Vec<i16>,
+    last: i16,
+}
+
+/// A Bluetooth headset's voice link is up: the headset path is then the
+/// Bluetooth voice device.  Set by [`AudioService::bluetooth_voice`].
+static BLUETOOTH_VOICE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 8 kHz samples to the engine's rate (`factor` times as many), by linear
+/// interpolation from the previous sample.
+fn widen(narrow: &[i16], last: &mut i16, factor: usize, out: &mut [i16]) {
+    for (i, &sample) in narrow.iter().enumerate() {
+        let (a, b) = (*last as i32, sample as i32);
+        for k in 0..factor {
+            if let Some(o) = out.get_mut(i * factor + k) {
+                *o = (a + (b - a) * (k as i32 + 1) / factor as i32) as i16;
+            }
+        }
+        *last = sample;
+    }
+}
+
+/// The engine's rate to 8 kHz: the mean of each `factor` samples.
+fn narrow(wide: &[i16], factor: usize, out: &mut Vec<i16>) {
+    out.clear();
+    out.extend(wide.chunks_exact(factor).map(|c| (c.iter().map(|s| *s as i32).sum::<i32>() / factor as i32) as i16));
 }
 
 fn pcm_device(path: MPath) -> PcmDevice {
@@ -515,6 +559,20 @@ impl AudioDevice for CardDevice {
 
     fn open(&mut self, path: MPath) -> std::io::Result<()> {
         self.close();
+        if path == MPath::Headset && BLUETOOTH_VOICE.load(std::sync::atomic::Ordering::Relaxed) {
+            let factor = (self.card.rate() / dphone_hal::BLUETOOTH_RATE).max(1) as usize;
+            let config = PcmConfig { period_frames: dphone_hal::BLUETOOTH_RATE / 200, periods: 4, capture: true, playback: true };
+            match self.card.open_bluetooth(config) {
+                Ok(pcm) => {
+                    self.pcm = Some(pcm);
+                    self.open = Some(path);
+                    self.bluetooth = Some(factor);
+                    return Ok(());
+                }
+                // Fall back to the wired headset jack.
+                Err(e) => warn!("audio: Bluetooth voice device: {e}"),
+            }
+        }
         let device = pcm_device(path);
         // The mainline driver does not apply the board's gain table.
         match self.card.mixer() {
@@ -534,10 +592,27 @@ impl AudioDevice for CardDevice {
     fn close(&mut self) {
         self.pcm = None;
         self.open = None;
+        self.bluetooth = None;
+        self.last = 0;
     }
 
     fn read(&mut self, buf: &mut [i16]) -> std::io::Result<()> {
         let pcm = self.pcm.as_mut().ok_or_else(|| std::io::Error::other("no PCM open"))?;
+        if let Some(factor) = self.bluetooth {
+            self.narrow.resize(buf.len() / factor, 0);
+            return match pcm.read(&mut self.narrow) {
+                Ok(()) => {
+                    widen(&self.narrow, &mut self.last, factor, buf);
+                    Ok(())
+                }
+                Err(dphone_hal::HalError::Xrun) => {
+                    pcm.recover().map_err(io_err)?;
+                    buf.fill(0);
+                    Ok(())
+                }
+                Err(e) => Err(io_err(e)),
+            };
+        }
         match pcm.read(buf) {
             Ok(()) => Ok(()),
             Err(dphone_hal::HalError::Xrun) => {
@@ -551,6 +626,14 @@ impl AudioDevice for CardDevice {
 
     fn write(&mut self, buf: &[i16]) -> std::io::Result<()> {
         let pcm = self.pcm.as_mut().ok_or_else(|| std::io::Error::other("no PCM open"))?;
+        if let Some(factor) = self.bluetooth {
+            narrow(buf, factor, &mut self.narrow);
+            return match pcm.write(&self.narrow) {
+                Ok(()) => Ok(()),
+                Err(dphone_hal::HalError::Xrun) => pcm.recover().map_err(io_err),
+                Err(e) => Err(io_err(e)),
+            };
+        }
         match pcm.write(buf) {
             Ok(()) => Ok(()),
             Err(dphone_hal::HalError::Xrun) => pcm.recover().map_err(io_err),
@@ -580,7 +663,7 @@ fn build_phone(card: Box<dyn HalAudioCard>, model: dphone_state::Model) -> Resul
     let device = dphone_vpm::Device::open_default().map_err(|e| format!("/dev/bcmring-vpm: {e}"))?;
     let vpm = dphone_vpm::Vpm::new(device).map_err(|e| format!("DSP info: {e}"))?;
     let dsp = VpmDsp::new(vpm, VpmDspOptions::default());
-    Ok((Box::new(CardDevice { card, model, pcm: None, open: None }), Box::new(dsp)))
+    Ok((Box::new(CardDevice { card, model, pcm: None, open: None, bluetooth: None, narrow: Vec::new(), last: 0 }), Box::new(dsp)))
 }
 
 fn build_sim(family: dphone_vpm::Family) -> Result<Built, String> {
@@ -947,5 +1030,28 @@ mod tests {
         assert_eq!(ring_gain_q12(5), 4096);
         assert_eq!(ring_gain_q12(0), 0);
         assert!(ring_gain_q12(10) > ring_gain_q12(9));
+    }
+}
+
+#[cfg(test)]
+mod bluetooth_rate_tests {
+    use super::{narrow, widen};
+
+    #[test]
+    fn eight_kilohertz_and_back() {
+        // Up by four: a ramp from the previous sample to each new one.
+        let mut last = 0i16;
+        let mut out = [0i16; 8];
+        widen(&[400, -400], &mut last, 4, &mut out);
+        assert_eq!(out, [100, 200, 300, 400, 200, 0, -200, -400]);
+        assert_eq!(last, -400);
+        // Down by four: the mean of each four.
+        let mut back = Vec::new();
+        narrow(&out, 4, &mut back);
+        assert_eq!(back, [250, -100]);
+        // A factor of one changes nothing.
+        let mut same = [0i16; 2];
+        widen(&[7, 9], &mut 0, 1, &mut same);
+        assert_eq!(same, [7, 9]);
     }
 }
