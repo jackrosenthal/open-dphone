@@ -133,6 +133,26 @@ pub struct Context {
 }
 
 impl Context {
+    /// A context with nothing above it (no init role) and nothing started:
+    /// for host tests that run one subsystem against real kernel interfaces,
+    /// e.g., the network subsystem in a private network namespace.
+    pub fn standalone(paths: Paths, model: Model) -> Context {
+        let (exit_tx, _) = watch::channel(Exit::Running);
+        Context {
+            paths,
+            model,
+            sim: false,
+            recovery: None,
+            safe: false,
+            store: dphone_state::Store::new(state_model(model)),
+            diag: Registry::new(),
+            health: Health::new(),
+            started: Instant::now(),
+            exit_tx: Arc::new(exit_tx),
+            supervised: false,
+        }
+    }
+
     /// Ask the main role to exit; the init role restarts it.
     pub fn request_exit(&self, code: i32) {
         let _ = self.exit_tx.send(Exit::Code(code));

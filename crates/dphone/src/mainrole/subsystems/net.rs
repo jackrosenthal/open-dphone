@@ -2,14 +2,18 @@
 //!
 //! The network is the way into the phone, so this module is conservative:
 //!
-//! - The PC jack is **not** bridged by default.  Only a standalone `lan`
-//!   port with DHCP has run on hardware; bridging over the b53 switch is
-//!   untested.  `dphone net bridge on` tries it at run time, and
-//!   `/nvdata/open/net-bridge` (written by `--save`) makes it the default.
+//! - The PC jack is bridged to the LAN jack as the stock settings say
+//!   (`pc_port_mode`, `pc_vlan_id`, `pc_qos`, `8021x_passthrough`), as on
+//!   stock.  `/nvdata/open/net-no-bridge` holds it off whatever the settings
+//!   say (`dphone net bridge off --save` writes the file, `on --save`
+//!   removes it); `dphone net bridge on|off` alone changes the running
+//!   arrangement only.  The hold exists for bring-up: bridging over the b53
+//!   switch had not run on hardware when it became the default.
 //! - Whatever configuration is in force, if the phone has no address
-//!   [`FALLBACK_SECS`] after it was applied, the manager is switched to the
-//!   plainest configuration (standalone `lan`, DHCP, no VLAN) and stays
-//!   there until told otherwise.
+//!   [`FALLBACK_SECS`] after it was applied (or after the address was
+//!   lost), the manager is switched to the plainest configuration
+//!   (standalone `lan`, DHCP, no VLAN, PC jack down) and stays there until
+//!   told otherwise.
 
 use std::net::Ipv4Addr;
 use std::sync::Arc;
@@ -31,9 +35,9 @@ use crate::mainrole::Context;
 /// Seconds without an address before falling back to the plain configuration.
 pub const FALLBACK_SECS: u64 = 150;
 
-/// Flag file: bridge the PC jack at start-up.
-pub fn bridge_flag(ctx: &Context) -> std::path::PathBuf {
-    ctx.paths.open_dir().join("net-bridge")
+/// Flag file: keep the PC jack off (not bridged), whatever the settings say.
+pub fn bridge_hold_flag(ctx: &Context) -> std::path::PathBuf {
+    ctx.paths.open_dir().join("net-no-bridge")
 }
 
 enum Cmd {
@@ -96,6 +100,17 @@ impl NetHandle {
 }
 
 pub fn start(ctx: &Context, config: Option<SharedConfig>, hub: &super::system::ConfigHub) -> NetHandle {
+    start_with_fallback(ctx, config, hub, Duration::from_secs(FALLBACK_SECS))
+}
+
+/// [`start`] with the time without an address before the fallback given
+/// (host tests use a short one).
+pub fn start_with_fallback(
+    ctx: &Context,
+    config: Option<SharedConfig>,
+    hub: &super::system::ConfigHub,
+    fallback: Duration,
+) -> NetHandle {
     ctx.store.set_health(Subsystem::Net, HealthStatus::Starting);
     let mac = read_mac(ctx, config.as_ref());
     match mac {
@@ -119,7 +134,7 @@ pub fn start(ctx: &Context, config: Option<SharedConfig>, hub: &super::system::C
         return handle;
     }
     ctx.health.require("net");
-    tokio::spawn(run(ctx.clone(), config, hub.clone(), mac, rx, handle.resolver.clone(), handle.qos.clone()));
+    tokio::spawn(run(ctx.clone(), config, hub.clone(), mac, rx, handle.clone(), fallback));
     handle
 }
 
@@ -168,29 +183,37 @@ fn plain_config(ctx: &Context, mac: Option<MacAddr>) -> NetConfig {
 
 /// The configured network: the merged phone configuration mapped onto the
 /// manager's input.
-fn configured(ctx: &Context, config: Option<&SharedConfig>, mac: Option<MacAddr>, bridged: bool) -> NetConfig {
+///
+/// Without a readable configuration this is the plain configuration, PC
+/// jack down included: there are then no settings to bridge by.
+fn configured(ctx: &Context, config: Option<&SharedConfig>, mac: Option<MacAddr>) -> NetConfig {
     let cfg = plain_config(ctx, mac);
     let Some(merged) = config.and_then(|c| c.lock().ok().map(|s| s.config())) else {
         return cfg;
     };
     let new_family = ctx.model.family() == crate::model::Family::New;
-    map_config(cfg, &merged, new_family, mac, bridged, last_address(ctx))
+    let hold = bridge_hold_flag(ctx).exists();
+    map_config(cfg, &merged, new_family, mac, hold, last_address(ctx))
 }
 
 /// Map the merged phone configuration onto `cfg` (the plain configuration
-/// for this phone).
+/// for this phone).  `hold_bridge_off` is the bring-up hold: the PC jack
+/// stays down whatever the settings say.
 fn map_config(
     mut cfg: NetConfig,
     merged: &dphone_config::Config,
     new_family: bool,
     mac: Option<MacAddr>,
-    bridged: bool,
+    hold_bridge_off: bool,
     last_address: Option<Ipv4Addr>,
 ) -> NetConfig {
     let n = merged.network();
     cfg.lan_port_mode = PortMode::parse(&n.lan_port_mode);
     cfg.pc_port_mode = PortMode::parse(&n.pc_port_mode);
-    cfg.pc_port = if bridged { PcPort::Bridged } else { PcPort::Disabled };
+    // Stock's switch always forwards between the jacks; its one way to
+    // turn the PC jack off is `pc_port_mode` "off", which the topology
+    // honors.
+    cfg.pc_port = if hold_bridge_off { PcPort::Disabled } else { PcPort::Bridged };
     cfg.pc_vlan_id = n.pc_vlan_id.filter(|v| (1..=4094).contains(v));
     cfg.pc_qos = n.pc_qos.min(7);
     // Stock, new family only: an expansion module takes the PC VLAN away,
@@ -269,13 +292,20 @@ async fn run(
     hub: super::system::ConfigHub,
     mac: Option<MacAddr>,
     mut cmds: mpsc::Receiver<Cmd>,
-    resolver_slot: Arc<std::sync::Mutex<Option<dphone_net::Resolver>>>,
-    qos_slot: Arc<std::sync::Mutex<dphone_net::QosMarks>>,
+    // Only its resolver and marking slots are used here.
+    handle: NetHandle,
+    fallback: Duration,
 ) {
+    let NetHandle { tx, resolver: resolver_slot, qos: qos_slot } = handle;
+    // This task must not keep its own command channel open.
+    drop(tx);
+    let fallback_secs = fallback.as_secs();
     let plain = plain_config(&ctx, mac);
-    let bridged_default = bridge_flag(&ctx).exists();
     // Safe mode goes straight to the plain configuration.
-    let wanted = if ctx.safe { plain.clone() } else { configured(&ctx, config.as_ref(), mac, bridged_default) };
+    let wanted = if ctx.safe { plain.clone() } else { configured(&ctx, config.as_ref(), mac) };
+    if !ctx.safe && bridge_hold_flag(&ctx).exists() {
+        warn!("net: {} exists; the PC jack is held off", bridge_hold_flag(&ctx).display());
+    }
     set_hostname(&wanted.hostname);
     ctx.store.update::<dphone_state::System, _>(|s| s.hostname = wanted.hostname.clone());
 
@@ -302,7 +332,7 @@ async fn run(
     *resolver_slot.lock().unwrap() = Some(manager.resolver());
     let mut state_rx = manager.state();
     let mut active = wanted;
-    let mut deadline = (active != plain).then(|| Instant::now() + Duration::from_secs(FALLBACK_SECS));
+    let mut deadline = (active != plain).then(|| Instant::now() + fallback);
     let mut was_up = false;
     loop {
         tokio::select! {
@@ -346,7 +376,7 @@ async fn run(
                 } else if !up && was_up {
                     warn!("net: address lost");
                     if active != plain {
-                        deadline = Some(Instant::now() + Duration::from_secs(FALLBACK_SECS));
+                        deadline = Some(Instant::now() + fallback);
                     }
                 }
                 was_up = up;
@@ -358,7 +388,7 @@ async fn run(
                 if manager.snapshot().has_address() {
                     continue;
                 }
-                warn!("net: no address after {FALLBACK_SECS} s with {}; falling back to plain DHCP on lan", describe(&active));
+                warn!("net: no address after {fallback_secs} s with {}; falling back to plain DHCP on lan", describe(&active));
                 active = plain.clone();
                 manager.reconfigure(active.clone()).await;
             }
@@ -384,7 +414,7 @@ async fn run(
                         let _ = reply.send("plain configuration applied\n".into());
                     }
                     Cmd::Changed => {
-                        let now = configured(&ctx, config.as_ref(), mac, bridge_flag(&ctx).exists());
+                        let now = configured(&ctx, config.as_ref(), mac);
                         if now != active {
                             let reasons = active.restart_reasons(&now);
                             let restart = !reasons.is_empty();
@@ -399,40 +429,51 @@ async fn run(
                             }
                             active = now;
                             if restart {
-                                deadline = (active != plain).then(|| Instant::now() + Duration::from_secs(FALLBACK_SECS));
+                                deadline = (active != plain).then(|| Instant::now() + fallback);
                             }
                             manager.reconfigure(active.clone()).await;
                         }
                     }
                     Cmd::Configured(reply) => {
-                        active = configured(&ctx, config.as_ref(), mac, bridge_flag(&ctx).exists());
-                        deadline = (active != plain).then(|| Instant::now() + Duration::from_secs(FALLBACK_SECS));
+                        active = configured(&ctx, config.as_ref(), mac);
+                        deadline = (active != plain).then(|| Instant::now() + fallback);
                         manager.reconfigure(active.clone()).await;
                         let _ = reply.send(format!("applied: {}\n", describe(&active)));
                     }
                     Cmd::Bridge { on, save, reply } => {
                         let mut text = String::new();
                         if save {
-                            let flag = bridge_flag(&ctx);
-                            let result = if on { std::fs::write(&flag, b"1\n") } else {
+                            let flag = bridge_hold_flag(&ctx);
+                            let result = if on {
                                 match std::fs::remove_file(&flag) {
                                     Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
                                     _ => Ok(()),
                                 }
+                            } else {
+                                crate::paths::write_atomic(&flag, b"1\n", 0o644)
                             };
-                            if let Err(e) = result {
-                                text.push_str(&format!("could not update {}: {e}\n", flag.display()));
+                            match result {
+                                Ok(()) if on => text.push_str(&format!("removed {}: the PC jack follows the settings from now on\n", flag.display())),
+                                Ok(()) => text.push_str(&format!("wrote {}: the PC jack stays off until 'dphone net bridge on --save'\n", flag.display())),
+                                Err(e) => text.push_str(&format!("could not update {}: {e}\n", flag.display())),
                             }
                         }
-                        let mut next = active.clone();
+                        // The configured arrangement with the PC jack as
+                        // asked; from the plain fallback, "on" returns to
+                        // the settings.
+                        let mut next = if on && active == plain && !ctx.safe {
+                            configured(&ctx, config.as_ref(), mac)
+                        } else {
+                            active.clone()
+                        };
                         next.pc_port = if on { PcPort::Bridged } else { PcPort::Disabled };
                         active = next;
-                        deadline = (active != plain).then(|| Instant::now() + Duration::from_secs(FALLBACK_SECS));
+                        deadline = (active != plain).then(|| Instant::now() + fallback);
                         manager.reconfigure(active.clone()).await;
                         text.push_str(&format!(
                             "bridging {}; this session may drop while the network is rearranged{}\n",
                             if on { "on" } else { "off" },
-                            if on { format!(" (reverts by itself if there is no address after {FALLBACK_SECS} s)") } else { String::new() },
+                            if on { format!(" (reverts by itself if there is no address after {fallback_secs} s)") } else { String::new() },
                         ));
                         let _ = reply.send(text);
                     }
@@ -452,9 +493,10 @@ fn describe(cfg: &NetConfig) -> String {
         VlanDiscovery::Manual(id) => format!("VLAN {id}"),
         VlanDiscovery::Lldp => "VLAN from LLDP".to_string(),
     };
-    let pc = match cfg.pc_port {
-        PcPort::Bridged => "PC jack bridged",
-        PcPort::Disabled => "PC jack off",
+    let pc = match (cfg.pc_port, cfg.pc_port_mode) {
+        (PcPort::Bridged, PortMode::Off) => "PC jack off (pc_port_mode)",
+        (PcPort::Bridged, _) => "PC jack bridged",
+        (PcPort::Disabled, _) => "PC jack off",
     };
     format!("{ip}, {vlan}, {pc}")
 }
@@ -558,7 +600,7 @@ fn publish(ctx: &Context, state: &NetState, active: &NetConfig) {
         n.detail = state.last_error.clone().unwrap_or_default();
         n.lan = port(&state.lan);
         n.pc = port(&state.pc);
-        n.pc_port_enabled = active.pc_port == PcPort::Bridged;
+        n.pc_port_enabled = active.pc_port == PcPort::Bridged && active.pc_port_mode != PortMode::Off;
         n.vlan.voice_id = state.vlan_id;
         n.vlan.source = match state.vlan_source {
             Some(dphone_net::VlanSource::Manual) => st::VlanSource::Config,
@@ -722,6 +764,51 @@ mod tests {
         let mut plain = NetConfig::new("D60", "3_0_0", mac);
         plain.pc_port = PcPort::Disabled;
         map_config(plain, &store.config(), true, mac, false, None)
+    }
+
+    /// A phone with nothing but the built-in defaults bridges the PC jack,
+    /// as stock does, and the stock settings steer it.
+    #[test]
+    fn pc_jack_is_bridged_by_default_and_follows_the_stock_settings() {
+        use dphone_net::topology;
+        let dir = tempfile::tempdir().unwrap();
+        let nv = Nvdata::new(dir.path().join("nvdata"));
+        nv.ensure_layout().unwrap();
+        let mut store = ConfigStore::open(nv, Model::D60, dir.path().join("tmp")).unwrap();
+        let cfg = mapped(&store);
+        assert_eq!(cfg.pc_port, PcPort::Bridged);
+        assert_eq!((cfg.pc_port_mode, cfg.pc_vlan_id, cfg.pc_qos), (PortMode::Auto, None, 1));
+        assert!(!cfg.eapol_passthrough && !cfg.eapol_logoff);
+        let plan = topology::plan(&cfg, true, true, None);
+        assert_eq!(plan.bridge.map(|b| (b.vlan_filtering, b.group_fwd_mask)), Some((false, 0)));
+        assert!(plan.pc_up);
+        assert_eq!(describe(&cfg), "DHCP, VLAN from LLDP, PC jack bridged");
+
+        // 802.1X pass-through, the PC VLAN, and its priority.
+        store.set_many(&[("8021x_passthrough", "1"), ("pc_vlan_id", "20"), ("pc_qos", "5")]).unwrap();
+        let cfg = mapped(&store);
+        assert!(cfg.eapol_passthrough && cfg.eapol_logoff);
+        assert_eq!((cfg.pc_vlan_id, cfg.pc_qos), (Some(20), 5));
+        let plan = topology::plan(&cfg, true, true, None);
+        assert_eq!(
+            plan.bridge.map(|b| (b.vlan_filtering, b.group_fwd_mask)),
+            Some((true, topology::GROUP_FWD_EAPOL))
+        );
+        assert_eq!(plan.pc_prio, 5);
+
+        // Stock's own switch for the PC jack.
+        store.set("pc_port_mode", "off").unwrap();
+        let cfg = mapped(&store);
+        let plan = topology::plan(&cfg, true, true, None);
+        assert_eq!((plan.bridge, plan.pc_up), (None, false));
+        assert_eq!(describe(&cfg), "DHCP, VLAN from LLDP, PC jack off (pc_port_mode)");
+        store.set("pc_port_mode", "auto").unwrap();
+
+        // The bring-up hold wins over the settings.
+        let mac = MacAddr::parse("00:0f:d3:01:02:03");
+        let held = map_config(NetConfig::new("D60", "3_0_0", mac), &store.config(), true, mac, true, None);
+        assert_eq!(held.pc_port, PcPort::Disabled);
+        assert_eq!(topology::plan(&held, true, true, None).bridge, None);
     }
 
     /// What the phone does at every boot: bring-up starts before there is

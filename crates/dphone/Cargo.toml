@@ -68,3 +68,7 @@ harness = false
 [[test]]
 name = "expansion"
 harness = false
+
+[[test]]
+name = "pcport"
+harness = false
