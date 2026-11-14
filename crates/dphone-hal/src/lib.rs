@@ -16,6 +16,7 @@ mod audio;
 mod display;
 mod ehs;
 mod error;
+pub mod expansion;
 mod input;
 mod lamps;
 mod mtd;

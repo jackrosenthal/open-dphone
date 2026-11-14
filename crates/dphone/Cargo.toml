@@ -56,3 +56,7 @@ libc = "0.2"
 [[test]]
 name = "paging"
 harness = false
+
+[[test]]
+name = "expansion"
+harness = false

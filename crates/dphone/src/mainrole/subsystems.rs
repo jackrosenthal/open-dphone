@@ -35,6 +35,7 @@ use crate::diag::Output;
 pub mod apps;
 pub mod audio;
 pub mod ehs;
+pub mod expansion;
 pub mod hal;
 pub mod net;
 pub mod paging;
@@ -173,6 +174,15 @@ pub async fn start(ctx: &Context, opts: &Options) {
     web::start(ctx, opts, config.clone(), ui.as_ref().map(|u| u.tap.clone()));
     #[cfg(not(feature = "web"))]
     let _ = opts;
+
+    // Expansion modules (new family).
+    {
+        let expansion = expansion::start(ctx);
+        if let Some(cfg) = config.as_ref().map(|c| c.lock().unwrap().config()) {
+            expansion.apply_config(&cfg);
+        }
+        hub.on_change(move |cfg| expansion.apply_config(cfg));
+    }
 
     // Multicast paging.
     {
