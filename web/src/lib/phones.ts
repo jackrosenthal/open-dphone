@@ -31,6 +31,11 @@
 // D70's pad is Status ("no entry" icon); a D62's page key (drawn without,
 // like the D60).
 //
+// Every phone is drawn flat, as seen straight on: where the only
+// photograph is at an angle (D50, D70), positions follow the front-on
+// drawings and the family's common grid.  No maker's name or mark is
+// drawn.
+//
 // Units are those of the reference photograph each family was measured
 // from; the page scales the drawing.
 
@@ -77,11 +82,11 @@ export type Panel = {
   lineColor: string;
   display: { x: number; y: number; w: number; h: number };
   side?: { x: number; y: number; w: number; h: number };
-  mwi: { x: number; y: number; w: number; h: number; off: string };
-  logo: { x: number; y: number; size: number; fill: string; dot?: string };
+  /// Message waiting lamp: outline, and its color when dark.
+  mwi: { d: string; off: string };
   handset: { x: number; y: number; w: number; h: number; fill: string; print?: string };
-  /// Speaker grille in the cradle, uncovered when the handset is lifted.
-  grille?: { cx: number; cy: number; r: number };
+  /// Speaker grille in the cradle, under the handset.
+  grille: { cx: number; cy: number; rx: number; ry: number };
   keys: PanelKey[];
 };
 
@@ -112,8 +117,12 @@ function newFamily(lineKeys: number, pageKey: boolean): Panel {
   for (let i = 0; i < lineKeys; i++) {
     keys.push({ id: `line${i + 1}`, cx: linePos[i][0], cy: linePos[i][1], w: 30, h: 16, r: 8, fill: SILVER, lamp: `line${i + 1}` });
   }
-  // D65: one silver bar under the line keys pages the rapid-dial keys.
-  if (pageKey) keys.push({ id: "blfright", cx: 680, cy: 327, w: 64, h: 15, r: 7.5, fill: SILVER });
+  // D65: two silver keys side by side under the line keys page the
+  // rapid-dial keys.
+  if (pageKey) {
+    keys.push({ id: "blfleft", cx: 664, cy: 327, w: 31, h: 15, r: 5, fill: SILVER });
+    keys.push({ id: "blfright", cx: 696, cy: 327, w: 31, h: 15, r: 5, fill: SILVER });
+  }
 
   // Soft keys: silver ovals under the display.
   const softX = [355, 427, 500, 573];
@@ -157,18 +166,23 @@ function newFamily(lineKeys: number, pageKey: boolean): Panel {
   feat.forEach(([id, cx, cy]) => keys.push({ id, cx, cy, w: 56, h: 25, r: 12.5, fill: BLACK, ink: white, legend: { icon: id }, size: 17 }));
 
   return {
-    viewBox: [-6, 44, 780, 712],
+    viewBox: [-176, 44, 950, 760],
     unit: 480 / 303,
     shapes: [
-      // Cradle wing, left of the two panels.
-      { d: "M276 170H96Q62 170 58 204L34 612Q30 664 84 680L276 706Z", fill: "#292b2e" },
-      // Recesses the handset's ends rest in.
-      { d: rect(84, 184, 152, 74, 26), fill: "#1d1e21" },
-      { d: "M96 660Q98 560 166 560Q236 560 240 690Z", fill: "#1d1e21" },
+      // Cradle wing, left of the two panels; its outer edge bows outward.
+      { d: "M276 170H104Q70 170 62 204Q30 430 62 652Q70 700 120 700H276Z", fill: "#2b2d30" },
+      // Upper cup the earpiece rests in, with the hook switch.
+      { d: "M92 172H234V226Q234 264 196 264H130Q92 264 92 226Z", fill: "#1c1d20" },
+      { d: rect(152, 246, 22, 9, 2), fill: "#0c0d0e" },
+      // Lower arch the mouthpiece rests in.
+      { d: "M98 700V642Q98 568 164 568Q230 568 230 642V700Z", fill: "#1c1d20" },
       // Upper panel: glossy black.
       { d: "M290 112H736Q758 112 758 134V412H268V134Q268 112 290 112Z", fill: "#0e0f11", gloss: true },
       // Lower panel: matte.
       { d: "M268 410H758V693Q758 715 736 715H290Q268 715 268 693Z", fill: "#2a2c2f" },
+      // The left page key (drawn on every D65; it works where the phone
+      // reports that key).
+      ...(pageKey ? [{ d: rect(648.5, 319.5, 31, 15, 5), fill: SILVER, stroke: "#00000066" }] : []),
       // The joined bars and the navigation disc.
       { d: rect(407, 660, 124, 20, 10), fill: BLACK, stroke: "#050506" },
       { d: "M469 662V678", fill: "none", stroke: "#3a3c40" },
@@ -180,10 +194,10 @@ function newFamily(lineKeys: number, pageKey: boolean): Panel {
     lines: softX.map((cx) => [cx, 334, cx, 366]),
     lineColor: "#5d6066",
     display: { x: 312, y: 155, w: 303, h: 303 * (272 / 480) },
-    mwi: { x: 678, y: 109, w: 28, h: 7, off: "#b9bdc2" },
-    logo: { x: 680, y: 382, size: 19, fill: "#f2f3f4" },
+    // A strip in the top edge of the upper panel, near the right corner.
+    mwi: { d: rect(678, 112, 28, 6, 1), off: "#b9bdc2" },
     handset: { x: 50, y: 63, w: 174, h: 669, fill: "#222326" },
-    grille: { cx: 152, cy: 400, r: 68 },
+    grille: { cx: 164, cy: 410, rx: 62, ry: 62 },
     keys,
   };
 }
@@ -240,9 +254,9 @@ function oldFamily(v: Old): Panel {
 
   // Headset, speaker, mute: silver keys with dark icons.
   [
-    ["hdst", "headset", 336, 402],
+    ["hdst", "headset", 334, 402],
     ["spkr", "speaker", 334, 452],
-    ["mute", "mute", 332, 502],
+    ["mute", "mute", 334, 502],
   ].forEach(([id, icon, cx, cy]) =>
     keys.push({ id: id as string, cx: cx as number, cy: cy as number, w: 37, h: 28, r: 4, fill: OLD_SILVER, ink: "#555b63", legend: { icon: icon as string }, size: 20, lamp: id as string }),
   );
@@ -294,51 +308,63 @@ function oldFamily(v: Old): Panel {
 
   const shapes: Shape[] = [
     // Cradle wing under the handset.
-    { d: `M290 232H132Q104 232 103 262L98 ${bottom - 24}Q98 ${bottom + 2} 128 ${bottom + 2}H300Z`, fill: "#2b2e32" },
-    { d: rect(118, 246, 132, 70, 24), fill: "#1f2124" },
-    { d: rect(116, bottom - 112, 136, 96, 30), fill: "#1f2124" },
+    { d: rect(98, 232, 200, bottom - 232, 24), fill: "#2b2e32" },
+    // Upper cup the earpiece rests in, with the hook switch.
+    { d: rect(116, 244, 136, 72, 24), fill: "#1f2124" },
+    { d: rect(174, 296, 20, 9, 2), fill: "#0e0f10" },
+    // Lower cup the mouthpiece rests in.
+    { d: rect(116, bottom - 104, 136, 90, 28), fill: "#1f2124" },
     // Body.
-    { d: `M302 212H${right - 44}Q${right - 22} 212 ${right - 18} 236L${right} ${bottom - 34}Q${right + 2} ${bottom} ${right - 32} ${bottom}H300Q266 ${bottom} 268 ${bottom - 34}L284 236Q286 212 302 212Z`, fill: CHARCOAL },
-    // Lighter rim along the bottom edge.
-    { d: `M270 ${bottom - 22}Q${(268 + right) / 2} ${bottom + 6} ${right} ${bottom - 22}Q${right + 2} ${bottom} ${right - 32} ${bottom}H300Q268 ${bottom} 270 ${bottom - 22}Z`, fill: "#4a4e55" },
+    { d: rect(268, 212, right - 268, bottom - 212, 24), fill: CHARCOAL },
   ];
-  // Right wing.
+  // Right wing: ten rapid-dial keys beside a label window (D50) or a
+  // second display (D70), in a black housing joined to the body's side.
   let side: Panel["side"];
   let vbRight = right + 28;
   if (v.wing) {
-    const wx = right + 8;
-    shapes.push({ d: `M${right - 30} 262H${wx + 132}Q${wx + 150} 262 ${wx + 150} 282V${bottom - 20}Q${wx + 150} ${bottom} ${wx + 130} ${bottom}H${right - 30}Z`, fill: "#1b1c1f" });
+    const wx = right - 4;
+    const ww = 150;
+    const top = 262;
+    // Housing, with a raised inner panel.
+    shapes.push({ d: `M${wx} ${top}H${wx + ww - 18}Q${wx + ww} ${top} ${wx + ww} ${top + 18}V${bottom - 20}Q${wx + ww} ${bottom} ${wx + ww - 20} ${bottom}H${wx}Z`, fill: "#17181a", gloss: true });
+    shapes.push({ d: rect(wx + 10, top + 24, ww - 22, bottom - top - 40, 5), fill: "#222427", stroke: "#0c0d0e" });
+    const kx = wx + ww - 32;
     if (v.wing === "paper") {
-      // D50: paper label strip, ten silver keys to its right.
-      shapes.push({ d: rect(wx + 18, 290, 78, 290, 2), fill: "#f1f2f4" });
+      // D50: ten label rows behind a window, a key beside each row.
+      const rowH = 27;
+      const wy = top + 38;
+      shapes.push({ d: rect(wx + 20, wy - 4, 84, 10 * rowH + 8, 3), fill: "#0d0e0f" });
       for (let i = 0; i < 10; i++) {
-        if (i % 2 === 0) shapes.push({ d: rect(wx + 18, 290 + i * 29, 78, 29, 0), fill: "#d9dce0" });
-        keys.push({ id: `blf${i + 1}`, cx: wx + 120, cy: 304.5 + i * 29, w: 22, h: 12, r: 4, fill: OLD_SILVER, lamp: `blf${i + 1}` });
+        shapes.push({ d: rect(wx + 24, wy + i * rowH, 76, rowH, 0), fill: i % 2 ? "#c7cbd1" : "#f3f4f6" });
+        keys.push({ id: `blf${i + 1}`, cx: kx, cy: wy + (i + 0.5) * rowH, w: 26, h: 13, r: 6.5, fill: HOUSING_KEY, lamp: `blf${i + 1}` });
       }
     } else {
-      // D70: second display, ten silver keys to its right, two teal page
-      // keys under it.
-      const sw = 78;
+      // D70: second display (ten entries and a page row), a key beside
+      // each entry, two teal page keys under the display.
+      const sw = 80;
       const sh = sw * (357 / 113);
-      side = { x: wx + 20, y: 286, w: sw, h: sh };
-      shapes.push({ d: rect(wx + 14, 280, sw + 12, sh + 12, 4), fill: "#2a2c2e" });
+      const sy = top + 38;
+      side = { x: wx + 22, y: sy, w: sw, h: sh };
+      shapes.push({ d: rect(wx + 17, sy - 5, sw + 10, sh + 10, 3), fill: "#0d0e0f" });
       for (let i = 0; i < 10; i++) {
-        keys.push({ id: `blf${i + 1}`, cx: wx + 126, cy: 286 + (i + 0.5) * (sh / 11), w: 22, h: 12, r: 4, fill: OLD_SILVER, lamp: `blf${i + 1}` });
+        keys.push({ id: `blf${i + 1}`, cx: kx, cy: sy + (i + 0.5) * (sh / 11), w: 26, h: 13, r: 6.5, fill: HOUSING_KEY, lamp: `blf${i + 1}` });
       }
       [
-        ["blfleft", wx + 38],
-        ["blfright", wx + 80],
+        ["blfleft", wx + 22 + sw * 0.27],
+        ["blfright", wx + 22 + sw * 0.73],
       ].forEach(([id, cx]) => {
-        keys.push({ id: id as string, cx: cx as number, cy: 286 + sh + 26, w: 30, h: 13, r: 5, fill: TEAL });
-        lines.push([cx as number, 286 + sh + 7, cx as number, 286 + sh + 19]);
+        keys.push({ id: id as string, cx: cx as number, cy: sy + sh + 26, w: 30, h: 13, r: 5, fill: TEAL });
+        lines.push([cx as number, sy + sh + 6, cx as number, sy + sh + 19]);
       });
     }
-    vbRight = wx + 164;
+    vbRight = wx + ww + 24;
   }
-  const hr = 662 + grow; // housing right edge
+  const hl = 300; // housing left edge
+  const hr = 664 + grow; // housing right edge
   shapes.push(
-    // Silver display housing, rising above the body's top edge.
-    { d: `M320 158H${hr - 22}Q${hr - 2} 158 ${hr} 178L${hr + 8} 348Q${(300 + hr) / 2} 380 298 348L306 178Q308 158 320 158Z`, fill: "#c9ccd0", gloss: true, stroke: "#9da1a6" },
+    // Silver display housing, rising above the body's top edge; straight
+    // sides, bowed lower edge.
+    { d: `M${hl + 22} 158H${hr - 22}Q${hr} 158 ${hr} 180V346Q${(hl + hr) / 2} 378 ${hl} 346V180Q${hl} 158 ${hl + 22} 158Z`, fill: "#c9ccd0", gloss: true, stroke: "#9da1a6" },
     // Display bezel.
     { d: rect(326, 188, 224, 122, 10), fill: "#2b2d2f" },
     // The volume bar and the ring around the pad.
@@ -348,16 +374,19 @@ function oldFamily(v: Old): Panel {
   );
 
   return {
-    viewBox: [70, 76, vbRight - 70, bottom + 22 - 76],
+    viewBox: [-98, 76, vbRight + 98, bottom + 70 - 76],
     unit: (v.wing === "display" ? 320 : 240) / 196,
     shapes,
     lines,
     lineColor: "#8b9097",
     display: { x: 340, y: 200, w: 196, h: 98 },
     side,
-    mwi: { x: hr - 36, y: 162, w: 26, h: 14, off: "#a3abba" },
-    logo: { x: 598 + grow / 2, y: 196, size: 16, fill: "#7a828c", dot: "#e8742c" },
+    // The lamp is the housing's top-right corner itself: a smoked lens
+    // that follows the corner along the top and down the right edge.
+    mwi: { d: `M${hr - 36} 158H${hr - 22}Q${hr} 158 ${hr} 180V186H${hr - 36}Z`, off: "#8e94a2" },
     handset: { x: 106, y: 96, w: 152, h: bottom - 96 - 14, fill: "#303338", print: "HDVoice" },
+    // Vertical slots beside the housing, as in the quick reference drawing.
+    grille: { cx: 184, cy: 400, rx: 40, ry: 58 },
     keys,
   };
 }

@@ -154,16 +154,23 @@ function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: string; 
           </g>
         ))}
 
-        {panel.grille && (
-          <g>
-            <circle cx={panel.grille.cx} cy={panel.grille.cy} r={panel.grille.r} fill="#1a1b1d" />
-            {Array.from({ length: 11 }, (_, i) => {
-              const x = panel.grille!.cx + (i - 5) * (panel.grille!.r / 6.2);
-              const half = Math.sqrt(Math.max(0, panel.grille!.r ** 2 - (x - panel.grille!.cx) ** 2)) * 0.86;
-              return <path key={i} d={`M${x} ${panel.grille!.cy - half}V${panel.grille!.cy + half}`} stroke="#060607" strokeWidth={panel.grille!.r / 11} strokeLinecap="round" strokeDasharray={`${half / 2.4} ${half / 6}`} />;
-            })}
-          </g>
-        )}
+        {/* Speaker grille in the cradle: vertical slots within an oval. */}
+        {Array.from({ length: 11 }, (_, i) => {
+          const g = panel.grille;
+          const x = g.cx + ((i - 5) * g.rx) / 5.6;
+          const half = g.ry * Math.sqrt(Math.max(0, 1 - ((x - g.cx) / g.rx) ** 2)) * 0.95;
+          const w = g.rx / 9;
+          // Each column is a long slot broken by a short bridge, offset
+          // from its neighbor, with a round hole at one end.
+          const gap = half * (i % 2 ? 0.25 : -0.2);
+          return (
+            <g key={i} stroke="#08090a" strokeWidth={w} strokeLinecap="round">
+              <path d={`M${x} ${g.cy - half + w}V${g.cy + gap - w * 1.4}`} />
+              <path d={`M${x} ${g.cy + gap + w * 1.4}V${g.cy + half - w}`} />
+              <circle cx={x} cy={g.cy + gap} r={w * 0.2} />
+            </g>
+          );
+        })}
 
         {/* Displays. */}
         <rect x={d.x} y={d.y} width={d.w} height={d.h} fill="#050506" />
@@ -185,17 +192,12 @@ function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: string; 
           <path key={i} d={`M${x1} ${y1}L${x2} ${y2}`} stroke={panel.lineColor} strokeWidth={0.9} />
         ))}
 
-        {/* Logo. */}
-        {panel.logo.dot && <circle cx={panel.logo.x + panel.logo.size * 0.55} cy={panel.logo.y - panel.logo.size * 1.05} r={panel.logo.size * 0.22} fill={panel.logo.dot} />}
-        <text x={panel.logo.x} y={panel.logo.y} fill={panel.logo.fill} fontSize={panel.logo.size} fontWeight={700} letterSpacing={-0.5} textAnchor="middle">
-          digium
-        </text>
-
-        {/* Message waiting indicator. */}
-        <rect x={panel.mwi.x} y={panel.mwi.y} width={panel.mwi.w} height={panel.mwi.h} rx={2} fill={panel.mwi.off} opacity={0.8}>
+        {/* Message waiting lamp. */}
+        <path d={panel.mwi.d} fill={panel.mwi.off}>
           <title>Message waiting</title>
-        </rect>
-        {mwi && <rect x={panel.mwi.x} y={panel.mwi.y} width={panel.mwi.w} height={panel.mwi.h} rx={2} fill={lampFill[mwi.color]} className={mwi.blink !== "solid" ? `lamp-${mwi.blink}` : undefined} pointerEvents="none" />}
+        </path>
+        {mwi && <path d={panel.mwi.d} fill={lampFill[mwi.color]} className={mwi.blink !== "solid" ? `lamp-${mwi.blink}` : undefined} pointerEvents="none" />}
+        <path d={panel.mwi.d} fill="none" stroke="#00000040" strokeWidth={0.7} pointerEvents="none" />
 
         {/* Keys. */}
         {panel.keys
@@ -238,12 +240,24 @@ function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: string; 
           aria-pressed={meta.offHook}
           className="cursor-pointer outline-none"
           onClick={toggleHook}
-          transform={meta.offHook ? `translate(${-hs.w * 0.2} ${-hs.h * 0.03}) rotate(-9 ${hs.x + hs.w / 2} ${hs.y + hs.h / 2})` : undefined}
+          transform={meta.offHook ? `translate(${-(hs.w + 14)} ${-hs.h * 0.02}) rotate(-5 ${hs.x + hs.w / 2} ${hs.y + hs.h / 2})` : undefined}
           filter={meta.offHook ? "url(#lift)" : undefined}
         >
           <title>{meta.offHook ? "Replace the handset" : "Lift the handset"}</title>
+          {/* Coiled cord from the mouthpiece end. */}
+          <path
+            d={`M${hs.x + hs.w * 0.5} ${hs.y + hs.h - 6}c0 ${hs.w * 0.3} ${-hs.w * 0.12} ${hs.w * 0.36} ${-hs.w * 0.3} ${hs.w * 0.36}`}
+            fill="none"
+            stroke="#141516"
+            strokeWidth={hs.w * 0.085}
+            strokeLinecap="round"
+            strokeDasharray={`${hs.w * 0.022} ${hs.w * 0.016}`}
+          />
           <rect x={hs.x} y={hs.y} width={hs.w} height={hs.h} rx={hs.w * 0.36} fill={hs.fill} stroke="#00000055" />
           <rect x={hs.x} y={hs.y} width={hs.w} height={hs.h} rx={hs.w * 0.36} fill="url(#handset)" />
+          {/* Raised ends and the flat between them. */}
+          <rect x={hs.x + hs.w * 0.08} y={hs.y + hs.w * 0.08} width={hs.w * 0.84} height={hs.h - hs.w * 0.16} rx={hs.w * 0.3} fill="none" stroke="#ffffff" strokeOpacity={0.07} strokeWidth={1.2} />
+          <path d={`M${hs.x + hs.w * 0.14} ${hs.y + hs.h * 0.24}H${hs.x + hs.w * 0.86}M${hs.x + hs.w * 0.14} ${hs.y + hs.h * 0.76}H${hs.x + hs.w * 0.86}`} stroke="#000000" strokeOpacity={0.22} strokeWidth={1.2} />
           {hs.print && (
             <text x={hs.x + hs.w * 0.5} y={hs.y + hs.h * 0.86} fill="#aeb4bc" fontSize={hs.w * 0.1} fontWeight={600} textAnchor="middle">
               {hs.print}
