@@ -155,8 +155,8 @@ async fn cancel_reject_and_dnd() {
     let cb = wait("B to ring", || only_call(&b.store)).await;
     wait("A ringback", || matches!(state(&a.store, ca), Some(CallState::Ringback { .. })).then_some(())).await;
     a.store.send(Command::Hangup { call: ca }).await.unwrap();
-    wait("B cancelled", || {
-        (state(&b.store, cb) == Some(CallState::Ended(EndCause::Cancelled { answered_elsewhere: false }))).then_some(())
+    wait("B canceled", || {
+        (state(&b.store, cb) == Some(CallState::Ended(EndCause::Canceled { answered_elsewhere: false }))).then_some(())
     })
     .await;
     let log = b.store.get::<CallLog>();

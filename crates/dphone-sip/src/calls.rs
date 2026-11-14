@@ -781,7 +781,7 @@ impl Core {
         Ok(Reply::Done)
     }
 
-    /// The answer to an offer of ours that travelled in a 200.
+    /// The answer to an offer of ours that traveled in a 200.
     pub fn on_ack_body(&mut self, id: CallId, body: &[u8]) {
         let Some(c) = self.call_mut(id) else { return };
         let Some(offer) = c.offer.take() else { return };
@@ -862,7 +862,7 @@ impl Core {
                 }
                 let cause = match reason {
                     TerminatedReason::UacBye | TerminatedReason::UasBye => EndCause::RemoteHangup,
-                    TerminatedReason::UacCancel => EndCause::Cancelled { answered_elsewhere: false },
+                    TerminatedReason::UacCancel => EndCause::Canceled { answered_elsewhere: false },
                     TerminatedReason::Timeout => EndCause::Error("the far end stopped answering".into()),
                     other => EndCause::Error(format!("{other:?}")),
                 };

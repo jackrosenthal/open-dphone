@@ -694,7 +694,7 @@ pub enum EndCause {
     /// We declined an incoming call.
     Rejected,
     /// The caller gave up, or the call was answered elsewhere.
-    Cancelled { answered_elsewhere: bool },
+    Canceled { answered_elsewhere: bool },
     Busy,
     NoAnswer,
     /// Completed transfer.

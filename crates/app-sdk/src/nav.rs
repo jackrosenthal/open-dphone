@@ -1,5 +1,5 @@
 //! Small screen helpers shared by the built-in apps: a message screen and
-//! a labelled-input form.
+//! a labeled-input form.
 
 use crate::{InputMode, ROOT, Rect, Softkey, Widget, WidgetKind, row_height, screen, ui};
 
@@ -30,7 +30,7 @@ impl Message {
     }
 }
 
-/// A vertical form of labelled inputs.
+/// A vertical form of labeled inputs.
 pub struct Form {
     pub inputs: Vec<Widget>,
 }

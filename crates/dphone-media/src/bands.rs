@@ -132,7 +132,7 @@ impl Interp2 {
             if j < 0 { i32::from(hist[(H as isize + j) as usize]) } else { i32::from(low[j as usize]) }
         };
         for m in 0..low.len() as isize {
-            // Even wide index n = 2m: odd taps around the centre between
+            // Even wide index n = 2m: odd taps around the center between
             // low samples.  n - K = 2m - K; taps at odd offsets d = 2i + 1
             // reach low samples (2m - K -/+ d) / 2.
             let c = 2 * m - K as isize;
@@ -143,7 +143,7 @@ impl Interp2 {
             }
             // gain 2 for interpolation, Q15
             emit(2 * m as usize, (acc + (1 << 13)) >> 14);
-            // Odd wide index n = 2m + 1: n - K is even, only the centre tap
+            // Odd wide index n = 2m + 1: n - K is even, only the center tap
             // (0.5 * 2 = 1) contributes.
             emit(2 * m as usize + 1, at(&self.hist, (2 * m + 1 - K as isize) / 2));
         }
