@@ -57,6 +57,16 @@ pub struct RingLogger {
 
 static LOGGER: OnceLock<RingLogger> = OnceLock::new();
 
+/// A second destination for every accepted record (the state store's log
+/// ring, which the web UI streams).
+pub type Sink = Box<dyn Fn(Level, &str, &str) + Send + Sync>;
+static SINK: OnceLock<Sink> = OnceLock::new();
+
+/// Forward every record to `sink` as well.  Only the first call takes effect.
+pub fn set_sink(sink: Sink) {
+    let _ = SINK.set(sink);
+}
+
 /// Crates whose debug output is not ours to read by default.
 fn quiet_target(target: &str) -> bool {
     target.starts_with("russh") || target.starts_with("mio") || target.starts_with("tokio")
@@ -80,6 +90,7 @@ impl Log for RingLogger {
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
         let message = record.args().to_string();
+        let for_sink = SINK.get().map(|sink| (sink, message.clone()));
         let mut entry =
             Entry { seq: 0, time_ms, level: record.level(), target: record.target().to_string(), message };
         let seq = {
@@ -100,6 +111,9 @@ impl Log for RingLogger {
             ring.next_seq
         };
         let _ = self.seq_tx.send(seq);
+        if let Some((sink, message)) = for_sink {
+            sink(record.level(), record.target(), &message);
+        }
     }
 
     fn flush(&self) {}

@@ -75,6 +75,17 @@ impl Paths {
 }
 
 /// Socket path a diagnostic client should use.
+/// Flag file carried by images that must leave stock-owned nvdata files
+/// exactly as they found them (the first-flash development image).
+pub const NO_STOCK_WRITES_FLAG: &str = "/etc/dphone/no-stock-writes";
+
+/// False when this image must not write files that stock also owns
+/// (`systime`, `reboot_reason`, `config.xml`, and so on).  Our own directory
+/// `/nvdata/open/` is always writable.
+pub fn stock_writes_allowed() -> bool {
+    !Path::new(NO_STOCK_WRITES_FLAG).exists()
+}
+
 pub fn client_diag_socket() -> PathBuf {
     match std::env::var_os(DIAG_SOCKET_ENV) {
         Some(p) if !p.is_empty() => PathBuf::from(p),

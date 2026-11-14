@@ -15,6 +15,7 @@ use crate::init;
 pub const LOCAL_HELP: &str = "\
 Commands run locally:
   main       run the main role (see 'dphone main --help')
+  update     firmware: status, install an EFF, switch bank (see 'dphone update')
   mount, umount, insmod, rmmod, lsmod, modprobe, reboot, poweroff, halt, dmesg
 ";
 
@@ -30,7 +31,7 @@ fn usage() -> String {
 /// Hooks other crates supply to the init role.  The updater's rollback
 /// function is added here when that crate is wired in.
 fn init_hooks() -> init::Hooks {
-    init::Hooks { rollback: None }
+    init::Hooks { rollback: Some(crate::update_cli::rollback_hook) }
 }
 
 pub fn run(args: Vec<OsString>) -> i32 {
@@ -61,6 +62,7 @@ pub fn run(args: Vec<OsString>) -> i32 {
             crate::mainrole::run(command_args)
         }
         "init" => run_init_test(command_args),
+        "update" => crate::update_cli::run(command_args),
         "--help" | "-h" => {
             print!("{}", usage());
             0

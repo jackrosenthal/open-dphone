@@ -1,7 +1,9 @@
 //! Developer conveniences that are not builds.  Each subcommand lives in its
 //! own module; add new ones to the table in `main`.
 
+mod image;
 mod kernel;
+mod tz;
 
 use std::process::ExitCode;
 
@@ -14,6 +16,16 @@ struct Command {
 }
 
 const COMMANDS: &[Command] = &[
+    Command {
+        name: "dev-image",
+        usage: "dev-image <model> --dsp-firmware <file> [options]   assemble a development EFF from host-built parts",
+        run: image::dev_image,
+    },
+    Command {
+        name: "tz-table",
+        usage: "tz-table [zoneinfo-dir]       regenerate the phone's time zone rule table from a zone database",
+        run: tz::table,
+    },
     Command {
         name: "kernel-sync",
         usage: "kernel-sync <tree>            regenerate kernel/{patches,files,configs} from a v7.3 working tree",

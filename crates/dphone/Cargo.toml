@@ -14,7 +14,28 @@ path = "src/lib.rs"
 name = "dphone"
 path = "src/main.rs"
 
+[features]
+default = ["web"]
+# The web UI.  A feature only so that the rest can be built and tested while
+# that crate is being reworked; every image carries it.
+web = ["dep:dphone-web"]
+
 [dependencies]
+dphone-state = { path = "../dphone-state" }
+dphone-config = { path = "../dphone-config" }
+dphone-hal = { path = "../dphone-hal" }
+dphone-net = { path = "../dphone-net" }
+dphone-update = { path = "../dphone-update" }
+eff = { path = "../eff" }
+dphone-sip = { path = "../dphone-sip" }
+dphone-dpma = { path = "../dphone-dpma" }
+async-trait = "0.1"
+dphone-apps = { path = "../dphone-apps", features = ["ui"] }
+dphone-web = { path = "../dphone-web", optional = true }
+dphone-ui = { path = "../dphone-ui" }
+serde_json = "1"
+dphone-vpm = { path = "../dphone-vpm" }
+dphone-media = { path = "../dphone-media" }
 libc = "0.2"
 log = { version = "0.4", features = ["std"] }
 tokio = { version = "1", default-features = false, features = ["rt", "net", "io-util", "time", "sync", "process", "signal", "macros", "fs"] }

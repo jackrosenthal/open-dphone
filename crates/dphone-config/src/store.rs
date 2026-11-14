@@ -132,6 +132,8 @@ pub struct ConfigStore {
     net: NetContext,
     current: Arc<Config>,
     warnings: Vec<String>,
+    /// Never rewrite the merged `/nvdata/config.xml` (see `open_read_only`).
+    keep_merged_file: bool,
 }
 
 impl ConfigStore {
@@ -139,7 +141,20 @@ impl ConfigStore {
     /// lives (`/tmp` on the phone).  Writes `/nvdata/config.xml` if the
     /// merged result differs from what is there.
     pub fn open(nv: Nvdata, model: Model, tmp_dir: impl Into<PathBuf>) -> Result<Self, ConfigError> {
+        Self::open_with(nv, model, tmp_dir, false)
+    }
+
+    /// Like [`ConfigStore::open`], but never rewrites the merged
+    /// `/nvdata/config.xml`: for images that must leave stock-owned files
+    /// exactly as they found them.  Explicit writes (`set`, `write_layer`)
+    /// still write; the caller refuses those itself.
+    pub fn open_read_only(nv: Nvdata, model: Model, tmp_dir: impl Into<PathBuf>) -> Result<Self, ConfigError> {
+        Self::open_with(nv, model, tmp_dir, true)
+    }
+
+    fn open_with(nv: Nvdata, model: Model, tmp_dir: impl Into<PathBuf>, keep_merged_file: bool) -> Result<Self, ConfigError> {
         let mut store = ConfigStore {
+            keep_merged_file,
             nv,
             model,
             tmp_dir: tmp_dir.into(),
@@ -228,7 +243,7 @@ impl ConfigStore {
             e.name == "setting" && e.attr("id").is_some_and(|id| id.starts_with(OPEN_PREFIX))
         });
         let stock_doc = stock.to_document();
-        if self.nv.read_string("config.xml")?.as_deref() != Some(stock_doc.as_str()) {
+        if !self.keep_merged_file && self.nv.read_string("config.xml")?.as_deref() != Some(stock_doc.as_str()) {
             self.nv.write("config.xml", stock_doc.as_bytes())?;
         }
         if acc != self.current.root || self.current.generation == 0 {

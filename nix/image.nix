@@ -13,6 +13,9 @@
   dspFirmware,
   apps ? null,
   version, # e.g., "3.0.0"
+  # Development image: SSH on and the /tmp/dphone override allowed (the SSH
+  # key itself is compiled into `dphone`; see workspace.nix).
+  dev ? false,
 }:
 let
   # Stock-style version string: 3_0_0.
@@ -68,11 +71,15 @@ let
   # firmware variants are present, each in its family's directory, and the
   # init role points the kernel's firmware loader at the right one.
   rootfsTree = runCommand "dphone-rootfs-tree-${version}" { } ''
-    mkdir -p $out/{bin,sbin,etc,lib/firmware/old-family,lib/firmware/new-family,usr/share/dphone/apps}
+    mkdir -p $out/{bin,sbin,etc/dphone,lib/firmware/old-family,lib/firmware/new-family,usr/share/dphone/apps}
     mkdir -p $out/{dev,proc,sys,tmp,run,var,nvdata,root}
 
     install -m 0755 ${dphone}/bin/dphone $out/sbin/init
     ln -s ../sbin/init $out/bin/dphone
+    # System commands `dphone` provides under its own name.
+    for c in mount umount insmod rmmod lsmod modprobe reboot poweroff halt dmesg; do
+      ln -s ../sbin/init $out/bin/$c
+    done
 
     install -m 0755 ${brush}/bin/brush $out/bin/brush
     ln -s brush $out/bin/sh
@@ -87,7 +94,8 @@ let
     install -m 0644 ${dspFirmware.old} $out/lib/firmware/old-family/dspapp1107_lcc.bin
     install -m 0644 ${dspFirmware.new} $out/lib/firmware/new-family/dspapp1107_lcc.bin
 
-    ${lib.optionalString (apps != null) "install -m 0644 ${apps}/*.wasm $out/usr/share/dphone/apps/"}
+    ${lib.optionalString (apps != null) "cp -r ${apps}/. $out/usr/share/dphone/apps/ && chmod -R u+w $out/usr/share/dphone/apps"}
+    ${lib.optionalString dev "printf 'development image: SSH on, /tmp/dphone override allowed\\n' > $out/etc/dphone/dev"}
 
     printf 'root:x:0:0:root:/nvdata/root:/bin/brush\n' > $out/etc/passwd
     printf 'root:x:0:\ntty:x:5:\n' > $out/etc/group

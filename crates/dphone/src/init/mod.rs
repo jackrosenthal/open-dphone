@@ -75,6 +75,12 @@ pub const START_GRACE_SECS: u64 = 120;
 pub const BEAT_TIMEOUT_SECS: u64 = 30;
 pub const MAX_BACKOFF_SECS: u64 = 60;
 pub const UNHEALTHY_REBOOT_SECS: u64 = 600;
+/// Environment variable asking the main role for safe mode (see
+/// `mainrole::subsystems`).
+pub const SAFE_ENV: &str = "DPHONE_SAFE";
+/// Consecutive main-role failures before safe mode is requested.
+pub const SAFE_MODE_AFTER_CRASHES: u32 = 3;
+
 /// How often the clock is saved to nvdata while running.
 pub const CLOCK_SAVE_SECS: u64 = 30 * 60;
 /// A pushed development build that fails this many times in a row, each
@@ -203,6 +209,7 @@ struct Supervisor {
     real: bool,
     model: Option<model::Model>,
     recovery: bool,
+    max_uptime: Option<u64>,
     dev: bool,
     sigfd: RawFd,
     main: Option<MainProc>,
@@ -233,6 +240,9 @@ impl Supervisor {
             real,
             model: None,
             recovery: false,
+            max_uptime: std::fs::read_to_string("/proc/cmdline")
+                .ok()
+                .and_then(|c| c.split_ascii_whitespace().find_map(|w| w.strip_prefix("dphone.max_uptime=").and_then(|v| v.parse().ok()))),
             dev,
             sigfd: -1,
             main: None,
@@ -517,6 +527,13 @@ impl Supervisor {
         if let Some(m) = self.model {
             cmd.env(MODEL_ENV, m.name());
         }
+        // After repeated failures, ask for the reduced main role (SSH,
+        // network, diagnostics only), so a broken subsystem cannot keep the
+        // phone unreachable.
+        if self.crashes >= SAFE_MODE_AFTER_CRASHES {
+            warn!("main role failed {} times in a row; starting it in safe mode", self.crashes);
+            cmd.env(SAFE_ENV, "1");
+        }
         cmd.stdin(std::process::Stdio::null());
         // SAFETY: the closure runs between fork and exec and makes only
         // async-signal-safe calls.
@@ -585,6 +602,21 @@ impl Supervisor {
     }
 
     fn periodic(&mut self, now: u64) {
+        // Test boots: `dphone.max_uptime=SECS` on the kernel command line
+        // ends the boot after that long unless `/run/dphone/stay` exists,
+        // so a RAM-booted trial returns to the installed firmware by itself
+        // even when nobody can reach it.  It ends by no longer feeding the
+        // watchdog, which then resets the phone.
+        if self.real
+            && let Some(limit) = self.max_uptime
+            && now >= limit
+            && !Path::new(crate::paths::RUN_DIR).join("stay").exists()
+        {
+            warn!("dphone.max_uptime={limit} reached: syncing and letting the watchdog reset the phone");
+            self.max_uptime = None;
+            sys::sync();
+            self.wd.starve();
+        }
         if now.saturating_sub(self.last_clock_save) >= CLOCK_SAVE_SECS {
             self.last_clock_save = now;
             self.save_clock();
@@ -592,7 +624,7 @@ impl Supervisor {
     }
 
     fn save_clock(&self) {
-        if self.recovery {
+        if self.recovery || (self.real && !crate::paths::stock_writes_allowed()) {
             return;
         }
         let wall = sys::now_secs();
@@ -609,7 +641,8 @@ impl Supervisor {
     /// Stop everything and reboot, halt, or power off.  Never returns.
     fn shutdown(&mut self, kind: Shutdown, reason: Option<&str>) -> ! {
         info!("shutting down ({kind:?})");
-        if let (Some(reason), false) = (reason, self.recovery) {
+        let may_write = !self.recovery && !(self.real && !crate::paths::stock_writes_allowed());
+        if let (Some(reason), true) = (reason, may_write) {
             let _ = crate::paths::write_atomic(&self.paths.reboot_reason(), format!("{reason}\n").as_bytes(), 0o644);
         }
         if let Some(proc_) = self.main.as_ref() {

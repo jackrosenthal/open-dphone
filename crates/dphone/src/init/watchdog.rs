@@ -62,6 +62,13 @@ impl Watchdog {
         self.disabled = true;
     }
 
+    /// Stop feeding without disarming: the hardware resets the phone when
+    /// the timeout runs out.  This is the reset path that has been seen to
+    /// work on the hardware (the kernel's restart code has not).
+    pub fn starve(&mut self) {
+        self.disabled = true;
+    }
+
     pub fn is_armed(&self) -> bool {
         self.dev.is_some()
     }

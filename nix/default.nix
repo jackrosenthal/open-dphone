@@ -17,7 +17,6 @@
 {
   pkgs,
   lib,
-  dpma-rs,
 }:
 let
   root = ../.;
@@ -46,23 +45,57 @@ let
   dspFirmware = pkgs.callPackage ./dsp-firmware.nix { };
 
   web =
-    if has "web/package-lock.json" then
-      pkgs.callPackage ./web.nix { npmDepsHash = lib.fakeHash; }
+    if has "web/pnpm-lock.yaml" then
+      # The hash of the fetched pnpm store; when web/pnpm-lock.yaml changes,
+      # set it to lib.fakeHash, build, and copy the hash Nix reports.
+      pkgs.callPackage ./web.nix { pnpmDepsHash = "sha256-95kN11RWZZX7toWE8RD+RYruv58MfEVDC3VrxIwNws0="; }
     else
       null;
-  apps =
-    if has "apps/Cargo.lock" then pkgs.callPackage ./apps.nix { inherit rustPlatform rust; } else null;
 
   workspace = pkgs.callPackage ./workspace.nix {
-    inherit rustPlatform rust dpma-rs;
+    inherit rustPlatform rust;
     webDist = web;
   };
+  apps =
+    if has "apps/Cargo.lock" then
+      pkgs.callPackage ./apps.nix {
+        inherit rustPlatform rust;
+        inherit (workspace) dphone-apps-build;
+      }
+    else
+      null;
 
   image = pkgs.callPackage ./image.nix {
     inherit (workspace) dphone dphone-image version;
     inherit (userland) brush coreutils applets;
     inherit kernel dspFirmware apps;
   };
+
+  # Development images: SSH on, with one public key compiled in.  The key
+  # is not in the repository; name it in the environment and build with
+  # --impure:
+  #
+  #   DPHONE_DEV_SSH_KEY="$(cat ~/.ssh/id_ed25519.pub)" nix build --impure .#eff-d60-dev
+  devSshKey = builtins.getEnv "DPHONE_DEV_SSH_KEY";
+  devWorkspace = pkgs.callPackage ./workspace.nix {
+    inherit rustPlatform rust devSshKey;
+    webDist = web;
+  };
+  devImage = pkgs.callPackage ./image.nix {
+    inherit (devWorkspace) dphone dphone-image version;
+    inherit (userland) brush coreutils applets;
+    inherit kernel dspFirmware apps;
+    dev = true;
+  };
+  devEffs = lib.mapAttrs' (
+    m: v:
+    lib.nameValuePair "eff-${m}-dev" (
+      if devSshKey == "" then
+        throw "eff-${m}-dev needs an SSH public key: set DPHONE_DEV_SSH_KEY and build with --impure"
+      else
+        v
+    )
+  ) devImage.effs;
 
   effs = lib.mapAttrs' (m: v: lib.nameValuePair "eff-${m}" v) image.effs;
   kernels = lib.mapAttrs' (m: v: lib.nameValuePair "kernel-${m}" v) image.kernelImages;
@@ -84,6 +117,7 @@ in
   }
   // kernels
   // effs
+  // devEffs
   // lib.optionalAttrs (web != null) { inherit web; }
   // lib.optionalAttrs (apps != null) { inherit apps; };
 

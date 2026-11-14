@@ -24,6 +24,8 @@ pub mod model;
 pub mod paths;
 pub mod ssh;
 pub mod sys;
+pub mod tz;
+pub mod update_cli;
 
 /// Crate version, `3.0.0` form.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

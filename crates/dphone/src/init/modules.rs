@@ -22,28 +22,56 @@ pub const MODULES_ROOT: &str = "/lib/modules";
 /// out the dependency chains too.  A file `/etc/dphone/modules-<family>`
 /// (one name per line, `#` comments) replaces the list for that family.
 pub fn boot_list(family: Family) -> Vec<String> {
-    let (key, built_in): (&str, &[&str]) = match family {
-        Family::Old => (
-            "old",
-            &[
-                "dw_dmac_core",
-                "dw_dmac",
-                "spi-pl022",
-                "digium-gray-lcd",
-                "snd-soc-bcmring-apm",
-                "snd-soc-bcmring-digium-card",
-                "bcmring_vpm",
-            ],
-        ),
-        Family::New => (
-            "new",
-            &["dw_dmac_core", "dw_dmac", "snd-soc-bcmring-apm", "snd-soc-bcmring-digium-card", "bcmring_vpm"],
-        ),
+    let key = match family {
+        Family::Old => "old",
+        Family::New => "new",
     };
     if let Ok(text) = std::fs::read_to_string(format!("/etc/dphone/modules-{key}")) {
         return parse_list(&text);
     }
-    built_in.iter().map(|s| s.to_string()).collect()
+    let mut list: Vec<String> = Vec::new();
+    if family == Family::Old {
+        list.extend(OLD_FAMILY_DISPLAY.iter().map(|s| s.to_string()));
+    }
+    list.extend(ALL_MODELS.iter().map(|s| s.to_string()));
+    list
+}
+
+/// Old family only, first, so the SPI display comes up early.
+const OLD_FAMILY_DISPLAY: &[&str] = &["spi-pl022", "lcd", "drm_shmem_helper", "digium-gray-lcd"];
+
+/// Every model, in dependency order (see `kernel/README.md`).
+const ALL_MODELS: &[&str] = &[
+    "dw_dmac_core",
+    "dw_dmac",
+    "soundcore",
+    "snd",
+    "snd-timer",
+    "snd-pcm",
+    "snd-pcm-dmaengine",
+    "snd-soc-core",
+    "snd-soc-simple-amplifier",
+    "snd-soc-bcmring-apm",
+    "snd-soc-bcmring-digium-card",
+    "bcmring_vpm",
+];
+
+/// Where the image keeps each family's DSP firmware.
+pub fn firmware_dir(family: Family) -> &'static str {
+    match family {
+        Family::Old => "/lib/firmware/old-family",
+        Family::New => "/lib/firmware/new-family",
+    }
+}
+
+/// Point the kernel's firmware loader at this family's directory.  Must run
+/// before `bcmring_vpm` loads, or the DSP firmware is not found.
+pub fn set_firmware_path(family: Family) {
+    const PARAM: &str = "/sys/module/firmware_class/parameters/path";
+    let dir = firmware_dir(family);
+    if let Err(e) = std::fs::write(PARAM, dir) {
+        warn!("firmware path {dir}: {e}");
+    }
 }
 
 pub fn parse_list(text: &str) -> Vec<String> {
@@ -188,6 +216,7 @@ pub fn modprobe(index: &Index, name: &str, params: &str) -> io::Result<Vec<Strin
 /// Load the boot list for a family.  Nothing here is fatal: a missing or
 /// failing module is logged and the boot goes on.
 pub fn load_boot_modules(family: Family) {
+    set_firmware_path(family);
     let index = Index::scan(Path::new(MODULES_ROOT));
     let have_deps = !index.deps.is_empty();
     for name in boot_list(family) {

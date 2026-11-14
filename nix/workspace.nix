@@ -1,17 +1,14 @@
 # The cargo workspace: `dphone` for the phone, `dphone-image` for the build
 # machine, and the test and lint checks.
-#
-# dpma-rs is a sibling checkout during development (`../dpma-rs` from the
-# repository root).  The derivations reproduce that layout from the pinned
-# `dpma-rs` flake input, so a path dependency such as
-# `../../../dpma-rs/crates/dpma-proto` resolves in both places.
 {
   lib,
   rustPlatform,
   rust,
-  dpma-rs,
   protobuf,
   webDist ? null, # built frontend, embedded by dphone-web (DPHONE_WEB_DIST)
+  # A development image's SSH public key, compiled into dphone.  Empty for
+  # release images.
+  devSshKey ? "",
 }:
 let
   root = ../.;
@@ -27,6 +24,8 @@ let
         (root + "/xtask")
       ]
       ++ optionalPath (root + "/proto")
+      # Fonts and SVG artwork, rasterized by dphone-ui's build script.
+      ++ optionalPath (root + "/assets")
     );
   };
   cargoDeps = rustPlatform.importCargoLock {
@@ -42,10 +41,9 @@ let
       {
         inherit src cargoDeps version;
         nativeBuildInputs = [ protobuf ];
-        preBuild = ''
-          ln -sfn ${dpma-rs} "$NIX_BUILD_TOP/dpma-rs"
-        '';
-        env = lib.optionalAttrs (webDist != null) { DPHONE_WEB_DIST = "${webDist}"; };
+        env =
+          lib.optionalAttrs (webDist != null) { DPHONE_WEB_DIST = "${webDist}"; }
+          // lib.optionalAttrs (devSshKey != "") { DPHONE_DEV_SSH_KEY = devSshKey; };
       }
       // args
     );
@@ -71,6 +69,24 @@ in
       ]
     ];
     bins = [ "dphone" ];
+  };
+
+  # Host tool: componentizes and precompiles the WebAssembly apps.
+  dphone-apps-build = build {
+    pname = "dphone-apps-build";
+    commands = [
+      [
+        "build"
+        "--release"
+        "-p"
+        "dphone-apps"
+        "--features"
+        "build-tool"
+        "--bin"
+        "dphone-apps-build"
+      ]
+    ];
+    bins = [ "dphone-apps-build" ];
   };
 
   # Host tool: EFF, OTA, kernel image, and rootfs assembly.

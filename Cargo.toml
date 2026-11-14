@@ -1,6 +1,32 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "xtask"]
+# Members are listed one by one, not by glob: a crate directory that is still
+# being created (no manifest, or one that does not parse yet) must not break
+# cargo for every other crate.  Add a crate here when it builds.
+members = [
+    "crates/app-sdk",
+    "crates/dphone",
+    "crates/dphone-apps",
+    "crates/dphone-config",
+    "crates/dphone-hal",
+    "crates/dphone-image",
+    "crates/dphone-media",
+    "crates/dphone-net",
+    "crates/dphone-ui",
+    "crates/dphone-web",
+    "crates/dphone-sip",
+    "crates/dphone-dpma",
+    "crates/dphone-state",
+    "crates/dphone-ui",
+    "crates/dphone-web",
+    "crates/dphone-update",
+    "crates/dphone-vpm",
+    "crates/dphone-update",
+    "crates/dphone-web",
+    "crates/eff",
+    "crates/jffs2-image",
+    "xtask",
+]
 exclude = ["apps"]
 
 [workspace.package]
@@ -16,5 +42,12 @@ debug = 0
 opt-level = "s"
 lto = "fat"
 codegen-units = 1
-panic = "abort"
+# Unwinding, not abort: a panic in one subsystem's thread or task must not
+# take the SSH server down with it.
+panic = "unwind"
 strip = true
+
+# The app interpreter's inner loop: measured markedly slower when built for
+# size (see crates/dphone-apps/README.md).
+[profile.release.package.pulley-interpreter]
+opt-level = 3

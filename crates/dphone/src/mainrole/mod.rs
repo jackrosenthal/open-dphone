@@ -38,6 +38,10 @@ pub struct Options {
     /// Listen address for SSH; giving one turns SSH on.
     pub ssh_listen: Option<SocketAddr>,
     pub no_ssh: bool,
+    /// Start only SSH, the network, and diagnostics.
+    pub safe: bool,
+    /// HTTP port for the web UI (default 80; 8080 on loopback with --sim).
+    pub web_port: Option<u16>,
     pub verbose: bool,
 }
 
@@ -50,6 +54,8 @@ usage: dphone main [options]
   --ssh-port <port>     enable SSH on this port (all addresses)
   --ssh-listen <addr>   enable SSH on this address, e.g. 127.0.0.1:2222
   --no-ssh              do not start SSH
+  --web-port <port>     HTTP port of the web UI (default 80; 8080 with --sim)
+  --safe                start only SSH, the network, and diagnostics
   -v, --verbose         debug logging
 ";
 
@@ -79,6 +85,11 @@ impl Options {
                     o.ssh_listen = Some(v.parse().map_err(|_| format!("bad address '{v}'"))?);
                 }
                 "--no-ssh" => o.no_ssh = true,
+                "--safe" => o.safe = true,
+                "--web-port" => {
+                    let v = value(&mut it, "--web-port")?;
+                    o.web_port = Some(v.parse().map_err(|_| format!("bad port '{v}'"))?);
+                }
                 "-v" | "--verbose" => o.verbose = true,
                 other => return Err(format!("unknown option '{other}'")),
             }
@@ -111,6 +122,11 @@ pub struct Context {
     pub recovery: Option<String>,
     /// Development mode (flag file, kernel command line, or baked-in key).
     pub dev: bool,
+    /// Safe mode: the init role saw the main role fail repeatedly (or
+    /// `--safe` was given).  Only SSH, the network, and diagnostics start.
+    pub safe: bool,
+    /// The state store shared by every subsystem.
+    pub store: dphone_state::Store,
     pub diag: Registry,
     pub health: Health,
     pub started: Instant,
@@ -129,7 +145,7 @@ impl Context {
     /// nothing supervises us, this only ends the main role.
     pub fn request_shutdown(&self, kind: Shutdown, reason: &str) {
         info!("{kind:?} requested: {reason}");
-        if self.recovery.is_none() {
+        if self.recovery.is_none() && (self.sim || crate::paths::stock_writes_allowed()) {
             let _ = crate::paths::write_atomic(&self.paths.reboot_reason(), format!("{reason}\n").as_bytes(), 0o644);
         }
         if self.sim || !self.supervised {
@@ -158,6 +174,11 @@ pub fn run(args: &[String]) -> i32 {
     };
     let level = if opts.verbose { log::LevelFilter::Debug } else { log::LevelFilter::Info };
     crate::logging::init_ring(level, true);
+    // A panic anywhere is logged with its location before the thread (or
+    // task) unwinds; the default hook's output would miss the log ring.
+    std::panic::set_hook(Box::new(|info| {
+        log::error!("panic: {info}");
+    }));
 
     let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
         Ok(rt) => rt,
@@ -170,6 +191,11 @@ pub fn run(args: &[String]) -> i32 {
     // Do not wait for lingering blocking tasks (e.g., a shell session's I/O).
     runtime.shutdown_timeout(Duration::from_millis(200));
     code
+}
+
+/// Our model as the state crate's type.
+pub fn state_model(model: Model) -> dphone_state::Model {
+    model.name().parse().unwrap_or(dphone_state::Model::D60)
 }
 
 fn resolve_model(opts: &Options) -> Model {
@@ -209,6 +235,8 @@ async fn run_async(opts: Options) -> i32 {
 
     let (exit_tx, mut exit_rx) = watch::channel(Exit::Running);
     let ctx = Context {
+        safe: opts.safe || std::env::var(crate::init::SAFE_ENV).is_ok_and(|v| v == "1"),
+        store: dphone_state::Store::new(state_model(model)),
         dev: crate::ssh::dev_key().is_some() || (!opts.sim && crate::init::dev_mode(&paths)),
         paths,
         model,
@@ -252,18 +280,26 @@ async fn run_async(opts: Options) -> i32 {
     // 3. Signals.
     tokio::spawn(signals(ctx.clone()));
 
-    // 4. Subsystems from the other crates, in dependency order.
-    subsystems::start(&ctx).await;
-
-    // 5. SSH.
+    // 4. SSH, before anything that could fail: whatever else breaks, the
+    //    way in stays up.  (It listens on the wildcard address, so it does
+    //    not need the network to be configured yet.)
     if let Some(listen) = crate::ssh::listen_address(&ctx, &opts) {
         match crate::ssh::start(&ctx, listen).await {
-            Ok(addr) => info!("ssh listening on {addr}"),
-            Err(e) => error!("ssh: {e}"),
+            Ok(addr) => {
+                info!("ssh listening on {addr}");
+                ctx.store.set_health(dphone_state::Subsystem::Ssh, dphone_state::HealthStatus::Ok);
+            }
+            Err(e) => {
+                error!("ssh: {e}");
+                ctx.store.set_health(dphone_state::Subsystem::Ssh, dphone_state::HealthStatus::Failed(e.to_string()));
+            }
         }
     } else {
         info!("ssh disabled");
     }
+
+    // 5. Subsystems from the other crates, in dependency order.
+    subsystems::start(&ctx, &opts).await;
 
     // 6. Our own part is up.
     ctx.health.satisfy("core");

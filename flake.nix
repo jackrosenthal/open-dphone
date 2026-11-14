@@ -7,12 +7,6 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # dpma-proto lives here.  To build against a local checkout:
-    #   --override-input dpma-rs path:/path/to/dpma-rs
-    dpma-rs = {
-      url = "git+ssh://git@github.com/jackrosenthal/dpma-rs";
-      flake = false;
-    };
   };
 
   outputs =
@@ -20,7 +14,6 @@
       self,
       nixpkgs,
       rust-overlay,
-      dpma-rs,
     }:
     let
       system = "x86_64-linux";
@@ -33,7 +26,7 @@
       };
       lib = pkgs.lib;
       od = import ./nix {
-        inherit pkgs lib dpma-rs;
+        inherit pkgs lib;
       };
     in
     {

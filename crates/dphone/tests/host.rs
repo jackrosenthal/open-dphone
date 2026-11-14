@@ -79,10 +79,23 @@ fn diag_commands_and_restart() {
         assert!(out.contains(name), "help lacks {name}: {out}");
     }
 
-    // Placeholders say so and fail distinctly.
-    let (code, _, err) = diag(&socket, &["state"]);
-    assert_eq!(code, 69);
-    assert!(err.contains("not wired"), "{err}");
+    // The subsystems wired into the main role answer.
+    let (code, out, _) = diag(&socket, &["state", "system"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("D40") && out.contains("simulated: true"), "{out}");
+    let (code, out, _) = diag(&socket, &["config", "get", "network_enable_dhcp"]);
+    assert_eq!(code, 0, "{out}");
+    let (code, out, _) = diag(&socket, &["hal", "status"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("simulator") && out.contains("240x120"), "{out}");
+    let (code, out, _) = diag(&socket, &["audio"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("engine: running"), "{out}");
+    let (code, out, _) = diag(&socket, &["app", "list"]);
+    assert_eq!(code, 0, "{out}");
+    let (code, out, _) = diag(&socket, &["net"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("simulator"), "{out}");
 
     let (code, _, err) = diag(&socket, &["no-such-command"]);
     assert_eq!(code, 127);
@@ -177,8 +190,14 @@ fn ssh_exec_and_sftp_with_openssh_client() {
         let ok = Command::new("ssh-keygen").args(["-q", "-t", "ed25519", "-N", "", "-f"]).arg(k).status().unwrap();
         assert!(ok.success());
     }
+    // An RSA key too: that is what the stock phones' authorized_keys hold.
+    let rsa = d.join("id_rsa");
+    let ok = Command::new("ssh-keygen").args(["-q", "-t", "rsa", "-b", "3072", "-N", "", "-f"]).arg(&rsa).status().unwrap();
+    assert!(ok.success());
     std::fs::create_dir_all(d.join("nv/root/.ssh")).unwrap();
-    std::fs::copy(d.join("id.pub"), d.join("nv/root/.ssh/authorized_keys")).unwrap();
+    let mut authorized = std::fs::read_to_string(d.join("id.pub")).unwrap();
+    authorized.push_str(&std::fs::read_to_string(d.join("id_rsa.pub")).unwrap());
+    std::fs::write(d.join("nv/root/.ssh/authorized_keys"), authorized).unwrap();
 
     let nv = d.join("nv");
     let run = d.join("run");
@@ -227,6 +246,10 @@ fn ssh_exec_and_sftp_with_openssh_client() {
     assert_eq!(out.status.code(), Some(7));
     assert_eq!(String::from_utf8_lossy(&out.stdout), "out\n");
     assert!(String::from_utf8_lossy(&out.stderr).contains("err"));
+
+    // RSA public-key login.
+    let out = ssh(&rsa, "root", "echo rsa");
+    assert_eq!((out.status.code(), String::from_utf8_lossy(&out.stdout).as_ref()), (Some(0), "rsa\n"), "{out:?}");
 
     // Unknown key and unknown user are refused.
     assert_eq!(ssh(&bad, "root", "true").status.code(), Some(255));

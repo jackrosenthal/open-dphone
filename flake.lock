@@ -1,21 +1,5 @@
 {
   "nodes": {
-    "dpma-rs": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1794473111,
-        "narHash": "sha256-pnW8c1GU5MhlUIPr3tds0Rl1NpZn2JZ6X4ABHOShZl8=",
-        "ref": "refs/heads/main",
-        "rev": "22338adace2917e71fd402e5e5c2f0a2c1a30c0b",
-        "revCount": 146,
-        "type": "git",
-        "url": "ssh://git@github.com/jackrosenthal/dpma-rs"
-      },
-      "original": {
-        "type": "git",
-        "url": "ssh://git@github.com/jackrosenthal/dpma-rs"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1794386569,
@@ -34,7 +18,6 @@
     },
     "root": {
       "inputs": {
-        "dpma-rs": "dpma-rs",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay"
       }

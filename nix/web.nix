@@ -1,34 +1,48 @@
 # The web frontend: TypeScript, React, Tailwind, Vite.  Dependencies come
-# from web/package-lock.json; the Connect client code is generated from
-# proto/ by buf with the plugins in node_modules, so nothing is fetched
-# during the build.  Output: the Vite `dist/` directory.
+# from web/pnpm-lock.yaml.  The Connect client code generated from proto/
+# is committed under web/src/gen, so nothing is generated or fetched during
+# the build.  Output: the Vite `dist/` directory.
 {
   lib,
-  buildNpmPackage,
-  buf,
-  npmDepsHash,
+  stdenv,
+  nodejs,
+  pnpm,
+  pnpmConfigHook,
+  fetchPnpmDeps,
+  pnpmDepsHash,
 }:
 let
   root = ../.;
-in
-buildNpmPackage {
-  pname = "dphone-web-frontend";
-  version = "3.0.0";
   src = lib.fileset.toSource {
     inherit root;
     fileset = lib.fileset.unions [
-      (root + "/web")
-      (root + "/proto")
+      (lib.fileset.fileFilter (f: f.name != "node_modules" && f.name != "dist") (root + "/web"))
     ];
   };
+in
+stdenv.mkDerivation (finalAttrs: {
+  pname = "dphone-web-frontend";
+  version = "3.0.0";
+  inherit src;
   sourceRoot = "source/web";
-  inherit npmDepsHash;
-  nativeBuildInputs = [ buf ];
-  # `npm run build` is expected to run code generation, type checking, and
-  # `vite build`.
+  nativeBuildInputs = [
+    nodejs
+    pnpm
+    pnpmConfigHook
+  ];
+  pnpmDeps = fetchPnpmDeps {
+    inherit (finalAttrs) pname version src sourceRoot;
+    fetcherVersion = 5;
+    hash = pnpmDepsHash;
+  };
+  buildPhase = ''
+    runHook preBuild
+    pnpm run build
+    runHook postBuild
+  '';
   installPhase = ''
     runHook preInstall
     cp -r dist $out
     runHook postInstall
   '';
-}
+})
