@@ -39,6 +39,7 @@ pub mod hal;
 pub mod net;
 pub mod paging;
 pub mod remote;
+pub mod syslog;
 pub mod system;
 pub mod telephony;
 pub mod ui;
@@ -74,6 +75,13 @@ pub async fn start(ctx: &Context, opts: &Options) {
                 net.config_changed();
             }
         });
+    }
+
+    // Remote syslog, as soon as the network can carry it.
+    {
+        let cfg = config.as_ref().map(|c| c.lock().unwrap().config());
+        let syslog = syslog::start(ctx, net.clone(), cfg.as_deref());
+        hub.on_change(move |cfg| syslog.apply_config(cfg));
     }
 
     if ctx.safe {
