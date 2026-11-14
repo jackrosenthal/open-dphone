@@ -56,11 +56,13 @@ pub struct PcmConfig {
 }
 
 impl PcmConfig {
-    /// Duplex with 5 ms periods (the DSP frame) for `model`.
+    /// Duplex with 5 ms periods (the DSP frame) for `model`, and 40 ms of
+    /// buffer: playback starts with 20 ms queued (two ticks of the audio
+    /// loop), and capture holds up to four ticks while the loop is late.
     pub fn voice(model: Model) -> PcmConfig {
         PcmConfig {
             period_frames: model.audio_rate() / 200,
-            periods: 4,
+            periods: 8,
             capture: true,
             playback: true,
         }

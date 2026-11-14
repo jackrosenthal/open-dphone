@@ -140,6 +140,21 @@ fn pcm_err(what: &str, e: std::io::Error) -> HalError {
 struct Stream {
     file: File,
     buffer_frames: u32,
+    /// The last transfer ended in an overrun or underrun.
+    xrun: bool,
+}
+
+/// Queued frames at which playback starts: half the buffer, in whole
+/// periods.  The audio loop writes one tick each time the capture side has
+/// delivered one, so with a threshold of one write the queue is empty again
+/// just as the next write is due, and any tick that takes longer than the
+/// first one underruns (measured on a D60 and a D40: playback in XRUN and
+/// the capture stream restarted about nine times a second, 91 ticks a
+/// second in place of 100).  Starting at half the buffer keeps that much
+/// queued, and leaves the other half for a tick that comes early.
+fn playback_start_threshold(period: u32, buffer: u32) -> u32 {
+    let period = period.max(1);
+    ((buffer / 2) / period).max(1) * period
 }
 
 impl Stream {
@@ -191,13 +206,14 @@ impl Stream {
         let mut sw: SndPcmSwParams = unsafe { std::mem::zeroed() };
         sw.period_step = 1;
         sw.avail_min = period as c_ulong;
-        // Capture starts on the first read; playback once a period is queued.
-        sw.start_threshold = if playback { period as c_ulong } else { 1 };
+        // Capture starts on the first read; playback once half the buffer
+        // is queued (see `playback_start_threshold`).
+        sw.start_threshold = if playback { playback_start_threshold(period, buffer) as c_ulong } else { 1 };
         sw.stop_threshold = buffer as c_ulong;
         sw.boundary = boundary;
         ioctl(fd, SNDRV_PCM_IOCTL_SW_PARAMS, &mut sw).map_err(|e| HalError::io("PCM SW_PARAMS", e))?;
         ioctl_none(fd, SNDRV_PCM_IOCTL_PREPARE).map_err(|e| HalError::io("PCM PREPARE", e))?;
-        Ok((Stream { file, buffer_frames: buffer }, period, periods))
+        Ok((Stream { file, buffer_frames: buffer, xrun: false }, period, periods))
     }
 
     fn xfer(&mut self, req: u32, what: &str, ptr: *mut i16, frames: usize) -> Result<()> {
@@ -210,7 +226,11 @@ impl Stream {
                 buf: unsafe { ptr.add(done) } as *mut libc::c_void,
                 frames: (frames - done) as c_ulong,
             };
-            ioctl(self.file.as_raw_fd(), req, &mut x).map_err(|e| pcm_err(what, e))?;
+            if let Err(e) = ioctl(self.file.as_raw_fd(), req, &mut x) {
+                let e = pcm_err(what, e);
+                self.xrun = matches!(e, HalError::Xrun);
+                return Err(e);
+            }
             if x.result <= 0 {
                 return Err(HalError::io(format!("PCM {what}"), std::io::ErrorKind::UnexpectedEof.into()));
             }
@@ -245,7 +265,16 @@ impl Pcm for AlsaPcm {
     }
 
     fn recover(&mut self) -> Result<()> {
-        for s in [self.capture.as_ref(), self.playback.as_ref()].into_iter().flatten() {
+        // Only the direction that failed: restarting the capture stream
+        // for a playback underrun throws away what it had captured, and
+        // with it the loop's clock.  Without a failed transfer on record,
+        // both.
+        let failed = [self.capture.as_ref(), self.playback.as_ref()].into_iter().flatten().any(|s| s.xrun);
+        for s in [self.capture.as_mut(), self.playback.as_mut()].into_iter().flatten() {
+            if failed && !s.xrun {
+                continue;
+            }
+            s.xrun = false;
             let fd = s.file.as_raw_fd();
             let _ = ioctl_none(fd, SNDRV_PCM_IOCTL_DROP);
             ioctl_none(fd, SNDRV_PCM_IOCTL_PREPARE).map_err(|e| HalError::io("PCM PREPARE", e))?;
@@ -609,3 +638,23 @@ impl Audio for AlsaAudio {
 // SAFETY: `SndCtlElemList` holds a raw pointer only transiently, and none
 // of these types is shared; the trait objects need `Send`.
 unsafe impl Send for AlsaMixer {}
+
+#[cfg(test)]
+mod tests {
+    use super::playback_start_threshold;
+
+    #[test]
+    fn playback_starts_with_half_the_buffer_queued() {
+        // The phone's voice streams: 5 ms periods, 8 of them, at 32 kHz
+        // and at 16 kHz: two 10 ms writes start playback.
+        assert_eq!(playback_start_threshold(160, 1280), 640);
+        assert_eq!(playback_start_threshold(80, 640), 320);
+        // A buffer the driver made smaller or odd: whole periods, never
+        // more than the buffer, never zero.
+        assert_eq!(playback_start_threshold(160, 640), 320);
+        assert_eq!(playback_start_threshold(160, 320), 160);
+        assert_eq!(playback_start_threshold(160, 160), 160);
+        assert_eq!(playback_start_threshold(100, 550), 200);
+        assert_eq!(playback_start_threshold(0, 0), 1);
+    }
+}
