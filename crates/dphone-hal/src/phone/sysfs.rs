@@ -119,9 +119,13 @@ impl Backlight for SysBacklight {
         let dir = self.bl(screen)?;
         let max = self.max_brightness(screen);
         let level = level.min(max);
-        // The side backlight registers powered off (as the vendor driver
-        // leaves it); `bl_power` 0 is on, 4 is off.
-        let _ = std::fs::write(dir.join("bl_power"), if level == 0 { "4" } else { "0" });
+        // Only the level is written, never `bl_power`: the kernel switches
+        // a backlight on and off with its panel (the panel bridge of the
+        // color panel and the gray driver both call `backlight_enable` when
+        // the CRTC is enabled and `backlight_disable` when it is disabled),
+        // so a level set while the panel is off takes effect when the panel
+        // comes on, and forcing the power on here would light a panel that
+        // shows nothing yet.  Level 0 is dark in both backlight drivers.
         write_value(&dir.join("brightness"), level as u32)
     }
 

@@ -1,7 +1,10 @@
 //! dphone-hal: open the hardware (or the simulator) and offer the `hal`
-//! diagnostic command.  Until the UI is wired in, this also puts a test
-//! pattern on the display and turns the backlight on, so a first boot shows
-//! life on the screen.
+//! diagnostic command.
+//!
+//! Opening the hardware shows nothing: the panels and the backlight stay as
+//! the kernel left them, and the UI turns them on with its first frame (the
+//! boot screen), at the configured brightness.  `dphone hal pattern` puts a
+//! test pattern on a display the UI has not taken.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -51,9 +54,7 @@ pub async fn start(ctx: &Context) -> Option<SharedHal> {
     // Device opens can block or (in a driver nobody has run yet) misbehave;
     // do them off the runtime and give up after a while.
     let built = contained("hal-open", Duration::from_secs(20), move || {
-        let mut hal = if sim { Hal::sim(model) } else { Hal::phone(model) };
-        splash(&mut hal);
-        hal
+        if sim { Hal::sim(model) } else { Hal::phone(model) }
     })
     .await;
     let mut hal = match built {
@@ -122,20 +123,8 @@ pub async fn start(ctx: &Context) -> Option<SharedHal> {
     Some(shared)
 }
 
-/// Backlight on and a black screen until the UI draws the boot screen, best effort.
-fn splash(hal: &mut Hal) {
-    for screen in hal.display.screens() {
-        let max = hal.backlight.max_brightness(screen);
-        if max > 0 {
-            let _ = hal.backlight.set_brightness(screen, max);
-        }
-        let _ = hal.display.set_power(screen, true);
-        if let Err(e) = pattern(hal, screen, "black") {
-            warn!("hal: display {screen:?}: {e}");
-        }
-    }
-}
-
+/// Draws a test pattern and turns the panel on with it (the diagnostic
+/// command; nothing calls this at start-up).
 fn pattern(hal: &mut Hal, screen: Screen, kind: &str) -> Result<(), String> {
     let info = hal.display.info(screen).ok_or("no such screen")?;
     let frame = hal.display.frame(screen).map_err(|e| e.to_string())?;
@@ -174,6 +163,9 @@ fn pattern(hal: &mut Hal, screen: Screen, kind: &str) -> Result<(), String> {
             }
         }
     }
+    // On, for a panel nobody has turned on yet (that shows the pattern);
+    // the flush is for one that was on already.
+    hal.display.set_power(screen, true).map_err(|e| e.to_string())?;
     hal.display.flush(screen, &[]).map_err(|e| e.to_string())
 }
 

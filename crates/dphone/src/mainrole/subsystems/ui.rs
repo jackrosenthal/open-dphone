@@ -173,22 +173,25 @@ pub async fn start(
     let cfg = ui_config(ctx, current.as_deref());
     let health = ctx.health.clone();
     let store = ctx.store.clone();
-    // The UI is built on its own thread as well as run there: taking over
-    // the display is a blocking device call (a mode set that waits for the
-    // panel), and a display that does not answer must not stall the runtime
-    // that SSH and the diagnostics run on.
+    // The UI is built on its own thread as well as run there, and draws
+    // its first frame (the boot screen) there before it reports back: that
+    // frame turns the panels on, which is a blocking device call (a mode
+    // set that waits for the panel), and a display that does not answer
+    // must not stall the runtime that SSH and the diagnostics run on.
     let (handle_tx, handle_rx) = tokio::sync::oneshot::channel();
     let thread_tap = tap.clone();
     let spawned = std::thread::Builder::new().name("ui".into()).spawn(move || {
         // The UI owns its devices and is not Sync; it lives on this thread.
         let ui_store = store.clone();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-            let ui = {
+            let mut ui = {
                 let Ok(mut hal) = hal.lock() else { return };
                 let inner = std::mem::replace(&mut hal.display, Box::new(dphone_hal::Null("display")));
                 hal.display = Box::new(TapDisplay { inner, tap: thread_tap });
                 Ui::from_hal(&mut hal, ui_store, cfg)
             };
+            // The first frame: the panels come on showing it.
+            ui.pump();
             let _ = handle_tx.send(ui.handle());
             ui.run()
         }));

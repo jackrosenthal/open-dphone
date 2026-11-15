@@ -559,6 +559,9 @@ pub struct Ui {
     blinker: Blinker,
     lamp_test: bool,
     light: Light,
+    /// The panels are on and lit: the first frame has been drawn.  Until
+    /// then nothing is written to the panels or the backlight.
+    lit: bool,
     level: u8,
     last_activity_ms: u64,
     fixed_time: Option<(u64, u64)>,
@@ -643,6 +646,7 @@ impl Ui {
             blinker: Blinker::new(),
             lamp_test: false,
             light: Light::On,
+            lit: false,
             level: 0,
             last_activity_ms: clock::mono_ms(),
             fixed_time: None,
@@ -660,14 +664,11 @@ impl Ui {
             idle_shown: false,
             idle_turn_ms: 0,
         };
-        for s in ui.display.screens() {
-            let _ = ui.display.set_power(s, true);
-        }
+        // The panels and the backlight are left as they are (off, on a
+        // phone that has just started) until the first frame is drawn; see
+        // `light_up`.
         ui.apply_light(Light::On);
         let c = ui.cfg.contrast;
-        if ui.cfg.contrast_max > 0 {
-            let _ = ui.backlight.set_contrast(dphone_hal::Screen::Main, c.min(ui.cfg.contrast_max));
-        }
         ui.store.update::<ds::Ui, _>(|u| u.contrast = c);
         ui.store.set_health(Subsystem::Ui, ds::HealthStatus::Ok);
         ui
@@ -741,7 +742,9 @@ impl Ui {
                 // brighter than the lit level.
                 Light::Dim => self.hw_level(s, self.cfg.backlight_dim_level).min(on),
             };
-            let _ = self.backlight.set_brightness(s, level);
+            if self.lit {
+                let _ = self.backlight.set_brightness(s, level);
+            }
             if s == dphone_hal::Screen::Main {
                 main = (on, level);
             }
@@ -750,6 +753,25 @@ impl Ui {
             u.backlight_on = main.1 > 0;
             u.backlight_level = main.0;
         });
+    }
+
+    /// Turns the panels on, once the first frame is in their buffers, so
+    /// that the first thing they show is that frame: the contrast first
+    /// (the gray panels take it as they come on), then the backlight level
+    /// (the kernel lights the backlight with the panel, at the level set
+    /// last), then the panels themselves.
+    fn light_up(&mut self) {
+        self.lit = true;
+        if self.cfg.contrast_max > 0 {
+            let c = self.cfg.contrast.min(self.cfg.contrast_max);
+            let _ = self.backlight.set_contrast(dphone_hal::Screen::Main, c);
+        }
+        self.apply_light(self.light);
+        for s in self.display.screens() {
+            if let Err(e) = self.display.set_power(s, true) {
+                log::warn!("display {s:?}: cannot turn the panel on: {e}");
+            }
+        }
     }
 
     fn activity(&mut self) {
@@ -1101,6 +1123,9 @@ impl Ui {
             if let Err(e) = sc.present(self.display.as_mut(), dphone_hal::Screen::Side) {
                 log::warn!("side display: {e}");
             }
+        }
+        if !self.lit {
+            self.light_up();
         }
         self.store.update::<ds::Ui, _>(|u| {
             if u.screen != name {

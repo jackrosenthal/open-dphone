@@ -37,6 +37,18 @@ struct SimScreen {
     power: bool,
     brightness: u8,
     contrast: u8,
+    /// What the panel showed when it was first turned on.
+    first_lit: Option<Frame>,
+}
+
+/// Something done to a simulated display or its backlight, in the order it
+/// happened (see [`SimHandle::display_events`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SimDisplayEvent {
+    Contrast(Screen, u8),
+    Brightness(Screen, u8),
+    Flush(Screen),
+    Power(Screen, bool),
 }
 
 /// State of the simulated watchdog.
@@ -88,6 +100,7 @@ const SIM_PLAYED_CAP: usize = 320_000;
 struct Shared {
     model: Model,
     screens: Mutex<Vec<SimScreen>>,
+    display_events: Mutex<Vec<SimDisplayEvent>>,
     frame_gen: AtomicU64,
     input: Mutex<VecDeque<InputEvent>>,
     input_cv: Condvar,
@@ -137,9 +150,12 @@ impl SimHandle {
                 Some(SimScreen {
                     screen: s,
                     frame: Frame { info, pixels: vec![0; info.len()] },
-                    power: true,
+                    // As the kernel leaves a phone: the panel off (no mode
+                    // set), and the backlight level at the driver's default.
+                    power: false,
                     brightness: model.backlight_max(),
                     contrast: 5,
+                    first_lit: None,
                 })
             })
             .collect();
@@ -179,6 +195,7 @@ impl SimHandle {
         SimHandle(Arc::new(Shared {
             model,
             screens: Mutex::new(screens),
+            display_events: Mutex::new(Vec::new()),
             frame_gen: AtomicU64::new(0),
             input: Mutex::new(VecDeque::new()),
             input_cv: Condvar::new(),
@@ -235,6 +252,21 @@ impl SimHandle {
 
     pub fn screen_power(&self, screen: Screen) -> Option<bool> {
         self.0.screens.lock().unwrap().iter().find(|s| s.screen == screen).map(|s| s.power)
+    }
+
+    /// What the panel showed at the moment it was first turned on.
+    pub fn first_lit(&self, screen: Screen) -> Option<Frame> {
+        self.0.screens.lock().unwrap().iter().find(|s| s.screen == screen).and_then(|s| s.first_lit.clone())
+    }
+
+    /// Every flush, panel power change, and backlight or contrast level
+    /// set so far, in order.
+    pub fn display_events(&self) -> Vec<SimDisplayEvent> {
+        self.0.display_events.lock().unwrap().clone()
+    }
+
+    fn display_event(&self, event: SimDisplayEvent) {
+        self.0.display_events.lock().unwrap().push(event);
     }
 
     pub fn brightness(&self, screen: Screen) -> Option<u8> {
@@ -442,7 +474,9 @@ impl Display for SimDisplay {
                 }
             }
         }
+        drop(g);
         self.sim.0.frame_gen.fetch_add(1, Ordering::Relaxed);
+        self.sim.display_event(SimDisplayEvent::Flush(screen));
         Ok(())
     }
 
@@ -456,7 +490,18 @@ impl Display for SimDisplay {
             .iter_mut()
             .find(|s| s.screen == screen)
             .ok_or(HalError::Unsupported("no such screen on this model"))?;
+        if on && !s.power {
+            // Turning a panel on shows the whole buffer as it is now.
+            if let Some((_, _, back)) = self.back.iter().find(|b| b.0 == screen) {
+                s.frame.pixels.copy_from_slice(back);
+            }
+            if s.first_lit.is_none() {
+                s.first_lit = Some(s.frame.clone());
+            }
+        }
         s.power = on;
+        drop(g);
+        self.sim.display_event(SimDisplayEvent::Power(screen, on));
         Ok(())
     }
 }
@@ -484,7 +529,9 @@ impl Backlight for SimDev {
     }
     fn set_brightness(&mut self, screen: Screen, level: u8) -> Result<()> {
         let max = self.max_brightness(screen);
-        self.with_screen(screen, |s| s.brightness = level.min(max))
+        self.with_screen(screen, |s| s.brightness = level.min(max))?;
+        self.0.display_event(SimDisplayEvent::Brightness(screen, level.min(max)));
+        Ok(())
     }
     fn max_contrast(&self, _: Screen) -> u8 {
         if self.0.model().is_color() { 0 } else { 10 }
@@ -497,7 +544,9 @@ impl Backlight for SimDev {
         if max == 0 {
             return Err(HalError::Unsupported("the color panel has no contrast control"));
         }
-        self.with_screen(screen, |s| s.contrast = level.min(max))
+        self.with_screen(screen, |s| s.contrast = level.min(max))?;
+        self.0.display_event(SimDisplayEvent::Contrast(screen, level.min(max)));
+        Ok(())
     }
 }
 
@@ -924,6 +973,24 @@ mod tests {
         }
         let mut hal = Hal::sim(Model::D70);
         assert_eq!(hal.display.frame(Screen::Side).unwrap().len(), 113 * 357);
+    }
+
+    #[test]
+    fn a_panel_starts_off_and_comes_on_with_the_frame() {
+        let mut hal = Hal::sim(Model::D40);
+        let sim = hal.sim.clone().unwrap();
+        assert_eq!(sim.screen_power(Screen::Main), Some(false));
+        assert!(sim.display_events().is_empty());
+        hal.display.frame(Screen::Main).unwrap().fill(0x55);
+        hal.backlight.set_brightness(Screen::Main, 8).unwrap();
+        hal.display.set_power(Screen::Main, true).unwrap();
+        // No flush was needed: turning the panel on shows the buffer.
+        assert!(sim.first_lit(Screen::Main).unwrap().pixels.iter().all(|p| *p == 0x55));
+        assert!(sim.frame(Screen::Main).unwrap().pixels.iter().all(|p| *p == 0x55));
+        assert_eq!(
+            sim.display_events(),
+            [SimDisplayEvent::Brightness(Screen::Main, 8), SimDisplayEvent::Power(Screen::Main, true)]
+        );
         assert!(Hal::sim(Model::D60).display.frame(Screen::Side).is_err());
     }
 

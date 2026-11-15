@@ -190,9 +190,15 @@ struct DrmScreen {
     map_len: usize,
     mode: DrmModeModeinfo,
     dirty_ok: bool,
+    /// The CRTC shows this screen's framebuffer (`set_power`).
+    on: bool,
 }
 
-/// The phone's panels.
+/// The phone's panels.  Opening them sets up the framebuffers and nothing
+/// else: no mode is set, so a panel stays as the kernel left it (off) until
+/// [`Display::set_power`], which shows the framebuffer as it is at that
+/// moment.  The first picture a panel shows is therefore the caller's first
+/// frame, not a cleared buffer.
 pub struct DrmDisplay {
     file: File,
     screens: Vec<DrmScreen>,
@@ -399,18 +405,10 @@ impl DrmDisplay {
                 map_len: d.size as usize,
                 mode,
                 dirty_ok: true,
+                on: false,
             };
             // SAFETY: `map` is `map_len` writable bytes.
             unsafe { std::ptr::write_bytes(s.map, 0, s.map_len) };
-            if let Err(e) = self.set_crtc(&s, true) {
-                // SAFETY: unmapping the mapping made above, once.
-                unsafe { libc::munmap(s.map as *mut libc::c_void, s.map_len) };
-                let mut id = s.fb_id;
-                let _ = ioctl(fd, DRM_IOCTL_MODE_RMFB, &mut id);
-                let mut dd = DrmModeDestroyDumb { handle: s.handle };
-                let _ = ioctl(fd, DRM_IOCTL_MODE_DESTROY_DUMB, &mut dd);
-                return Err(e);
-            }
             return Ok(s);
         }
         Err(last_err.unwrap_or(HalError::Unavailable("no framebuffer format".into())))
@@ -462,7 +460,9 @@ impl Display for DrmDisplay {
             .iter_mut()
             .find(|s| s.screen == screen)
             .ok_or(HalError::Unsupported("no such screen on this phone"))?;
-        if !s.dirty_ok {
+        // A panel that is off shows nothing; turning it on shows the whole
+        // buffer (the gray driver pushes it to the panel as it enables it).
+        if !s.on || !s.dirty_ok {
             return Ok(());
         }
         let mut clips: Vec<DrmClipRect> = if damage.len() > DRM_MODE_FB_DIRTY_MAX_CLIPS {
@@ -504,7 +504,11 @@ impl Display for DrmDisplay {
 
     fn set_power(&mut self, screen: Screen, on: bool) -> Result<()> {
         let s = self.get(screen)?;
-        self.set_crtc(s, on)
+        self.set_crtc(s, on)?;
+        if let Some(s) = self.screens.iter_mut().find(|s| s.screen == screen) {
+            s.on = on;
+        }
+        Ok(())
     }
 }
 

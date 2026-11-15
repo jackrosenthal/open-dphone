@@ -106,6 +106,11 @@ pub struct Frame {
 /// [`Display::flush`] with the damaged rectangles.  Nothing is guaranteed
 /// visible before the flush (the SPI panels are pushed on flush; the color
 /// panel scans out of the buffer directly).
+///
+/// A panel starts off, and opening the display leaves it off: nothing is
+/// shown until [`Display::set_power`] turns it on, which shows the frame as
+/// it is at that moment.  So the first picture is drawn before the panel is
+/// turned on, and the panel never shows an empty or stale buffer.
 pub trait Display: Send {
     /// The screens this model has.
     fn screens(&self) -> Vec<Screen>;
@@ -118,7 +123,10 @@ pub trait Display: Send {
     fn flush(&mut self, screen: Screen, damage: &[Rect]) -> Result<()>;
     /// Copies out what was last flushed (or the current buffer).
     fn capture(&self, screen: Screen) -> Result<Frame>;
-    /// Turns the panel itself on or off (DPMS).  Backlight is separate.
+    /// Turns the panel itself on or off.  Turning it on shows the whole
+    /// frame as it is now (no flush is needed for it).  On the phone the
+    /// kernel switches the panel's backlight with it, at the level last set
+    /// through [`Backlight::set_brightness`].
     fn set_power(&mut self, screen: Screen, on: bool) -> Result<()>;
 }
 
@@ -171,6 +179,9 @@ pub trait Backlight: Send {
     /// Highest brightness level (32 color, 31 gray); 0 is off.
     fn max_brightness(&self, screen: Screen) -> u8;
     fn brightness(&self, screen: Screen) -> Result<u8>;
+    /// Sets the level.  It lights the backlight only while the panel is on
+    /// ([`Display::set_power`]); set while the panel is off, it is the
+    /// level the backlight comes on with.
     fn set_brightness(&mut self, screen: Screen, level: u8) -> Result<()>;
     /// Highest contrast level: 10 (the scale of the stock `contrast`
     /// setting, 0..=10), or 0 when the panel has no contrast control.

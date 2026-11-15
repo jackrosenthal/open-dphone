@@ -34,6 +34,7 @@ fn main() {
                     fb[o..o + bpp].fill(v);
                 }
             }
+            println!("  power on: {:?}", hal.display.set_power(s, true));
             println!("  flush: {:?}", hal.display.flush(s, &[]));
         }
     }
