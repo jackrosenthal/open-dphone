@@ -113,6 +113,19 @@ let
     printf 'root:x:0:\ntty:x:5:\n' > $out/etc/group
     printf '/bin/brush\n/bin/sh\n' > $out/etc/shells
     printf 'Open DPhone ${wireVersion}\n' > $out/etc/dphone-release
+
+    # What the kernel starts must be there and must be a program for the
+    # phone: a root without it boots to "No working init found", and only
+    # a phone would say so.  /sbin/init, and the shell the kernel falls
+    # back to, each a nonempty executable ELF file: 32-bit, little-endian,
+    # for ARM (machine 40).
+    for program in sbin/init bin/sh; do
+      file=$(realpath -e $out/$program)
+      case $file in $out/*) ;; *) echo "$program leads out of the root: $file" >&2; exit 1 ;; esac
+      test -s "$file" -a -x "$file"
+      test "$(od -An -tx1 -N6 "$file" | tr -d ' \n')" = 7f454c460101
+      test "$(od -An -tu2 -j18 -N2 "$file" | tr -d ' \n')" = 40
+    done
   '';
 
   # JFFS2 image of the tree: little-endian, 128 KiB erase blocks, all files
