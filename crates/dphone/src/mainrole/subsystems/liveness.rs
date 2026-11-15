@@ -102,6 +102,11 @@ pub fn collect(pstore: &Path, into: &Path) -> std::io::Result<usize> {
     Ok(saved)
 }
 
+/// Print the crash records the kernel left from before this boot
+#[derive(Debug, clap::Parser)]
+#[command(name = "crashlog")]
+pub struct CrashlogCommand {}
+
 pub fn start(ctx: &Context) {
     tokio::spawn(watch(ctx.clone()));
 
@@ -113,7 +118,7 @@ pub fn start(ctx: &Context) {
         }
     }
     let dir = crash_dir(ctx);
-    ctx.diag.register("crashlog", "print the kernel's last crash records", move |_args, out: Output| {
+    ctx.diag.register(move |_: CrashlogCommand, out: Output| {
         let dir = dir.clone();
         async move {
             let mut files: Vec<PathBuf> = std::fs::read_dir(&dir).map(|d| d.flatten().map(|e| e.path()).collect()).unwrap_or_default();

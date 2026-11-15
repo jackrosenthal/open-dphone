@@ -7,41 +7,78 @@
 //! the tool app makers use: there is one way from an app crate to an app.
 
 use cargo_dphone_app::{Manifest, ManifestError, manifest::RECORD};
+use clap::{Args, Parser, ValueEnum};
 use dphone_apps::engine::{AppEngine, Target};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-const USAGE: &str = "\
-usage:
-  dphone-apps-build precompile <component.wasm> -o <out.cwasm> [--target phone|host|pulley64]
-  dphone-apps-build stage --wasm-dir <dir-of-modules> --out <root>
-                          [--target phone|host|pulley64] [--no-wasm]
-  dphone-apps-build build --apps <apps-src-dir> --out <root> [--target ...] [--no-wasm]
-
-stage lays out <root>/<name>/{app.pb,<name>.wasm,<name>.cwasm,data files} for
-every module in <dir-of-modules> that is an app (it has a manifest; see
-dphone-app-sdk).  build runs cargo for wasm32-unknown-unknown in
-<apps-src-dir> first.";
-
 type Res<T> = Result<T, String>;
 
-fn arg_after(args: &[String], flag: &str) -> Option<String> {
-    args.iter()
-        .position(|a| a == flag)
-        .and_then(|i| args.get(i + 1))
-        .cloned()
+/// Turn the built-in apps' WebAssembly modules into what the image carries
+#[derive(Debug, Parser)]
+#[command(name = "dphone-apps-build")]
+enum Cli {
+    /// Compile one component
+    Precompile {
+        /// The component (an app file)
+        component: PathBuf,
+        /// The compiled code to write
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+        #[arg(long, default_value = "phone")]
+        target: TargetArg,
+    },
+    /// Lay out every app among the modules in a directory
+    ///
+    /// Writes ROOT/<name>/{app.pb,<name>.wasm,<name>.cwasm,data files} for
+    /// every module that is an app (it has a manifest; see dphone-app-sdk).
+    Stage {
+        /// The directory of modules, as cargo leaves them
+        #[arg(long, value_name = "DIR")]
+        wasm_dir: PathBuf,
+        #[command(flatten)]
+        to: Staging,
+    },
+    /// Run cargo for wasm32-unknown-unknown in a workspace of apps, then stage
+    Build {
+        /// The workspace of apps
+        #[arg(long, value_name = "DIR")]
+        apps: PathBuf,
+        #[command(flatten)]
+        to: Staging,
+    },
 }
 
-fn need(args: &[String], flag: &str) -> Res<String> {
-    arg_after(args, flag).ok_or_else(|| format!("missing {flag}\n{USAGE}"))
+#[derive(Debug, Args)]
+struct Staging {
+    /// Where the apps are laid out
+    #[arg(long, value_name = "ROOT")]
+    out: PathBuf,
+    #[arg(long, default_value = "phone")]
+    target: TargetArg,
+    /// Leave the components out: compiled code only
+    #[arg(long)]
+    no_wasm: bool,
 }
 
-fn target(args: &[String]) -> Res<Target> {
-    match arg_after(args, "--target").as_deref() {
-        None | Some("phone") => Ok(Target::Phone),
-        Some("host") => Ok(Target::Host),
-        Some("pulley64") => Ok(Target::Pulley64),
-        Some(t) => Err(format!("unknown target {t:?}")),
+/// What the code is compiled for.
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum TargetArg {
+    /// The phone (ARMv6)
+    Phone,
+    /// This machine
+    Host,
+    /// The portable interpreter, as the tests run it
+    Pulley64,
+}
+
+impl From<TargetArg> for Target {
+    fn from(target: TargetArg) -> Target {
+        match target {
+            TargetArg::Phone => Target::Phone,
+            TargetArg::Host => Target::Host,
+            TargetArg::Pulley64 => Target::Pulley64,
+        }
     }
 }
 
@@ -110,24 +147,17 @@ fn stage(wasm_dir: &Path, out: &Path, target: Target, keep_wasm: bool) -> Res<()
     Ok(())
 }
 
-fn run(args: &[String]) -> Res<()> {
-    match args.first().map(String::as_str) {
-        Some("precompile") => {
-            let input = args.get(1).ok_or(USAGE)?;
-            let engine = AppEngine::new(target(args)?).map_err(|e| e.to_string())?;
+fn run(cli: Cli) -> Res<()> {
+    match cli {
+        Cli::Precompile { component, output, target } => {
+            let engine = AppEngine::new(target.into()).map_err(|e| e.to_string())?;
             let code = engine
-                .precompile(&read(Path::new(input))?)
+                .precompile(&read(&component)?)
                 .map_err(|e| e.to_string())?;
-            write(Path::new(&need(args, "-o")?), &code)
+            write(&output, &code)
         }
-        Some("stage") => stage(
-            Path::new(&need(args, "--wasm-dir")?),
-            Path::new(&need(args, "--out")?),
-            target(args)?,
-            !args.iter().any(|a| a == "--no-wasm"),
-        ),
-        Some("build") => {
-            let apps = PathBuf::from(need(args, "--apps")?);
+        Cli::Stage { wasm_dir, to } => stage(&wasm_dir, &to.out, to.target.into(), !to.no_wasm),
+        Cli::Build { apps, to } => {
             let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
             let target_dir = std::env::var("CARGO_TARGET_DIR")
                 .map(PathBuf::from)
@@ -149,22 +179,54 @@ fn run(args: &[String]) -> Res<()> {
             }
             stage(
                 &target_dir.join("wasm32-unknown-unknown/release"),
-                Path::new(&need(args, "--out")?),
-                target(args)?,
-                !args.iter().any(|a| a == "--no-wasm"),
+                &to.out,
+                to.target.into(),
+                !to.no_wasm,
             )
         }
-        _ => Err(USAGE.into()),
     }
 }
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    match run(&args) {
+    match run(Cli::parse()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("dphone-apps-build: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn the_command_line() {
+        Cli::command().debug_assert();
+        for name in ["precompile", "stage", "build"] {
+            let e = Cli::try_parse_from(["dphone-apps-build", name, "--help"]).unwrap_err();
+            assert_eq!(e.kind(), clap::error::ErrorKind::DisplayHelp);
+            assert!(e.to_string().contains(&format!("Usage: dphone-apps-build {name}")), "{e}");
+        }
+        // As the Nix derivations and the tests call it.
+        let Ok(Cli::Stage { to, .. }) =
+            Cli::try_parse_from(["dphone-apps-build", "stage", "--wasm-dir", "m", "--out", "o", "--target", "phone", "--no-wasm"])
+        else {
+            panic!("stage does not parse")
+        };
+        assert!(matches!(to.target, TargetArg::Phone) && to.no_wasm);
+        let Ok(Cli::Build { to, .. }) =
+            Cli::try_parse_from(["dphone-apps-build", "build", "--target", "pulley64", "--apps", "a", "--out", "o"])
+        else {
+            panic!("build does not parse")
+        };
+        assert!(matches!(to.target, TargetArg::Pulley64) && !to.no_wasm);
+        assert!(Cli::try_parse_from(["dphone-apps-build", "precompile", "c.wasm", "-o", "c.cwasm"]).is_ok());
+        assert!(Cli::try_parse_from(["dphone-apps-build", "precompile", "c.wasm"]).is_err());
+        assert!(Cli::try_parse_from(["dphone-apps-build", "stage", "--out", "o"]).is_err());
+        assert!(Cli::try_parse_from(["dphone-apps-build", "stage", "--wasm-dir", "m", "--out", "o", "--target", "arm"]).is_err());
+        assert!(Cli::try_parse_from(["dphone-apps-build"]).is_err());
     }
 }

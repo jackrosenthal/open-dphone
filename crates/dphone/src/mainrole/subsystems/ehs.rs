@@ -255,7 +255,7 @@ pub fn start(ctx: &Context, hal: Option<SharedHal>) -> Ehs {
         None => warn!("ehs: no hardware layer; not started"),
     }
     let status = shared.clone();
-    ctx.diag.register("ehs", "show the EHS headset adapter state", move |_args, out: Output| {
+    ctx.diag.register(move |_: EhsCommand, out: Output| {
         let status = status.clone();
         async move {
             let wanted = *status.wanted.lock().unwrap();
@@ -278,3 +278,8 @@ pub fn start(ctx: &Context, hal: Option<SharedHal>) -> Ehs {
     });
     Ehs { shared }
 }
+
+/// Show the state of the EHS headset adapter
+#[derive(Debug, clap::Parser)]
+#[command(name = "ehs")]
+pub struct EhsCommand {}

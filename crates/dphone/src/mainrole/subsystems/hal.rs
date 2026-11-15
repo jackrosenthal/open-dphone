@@ -9,6 +9,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use clap::{Parser, Subcommand, ValueEnum};
 use dphone_hal::{Hal, Lamp, LampColor, PixelFormat, Screen};
 use dphone_state::{HealthStatus, Subsystem};
 use log::{error, info, warn};
@@ -62,10 +63,7 @@ pub async fn start(ctx: &Context) -> Option<SharedHal> {
         Err(e) => {
             error!("hal: {e}; continuing without hardware access");
             ctx.store.set_health(Subsystem::Core, HealthStatus::Degraded(format!("hal: {e}")));
-            ctx.diag.register("hal", "poke hardware (failed to open)", |_a, out: Output| async move {
-                out.err("dphone hal: the hardware layer did not open; see 'dphone log'\n").await;
-                crate::diag::EXIT_UNAVAILABLE
-            });
+            ctx.diag.register_unavailable::<HalCommand>("the hardware layer did not open; see 'dphone log'");
             return None;
         }
     };
@@ -93,39 +91,92 @@ pub async fn start(ctx: &Context) -> Option<SharedHal> {
     let inventory: Arc<str> = inventory.into();
     let shared: SharedHal = Arc::new(Mutex::new(hal));
     let handle = shared.clone();
-    ctx.diag.register(
-        "hal",
-        "hal status | lamp NAME|all off|red|green|amber | backlight LEVEL | contrast LEVEL | pattern [bars|white|black]",
-        move |args: Vec<String>, out: Output| {
-            let handle = handle.clone();
-            let inventory = inventory.clone();
-            async move {
-                // Hardware calls are short but blocking (SPI flush, sysfs).
-                let result = tokio::task::spawn_blocking(move || command(&handle, &inventory, &args)).await;
-                match result {
-                    Ok((code, text, err)) => {
-                        if !text.is_empty() {
-                            out.out(&text).await;
-                        }
-                        if !err.is_empty() {
-                            out.err(&err).await;
-                        }
-                        code
+    ctx.diag.register(move |args: HalCommand, out: Output| {
+        let handle = handle.clone();
+        let inventory = inventory.clone();
+        async move {
+            // Hardware calls are short but blocking (SPI flush, sysfs).
+            let result = tokio::task::spawn_blocking(move || command(&handle, &inventory, args.action)).await;
+            match result {
+                Ok((code, text, err)) => {
+                    if !text.is_empty() {
+                        out.out(&text).await;
                     }
-                    Err(e) => {
-                        out.err(&format!("dphone hal: {e}\n")).await;
-                        1
+                    if !err.is_empty() {
+                        out.err(&err).await;
                     }
+                    code
+                }
+                Err(e) => {
+                    out.err(&format!("dphone hal: {e}\n")).await;
+                    1
                 }
             }
-        },
-    );
+        }
+    });
     Some(shared)
+}
+
+/// Poke the hardware: lamps, backlight, contrast, and display patterns
+///
+/// Without a subcommand: status.  Once the UI has started it owns the
+/// display, the keys, and the lamps; lamp, backlight, contrast, and pattern
+/// act only before that (e.g., in a main role started without the UI).
+#[derive(Debug, Parser)]
+#[command(name = "hal")]
+pub struct HalCommand {
+    #[command(subcommand)]
+    action: Option<HalAction>,
+}
+
+#[derive(Debug, Subcommand)]
+enum HalAction {
+    /// Show the model, the devices found, and the devices missing
+    Status,
+    /// Set a lamp
+    Lamp {
+        /// lineN, blfN, message, mute, headset, speaker, or all
+        #[arg(value_parser = parse_lamps)]
+        lamp: Lamps,
+        color: Color,
+    },
+    /// Set the backlight of the main display
+    Backlight { level: u8 },
+    /// Set the contrast of the main display
+    Contrast { level: u8 },
+    /// Draw a test pattern on every display and turn it on
+    Pattern {
+        #[arg(default_value = "bars")]
+        kind: Pattern,
+    },
+}
+
+/// One lamp, or every lamp the phone has.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Lamps {
+    One(Lamp),
+    All,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum Color {
+    Off,
+    Red,
+    Green,
+    Amber,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum Pattern {
+    /// Eight vertical color bars
+    Bars,
+    White,
+    Black,
 }
 
 /// Draws a test pattern and turns the panel on with it (the diagnostic
 /// command; nothing calls this at start-up).
-fn pattern(hal: &mut Hal, screen: Screen, kind: &str) -> Result<(), String> {
+fn pattern(hal: &mut Hal, screen: Screen, kind: Pattern) -> Result<(), String> {
     let info = hal.display.info(screen).ok_or("no such screen")?;
     let frame = hal.display.frame(screen).map_err(|e| e.to_string())?;
     let (w, h) = (info.width as usize, info.height as usize);
@@ -143,9 +194,9 @@ fn pattern(hal: &mut Hal, screen: Screen, kind: &str) -> Result<(), String> {
     for y in 0..h {
         for x in 0..w {
             let (r, g, b) = match kind {
-                "white" => (255, 255, 255),
-                "black" => (0, 0, 0),
-                _ => BARS[(x * 8 / w.max(1)).min(7)],
+                Pattern::White => (255, 255, 255),
+                Pattern::Black => (0, 0, 0),
+                Pattern::Bars => BARS[(x * 8 / w.max(1)).min(7)],
             };
             match info.format {
                 PixelFormat::Xrgb8888 => {
@@ -169,34 +220,31 @@ fn pattern(hal: &mut Hal, screen: Screen, kind: &str) -> Result<(), String> {
     hal.display.flush(screen, &[]).map_err(|e| e.to_string())
 }
 
-fn parse_lamp(name: &str) -> Option<Lamp> {
-    let name = name.to_ascii_lowercase();
-    match name.as_str() {
-        "message" | "mwi" => Some(Lamp::Message),
+fn parse_lamps(name: &str) -> Result<Lamps, String> {
+    let number = |n: &str| n.parse::<u8>().ok().filter(|n| *n >= 1).map(|n| n - 1);
+    let lamp = match name {
+        "all" => return Ok(Lamps::All),
+        "message" => Some(Lamp::Message),
         "mute" => Some(Lamp::Mute),
         "headset" => Some(Lamp::Headset),
         "speaker" => Some(Lamp::Speaker),
-        _ => {
-            if let Some(n) = name.strip_prefix("line") {
-                n.parse::<u8>().ok().filter(|n| *n >= 1).map(|n| Lamp::Line(n - 1))
-            } else if let Some(n) = name.strip_prefix("blf") {
-                n.parse::<u8>().ok().filter(|n| *n >= 1).map(|n| Lamp::Blf(n - 1))
-            } else {
-                None
-            }
-        }
-    }
+        _ => match (name.strip_prefix("line"), name.strip_prefix("blf")) {
+            (Some(n), _) => number(n).map(Lamp::Line),
+            (_, Some(n)) => number(n).map(Lamp::Blf),
+            _ => None,
+        },
+    };
+    lamp.map(Lamps::One).ok_or_else(|| "not a lamp (lineN, blfN, message, mute, headset, speaker, or all)".to_string())
 }
 
-fn command(handle: &SharedHal, inventory: &str, args: &[String]) -> (i32, String, String) {
+fn command(handle: &SharedHal, inventory: &str, action: Option<HalAction>) -> (i32, String, String) {
     let Ok(mut hal) = handle.lock() else {
         return (1, String::new(), "dphone hal: lock poisoned\n".into());
     };
     let hal = &mut *hal;
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
     let fail = |e: String| (1, String::new(), format!("dphone hal: {e}\n"));
-    match args.as_slice() {
-        [] | ["status"] => {
+    match action.unwrap_or(HalAction::Status) {
+        HalAction::Status => {
             let mut text = format!("model {:?}{}\n", hal.model, if hal.sim.is_some() { " (simulator)" } else { "" });
             text.push_str(inventory);
             if hal.display.screens().is_empty() {
@@ -210,21 +258,16 @@ fn command(handle: &SharedHal, inventory: &str, args: &[String]) -> (i32, String
             }
             (0, text, String::new())
         }
-        ["lamp", name, color] => {
-            let color = match *color {
-                "off" => LampColor::Off,
-                "red" => LampColor::Red,
-                "green" => LampColor::Green,
-                "amber" => LampColor::Amber,
-                other => return fail(format!("unknown color '{other}'")),
+        HalAction::Lamp { lamp, color } => {
+            let color = match color {
+                Color::Off => LampColor::Off,
+                Color::Red => LampColor::Red,
+                Color::Green => LampColor::Green,
+                Color::Amber => LampColor::Amber,
             };
-            let lamps = if *name == "all" {
-                hal.lamps.lamps()
-            } else {
-                match parse_lamp(name) {
-                    Some(l) => vec![l],
-                    None => return fail(format!("unknown lamp '{name}' (lineN, blfN, message, mute, headset, speaker, all)")),
-                }
+            let lamps = match lamp {
+                Lamps::All => hal.lamps.lamps(),
+                Lamps::One(l) => vec![l],
             };
             for lamp in lamps {
                 if let Err(e) = hal.lamps.set(lamp, color) {
@@ -233,22 +276,15 @@ fn command(handle: &SharedHal, inventory: &str, args: &[String]) -> (i32, String
             }
             (0, String::new(), String::new())
         }
-        ["backlight", level] => match level.parse::<u8>() {
-            Ok(level) => match hal.backlight.set_brightness(Screen::Main, level) {
-                Ok(()) => (0, String::new(), String::new()),
-                Err(e) => fail(e.to_string()),
-            },
-            Err(_) => fail("backlight needs a number".into()),
+        HalAction::Backlight { level } => match hal.backlight.set_brightness(Screen::Main, level) {
+            Ok(()) => (0, String::new(), String::new()),
+            Err(e) => fail(e.to_string()),
         },
-        ["contrast", level] => match level.parse::<u8>() {
-            Ok(level) => match hal.backlight.set_contrast(Screen::Main, level) {
-                Ok(()) => (0, String::new(), String::new()),
-                Err(e) => fail(e.to_string()),
-            },
-            Err(_) => fail("contrast needs a number".into()),
+        HalAction::Contrast { level } => match hal.backlight.set_contrast(Screen::Main, level) {
+            Ok(()) => (0, String::new(), String::new()),
+            Err(e) => fail(e.to_string()),
         },
-        ["pattern"] | ["pattern", _] => {
-            let kind = args.get(1).copied().unwrap_or("bars");
+        HalAction::Pattern { kind } => {
             for screen in hal.display.screens() {
                 if let Err(e) = pattern(hal, screen, kind) {
                     return fail(format!("{screen:?}: {e}"));
@@ -256,10 +292,5 @@ fn command(handle: &SharedHal, inventory: &str, args: &[String]) -> (i32, String
             }
             (0, String::new(), String::new())
         }
-        _ => (
-            2,
-            String::new(),
-            "usage: dphone hal status | lamp NAME|all COLOR | backlight LEVEL | contrast LEVEL | pattern [bars|white|black]\n".into(),
-        ),
     }
 }

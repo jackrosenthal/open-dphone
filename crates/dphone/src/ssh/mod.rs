@@ -61,7 +61,7 @@ pub fn listen_address(ctx: &Context, opts: &Options) -> Option<SocketAddr> {
     if opts.no_ssh {
         return None;
     }
-    if let Some(addr) = opts.ssh_listen {
+    if let Some(addr) = opts.ssh_address() {
         return Some(addr);
     }
     if ctx.sim {

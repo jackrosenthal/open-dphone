@@ -85,16 +85,21 @@ impl log::Log for StderrLog {
     fn flush(&self) {}
 }
 
+/// The test, or with `--phone` the phone it starts in its namespaces.
+#[derive(clap::Parser)]
+struct Args {
+    /// Run the phone, with this nvdata directory
+    #[arg(long, value_name = "NVDATA")]
+    phone: Option<PathBuf>,
+}
+
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    if let [_, flag, nvdata] = args.as_slice()
-        && flag == "--phone"
-    {
+    if let Some(nvdata) = <Args as clap::Parser>::parse().phone {
         // The child: already inside the parent's namespaces.
         log::set_logger(&StderrLog).unwrap();
         log::set_max_level(log::LevelFilter::Info);
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        rt.block_on(phone(PathBuf::from(nvdata)));
+        rt.block_on(phone(nvdata));
         return;
     }
     if !enter_namespace() {

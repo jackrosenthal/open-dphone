@@ -6,11 +6,16 @@
 use lightup_game::generate::{Difficulty, Generator, Params, Progress, SIZES};
 use std::time::Instant;
 
+/// Time the Light Up generator
+#[derive(clap::Parser)]
+struct Args {
+    /// How many seeds to try for each size and difficulty
+    #[arg(default_value_t = 200)]
+    seeds: u64,
+}
+
 fn main() {
-    let seeds: u64 = std::env::args()
-        .nth(1)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(200);
+    let seeds = <Args as clap::Parser>::parse().seeds;
     println!(
         "size  difficulty  median ms  worst ms  median tries  worst tries  median steps  worst steps  failed"
     );

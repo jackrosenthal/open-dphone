@@ -78,11 +78,10 @@ fn kernel_dir() -> PathBuf {
     repo_root().join("kernel")
 }
 
-fn one_arg<'a>(args: &'a [String], what: &str) -> Result<&'a Path> {
-    match args {
-        [a] => Ok(Path::new(a)),
-        _ => Err(format!("expected exactly one argument: {what}").into()),
-    }
+#[derive(Debug, clap::Args)]
+pub struct KernelSync {
+    /// The kernel working tree
+    tree: PathBuf,
 }
 
 fn remove_dir_if_exists(p: &Path) -> Result<()> {
@@ -102,8 +101,8 @@ fn copy_file(from: &Path, to: &Path) -> Result<()> {
 }
 
 /// All regular files under `dir`, as paths relative to it, sorted.
-pub fn sync(args: &[String]) -> Result<()> {
-    let tree = one_arg(args, "the kernel working tree")?;
+pub fn sync(args: KernelSync) -> Result<()> {
+    let tree = args.tree.as_path();
     let kdir = kernel_dir();
 
     let modified = lines(&git(tree, &["diff", "--name-only", "--no-renames", "HEAD"])?)?;

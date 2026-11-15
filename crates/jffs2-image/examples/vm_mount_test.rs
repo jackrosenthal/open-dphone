@@ -245,27 +245,33 @@ fn read_module(path: &Path) -> Vec<u8> {
     }
 }
 
+/// Mount a JFFS2 image with the kernel's own driver in a virtual machine
+/// and compare what it shows with what was written
+#[derive(clap::Parser)]
+struct Args {
+    /// The vm_init example built for x86_64-unknown-linux-musl
+    #[arg(long, value_name = "PATH")]
+    init: PathBuf,
+    /// The image to test [default: one made from --dir, or a synthetic tree
+    /// with every kind of node]
+    #[arg(long, value_name = "FILE", conflicts_with = "dir")]
+    image: Option<PathBuf>,
+    /// A directory to make the image from
+    #[arg(long, value_name = "DIR")]
+    dir: Option<PathBuf>,
+    /// The kernel to boot
+    #[arg(long, value_name = "FILE", default_value = "/boot/vmlinuz-linux")]
+    kernel: PathBuf,
+    /// The kernel's modules [default: /usr/lib/modules/RELEASE of the running kernel]
+    #[arg(long, value_name = "DIR")]
+    modules: Option<PathBuf>,
+    /// Keep the virtual machine's console output in this file
+    #[arg(long, value_name = "FILE")]
+    log: Option<PathBuf>,
+}
+
 fn main() {
-    let mut args = std::env::args().skip(1);
-    let (mut init, mut image_path, mut dir) = (None, None, None);
-    let mut kernel = PathBuf::from("/boot/vmlinuz-linux");
-    let mut modules = None;
-    let mut keep_log = None;
-    while let Some(a) = args.next() {
-        let mut val = || PathBuf::from(args.next().expect("option needs a value"));
-        match a.as_str() {
-            "--init" => init = Some(val()),
-            "--image" => image_path = Some(val()),
-            "--dir" => dir = Some(val()),
-            "--kernel" => kernel = val(),
-            "--modules" => modules = Some(val()),
-            "--log" => keep_log = Some(val()),
-            _ => panic!("unknown argument {a}"),
-        }
-    }
-    let init = init.expect(
-        "--init PATH (the vm_init example built for x86_64-unknown-linux-musl) is required",
-    );
+    let Args { init, image: image_path, dir, kernel, modules, log: keep_log } = <Args as clap::Parser>::parse();
     let modules = modules.unwrap_or_else(|| {
         let rel = std::fs::read_to_string("/proc/sys/kernel/osrelease").unwrap();
         PathBuf::from(format!("/usr/lib/modules/{}", rel.trim()))

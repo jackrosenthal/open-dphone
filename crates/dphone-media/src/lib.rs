@@ -25,8 +25,8 @@
 //! first three with no audio path open, so that the engine sends no jobs
 //! of its own in between:
 //!
-//! 1. **Buffer layout of the filter bank** (`dphone dsp bands 2 sweep` and
-//!    `dphone dsp bands 2 tone 12000`; `diag::band_experiment`): split and
+//! 1. **Buffer layout of the filter bank** (`dphone dsp bands 2 --sweep` and
+//!    `dphone dsp bands 2 --tone 12000`; `diag::band_experiment`): split and
 //!    combine a sweep and a 12 kHz tone.  Expect the tone only in the
 //!    third buffer, the combine result's third buffer equal to the input
 //!    delayed, and its second buffer the 16 kHz signal.

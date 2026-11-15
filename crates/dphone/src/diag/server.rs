@@ -7,26 +7,35 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
+use clap::Parser;
 use log::{debug, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
 
-use super::{EXIT_UNKNOWN, FRAME_EXIT, FRAME_REQUEST, FRAME_STDERR, FRAME_STDOUT, MAX_FRAME, encode_frame};
+use super::{EXIT_UNAVAILABLE, EXIT_USAGE, FRAME_EXIT, FRAME_REQUEST, FRAME_STDERR, FRAME_STDOUT, MAX_FRAME, encode_frame};
 
 type BoxFuture = Pin<Box<dyn Future<Output = i32> + Send>>;
 type Handler = Arc<dyn Fn(Vec<String>, Output) -> BoxFuture + Send + Sync>;
 
-struct Command {
-    help: String,
-    handler: Handler,
-}
-
-/// The set of diagnostic commands.  Cheap to clone; subsystems keep a clone
-/// and register commands whenever they start.
+/// The set of diagnostic commands the main role answers.  Cheap to clone;
+/// subsystems keep a clone and register commands whenever they start.
+///
+/// A command is a type that derives [`clap::Parser`] (its name is the
+/// command's name, e.g., `#[command(name = "hook")]`), defined beside the
+/// code that answers it and listed in [`crate::cli::Remote`], which puts it
+/// in the tree the `dphone` client parses with.  The client forwards the
+/// arguments it has checked; they are parsed again here into the type the
+/// handler takes, so a front end that calls [`Registry::dispatch`] itself
+/// gets the same checks, help, and messages.
 #[derive(Clone, Default)]
 pub struct Registry {
-    commands: Arc<Mutex<BTreeMap<String, Command>>>,
+    commands: Arc<Mutex<BTreeMap<String, Handler>>>,
+}
+
+/// The name of the command `T` defines.
+fn name_of<T: Parser>() -> String {
+    T::command().get_name().to_string()
 }
 
 impl Registry {
@@ -34,44 +43,94 @@ impl Registry {
         Registry::default()
     }
 
-    /// Register `name`.  The handler gets the arguments after the command
-    /// name and an [`Output`]; its result is the client's exit status.
-    /// Registering a name again replaces the earlier handler, which is how a
-    /// subsystem takes over a placeholder.
-    pub fn register<F, Fut>(&self, name: &str, help: &str, handler: F)
+    /// Register the command `T`.  The handler gets the parsed arguments and
+    /// an [`Output`]; its result is the client's exit status.  Registering a
+    /// command again replaces the earlier handler, which is how a subsystem
+    /// takes over a placeholder.
+    pub fn register<T, F, Fut>(&self, handler: F)
     where
-        F: Fn(Vec<String>, Output) -> Fut + Send + Sync + 'static,
+        T: Parser + Send + 'static,
+        F: Fn(T, Output) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = i32> + Send + 'static,
     {
-        let handler: Handler = Arc::new(move |args, out| Box::pin(handler(args, out)));
+        let name = name_of::<T>();
+        let handler = Arc::new(handler);
+        let bin_name = format!("dphone {name}");
+        self.insert(
+            name,
+            Arc::new(move |args, out| {
+                let parsed = T::command()
+                    .bin_name(&bin_name)
+                    .no_binary_name(true)
+                    .try_get_matches_from(args)
+                    .and_then(|matches| T::from_arg_matches(&matches));
+                let handler = handler.clone();
+                Box::pin(async move {
+                    match parsed {
+                        Ok(args) => handler(args, out).await,
+                        // Help that was asked for, or what is wrong with the
+                        // arguments, in clap's words.
+                        Err(e) if e.use_stderr() => {
+                            out.err(&e.render().to_string()).await;
+                            EXIT_USAGE
+                        }
+                        Err(e) => {
+                            out.out(&e.render().to_string()).await;
+                            0
+                        }
+                    }
+                })
+            }),
+        );
+    }
+
+    /// Register the command `T` as one that cannot be answered, and why
+    /// (e.g., its subsystem did not start).
+    pub fn register_unavailable<T: Parser>(&self, why: &'static str) {
+        let name = name_of::<T>();
+        let text = format!("dphone {name}: {why}\n");
+        self.insert(
+            name,
+            Arc::new(move |_args, out| {
+                let text = text.clone();
+                Box::pin(async move {
+                    out.err(&text).await;
+                    EXIT_UNAVAILABLE
+                })
+            }),
+        );
+    }
+
+    fn insert(&self, name: String, handler: Handler) {
         if let Ok(mut commands) = self.commands.lock() {
-            commands.insert(name.to_string(), Command { help: help.to_string(), handler });
+            commands.insert(name, handler);
         }
     }
 
-    /// (name, help) for every command, sorted by name.
-    pub fn list(&self) -> Vec<(String, String)> {
-        match self.commands.lock() {
-            Ok(commands) => commands.iter().map(|(n, c)| (n.clone(), c.help.clone())).collect(),
-            Err(_) => Vec::new(),
-        }
+    /// The names of the registered commands, sorted.
+    pub fn names(&self) -> Vec<String> {
+        self.commands.lock().map(|c| c.keys().cloned().collect()).unwrap_or_default()
     }
 
     fn handler(&self, name: &str) -> Option<Handler> {
-        self.commands.lock().ok()?.get(name).map(|c| c.handler.clone())
+        self.commands.lock().ok()?.get(name).cloned()
     }
 
     /// Run a command as the socket would, for use from other front ends.
+    /// `args` is the command's name and its arguments.
     pub async fn dispatch(&self, mut args: Vec<String>, out: Output) -> i32 {
         if args.is_empty() {
-            return EXIT_UNKNOWN;
+            return EXIT_USAGE;
         }
         let name = args.remove(0);
         match self.handler(&name) {
             Some(handler) => handler(args, out).await,
+            // The client only sends commands of its tree, so this is one
+            // whose subsystem has not registered it: not started (yet), or
+            // not part of this phone.
             None => {
-                out.err(&format!("dphone: unknown command '{name}' (try 'dphone help')\n")).await;
-                EXIT_UNKNOWN
+                out.err(&format!("dphone {name}: not available: nothing in the running main role answers it\n")).await;
+                EXIT_UNAVAILABLE
             }
         }
     }
@@ -205,4 +264,79 @@ async fn handle(stream: UnixStream, registry: Registry) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Say something
+    #[derive(Debug, Parser)]
+    #[command(name = "say")]
+    struct SayCommand {
+        /// How many times
+        #[arg(long, default_value_t = 1)]
+        times: u8,
+        word: String,
+    }
+
+    /// Never there
+    #[derive(Debug, Parser)]
+    #[command(name = "absent")]
+    struct AbsentCommand {}
+
+    /// Dispatch `words`; returns the exit status, standard output, and
+    /// standard error.
+    async fn dispatch(registry: &Registry, words: &[&str]) -> (i32, String, String) {
+        let (out, mut rx) = Output::channel(64);
+        let status = registry.dispatch(words.iter().map(|w| w.to_string()).collect(), out).await;
+        let (mut stdout, mut stderr) = (String::new(), String::new());
+        while let Some(frame) = rx.recv().await {
+            let text = String::from_utf8_lossy(&frame[5..]).into_owned();
+            match frame[0] {
+                FRAME_STDOUT => stdout.push_str(&text),
+                _ => stderr.push_str(&text),
+            }
+        }
+        (status, stdout, stderr)
+    }
+
+    #[tokio::test]
+    async fn a_command_gets_its_arguments_parsed() {
+        let registry = Registry::new();
+        registry.register(|args: SayCommand, out: Output| async move {
+            out.out(&args.word.repeat(args.times as usize)).await;
+            7
+        });
+        registry.register_unavailable::<AbsentCommand>("its subsystem did not start");
+        assert_eq!(registry.names(), ["absent", "say"]);
+
+        assert_eq!(dispatch(&registry, &["say", "hey"]).await, (7, "hey".into(), String::new()));
+        assert_eq!(dispatch(&registry, &["say", "--times", "3", "ho"]).await, (7, "hohoho".into(), String::new()));
+
+        // Mistakes and help are clap's, under the name the client shows.
+        let (status, stdout, stderr) = dispatch(&registry, &["say"]).await;
+        assert_eq!((status, stdout.as_str()), (EXIT_USAGE, ""));
+        assert!(stderr.contains("Usage: dphone say <WORD>"), "{stderr}");
+        let (status, _, stderr) = dispatch(&registry, &["say", "--times", "many", "x"]).await;
+        assert_eq!(status, EXIT_USAGE);
+        assert!(stderr.contains("invalid value 'many'"), "{stderr}");
+        let (status, stdout, stderr) = dispatch(&registry, &["say", "--help"]).await;
+        assert_eq!((status, stderr.as_str()), (0, ""));
+        assert!(stdout.starts_with("Say something\n") && stdout.contains("Usage: dphone say [OPTIONS] <WORD>"), "{stdout}");
+
+        // A command nothing answers, and why when that is known.
+        assert_eq!(
+            dispatch(&registry, &["absent"]).await,
+            (EXIT_UNAVAILABLE, String::new(), "dphone absent: its subsystem did not start\n".into())
+        );
+        let (status, _, stderr) = dispatch(&registry, &["later"]).await;
+        assert_eq!(status, EXIT_UNAVAILABLE);
+        assert!(stderr.starts_with("dphone later: not available"), "{stderr}");
+        assert_eq!(dispatch(&registry, &[]).await.0, EXIT_USAGE);
+
+        // A subsystem takes a placeholder over.
+        registry.register(|_: AbsentCommand, _out: Output| async { 0 });
+        assert_eq!(dispatch(&registry, &["absent"]).await.0, 0);
+    }
 }

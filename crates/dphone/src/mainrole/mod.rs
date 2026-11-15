@@ -28,76 +28,53 @@ pub use health::Health;
 pub const BEAT_INTERVAL: Duration = Duration::from_secs(2);
 
 /// Command-line options of `dphone main`.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, clap::Args)]
 pub struct Options {
-    /// Host simulator: no hardware, no PID 1 above us.
+    /// Run without hardware and without a PID 1 above (host simulator)
+    #[arg(long, requires = "nvdata")]
     pub sim: bool,
+    /// The model to run as [default: detected, or d60 with --sim]
+    #[arg(long, value_name = "MODEL", value_parser = parse_model)]
     pub model: Option<Model>,
+    /// The nvdata directory [default: /nvdata]
+    #[arg(long, value_name = "DIR")]
     pub nvdata: Option<PathBuf>,
+    /// The runtime directory [default: /run/dphone, or .run in the nvdata
+    /// directory with --sim]
+    #[arg(long, value_name = "DIR")]
     pub run_dir: Option<PathBuf>,
-    /// Listen address for SSH (the simulator has no SSH server without one).
+    /// The SSH port, on all addresses, used while ssh_enabled is on
+    #[arg(long, value_name = "PORT", conflicts_with = "ssh_listen")]
+    pub ssh_port: Option<u16>,
+    /// The SSH address (e.g., 127.0.0.1:2222), used while ssh_enabled is
+    /// on; the simulator has no SSH server without one
+    #[arg(long, value_name = "ADDRESS")]
     pub ssh_listen: Option<SocketAddr>,
+    /// Do not start SSH
+    #[arg(long)]
     pub no_ssh: bool,
-    /// Start only SSH, the network, and diagnostics.
-    pub safe: bool,
-    /// HTTP port for the web UI (default 80; 8080 on loopback with --sim).
+    /// The HTTP port of the web UI [default: 80, or 8080 on loopback with --sim]
+    #[arg(long, value_name = "PORT")]
     pub web_port: Option<u16>,
+    /// Start only SSH, the network, and diagnostics
+    #[arg(long)]
+    pub safe: bool,
+    /// Log at the debug level
+    #[arg(short, long)]
     pub verbose: bool,
 }
 
-pub const USAGE: &str = "\
-usage: dphone main [options]
-  --sim                 run without hardware (host simulator)
-  --model <d40..d70>    model to run as (default: detected, or d60 with --sim)
-  --nvdata <dir>        nvdata directory (default /nvdata)
-  --run-dir <dir>       runtime directory (default /run/dphone)
-  --ssh-port <port>     SSH port (all addresses), used while ssh_enabled is on
-  --ssh-listen <addr>   SSH address, e.g. 127.0.0.1:2222, used while ssh_enabled is on
-  --no-ssh              do not start SSH
-  --web-port <port>     HTTP port of the web UI (default 80; 8080 with --sim)
-  --safe                start only SSH, the network, and diagnostics
-  -v, --verbose         debug logging
-";
+fn parse_model(name: &str) -> Result<Model, String> {
+    name.parse().map_err(|()| {
+        let names: Vec<&str> = Model::ALL.iter().map(|m| m.name()).collect();
+        format!("not a model ({})", names.join(", "))
+    })
+}
 
 impl Options {
-    pub fn parse(args: &[String]) -> Result<Options, String> {
-        let mut o = Options::default();
-        let mut it = args.iter();
-        let value = |it: &mut std::slice::Iter<String>, name: &str| {
-            it.next().cloned().ok_or_else(|| format!("{name} needs a value"))
-        };
-        while let Some(arg) = it.next() {
-            match arg.as_str() {
-                "--sim" => o.sim = true,
-                "--model" => {
-                    let v = value(&mut it, "--model")?;
-                    o.model = Some(v.parse().map_err(|_| format!("unknown model '{v}'"))?);
-                }
-                "--nvdata" => o.nvdata = Some(PathBuf::from(value(&mut it, "--nvdata")?)),
-                "--run-dir" => o.run_dir = Some(PathBuf::from(value(&mut it, "--run-dir")?)),
-                "--ssh-port" => {
-                    let v = value(&mut it, "--ssh-port")?;
-                    let port: u16 = v.parse().map_err(|_| format!("bad port '{v}'"))?;
-                    o.ssh_listen = Some(SocketAddr::from(([0, 0, 0, 0], port)));
-                }
-                "--ssh-listen" => {
-                    let v = value(&mut it, "--ssh-listen")?;
-                    o.ssh_listen = Some(v.parse().map_err(|_| format!("bad address '{v}'"))?);
-                }
-                "--no-ssh" => o.no_ssh = true,
-                "--safe" => o.safe = true,
-                "--web-port" => {
-                    let v = value(&mut it, "--web-port")?;
-                    o.web_port = Some(v.parse().map_err(|_| format!("bad port '{v}'"))?);
-                }
-                "-v" | "--verbose" => o.verbose = true,
-                other => return Err(format!("unknown option '{other}'")),
-            }
-        }
-        if o.sim && o.nvdata.is_none() {
-            return Err("--sim needs --nvdata <dir>".to_string());
-        }
-        Ok(o)
+    /// Where SSH listens, if the command line says.
+    pub fn ssh_address(&self) -> Option<SocketAddr> {
+        self.ssh_listen.or(self.ssh_port.map(|port| SocketAddr::from(([0, 0, 0, 0], port))))
     }
 }
 
@@ -183,14 +160,7 @@ impl Context {
 }
 
 /// Entry point of `dphone main`.  Returns the process exit status.
-pub fn run(args: &[String]) -> i32 {
-    let opts = match Options::parse(args) {
-        Ok(o) => o,
-        Err(e) => {
-            crate::err!("dphone main: {e}\n{USAGE}");
-            return 2;
-        }
-    };
+pub fn run(opts: Options) -> i32 {
     let level = if opts.verbose { log::LevelFilter::Debug } else { log::LevelFilter::Info };
     crate::logging::init_ring(level, true);
     // A panic anywhere is logged with its location before the thread (or
@@ -378,19 +348,33 @@ async fn signals(ctx: Context) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
-    fn args(s: &[&str]) -> Vec<String> {
-        s.iter().map(|s| s.to_string()).collect()
+    #[derive(Debug, Parser)]
+    struct Main {
+        #[command(flatten)]
+        options: Options,
+    }
+
+    fn parse(words: &[&str]) -> Result<Options, clap::Error> {
+        Main::try_parse_from(std::iter::once(&"main").chain(words)).map(|m| m.options)
     }
 
     #[test]
     fn options() {
-        let o = Options::parse(&args(&["--sim", "--model", "d40", "--nvdata", "/tmp/nv", "--ssh-port", "2222"])).unwrap();
+        let o = parse(&["--sim", "--model", "d40", "--nvdata", "/tmp/nv", "--ssh-port", "2222"]).unwrap();
         assert!(o.sim);
         assert_eq!(o.model, Some(Model::D40));
-        assert_eq!(o.ssh_listen.unwrap().port(), 2222);
-        assert!(Options::parse(&args(&["--sim"])).is_err());
-        assert!(Options::parse(&args(&["--model", "d99"])).is_err());
-        assert!(Options::parse(&args(&["--bogus"])).is_err());
+        assert_eq!(o.ssh_address(), Some("0.0.0.0:2222".parse().unwrap()));
+        let o = parse(&["--ssh-listen", "127.0.0.1:2022", "-v"]).unwrap();
+        assert_eq!(o.ssh_address(), Some("127.0.0.1:2022".parse().unwrap()));
+        assert!(o.verbose && !o.sim);
+        assert_eq!(parse(&[]).unwrap().ssh_address(), None);
+        // The simulator needs a directory to keep its nvdata in.
+        assert!(parse(&["--sim"]).is_err());
+        assert!(parse(&["--model", "d99"]).is_err());
+        assert!(parse(&["--ssh-port", "22", "--ssh-listen", "127.0.0.1:2022"]).is_err());
+        assert!(parse(&["--web-port", "http"]).is_err());
+        assert!(parse(&["--bogus"]).is_err());
     }
 }

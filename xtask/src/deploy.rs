@@ -17,7 +17,15 @@ use crate::{Result, repo_root};
 
 const TARGET: &str = "arm-unknown-linux-musleabi";
 const REMOTE: &str = "/tmp/dphone";
-const USAGE: &str = "deploy <phone> [--no-build]   (<phone> is a host name or address; the login is root)";
+
+#[derive(Debug, clap::Args)]
+pub struct Deploy {
+    /// The phone: a host name or address (the login is root), or LOGIN@HOST
+    phone: String,
+    /// Push the binary that is already built
+    #[arg(long)]
+    no_build: bool,
+}
 
 fn run(cmd: &mut Command) -> Result<()> {
     let status = cmd.status().map_err(|e| format!("cannot run {:?}: {e}", cmd.get_program()))?;
@@ -27,21 +35,12 @@ fn run(cmd: &mut Command) -> Result<()> {
     Ok(())
 }
 
-pub fn deploy(args: &[String]) -> Result<()> {
-    let mut phone = None;
-    let mut build = true;
-    for a in args {
-        match a.as_str() {
-            "--no-build" => build = false,
-            h if !h.starts_with('-') && phone.is_none() => phone = Some(h.to_string()),
-            other => return Err(format!("unknown argument '{other}'\nusage: {USAGE}").into()),
-        }
-    }
-    let phone = phone.ok_or_else(|| format!("usage: {USAGE}"))?;
+pub fn deploy(args: Deploy) -> Result<()> {
+    let phone = args.phone;
     let login = if phone.contains('@') { phone } else { format!("root@{phone}") };
 
     let root = repo_root();
-    if build {
+    if !args.no_build {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         run(Command::new(cargo).current_dir(&root).args(["build", "--release", "-p", "dphone", "--target", TARGET]))?;
     }

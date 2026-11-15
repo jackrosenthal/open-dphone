@@ -8,7 +8,7 @@
 //! macros, so that a new output path cannot bring the panic back.)
 //!
 //! `SIGPIPE` is deliberately left ignored rather than restored: a command
-//! that is writing flash (`dphone update FILE`) must run to its end whether
+//! that is writing flash (`dphone update install FILE`) must run to its end whether
 //! or not anybody is still reading its progress.  Once standard output has
 //! failed, later output to it is dropped without further attempts, and the
 //! command carries on; a command that would otherwise never end (e.g.,

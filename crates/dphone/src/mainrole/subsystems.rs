@@ -8,7 +8,8 @@
 //! Every subsystem gets a clone of [`Context`] and from it:
 //!
 //! - `ctx.store`: the state store, event bus, and command bus;
-//! - `ctx.diag.register(...)` to add `dphone <command>` diagnostics;
+//! - `ctx.diag.register(...)` to add `dphone <command>` diagnostics (the
+//!   command is a clap type; see [`crate::diag::Registry`]);
 //! - `ctx.health.require(name)` / `satisfy(name)` for anything that must be
 //!   up before a trial boot is confirmed (`net` today, `ui` to come);
 //! - `ctx.request_shutdown(...)` for reboots, and `ctx.request_exit(...)`
@@ -25,6 +26,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use clap::{Parser, Subcommand};
 use dphone_config::{ConfigStore, Nvdata};
 use dphone_state::{HealthStatus, Subsystem};
 use log::{error, info, warn};
@@ -97,10 +99,7 @@ pub async fn start(ctx: &Context, opts: &Options) {
 
     if ctx.safe {
         warn!("safe mode: hardware, audio, telephony, UI, apps, and web are not started");
-        ctx.diag.register("hal", "poke hardware (not available in safe mode)", |_a, out: Output| async move {
-            out.err("dphone hal: not started (safe mode)\n").await;
-            crate::diag::EXIT_UNAVAILABLE
-        });
+        ctx.diag.register_unavailable::<hal::HalCommand>("not started (safe mode)");
         system::start(ctx, system::Parts { config, hub, net, mtd: None });
         // No UI and no telephony: there is no setup to show.
         finish(ctx, None);
@@ -285,17 +284,52 @@ fn start_state(ctx: &Context) {
     ctx.store.set_health(Subsystem::Core, HealthStatus::Ok);
 
     let store = ctx.store.clone();
-    ctx.diag.register("state", "dump the state store: state [TOPIC-SUBSTRING]", move |args: Vec<String>, out: Output| {
+    ctx.diag.register(move |args: StateCommand, out: Output| {
         let store = store.clone();
         async move {
             let text = format!("{:#?}\n", store.snapshot());
-            match args.first() {
+            match &args.topic {
                 None => out.out(&text).await,
                 Some(filter) => out.out(&filter_section(&text, filter)).await,
             }
             0
         }
     });
+}
+
+/// Dump the state store
+#[derive(Debug, Parser)]
+#[command(name = "state")]
+pub struct StateCommand {
+    /// Only the top-level fields whose name contains this (e.g., audio)
+    topic: Option<String>,
+}
+
+/// Read and change the configuration
+#[derive(Debug, Parser)]
+#[command(name = "config")]
+pub struct ConfigCommand {
+    #[command(subcommand)]
+    action: ConfigAction,
+}
+
+#[derive(Debug, Subcommand)]
+enum ConfigAction {
+    /// Print the value of one setting
+    Get { id: String },
+    /// List the settings as ID=VALUE (secrets are masked)
+    List {
+        /// Only the settings whose ID contains this
+        substring: Option<String>,
+    },
+    /// Set a setting and apply it
+    Set {
+        id: String,
+        #[arg(allow_hyphen_values = true)]
+        value: String,
+    },
+    /// Merge the configuration files again and apply the result
+    Reload,
 }
 
 /// From a `{:#?}` dump of the whole state, keep the top-level fields whose
@@ -357,10 +391,7 @@ fn start_config(ctx: &Context, hub: &system::ConfigHub) -> Option<SharedConfig> 
             error!("config: {e}; continuing with built-in defaults for the network");
             ctx.store.set_health(Subsystem::Config, HealthStatus::Failed(e.clone()));
             ctx.store.update::<dphone_state::ConfigInfo, _>(|c| c.error = e);
-            ctx.diag.register("config", "configuration (failed to load)", |_a, out: Output| async move {
-                out.err("dphone config: the configuration could not be loaded; see 'dphone log'\n").await;
-                crate::diag::EXIT_UNAVAILABLE
-            });
+            ctx.diag.register_unavailable::<ConfigCommand>("the configuration could not be loaded; see 'dphone log'");
             return None;
         }
     };
@@ -386,36 +417,32 @@ fn start_config(ctx: &Context, hub: &system::ConfigHub) -> Option<SharedConfig> 
     let handle = shared.clone();
     let state = ctx.store.clone();
     let hub = hub.clone();
-    ctx.diag.register(
-        "config",
-        "config get ID | config list [SUBSTRING] | config set ID VALUE | config reload",
-        move |args: Vec<String>, out: Output| {
-            let handle = handle.clone();
-            let state = state.clone();
-            let hub = hub.clone();
-            async move {
-                // `set` and `reload` write nvdata: off the runtime thread.
-                let (code, text, err, changed) = {
-                    let handle = handle.clone();
-                    tokio::task::spawn_blocking(move || config_command(&handle, read_only, &args))
-                        .await
-                        .unwrap_or_else(|e| (1, String::new(), format!("dphone config: {e}\n"), None))
-                };
-                // A change made here is a change like any other: every
-                // subsystem that follows the configuration hears of it.
-                if let Some(cfg) = changed {
-                    hub.changed(&state, &cfg);
-                }
-                if !text.is_empty() {
-                    out.out(&text).await;
-                }
-                if !err.is_empty() {
-                    out.err(&err).await;
-                }
-                code
+    ctx.diag.register(move |args: ConfigCommand, out: Output| {
+        let handle = handle.clone();
+        let state = state.clone();
+        let hub = hub.clone();
+        async move {
+            // `set` and `reload` write nvdata: off the runtime thread.
+            let (code, text, err, changed) = {
+                let handle = handle.clone();
+                tokio::task::spawn_blocking(move || config_command(&handle, read_only, &args.action))
+                    .await
+                    .unwrap_or_else(|e| (1, String::new(), format!("dphone config: {e}\n"), None))
+            };
+            // A change made here is a change like any other: every
+            // subsystem that follows the configuration hears of it.
+            if let Some(cfg) = changed {
+                hub.changed(&state, &cfg);
             }
-        },
-    );
+            if !text.is_empty() {
+                out.out(&text).await;
+            }
+            if !err.is_empty() {
+                out.err(&err).await;
+            }
+            code
+        }
+    });
     Some(shared)
 }
 
@@ -424,7 +451,7 @@ fn start_config(ctx: &Context, hub: &system::ConfigHub) -> Option<SharedConfig> 
 fn config_command(
     handle: &SharedConfig,
     read_only: bool,
-    args: &[String],
+    args: &ConfigAction,
 ) -> (i32, String, String, Option<Arc<dphone_config::Config>>) {
     let mut changed = None;
     let (code, text, err) = config_command_inner(handle, read_only, args, &mut changed);
@@ -434,20 +461,19 @@ fn config_command(
 fn config_command_inner(
     handle: &SharedConfig,
     read_only: bool,
-    args: &[String],
+    args: &ConfigAction,
     changed: &mut Option<Arc<dphone_config::Config>>,
 ) -> (i32, String, String) {
     let Ok(mut store) = handle.lock() else {
         return (1, String::new(), "dphone config: store poisoned\n".into());
     };
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    match args.as_slice() {
-        ["get", id] => match store.get(id) {
+    match args {
+        ConfigAction::Get { id } => match store.get(id) {
             Some(v) => (0, format!("{v}\n"), String::new()),
             None => (1, String::new(), format!("dphone config: no setting '{id}'\n")),
         },
-        ["list"] | ["list", _] => {
-            let filter = args.get(1).copied().unwrap_or("");
+        ConfigAction::List { substring } => {
+            let filter = substring.as_deref().unwrap_or("");
             let cfg = store.config();
             let mut text = String::new();
             for (id, value) in cfg.settings().filter(|(id, _)| id.contains(filter)) {
@@ -457,7 +483,7 @@ fn config_command_inner(
             }
             (0, text, String::new())
         }
-        ["set", id, value] => {
+        ConfigAction::Set { id, value } => {
             if read_only && !id.starts_with("open_") {
                 return (
                     1,
@@ -476,7 +502,7 @@ fn config_command_inner(
                 Err(e) => (1, String::new(), format!("dphone config: {e}\n")),
             }
         }
-        ["reload"] => match store.reload() {
+        ConfigAction::Reload => match store.reload() {
             Ok(cfg) => {
                 let text = format!("generation {}\n", cfg.generation());
                 *changed = Some(cfg);
@@ -484,11 +510,6 @@ fn config_command_inner(
             }
             Err(e) => (1, String::new(), format!("dphone config: {e}\n")),
         },
-        _ => (
-            2,
-            String::new(),
-            "usage: dphone config get ID | list [SUBSTRING] | set ID VALUE | reload\n".into(),
-        ),
     }
 }
 

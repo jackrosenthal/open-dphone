@@ -32,6 +32,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use clap::{Parser, Subcommand, ValueEnum};
 use dphone_hal::{Audio as HalAudioCard, PcmConfig, PcmDevice};
 use dphone_media::engine::{Command as Ec, Engine, EngineOptions, Event as Ee, PayloadCodec, SrtpConfig, StreamConfig};
 use dphone_media::ring::RingSource;
@@ -45,6 +46,7 @@ use log::{error, info, warn};
 
 use super::contained;
 use super::hal::SharedHal;
+use crate::cli::OnOff;
 use crate::diag::Output;
 use crate::mainrole::{Context, state_model};
 
@@ -1218,119 +1220,256 @@ async fn lamp_watch(service: AudioService, store: Store) {
     }
 }
 
+/// The audio engine: status, and paths, tones, rings, and volumes by hand
+///
+/// Without a subcommand: status.
+#[derive(Debug, Parser)]
+#[command(name = "audio")]
+pub struct AudioCommand {
+    #[command(subcommand)]
+    action: Option<AudioAction>,
+}
+
+#[derive(Debug, Subcommand)]
+enum AudioAction {
+    /// Show the engine, the codecs, the levels, and the audio state
+    Status,
+    /// Open an audio path (none closes it)
+    Path { path: PathArg },
+    /// Play a call-progress tone (off stops it)
+    Tone { tone: ToneArg },
+    /// Ring
+    Ring {
+        /// The ring to play (the default ring if not given), or off
+        name: Option<String>,
+    },
+    /// Set a volume
+    Volume {
+        target: VolumeArg,
+        #[arg(value_parser = clap::value_parser!(u8).range(0..=10))]
+        level: u8,
+    },
+    /// Mute or unmute the microphone
+    Mute { state: OnOff },
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum PathArg {
+    None,
+    Handset,
+    Headset,
+    Speaker,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum ToneArg {
+    Dial,
+    Ringback,
+    Busy,
+    Beep,
+    Off,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum VolumeArg {
+    Handset,
+    Headset,
+    Speaker,
+    Ringer,
+    /// Whatever sounds now
+    Current,
+}
+
+/// The DSP: status, self-test, restart, and experiments
+///
+/// Without a subcommand: status.
+#[derive(Debug, Parser)]
+#[command(name = "dsp")]
+pub struct DspCommand {
+    #[command(subcommand)]
+    action: Option<DspAction>,
+}
+
+#[derive(Debug, Subcommand)]
+enum DspAction {
+    /// Show the engine, the remote processor, and the driver's counters
+    Status,
+    /// Run the checks of the DSP protocol code that need no hardware
+    Selftest,
+    /// Reload the DSP's firmware and start it again
+    Restart,
+    /// Send one job to the DSP and print its result
+    Job {
+        client: u16,
+        channel: u16,
+        instance: u16,
+        op: u16,
+        arg1: u16,
+        arg2: u16,
+        /// The length of the job's body
+        body_bytes: u16,
+        /// The 16-bit word the body is filled with
+        #[arg(default_value_t = 0)]
+        fill_word: u16,
+    },
+    /// Put a test signal through the filter bank of a stream
+    #[command(group = clap::ArgGroup::new("signal").required(true))]
+    Bands {
+        /// The stream: 0 to 3
+        #[arg(value_parser = clap::value_parser!(u8).range(0..4))]
+        stream: u8,
+        /// A tone of this frequency
+        #[arg(long, value_name = "HZ", group = "signal", value_parser = clap::value_parser!(u32).range(1..16000))]
+        tone: Option<u32>,
+        /// A sweep
+        #[arg(long, group = "signal")]
+        sweep: bool,
+        #[command(flatten)]
+        frames: Frames,
+    },
+    /// Put a tone in one band buffer through one canceller
+    Canceller {
+        canceller: CancellerArg,
+        direction: DirectionArg,
+        /// The band buffer: 0, 1, or 2
+        buffer: usize,
+        /// The tone's frequency
+        hz: u32,
+        #[command(flatten)]
+        frames: Frames,
+    },
+}
+
+#[derive(Clone, Copy, Debug, clap::Args)]
+struct Frames {
+    /// How many frames to run
+    #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u16).range(5..=1000))]
+    frames: u16,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum CancellerArg {
+    Hec0,
+    Hec1,
+    Sbaec,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum DirectionArg {
+    Ingress,
+    Egress,
+}
+
 fn register_diag(ctx: &Context, service: AudioService) {
     let store = ctx.store.clone();
     let svc = service.clone();
-    ctx.diag.register(
-        "audio",
-        "audio [status] | path none|handset|headset|speaker | tone dial|ringback|busy|beep|off | ring [NAME]|off | volume TARGET LEVEL | mute on|off",
-        move |args: Vec<String>, out: Output| {
-            let (svc, store) = (svc.clone(), store.clone());
-            async move {
-                let args: Vec<&str> = args.iter().map(String::as_str).collect();
-                let result: Result<String, String> = match args.as_slice() {
-                    [] | ["status"] => {
-                        let a = store.get::<Audio>();
-                        let engine = match svc.available() {
-                            Ok(()) => "running".to_string(),
-                            Err(e) => format!("NOT running: {e}"),
-                        };
-                        let codecs: Vec<String> = svc.codecs().iter().map(|c| format!("{c:?}")).collect();
-                        let levels = match svc.meters() {
-                            Some(m) => {
-                                use std::sync::atomic::Ordering::Relaxed;
-                                format!(
-                                    "levels (last second, of 32767): to device peak {} mean {}; from device peak {} mean {}\nticks: {}  DSP job failures: {}\n",
-                                    m.speaker_peak.load(Relaxed),
-                                    m.speaker_mean.load(Relaxed),
-                                    m.mic_peak.load(Relaxed),
-                                    m.mic_mean.load(Relaxed),
-                                    m.ticks.load(Relaxed),
-                                    m.dsp_errors.load(Relaxed),
-                                )
-                            }
-                            None => String::new(),
-                        };
-                        Ok(format!("engine: {engine}\ncodecs: {}\n{levels}{a:#?}\n", codecs.join(" ")))
-                    }
-                    ["path", p] => match *p {
-                        "none" => Ok(AudioPath::None),
-                        "handset" => Ok(AudioPath::Handset),
-                        "headset" => Ok(AudioPath::Headset),
-                        "speaker" => Ok(AudioPath::Speaker),
-                        other => Err(format!("unknown path '{other}'")),
-                    }
-                    .map(|p| {
-                        svc.request_path(p);
-                        String::new()
-                    }),
-                    ["tone", t] => match *t {
-                        "dial" => Ok(Some(Tone::Dial)),
-                        "ringback" => Ok(Some(Tone::Ringback)),
-                        "busy" => Ok(Some(Tone::Busy)),
-                        "beep" => Ok(Some(Tone::Confirm)),
-                        "off" => Ok(None),
-                        other => Err(format!("unknown tone '{other}'")),
-                    }
-                    .and_then(|t| {
-                        svc.available()?;
-                        svc.tone(t);
-                        Ok(String::new())
-                    }),
-                    ["ring", "off"] => {
-                        svc.ring(None);
-                        Ok(String::new())
-                    }
-                    ["ring"] | ["ring", _] => svc.available().map(|()| {
-                        svc.ring(Some(args.get(1).copied().unwrap_or(dphone_media::ring::BuiltinRing::DEFAULT.name())));
-                        String::new()
-                    }),
-                    ["volume", target, level] => {
-                        let target = match *target {
-                            "handset" => Some(VolumeTarget::Handset),
-                            "headset" => Some(VolumeTarget::Headset),
-                            "speaker" => Some(VolumeTarget::Speaker),
-                            "ringer" => Some(VolumeTarget::Ringer),
-                            "current" => Some(VolumeTarget::Current),
-                            _ => None,
-                        };
-                        match (target, level.parse::<u8>()) {
-                            (Some(t), Ok(l)) => {
-                                let _ = svc.set_volume(t, l);
-                                Ok(String::new())
-                            }
-                            _ => Err("volume handset|headset|speaker|ringer|current 0..10".into()),
+    ctx.diag.register(move |args: AudioCommand, out: Output| {
+        let (svc, store) = (svc.clone(), store.clone());
+        async move {
+            let result: Result<String, String> = match args.action.unwrap_or(AudioAction::Status) {
+                AudioAction::Status => {
+                    let a = store.get::<Audio>();
+                    let engine = match svc.available() {
+                        Ok(()) => "running".to_string(),
+                        Err(e) => format!("NOT running: {e}"),
+                    };
+                    let codecs: Vec<String> = svc.codecs().iter().map(|c| format!("{c:?}")).collect();
+                    let levels = match svc.meters() {
+                        Some(m) => {
+                            use std::sync::atomic::Ordering::Relaxed;
+                            format!(
+                                "levels (last second, of 32767): to device peak {} mean {}; from device peak {} mean {}\nticks: {}  DSP job failures: {}\n",
+                                m.speaker_peak.load(Relaxed),
+                                m.speaker_mean.load(Relaxed),
+                                m.mic_peak.load(Relaxed),
+                                m.mic_mean.load(Relaxed),
+                                m.ticks.load(Relaxed),
+                                m.dsp_errors.load(Relaxed),
+                            )
                         }
+                        None => String::new(),
+                    };
+                    Ok(format!("engine: {engine}\ncodecs: {}\n{levels}{a:#?}\n", codecs.join(" ")))
+                }
+                AudioAction::Path { path } => {
+                    svc.request_path(match path {
+                        PathArg::None => AudioPath::None,
+                        PathArg::Handset => AudioPath::Handset,
+                        PathArg::Headset => AudioPath::Headset,
+                        PathArg::Speaker => AudioPath::Speaker,
+                    });
+                    Ok(String::new())
+                }
+                AudioAction::Tone { tone } => svc.available().map(|()| {
+                    svc.tone(match tone {
+                        ToneArg::Dial => Some(Tone::Dial),
+                        ToneArg::Ringback => Some(Tone::Ringback),
+                        ToneArg::Busy => Some(Tone::Busy),
+                        ToneArg::Beep => Some(Tone::Confirm),
+                        ToneArg::Off => None,
+                    });
+                    String::new()
+                }),
+                AudioAction::Ring { name } if name.as_deref() == Some("off") => {
+                    svc.ring(None);
+                    Ok(String::new())
+                }
+                AudioAction::Ring { name } => svc.available().map(|()| {
+                    svc.ring(Some(name.as_deref().unwrap_or(dphone_media::ring::BuiltinRing::DEFAULT.name())));
+                    String::new()
+                }),
+                AudioAction::Volume { target, level } => {
+                    let target = match target {
+                        VolumeArg::Handset => VolumeTarget::Handset,
+                        VolumeArg::Headset => VolumeTarget::Headset,
+                        VolumeArg::Speaker => VolumeTarget::Speaker,
+                        VolumeArg::Ringer => VolumeTarget::Ringer,
+                        VolumeArg::Current => VolumeTarget::Current,
+                    };
+                    let _ = svc.set_volume(target, level);
+                    Ok(String::new())
+                }
+                AudioAction::Mute { state } => {
+                    svc.command(Command::SetMute { on: state.is_on() }).map(|_| String::new()).map_err(|e| format!("{e:?}"))
+                }
+            };
+            match result {
+                Ok(text) => {
+                    if !text.is_empty() {
+                        out.out(&text).await;
                     }
-                    ["mute", onoff @ ("on" | "off")] => svc
-                        .command(Command::SetMute { on: *onoff == "on" })
-                        .map(|_| String::new())
-                        .map_err(|e| format!("{e:?}")),
-                    _ => Err("usage: dphone audio [status] | path P | tone T | ring [NAME]|off | volume TARGET LEVEL | mute on|off".into()),
-                };
-                match result {
-                    Ok(text) => {
-                        if !text.is_empty() {
-                            out.out(&text).await;
-                        }
-                        0
-                    }
-                    Err(e) => {
-                        out.err(&format!("dphone audio: {e}\n")).await;
-                        1
-                    }
+                    0
+                }
+                Err(e) => {
+                    out.err(&format!("dphone audio: {e}\n")).await;
+                    1
                 }
             }
-        },
-    );
+        }
+    });
 
     let sim = ctx.sim;
-    ctx.diag.register("dsp", "dsp [status] | selftest | restart | job CLIENT CHANNEL INSTANCE OP ARG1 ARG2 BODY-BYTES [FILL-WORD] | bands STREAM tone HZ|sweep [FRAMES] | canceller hec0|hec1|sbaec ingress|egress BUFFER HZ [FRAMES]", move |args: Vec<String>, out: Output| {
+    ctx.diag.register(move |args: DspCommand, out: Output| {
         let service = service.clone();
         async move {
-            let args: Vec<&str> = args.iter().map(String::as_str).collect();
-            match args.as_slice() {
-                [] | ["status"] => {
+            // What a subcommand that talks to the DSP made of it.
+            let report = |r: Result<String, String>| {
+                let out = out.clone();
+                async move {
+                    match r {
+                        Ok(text) => {
+                            out.out(&text).await;
+                            0
+                        }
+                        Err(e) => {
+                            out.err(&format!("dphone dsp: {e}\n")).await;
+                            1
+                        }
+                    }
+                }
+            };
+            match args.action.unwrap_or(DspAction::Status) {
+                DspAction::Status => {
                     let mut text = match service.available() {
                         Ok(()) => "audio engine: running\n".to_string(),
                         Err(e) => format!("audio engine: NOT running: {e}\n"),
@@ -1359,7 +1498,7 @@ fn register_diag(ctx: &Context, service: AudioService) {
                     out.out(&text).await;
                     0
                 }
-                ["selftest"] => {
+                DspAction::Selftest => {
                     let report = dphone_vpm::diag::selftest();
                     let mut text = format!("{} checks, {} failures\n", report.checks, report.failures.len());
                     for f in &report.failures {
@@ -1368,72 +1507,23 @@ fn register_diag(ctx: &Context, service: AudioService) {
                     out.out(&text).await;
                     if report.passed() { 0 } else { 1 }
                 }
-                ["job", rest @ ..] if rest.len() >= 7 => {
-                    // dsp job CLIENT CHANNEL INSTANCE OP ARG1 ARG2 BODY-BYTES [FILL]
-                    let n: Vec<u16> = rest.iter().filter_map(|a| a.parse().ok()).collect();
-                    if n.len() < 7 {
-                        out.err("usage: dphone dsp job CLIENT CHANNEL INSTANCE OP ARG1 ARG2 BODY-BYTES [FILL-WORD]\n").await;
-                        return 2;
-                    }
-                    let fill = n.get(7).copied().unwrap_or(0).to_le_bytes();
-                    let body: Vec<u8> = (0..n[6] as usize).map(|i| fill[i % 2]).collect();
+                DspAction::Job { client, channel, instance, op, arg1, arg2, body_bytes, fill_word } => {
+                    let fill = fill_word.to_le_bytes();
+                    let body: Vec<u8> = (0..body_bytes as usize).map(|i| fill[i % 2]).collect();
                     let r = contained("dsp-job", Duration::from_secs(10), move || {
                         let dev = dphone_vpm::Device::open_default().map_err(|e| e.to_string())?;
                         let mut vpm = dphone_vpm::Vpm::new(dev).map_err(|e| e.to_string())?;
-                        Ok::<_, String>(dphone_vpm::diag::probe_job(&mut vpm, n[0], n[1], n[2], n[3], n[4], n[5], &body))
+                        Ok::<_, String>(dphone_vpm::diag::probe_job(&mut vpm, client, channel, instance, op, arg1, arg2, &body))
                     })
                     .await
                     .and_then(|r| r);
-                    match r {
-                        Ok(text) => {
-                            out.out(&format!("{text}\n")).await;
-                            0
-                        }
-                        Err(e) => {
-                            out.err(&format!("dphone dsp: {e}\n")).await;
-                            1
-                        }
-                    }
+                    report(r.map(|text| format!("{text}\n"))).await
                 }
                 // The routing experiments of `dphone-media`: a test signal
                 // through the filter bank, or through one canceller with
                 // the signal in one band buffer.
-                ["bands", stream, rest @ ..] | ["canceller", stream, rest @ ..] => {
+                action @ (DspAction::Bands { .. } | DspAction::Canceller { .. }) => {
                     use dphone_vpm::diag::{Canceller, Signal};
-                    enum Run {
-                        Bands(usize, Signal),
-                        Canceller(Canceller, bool, usize, u32),
-                    }
-                    let frames = |arg: Option<&&str>| match arg {
-                        None => Some(50),
-                        Some(a) => a.parse::<usize>().ok().filter(|n| (5..=1000).contains(n)),
-                    };
-                    let parsed = match (args[0], rest) {
-                        ("bands", ["sweep", n @ ..]) if n.len() <= 1 => {
-                            stream.parse().ok().filter(|s| *s < 4).zip(frames(n.first())).map(|(s, n)| (Run::Bands(s, Signal::Sweep), n))
-                        }
-                        ("bands", ["tone", hz, n @ ..]) if n.len() <= 1 => match (stream.parse(), hz.parse::<u32>(), frames(n.first())) {
-                            (Ok(s), Ok(hz), Some(n)) if s < 4 && (1..16000).contains(&hz) => Some((Run::Bands(s, Signal::Tone(hz)), n)),
-                            _ => None,
-                        },
-                        ("canceller", [dir @ ("ingress" | "egress"), buffer, hz, n @ ..]) if n.len() <= 1 => {
-                            let which = match *stream {
-                                "hec0" => Some(Canceller::Hec(0)),
-                                "hec1" => Some(Canceller::Hec(1)),
-                                "sbaec" => Some(Canceller::Sbaec),
-                                _ => None,
-                            };
-                            match (which, buffer.parse(), hz.parse(), frames(n.first())) {
-                                (Some(w), Ok(b), Ok(hz), Some(n)) => Some((Run::Canceller(w, *dir == "ingress", b, hz), n)),
-                                _ => None,
-                            }
-                        }
-                        _ => None,
-                    };
-                    let Some((run, frames)) = parsed else {
-                        out.err("usage: dphone dsp bands STREAM tone HZ|sweep [FRAMES]\n       dphone dsp canceller hec0|hec1|sbaec ingress|egress BUFFER HZ [FRAMES]\n(STREAM 0 to 3; BUFFER 0, 1, or 2; FRAMES 5 to 1000, 50 if not given)\n").await;
-                        return 2;
-                    };
                     // Like `dsp job`, this sends jobs on a handle of its own.
                     let path = service.store.get::<Audio>().path;
                     if path != AudioPath::None {
@@ -1442,29 +1532,31 @@ fn register_diag(ctx: &Context, service: AudioService) {
                     let r = contained("dsp-experiment", Duration::from_secs(60), move || {
                         let dev = dphone_vpm::Device::open_default().map_err(|e| e.to_string())?;
                         let mut vpm = dphone_vpm::Vpm::new(dev).map_err(|e| e.to_string())?;
-                        match run {
-                            Run::Bands(stream, signal) => dphone_vpm::diag::band_experiment(&mut vpm, stream, signal, frames)
-                                .map(|r| r.to_string())
-                                .map_err(|e| e.to_string()),
-                            Run::Canceller(which, ingress, buffer, hz) => {
-                                dphone_vpm::diag::canceller_experiment(&mut vpm, which, ingress, buffer, hz, frames).map(|r| r.to_string())
+                        match action {
+                            DspAction::Bands { stream, tone, frames, .. } => {
+                                let signal = tone.map_or(Signal::Sweep, Signal::Tone);
+                                dphone_vpm::diag::band_experiment(&mut vpm, stream as usize, signal, frames.frames as usize)
+                                    .map(|r| r.to_string())
+                                    .map_err(|e| e.to_string())
                             }
+                            DspAction::Canceller { canceller, direction, buffer, hz, frames } => {
+                                let which = match canceller {
+                                    CancellerArg::Hec0 => Canceller::Hec(0),
+                                    CancellerArg::Hec1 => Canceller::Hec(1),
+                                    CancellerArg::Sbaec => Canceller::Sbaec,
+                                };
+                                let ingress = matches!(direction, DirectionArg::Ingress);
+                                dphone_vpm::diag::canceller_experiment(&mut vpm, which, ingress, buffer, hz, frames.frames as usize)
+                                    .map(|r| r.to_string())
+                            }
+                            _ => unreachable!("only the experiments get here"),
                         }
                     })
                     .await
                     .and_then(|r| r);
-                    match r {
-                        Ok(text) => {
-                            out.out(&text).await;
-                            0
-                        }
-                        Err(e) => {
-                            out.err(&format!("dphone dsp: {e}\n")).await;
-                            1
-                        }
-                    }
+                    report(r).await
                 }
-                ["restart"] => {
+                DspAction::Restart => {
                     // The engine must not reach the DSP between its reload
                     // and the start-up sequence; give the audio thread a
                     // few ticks to take the hold.
@@ -1475,21 +1567,10 @@ fn register_diag(ctx: &Context, service: AudioService) {
                     })
                     .await
                     .and_then(|r| r);
-                    match r {
-                        Ok(()) => {
-                            let _ = service.inner.lock().unwrap().send(Ec::RestartDsp);
-                            out.out("DSP restarted\n").await;
-                            0
-                        }
-                        Err(e) => {
-                            out.err(&format!("dphone dsp: {e}\n")).await;
-                            1
-                        }
+                    if r.is_ok() {
+                        let _ = service.inner.lock().unwrap().send(Ec::RestartDsp);
                     }
-                }
-                _ => {
-                    out.err("usage: dphone dsp [status] | selftest | restart | job CLIENT CHANNEL INSTANCE OP ARG1 ARG2 BODY-BYTES [FILL-WORD] | bands STREAM tone HZ|sweep [FRAMES] | canceller hec0|hec1|sbaec ingress|egress BUFFER HZ [FRAMES]\n").await;
-                    2
+                    report(r.map(|()| "DSP restarted\n".to_string())).await
                 }
             }
         }

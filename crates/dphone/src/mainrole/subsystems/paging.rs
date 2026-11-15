@@ -520,21 +520,38 @@ impl PagingService {
     }
 }
 
+/// Multicast paging
+///
+/// Without a subcommand: status.  Start and stop print the status after
+/// they have acted.
+#[derive(Debug, clap::Parser)]
+#[command(name = "page")]
+pub struct PageCommand {
+    #[command(subcommand)]
+    action: Option<PageAction>,
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum PageAction {
+    /// Show what is happening and the groups this phone listens to and can page
+    Status,
+    /// Page the group with this ID
+    Start { id: String },
+    /// End the page being sent or heard
+    Stop,
+}
+
 pub fn start(ctx: &Context, audio: AudioService) -> PagingService {
     let (tx, rx) = watch::channel(Settings::default());
     tokio::spawn(run(ctx.clone(), audio, rx));
     let store = ctx.store.clone();
-    ctx.diag.register("page", "multicast paging: page | page start ID | page stop", move |args: Vec<String>, out: crate::diag::Output| {
+    ctx.diag.register(move |args: PageCommand, out: crate::diag::Output| {
         let store = store.clone();
         async move {
-            let command = match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
-                [] => None,
-                ["start", id] => Some(Command::StartPage { id: id.to_string() }),
-                ["stop"] => Some(Command::StopPage),
-                _ => {
-                    out.err("usage: dphone page | dphone page start ID | dphone page stop\n").await;
-                    return 2;
-                }
+            let command = match args.action {
+                None | Some(PageAction::Status) => None,
+                Some(PageAction::Start { id }) => Some(Command::StartPage { id }),
+                Some(PageAction::Stop) => Some(Command::StopPage),
             };
             if let Some(command) = command {
                 let pending = store.send(command);

@@ -74,4 +74,4 @@ With the real apps: loading, instantiating, and starting the precompiled Status 
 
 Decision: Wasmtime with Pulley, as the plan prefers; it meets the no-C constraint and the size is acceptable.  wasmi interprets about twice as fast in this test and needs no separate compiler for installed apps, so it remains the fallback if phone measurements disappoint.  Pulley is markedly slower at `opt-level = "s"`; the phone build should set `opt-level = 3` for the `pulley-interpreter` package (the better figures above).
 
-Re-run on hardware with `dphone-apps-s1 <apps root>` (feature `test-util`).  The phone's own figures for compiling are under "Installing" above.
+Re-run on hardware with `dphone-apps-s1 <apps root>` (features `test-util` and `cli`).  The phone's own figures for compiling are under "Installing" above.

@@ -20,9 +20,10 @@ default = ["tool"]
 # The command `cargo dphone-app` and what only it needs: making a component
 # of the module cargo builds.  The firmware uses this crate without it, to
 # read the manifest in an app file, and has no dependencies from it.
-tool = ["dep:wit-component", "dep:serde_json"]
+tool = ["dep:wit-component", "dep:serde_json", "dep:clap"]
 
 [dependencies]
+clap = { version = "4", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 wit-component = { version = "0.263", optional = true }
 

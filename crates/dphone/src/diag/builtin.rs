@@ -3,38 +3,59 @@
 
 use std::time::Duration;
 
-use super::{EXIT_UNAVAILABLE, Output};
+use clap::Parser;
+
+use super::Output;
 use crate::mainrole::Context;
-use crate::sys::Shutdown;
+use crate::mainrole::subsystems::{ConfigCommand, StateCommand, hal::HalCommand};
+
+/// Check that the main role answers
+#[derive(Debug, Parser)]
+#[command(name = "ping")]
+pub struct PingCommand {}
+
+/// Show the running version and model
+#[derive(Debug, Parser)]
+#[command(name = "version")]
+pub struct VersionCommand {}
+
+/// Show the conditions behind the healthy report
+///
+/// The exit status is 0 when the main role reports itself healthy to the
+/// init role, and 1 when it does not.
+#[derive(Debug, Parser)]
+#[command(name = "health")]
+pub struct HealthCommand {}
+
+/// Show the log ring
+#[derive(Debug, Parser)]
+#[command(name = "log")]
+pub struct LogCommand {
+    /// Show the last COUNT entries
+    #[arg(short = 'n', long = "lines", value_name = "COUNT", default_value_t = 200)]
+    count: usize,
+    /// Keep showing entries as they are logged
+    #[arg(short, long)]
+    follow: bool,
+}
+
+/// Restart the main role only
+#[derive(Debug, Parser)]
+#[command(name = "restart")]
+pub struct RestartCommand {}
 
 /// Register the built-in commands.
 pub fn register(ctx: &Context) {
     let reg = &ctx.diag;
 
-    reg.register("help", "list diagnostic commands", {
-        let reg = reg.clone();
-        move |_args, out| {
-            let reg = reg.clone();
-            async move {
-                let mut text = String::from("Commands answered by the running main role:\n");
-                for (name, help) in reg.list() {
-                    text.push_str(&format!("  {name:<10} {help}\n"));
-                }
-                text.push_str(crate::cli::LOCAL_HELP);
-                out.out(&text).await;
-                0
-            }
-        }
-    });
-
-    reg.register("ping", "check that the main role answers", |_args, out: Output| async move {
+    reg.register(|_: PingCommand, out: Output| async move {
         out.out("pong\n").await;
         0
     });
 
-    reg.register("version", "show the running version and model", {
+    reg.register({
         let ctx = ctx.clone();
-        move |_args, out| {
+        move |_: VersionCommand, out: Output| {
             let ctx = ctx.clone();
             async move {
                 out.out(&format!(
@@ -53,9 +74,9 @@ pub fn register(ctx: &Context) {
         }
     });
 
-    reg.register("health", "show the conditions behind the healthy report", {
+    reg.register({
         let health = ctx.health.clone();
-        move |_args, out| {
+        move |_: HealthCommand, out: Output| {
             let health = health.clone();
             async move {
                 let mut text = String::new();
@@ -69,33 +90,11 @@ pub fn register(ctx: &Context) {
         }
     });
 
-    reg.register("log", "show the log ring: log [-n COUNT] [-f]", log_command);
+    reg.register(log_command);
 
-    reg.register("reboot", "reboot the phone: reboot [--halt|--poweroff] [REASON...]", {
+    reg.register({
         let ctx = ctx.clone();
-        move |args: Vec<String>, out| {
-            let ctx = ctx.clone();
-            async move {
-                let mut kind = Shutdown::Reboot;
-                let mut words = Vec::new();
-                for a in args {
-                    match a.as_str() {
-                        "--halt" => kind = Shutdown::Halt,
-                        "--poweroff" => kind = Shutdown::PowerOff,
-                        _ => words.push(a),
-                    }
-                }
-                let reason = if words.is_empty() { "dphone: requested".to_string() } else { format!("dphone: {}", words.join(" ")) };
-                out.out("going down\n").await;
-                ctx.request_shutdown(kind, &reason);
-                0
-            }
-        }
-    });
-
-    reg.register("restart", "restart the main role only", {
-        let ctx = ctx.clone();
-        move |_args, out| {
+        move |_: RestartCommand, out: Output| {
             let ctx = ctx.clone();
             async move {
                 out.out("restarting the main role\n").await;
@@ -105,41 +104,16 @@ pub fn register(ctx: &Context) {
         }
     });
 
-    // Placeholders: each is replaced when its subsystem registers the name.
-    for (name, help, owner) in [
-        ("state", "dump the state store", "dphone-state"),
-        ("config", "config get <id> | config set <id> <value>", "dphone-config"),
-        ("hal", "poke hardware: LEDs, tones, display patterns, DSP jobs", "dphone-hal"),
-    ] {
-        reg.register(name, help, move |_args, out: Output| async move {
-            out.err(&format!("dphone {name}: not available: {owner} is not wired into this build\n")).await;
-            EXIT_UNAVAILABLE
-        });
-    }
+    // Placeholders: each is replaced when its subsystem registers the command.
+    reg.register_unavailable::<StateCommand>("not available: the state store is not up yet");
+    reg.register_unavailable::<ConfigCommand>("not available: the configuration is not loaded yet");
+    reg.register_unavailable::<HalCommand>("not available: the hardware layer is not open yet");
 }
 
-async fn log_command(args: Vec<String>, out: Output) -> i32 {
-    let mut follow = false;
-    let mut count = 200usize;
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "-f" | "--follow" => follow = true,
-            "-n" => match it.next().and_then(|v| v.parse().ok()) {
-                Some(n) => count = n,
-                None => {
-                    out.err("dphone log: -n needs a number\n").await;
-                    return 2;
-                }
-            },
-            other => {
-                out.err(&format!("dphone log: unknown option '{other}'\n")).await;
-                return 2;
-            }
-        }
-    }
+async fn log_command(args: LogCommand, out: Output) -> i32 {
+    let follow = args.follow;
     let mut next = 0u64;
-    let mut limit = count;
+    let mut limit = args.count;
     let mut watch = crate::logging::subscribe();
     loop {
         let entries = crate::logging::recent(next, limit);

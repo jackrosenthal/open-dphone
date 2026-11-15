@@ -57,6 +57,8 @@ miniz_oxide = "0.8"
 brotli = { version = "8", default-features = false, features = ["std"] }
 
 [dev-dependencies]
+# The command lines of the examples.
+clap = { version = "4", features = ["derive"] }
 dphone-hal = { path = "../dphone-hal" }
 tokio = { version = "1", features = ["rt", "net", "time", "sync", "macros", "io-util"] }
 buffa = { version = "0.9", default-features = false, features = ["std", "json"] }

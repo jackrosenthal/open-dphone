@@ -11,3 +11,7 @@ publish = false
 dphone-state = { path = "../dphone-state" }
 log = "0.4"
 libc = "0.2"
+
+[dev-dependencies]
+# The command lines of the examples.
+clap = { version = "4", features = ["derive"] }

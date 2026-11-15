@@ -17,76 +17,47 @@
 
 use std::fs::File;
 use std::io::{BufReader, Read};
+use std::path::{Path, PathBuf};
 
 use dphone_update::ramboot::{self, Options, Plan};
 
 use crate::sys;
 
-const USAGE: &str = "\
-usage: dphone ramboot IMAGE.eff [--max-uptime SECONDS] [--append 'KERNEL ARGUMENTS'] [--dry-run]
-  Start the kernel, devicetree, and root file system of an Open DPhone
-  image from RAM.  Nothing is written to the kernel or root partitions or
-  to 'ctrl': a reboot, a power cycle, or a kernel that hangs (the watchdog
-  resets the phone) brings the installed firmware back.  /nvdata is the
-  phone's own, mounted as always, so the started system has the same
-  settings, address, and SSH keys.  A pending trial boot is neither counted
-  nor confirmed by a system started this way.
-  IMAGE.eff          the file 'dphone update' installs; '-' reads it from
-                     standard input (saves the copy in /tmp)
-  --max-uptime SECONDS
-                     the started system resets the phone after this long
-                     unless /run/dphone/stay exists (default 900; 0 for no
-                     limit)
-  --append ARGS      extra kernel arguments, e.g., amba_pl011.console_output=1
-  --dry-run          verify the image and print what would be loaded and
-                     passed to the kernel, then stop
-";
-
-struct Args {
-    file: String,
-    options: Options,
+/// Start the kernel, devicetree, and root file system of an Open DPhone
+/// image from RAM
+///
+/// Nothing is written to the kernel or root partitions or to 'ctrl': a
+/// reboot, a power cycle, or a kernel that hangs (the watchdog resets the
+/// phone) brings the installed firmware back.  /nvdata is the phone's own,
+/// mounted as always, so the started system has the same settings,
+/// address, and SSH keys.  A pending trial boot is neither counted nor
+/// confirmed by a system started this way.
+#[derive(Debug, clap::Args)]
+pub struct Ramboot {
+    /// The file 'dphone update install' installs; '-' reads it from
+    /// standard input (saves the copy in /tmp)
+    image: PathBuf,
+    /// The started system resets the phone after this long unless
+    /// /run/dphone/stay exists; 0 for no limit
+    #[arg(long, value_name = "SECONDS", default_value_t = ramboot::DEFAULT_MAX_UPTIME)]
+    max_uptime: u64,
+    /// Extra kernel arguments (e.g., amba_pl011.console_output=1)
+    #[arg(long, value_name = "ARGUMENTS", default_value = "", hide_default_value = true, allow_hyphen_values = true)]
+    append: String,
+    /// Verify the image and print what would be loaded and passed to the
+    /// kernel, then stop
+    #[arg(long)]
     dry_run: bool,
 }
 
-fn parse(args: &[String]) -> Result<Args, String> {
-    let mut file = None;
-    let mut options = Options::default();
-    let mut dry_run = false;
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "--max-uptime" => {
-                let secs: u64 = it
-                    .next()
-                    .and_then(|v| v.parse().ok())
-                    .ok_or("--max-uptime needs a number of seconds (0 for no limit)")?;
-                options.max_uptime = (secs != 0).then_some(secs);
-            }
-            "--append" => options.append = it.next().ok_or("--append needs the kernel arguments")?.clone(),
-            "--dry-run" => dry_run = true,
-            "-" => file = Some(a.clone()),
-            other if other.starts_with('-') => return Err(format!("unknown option '{other}'")),
-            other if file.is_none() => file = Some(other.to_string()),
-            other => return Err(format!("unexpected argument '{other}'")),
-        }
+impl Ramboot {
+    fn options(&self) -> Options {
+        Options { max_uptime: (self.max_uptime != 0).then_some(self.max_uptime), append: self.append.clone() }
     }
-    Ok(Args { file: file.ok_or("no image named")?, options, dry_run })
 }
 
-pub fn run(args: &[String]) -> i32 {
-    if args.is_empty() || args.iter().any(|a| a == "--help" || a == "-h" || a == "help") {
-        crate::out!("{USAGE}");
-        return if args.is_empty() { 2 } else { 0 };
-    }
-    let args = match parse(args) {
-        Ok(a) => a,
-        Err(e) => {
-            crate::errln!("dphone ramboot: {e}");
-            crate::err!("{USAGE}");
-            return 2;
-        }
-    };
-    match start(&args) {
+pub fn run(args: &Ramboot) -> i32 {
+    match start(args) {
         Ok(()) => 0,
         Err(e) => {
             crate::errln!("dphone ramboot: {e}");
@@ -119,7 +90,7 @@ fn not_ready() -> Option<String> {
     None
 }
 
-fn start(args: &Args) -> Result<(), String> {
+fn start(args: &Ramboot) -> Result<(), String> {
     let model: dphone_state::Model = crate::model::detect()
         .and_then(|d| d.model.name().parse().ok())
         .ok_or("model unknown (no digium_board= and no devicetree match)")?;
@@ -128,10 +99,10 @@ fn start(args: &Args) -> Result<(), String> {
         return Err(why.clone());
     }
 
-    let input: Box<dyn Read> = if args.file == "-" {
+    let input: Box<dyn Read> = if args.image == Path::new("-") {
         Box::new(std::io::stdin().lock())
     } else {
-        Box::new(File::open(&args.file).map_err(|e| format!("{}: {e}", args.file))?)
+        Box::new(File::open(&args.image).map_err(|e| format!("{}: {e}", args.image.display()))?)
     };
     let opened = ramboot::open(BufReader::with_capacity(64 * 1024, input), model).map_err(|e| e.to_string())?;
     let meminfo = read("/proc/meminfo")?;
@@ -145,7 +116,7 @@ fn start(args: &Args) -> Result<(), String> {
     );
     let image = opened.load().map_err(|e| e.to_string())?;
     let ram = ramboot::system_ram(&read("/proc/iomem")?).map_err(|e| e.to_string())?;
-    let plan = ramboot::plan(&image, ram, &read("/proc/cmdline")?, &args.options).map_err(|e| e.to_string())?;
+    let plan = ramboot::plan(&image, ram, &read("/proc/cmdline")?, &args.options()).map_err(|e| e.to_string())?;
     describe(&plan, &image);
 
     if args.dry_run {
@@ -186,7 +157,7 @@ fn start(args: &Args) -> Result<(), String> {
 
     crate::outln!(
         "loaded.  Starting it now: this session ends, and the phone answers again in about a minute.{}",
-        match args.options.max_uptime {
+        match args.options().max_uptime {
             Some(secs) => format!(
                 "  It returns to the installed firmware after {secs} s unless /run/dphone/stay exists there, \
                  and at any 'dphone reboot' or power cycle."
@@ -220,27 +191,38 @@ fn describe(plan: &Plan, image: &ramboot::Image) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
-    fn args(a: &[&str]) -> Result<Args, String> {
-        parse(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+    #[derive(Debug, Parser)]
+    struct Cli {
+        #[command(flatten)]
+        ramboot: Ramboot,
+    }
+
+    fn args(words: &[&str]) -> Result<Ramboot, clap::Error> {
+        Cli::try_parse_from(std::iter::once(&"ramboot").chain(words)).map(|c| c.ramboot)
     }
 
     #[test]
     fn arguments() {
         let a = args(&["/tmp/fw.eff"]).unwrap();
-        assert_eq!(a.file, "/tmp/fw.eff");
-        assert_eq!(a.options, Options::default());
-        assert_eq!(a.options.max_uptime, Some(900));
+        assert_eq!(a.image, Path::new("/tmp/fw.eff"));
+        assert_eq!(a.options(), Options::default());
+        assert_eq!(a.options().max_uptime, Some(900));
         assert!(!a.dry_run);
 
         let a = args(&["--max-uptime", "120", "fw.eff", "--append", "panic=30 loglevel=7", "--dry-run"]).unwrap();
-        assert_eq!(a.file, "fw.eff");
-        assert_eq!(a.options, Options { max_uptime: Some(120), append: "panic=30 loglevel=7".into() });
+        assert_eq!(a.image, Path::new("fw.eff"));
+        assert_eq!(a.options(), Options { max_uptime: Some(120), append: "panic=30 loglevel=7".into() });
         assert!(a.dry_run);
 
         // No limit, image on standard input.
         let a = args(&["-", "--max-uptime", "0"]).unwrap();
-        assert_eq!((a.file.as_str(), a.options.max_uptime), ("-", None));
+        assert_eq!((a.image.as_path(), a.options().max_uptime), (Path::new("-"), None));
+
+        // Kernel arguments may begin with a hyphen.
+        let a = args(&["a.eff", "--append", "-s"]).unwrap();
+        assert_eq!(a.append, "-s");
     }
 
     #[test]
@@ -259,14 +241,10 @@ mod tests {
         }
     }
 
+    /// A file that is not there: an error, not a usage problem.  (On a
+    /// workstation the model is unknown first; either way it is 1.)
     #[test]
-    fn help_and_usage_exit_codes() {
-        let run_ = |a: &[&str]| run(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
-        assert_eq!(run_(&[]), 2);
-        assert_eq!(run_(&["--help"]), 0);
-        assert_eq!(run_(&["a.eff", "--bogus"]), 2);
-        // A file that is not there: an error, not a usage problem.  (On a
-        // workstation the model is unknown first; either way it is 1.)
-        assert_eq!(run_(&["/nonexistent/image.eff", "--dry-run"]), 1);
+    fn a_failure_is_not_a_usage_problem() {
+        assert_eq!(run(&args(&["/nonexistent/image.eff", "--dry-run"]).unwrap()), 1);
     }
 }

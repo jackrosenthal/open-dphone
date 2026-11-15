@@ -480,11 +480,16 @@ impl ExpansionService {
     }
 }
 
+/// Show the expansion modules
+#[derive(Debug, clap::Parser)]
+#[command(name = "expansion")]
+pub struct ExpansionCommand {}
+
 pub fn start(ctx: &Context) -> ExpansionService {
     let (tx, rx) = watch::channel(Settings::default());
     tokio::spawn(run(ctx.clone(), rx));
     let store = ctx.store.clone();
-    ctx.diag.register("expansion", "show expansion modules", move |_args, out: crate::diag::Output| {
+    ctx.diag.register(move |_: ExpansionCommand, out: crate::diag::Output| {
         let store = store.clone();
         async move {
             let e = store.get::<Expansion>();

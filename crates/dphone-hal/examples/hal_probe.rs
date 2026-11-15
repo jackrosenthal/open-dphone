@@ -1,20 +1,37 @@
 //! Prints what the phone HAL backend finds on this machine.  Read-only
-//! except with `--draw` (test pattern), `--lamps` (cycle lamps), and
-//! `--tone` (one second of 1 kHz on the handset).
-//!
-//! Usage: hal_probe [MODEL] [--draw] [--lamps] [--tone] [--keys SECONDS]
+//! except with `--draw`, `--lamps`, and `--tone`; `--help` lists the
+//! options.
 
+use clap::Parser;
 use dphone_hal::*;
 use std::time::Duration;
 
+/// Print what the phone HAL backend finds on this machine
+#[derive(Parser)]
+struct Args {
+    /// The model [default: the one on the kernel command line, or d60]
+    #[arg(value_parser = |name: &str| name.parse::<Model>().map_err(|_| "not a model"))]
+    model: Option<Model>,
+    /// Draw a test pattern on every display
+    #[arg(long)]
+    draw: bool,
+    /// Cycle the lamps
+    #[arg(long)]
+    lamps: bool,
+    /// Play one second of 1 kHz on the handset
+    #[arg(long)]
+    tone: bool,
+    /// Print key and hook events for this long
+    #[arg(long, value_name = "SECONDS")]
+    keys: Option<u64>,
+}
+
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args = Args::parse();
     let model = args
-        .iter()
-        .find_map(|a| a.parse::<Model>().ok())
+        .model
         .or_else(|| std::fs::read_to_string("/proc/cmdline").ok().and_then(|c| Model::from_cmdline(&c)))
         .unwrap_or(Model::D60);
-    let flag = |f: &str| args.iter().any(|a| a == f);
     println!("model: {model}");
     let mut hal = Hal::phone(model);
     for (name, err) in &hal.missing {
@@ -24,7 +41,7 @@ fn main() {
     for s in hal.display.screens() {
         let info = hal.display.info(s).unwrap();
         println!("display {s:?}: {}x{} stride {} {:?}", info.width, info.height, info.stride, info.format);
-        if flag("--draw") {
+        if args.draw {
             let bpp = info.format.bytes_per_pixel();
             let fb = hal.display.frame(s).unwrap();
             for y in 0..info.height as usize {
@@ -51,7 +68,7 @@ fn main() {
     }
 
     println!("lamps: {:?}", hal.lamps.lamps());
-    if flag("--lamps") {
+    if args.lamps {
         for lamp in hal.lamps.lamps() {
             for c in [LampColor::Red, LampColor::Green, LampColor::Amber, LampColor::Off] {
                 let r = hal.lamps.set(lamp, c);
@@ -64,8 +81,7 @@ fn main() {
     }
 
     println!("off hook: {:?}", hal.input.off_hook());
-    if let Some(secs) = args.iter().position(|a| a == "--keys").and_then(|i| args.get(i + 1)) {
-        let secs: u64 = secs.parse().unwrap_or(10);
+    if let Some(secs) = args.keys {
         let end = std::time::Instant::now() + Duration::from_secs(secs);
         println!("press keys for {secs} s");
         while std::time::Instant::now() < end {
@@ -97,7 +113,7 @@ fn main() {
         },
         Err(e) => println!("mixer: {e}"),
     }
-    if flag("--tone") {
+    if args.tone {
         let rate = hal.audio.rate();
         let r = (|| -> Result<()> {
             let mut mixer = hal.audio.mixer()?;

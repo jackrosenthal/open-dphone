@@ -21,8 +21,15 @@ fn rss_kib() -> u64 {
         .unwrap_or(0)
 }
 
+/// Measure the app runtime (spike S1)
+#[derive(clap::Parser)]
+struct Args {
+    /// The staged apps root (e.g., /usr/share/dphone/apps)
+    apps_root: std::path::PathBuf,
+}
+
 fn main() {
-    let root = std::env::args().nth(1).expect("usage: s1 <apps-root>");
+    let root = <Args as clap::Parser>::parse().apps_root;
     let tmp = std::env::temp_dir().join(format!("s1-{}", std::process::id()));
     std::fs::create_dir_all(&tmp).unwrap();
     let store = Store::new(Model::D40);

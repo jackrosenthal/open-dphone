@@ -736,40 +736,34 @@ fn spawn_handlers(store: &Store, hal: Hal, config: Arc<Mutex<ConfigStore>>) {
     });
 }
 
+/// The web UI's server with a simulated phone behind it
+#[derive(clap::Parser)]
 struct Args {
+    /// The model to simulate
+    #[arg(long, default_value = "d60")]
     model: Model,
+    /// The HTTP port (on 127.0.0.1)
+    #[arg(long = "port", value_name = "PORT", default_value_t = 8480)]
     http: u16,
-    https: Option<u16>,
+    /// The HTTPS port (on 127.0.0.1); 0 for no HTTPS
+    #[arg(long = "https-port", value_name = "PORT", default_value_t = 8443)]
+    https: u16,
+    /// The nvdata directory [default: one per model in the temporary directory]
+    #[arg(long, value_name = "DIR")]
     nvdata: Option<PathBuf>,
-    /// Start with web configuration switched off (`web_ui_enabled` 0).
+    /// Start with web configuration switched off (`web_ui_enabled` 0)
+    #[arg(long)]
     web_disabled: bool,
-    /// Start in recovery (nvdata could not be mounted).
+    /// Start in recovery (nvdata could not be mounted)
+    #[arg(long)]
     recovery: bool,
-    /// Start with failed and stopped subsystems and a failed provisioning.
+    /// Start with failed and stopped subsystems and a failed provisioning
+    #[arg(long)]
     failing: bool,
 }
 
-fn args() -> Args {
-    let mut a = Args { model: Model::D60, http: 8480, https: Some(8443), nvdata: None, web_disabled: false, recovery: false, failing: false };
-    let mut it = std::env::args().skip(1);
-    while let Some(arg) = it.next() {
-        let mut value = || it.next().unwrap_or_else(|| panic!("{arg} needs a value"));
-        match arg.as_str() {
-            "--model" => a.model = value().parse().expect("model: d40, d45, d50, d60, d62, d65, or d70"),
-            "--port" => a.http = value().parse().expect("port"),
-            "--https-port" => a.https = Some(value().parse().expect("port")).filter(|p| *p != 0),
-            "--nvdata" => a.nvdata = Some(value().into()),
-            "--web-disabled" => a.web_disabled = true,
-            "--recovery" => a.recovery = true,
-            "--failing" => a.failing = true,
-            other => panic!("unknown argument {other}; use --model, --port, --https-port, --nvdata, --web-disabled, --recovery, --failing"),
-        }
-    }
-    a
-}
-
 fn main() -> std::io::Result<()> {
-    let args = args();
+    let args = <Args as clap::Parser>::parse();
     let model = args.model;
     let store = Store::new(model);
     let _ = store.install_logger(log::LevelFilter::Debug, false);
@@ -839,7 +833,7 @@ fn main() -> std::io::Result<()> {
     let upload_dir = std::env::temp_dir().join(format!("dphone-web-sim-upload-{}", model.name()));
     let options = WebOptions {
         http: Some(SocketAddr::from(([127, 0, 0, 1], args.http))),
-        https: args.https.map(|p| SocketAddr::from(([127, 0, 0, 1], p))),
+        https: (args.https != 0).then(|| SocketAddr::from(([127, 0, 0, 1], args.https))),
         upload_dir: upload_dir.clone(),
         ..Default::default()
     };

@@ -614,3 +614,31 @@ fn main() {
         std::process::exit(1);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// The command tree is well formed, and every command renders its help.
+    #[test]
+    fn the_command_line() {
+        Cli::command().debug_assert();
+        fn walk(cmd: &clap::Command, path: &mut Vec<String>, count: &mut usize) {
+            let mut words = path.clone();
+            words.push("--help".into());
+            let e = Cli::try_parse_from(&words).err().expect("help is not a parse");
+            assert_eq!(e.kind(), clap::error::ErrorKind::DisplayHelp, "{words:?}");
+            assert!(e.to_string().contains(&format!("Usage: {}", path.join(" "))), "{e}");
+            *count += 1;
+            for sub in cmd.get_subcommands().filter(|s| s.get_name() != "help") {
+                path.push(sub.get_name().to_string());
+                walk(sub, path, count);
+                path.pop();
+            }
+        }
+        let mut count = 0;
+        walk(&Cli::command(), &mut vec!["dphone-image".to_string()], &mut count);
+        assert!(count > 10, "{count}");
+    }
+}

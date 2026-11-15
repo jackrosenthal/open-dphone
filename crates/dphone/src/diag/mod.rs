@@ -2,7 +2,9 @@
 //!
 //! `dphone <command> [args...]` connects to the running main role, sends the
 //! command, and relays the reply to its own stdout, stderr, and exit status.
-//! Subsystems register their commands in the [`Registry`].
+//! Subsystems register their commands in the [`Registry`]; every command is
+//! defined with clap, once, for both ends (see [`Registry`] and
+//! [`crate::cli`]).
 //!
 //! ## Wire protocol
 //!
@@ -11,7 +13,7 @@
 //!
 //! | Type | Direction | Payload |
 //! | --- | --- | --- |
-//! | `r` | client to server, once | arguments joined by NUL bytes; the first is the command name |
+//! | `r` | client to server, once | arguments joined by NUL bytes; the first is the command name (the client has checked them against the command's definition) |
 //! | `o` | server to client | bytes for stdout |
 //! | `e` | server to client | bytes for stderr |
 //! | `x` | server to client, last | exit status as a big-endian `u32` |
@@ -35,9 +37,10 @@ pub const FRAME_EXIT: u8 = b'x';
 /// Largest payload either side accepts.
 pub const MAX_FRAME: usize = 1 << 20;
 
-/// Exit status for "the main role does not know this command".
-pub const EXIT_UNKNOWN: i32 = 127;
-/// Exit status for "this command exists but its subsystem is not wired in".
+/// Exit status for arguments that do not parse (clap's own).
+pub const EXIT_USAGE: i32 = 2;
+/// Exit status for "this command exists but nothing answers it" (its
+/// subsystem did not start, or is not part of this phone).
 pub const EXIT_UNAVAILABLE: i32 = 69;
 
 pub fn encode_frame(kind: u8, payload: &[u8]) -> Vec<u8> {

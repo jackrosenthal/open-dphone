@@ -13,8 +13,10 @@
 //! `ring_render --ticks NAME N` only produces `N` 10 ms ticks of one ring
 //! and writes nothing; it is for measuring the cost of the synthesis.
 
+use clap::Parser;
+
 use std::f64::consts::PI;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use dphone_media::ring::{BuiltinRing, RING_RATE, RingPlayer, RingSource};
 
@@ -65,17 +67,31 @@ fn ticks(ring: BuiltinRing, n: u32) -> Vec<i16> {
     pcm
 }
 
+/// Render the built-in ringtones to WAV files, or time their synthesis
+#[derive(Parser)]
+struct Args {
+    /// Where to write the WAV files
+    #[arg(required_unless_present = "ticks")]
+    dir: Option<PathBuf>,
+    /// How many cycles of each ring to render
+    #[arg(default_value_t = 3)]
+    cycles: u32,
+    /// Write nothing: only produce N 10 ms ticks of the ring NAME
+    #[arg(long, num_args = 2, value_names = ["NAME", "N"], conflicts_with = "dir")]
+    ticks: Option<Vec<String>>,
+}
+
 fn main() -> std::io::Result<()> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(String::as_str) == Some("--ticks") {
-        let ring = args.get(1).and_then(|n| BuiltinRing::from_name(n)).expect("the name of a built-in ring");
-        let n = args.get(2).and_then(|n| n.parse().ok()).expect("a number of ticks");
+    let args = Args::parse();
+    if let Some(t) = &args.ticks {
+        let ring = BuiltinRing::from_name(&t[0]).expect("the name of a built-in ring");
+        let n = t[1].parse().expect("a number of ticks");
         let pcm = ticks(ring, n);
         std::hint::black_box(&pcm);
         return Ok(());
     }
-    let dir = Path::new(args.first().expect("usage: ring_render DIR [CYCLES]"));
-    let cycles: u32 = args.get(1).map_or(3, |c| c.parse().expect("a number of cycles"));
+    let dir = args.dir.as_deref().expect("clap requires one");
+    let cycles = args.cycles;
     std::fs::create_dir_all(dir)?;
     for ring in BuiltinRing::ALL {
         let pcm = ticks(ring, ring.cycle_ms() / 10 * cycles);

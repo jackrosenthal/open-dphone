@@ -3,34 +3,156 @@
 //! ones a person at an SSH prompt expects.  Each is reachable as `dphone <name>` and, through a
 //! symlink named after it, directly.
 
-use std::path::Path;
+use std::path::PathBuf;
+
+use clap::{ArgAction, Args, Subcommand};
 
 use crate::init::modules;
 use crate::sys::{self, Shutdown};
 
-/// Names handled here.
-pub const NAMES: &[&str] =
-    &["mount", "umount", "insmod", "rmmod", "lsmod", "modprobe", "reboot", "poweroff", "halt", "dmesg", "ps"];
-
-pub fn is_command(name: &str) -> bool {
-    NAMES.contains(&name)
+/// The system commands.  The image has a symbolic link to the binary under
+/// each of these names (`nix/image.nix`), and the same names are commands
+/// of `dphone`.
+#[derive(Debug, Subcommand)]
+pub enum SystemCommand {
+    /// Mount a file system, or list what is mounted
+    Mount(Mount),
+    /// Unmount file systems
+    Umount(Umount),
+    /// Load a kernel module from a file
+    Insmod(Insmod),
+    /// Unload kernel modules
+    Rmmod(Rmmod),
+    /// List the loaded kernel modules
+    Lsmod,
+    /// Load a kernel module by name, and the modules it depends on
+    Modprobe(Modprobe),
+    /// Restart the phone
+    Reboot(ShutdownArgs),
+    /// Shut the phone down and turn it off
+    Poweroff(ShutdownArgs),
+    /// Shut the phone down and stop
+    Halt(ShutdownArgs),
+    /// Print the kernel's log
+    Dmesg(Dmesg),
+    /// List every process
+    Ps(Ps),
 }
 
-/// Run a system command.  `args` excludes the command name.
-pub fn run(name: &str, args: &[String]) -> i32 {
-    let result = match name {
-        "mount" => mount(args),
-        "umount" => umount(args),
-        "insmod" => insmod(args),
-        "rmmod" => rmmod(args),
-        "lsmod" => lsmod(),
-        "modprobe" => modprobe(args),
-        "reboot" => shutdown(Shutdown::Reboot, args),
-        "poweroff" => shutdown(Shutdown::PowerOff, args),
-        "halt" => shutdown(Shutdown::Halt, args),
-        "dmesg" => dmesg(args),
-        "ps" => ps(args),
-        _ => Err(format!("unknown command '{name}'")),
+#[derive(Debug, Args)]
+pub struct Mount {
+    /// The type of the file system
+    #[arg(short = 't', value_name = "TYPE")]
+    fstype: Option<String>,
+    /// Mount options, separated by commas
+    #[arg(short = 'o', value_name = "OPTIONS", value_delimiter = ',')]
+    options: Vec<String>,
+    /// Read-only (the option ro)
+    #[arg(short = 'r')]
+    read_only: bool,
+    /// Read and write (the option rw)
+    #[arg(short = 'w', conflicts_with = "read_only")]
+    read_write: bool,
+    /// What to mount; without it and TARGET, what is mounted is listed
+    ///
+    /// With the option remount, the one name given is the mount point.
+    source: Option<String>,
+    /// Where to mount it
+    target: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct Umount {
+    /// Unmount even if the file system is busy
+    #[arg(short)]
+    force: bool,
+    /// Detach now, and clean up when the file system is no longer busy
+    #[arg(short)]
+    lazy: bool,
+    #[arg(required = true, value_name = "TARGET")]
+    targets: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct Insmod {
+    file: PathBuf,
+    /// Parameters of the module, as NAME=VALUE
+    #[arg(value_name = "PARAMETER")]
+    parameters: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct Modprobe {
+    name: String,
+    /// Parameters of the module, as NAME=VALUE
+    #[arg(value_name = "PARAMETER")]
+    parameters: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct Rmmod {
+    /// Unload even if the module is in use
+    #[arg(short)]
+    force: bool,
+    #[arg(required = true, value_name = "NAME")]
+    names: Vec<String>,
+}
+
+/// The reason goes to the stock `reboot_reason` file from here, before the
+/// init role is signaled: these commands run in the calling process (they
+/// must work with the main role down), and the signal to PID 1 carries no
+/// text.
+#[derive(Debug, Default, Args)]
+pub struct ShutdownArgs {
+    /// At once, by the system call: the init role is not asked to stop
+    /// the main role and unmount nvdata first
+    #[arg(short, long)]
+    force: bool,
+    /// Why, for the record the next boot shows
+    #[arg(value_name = "REASON")]
+    reason: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct Dmesg {
+    /// Clear the log after printing it
+    #[arg(short)]
+    clear: bool,
+}
+
+/// Every process is always listed, so the usual ways of asking for all of
+/// them ('ps aux', 'ps -ef', 'ps -A') are accepted and change nothing.
+#[derive(Debug, Args)]
+pub struct Ps {
+    #[arg(short = 'A', short_aliases = ['a', 'e', 'f', 'l', 'u', 'w', 'x'], action = ArgAction::Count, hide = true)]
+    all: u8,
+    /// Letters of the same kind without a hyphen (e.g., aux)
+    #[arg(value_name = "LETTERS", value_parser = ps_letters)]
+    letters: Option<String>,
+}
+
+fn ps_letters(word: &str) -> Result<String, String> {
+    if word.chars().all(|c| "aAefluwx".contains(c)) {
+        Ok(word.to_string())
+    } else {
+        Err("only the letters a, A, e, f, l, u, w, and x are known, and all mean every process".into())
+    }
+}
+
+/// Run a system command.
+pub fn run(command: SystemCommand) -> i32 {
+    let (name, result) = match command {
+        SystemCommand::Mount(a) => ("mount", mount(a)),
+        SystemCommand::Umount(a) => ("umount", umount(a)),
+        SystemCommand::Insmod(a) => ("insmod", insmod(a)),
+        SystemCommand::Rmmod(a) => ("rmmod", rmmod(a)),
+        SystemCommand::Lsmod => ("lsmod", lsmod()),
+        SystemCommand::Modprobe(a) => ("modprobe", modprobe(a)),
+        SystemCommand::Reboot(a) => ("reboot", shutdown(Shutdown::Reboot, a)),
+        SystemCommand::Poweroff(a) => ("poweroff", shutdown(Shutdown::PowerOff, a)),
+        SystemCommand::Halt(a) => ("halt", shutdown(Shutdown::Halt, a)),
+        SystemCommand::Dmesg(a) => ("dmesg", dmesg(a)),
+        SystemCommand::Ps(_) => ("ps", ps()),
     };
     match result {
         Ok(()) => 0,
@@ -45,30 +167,8 @@ fn print(text: &str) {
     crate::out!("{text}");
 }
 
-fn mount(args: &[String]) -> Result<(), String> {
-    let mut fstype = String::new();
-    let mut opts = String::new();
-    let mut positional = Vec::new();
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "-t" => fstype = it.next().ok_or("-t needs a type")?.clone(),
-            "-o" => {
-                if !opts.is_empty() {
-                    opts.push(',');
-                }
-                opts.push_str(it.next().ok_or("-o needs options")?);
-            }
-            "-r" => opts.push_str(",ro"),
-            "-w" => opts.push_str(",rw"),
-            "-h" | "--help" => {
-                print("usage: mount [-t TYPE] [-o OPTIONS] SOURCE TARGET\n       mount            (list mounts)\n");
-                return Ok(());
-            }
-            _ => positional.push(a.clone()),
-        }
-    }
-    if positional.is_empty() {
+fn mount(args: Mount) -> Result<(), String> {
+    let (Some(first), second) = (args.source, args.target) else {
         let mounts = std::fs::read_to_string("/proc/mounts").map_err(|e| format!("/proc/mounts: {e}"))?;
         for line in mounts.lines() {
             let f: Vec<&str> = line.split_ascii_whitespace().collect();
@@ -77,63 +177,48 @@ fn mount(args: &[String]) -> Result<(), String> {
             }
         }
         return Ok(());
-    }
-    let (flags, data) = sys::parse_mount_options(&opts);
-    let (source, target) = match positional.as_slice() {
-        [source, target] => (source.as_str(), target.as_str()),
-        // `mount -o remount,rw /nvdata`
-        [target] if flags & libc::MS_REMOUNT != 0 => ("none", target.as_str()),
-        _ => return Err("usage: mount [-t TYPE] [-o OPTIONS] SOURCE TARGET".into()),
     };
+    let mut options = args.options;
+    if args.read_only {
+        options.push("ro".into());
+    }
+    if args.read_write {
+        options.push("rw".into());
+    }
+    let (flags, data) = sys::parse_mount_options(&options.join(","));
+    let (source, target) = match second {
+        Some(target) => (first, target),
+        // `mount -o remount,rw /nvdata`
+        None if flags & libc::MS_REMOUNT != 0 => ("none".to_string(), first),
+        None => return Err("where to mount it is needed (SOURCE TARGET), except with the option remount".into()),
+    };
+    let fstype = args.fstype.unwrap_or_default();
     if fstype.is_empty() && flags & (libc::MS_REMOUNT | libc::MS_BIND) == 0 {
         return Err("a filesystem type is needed (-t TYPE)".into());
     }
-    sys::mount(source, target, &fstype, flags, &data).map_err(|e| format!("{source} on {target}: {e}"))
+    sys::mount(&source, &target, &fstype, flags, &data).map_err(|e| format!("{source} on {target}: {e}"))
 }
 
-fn umount(args: &[String]) -> Result<(), String> {
-    let mut flags = 0;
-    let mut targets = Vec::new();
-    for a in args {
-        match a.as_str() {
-            "-f" => flags |= libc::MNT_FORCE,
-            "-l" => flags |= libc::MNT_DETACH,
-            _ => targets.push(a),
-        }
-    }
-    if targets.is_empty() {
-        return Err("usage: umount [-f] [-l] TARGET...".into());
-    }
-    for t in targets {
+fn umount(args: Umount) -> Result<(), String> {
+    let flags = if args.force { libc::MNT_FORCE } else { 0 } | if args.lazy { libc::MNT_DETACH } else { 0 };
+    for t in &args.targets {
         sys::umount(t, flags).map_err(|e| format!("{t}: {e}"))?;
     }
     Ok(())
 }
 
-fn insmod(args: &[String]) -> Result<(), String> {
-    let (path, params) = args.split_first().ok_or("usage: insmod FILE [PARAM=VALUE...]")?;
-    modules::insmod(Path::new(path), &params.join(" ")).map_err(|e| format!("{path}: {e}"))
+fn insmod(args: Insmod) -> Result<(), String> {
+    modules::insmod(&args.file, &args.parameters.join(" ")).map_err(|e| format!("{}: {e}", args.file.display()))
 }
 
-fn modprobe(args: &[String]) -> Result<(), String> {
-    let (name, params) = args.split_first().ok_or("usage: modprobe NAME [PARAM=VALUE...]")?;
-    let index = modules::Index::scan(Path::new(modules::MODULES_ROOT));
-    modules::modprobe(&index, name, &params.join(" ")).map(|_| ()).map_err(|e| format!("{name}: {e}"))
+fn modprobe(args: Modprobe) -> Result<(), String> {
+    let index = modules::Index::scan(std::path::Path::new(modules::MODULES_ROOT));
+    modules::modprobe(&index, &args.name, &args.parameters.join(" ")).map(|_| ()).map_err(|e| format!("{}: {e}", args.name))
 }
 
-fn rmmod(args: &[String]) -> Result<(), String> {
-    let mut flags = libc::O_NONBLOCK;
-    let mut names = Vec::new();
-    for a in args {
-        match a.as_str() {
-            "-f" => flags |= libc::O_TRUNC,
-            _ => names.push(a),
-        }
-    }
-    if names.is_empty() {
-        return Err("usage: rmmod [-f] NAME...".into());
-    }
-    for n in names {
+fn rmmod(args: Rmmod) -> Result<(), String> {
+    let flags = libc::O_NONBLOCK | if args.force { libc::O_TRUNC } else { 0 };
+    for n in &args.names {
         let name = modules::normalize(n);
         sys::delete_module(&name, flags).map_err(|e| format!("{n}: {e}"))?;
     }
@@ -154,17 +239,11 @@ fn lsmod() -> Result<(), String> {
     Ok(())
 }
 
-/// `reboot`, `halt`, and `poweroff`: `[-f] [--halt|--poweroff] [REASON...]`.
-///
-/// The reason goes to the stock `reboot_reason` file from here, before the
-/// init role is signaled: these names are handled in the calling process
-/// (they must work with the main role down), so the main role's own
-/// `reboot` command, which records a reason, is never reached from a shell,
-/// and the signal to PID 1 carries no text.
-fn shutdown(kind: Shutdown, args: &[String]) -> Result<(), String> {
+/// `reboot`, `halt`, and `poweroff`.
+fn shutdown(kind: Shutdown, args: ShutdownArgs) -> Result<(), String> {
     let paths = crate::paths::Paths::default();
     let may_write = crate::paths::stock_writes_allowed() && !paths.recovery_flag().exists();
-    shutdown_with(kind, args, &paths, may_write, |kind, force| {
+    shutdown_with(kind, &args, &paths, may_write, |kind, force| {
         if force {
             sys::sync();
             return Err(format!("reboot system call: {}", sys::reboot(kind)));
@@ -182,39 +261,29 @@ fn shutdown(kind: Shutdown, args: &[String]) -> Result<(), String> {
 }
 
 /// The part of [`shutdown`] that does not depend on being on a phone:
-/// parse the arguments, record the reason under `paths` (when `may_write`),
+/// record the reason under `paths` (when `may_write`),
 /// then hand over to `go(kind, force)`.  The record is complete on flash
 /// (written to a temporary file, synced, renamed, directory synced) before
 /// `go` runs.
 fn shutdown_with(
-    mut kind: Shutdown,
-    args: &[String],
+    kind: Shutdown,
+    args: &ShutdownArgs,
     paths: &crate::paths::Paths,
     may_write: bool,
     go: impl FnOnce(Shutdown, bool) -> Result<(), String>,
 ) -> Result<(), String> {
-    let mut force = false;
-    let mut words = Vec::new();
-    for a in args {
-        match a.as_str() {
-            "-f" => force = true,
-            "--halt" => kind = Shutdown::Halt,
-            "--poweroff" => kind = Shutdown::PowerOff,
-            _ => words.push(a.as_str()),
-        }
-    }
-    let reason = if words.is_empty() { "dphone: requested".to_string() } else { format!("dphone: {}", words.join(" ")) };
+    let reason =
+        if args.reason.is_empty() { "dphone: requested".to_string() } else { format!("dphone: {}", args.reason.join(" ")) };
     if may_write
         && let Err(e) = crate::paths::write_atomic(&paths.reboot_reason(), format!("{reason}\n").as_bytes(), 0o644)
     {
         crate::errln!("warning: {}: {e}", paths.reboot_reason().display());
     }
-    go(kind, force)
+    go(kind, args.force)
 }
 
-fn dmesg(args: &[String]) -> Result<(), String> {
-    let clear = args.iter().any(|a| a == "-c");
-    let raw = sys::read_kernel_log(clear).map_err(|e| e.to_string())?;
+fn dmesg(args: Dmesg) -> Result<(), String> {
+    let raw = sys::read_kernel_log(args.clear).map_err(|e| e.to_string())?;
     let text = String::from_utf8_lossy(&raw);
     let mut out = String::with_capacity(text.len());
     for line in text.lines() {
@@ -258,19 +327,8 @@ fn parse_stat(stat: &str) -> Option<Process> {
 }
 
 /// Every process: PID, parent, state, resident memory, CPU time, and command
-/// line.  The usual ways of asking for all processes (`ps aux`, `ps -ef`)
-/// are accepted; there is no selection, since everything is always shown.
-fn ps(args: &[String]) -> Result<(), String> {
-    const USAGE: &str = "usage: ps    (lists every process; 'aux', '-ef', '-A', and the like are accepted)";
-    for a in args {
-        if a == "-h" || a == "--help" {
-            print(&format!("{USAGE}\n"));
-            return Ok(());
-        }
-        if !a.trim_start_matches('-').chars().all(|c| "aAefluwx".contains(c)) {
-            return Err(format!("unknown option '{a}'\n{USAGE}"));
-        }
-    }
+/// line.
+fn ps() -> Result<(), String> {
     // SAFETY: sysconf with valid names has no preconditions.
     let (tick, page_kb) = unsafe { (libc::sysconf(libc::_SC_CLK_TCK).max(1) as u64, libc::sysconf(libc::_SC_PAGESIZE).max(1024) as u64 / 1024) };
     let mut pids: Vec<u32> = std::fs::read_dir("/proc")
@@ -310,10 +368,92 @@ mod tests {
         assert_eq!(parse_stat("12 (x) R"), None);
     }
 
-    fn args(words: &[&str]) -> Vec<String> {
-        words.iter().map(|w| w.to_string()).collect()
+    #[derive(Debug, clap::Parser)]
+    #[command(multicall = true)]
+    struct Cli {
+        #[command(subcommand)]
+        command: SystemCommand,
     }
 
+    fn parse(words: &[&str]) -> Result<SystemCommand, clap::Error> {
+        <Cli as clap::Parser>::try_parse_from(words).map(|c| c.command)
+    }
+
+    fn bad(words: &[&str]) {
+        assert!(parse(words).is_err(), "{words:?}");
+    }
+
+    #[test]
+    fn mount_arguments() {
+        let Ok(SystemCommand::Mount(m)) = parse(&["mount"]) else { panic!("mount") };
+        assert!(m.source.is_none() && m.target.is_none());
+        let Ok(SystemCommand::Mount(m)) = parse(&["mount", "-t", "jffs2", "-o", "noatime,sync", "-o", "ro", "/dev/mtdblock9", "/nvdata"])
+        else {
+            panic!("mount with options")
+        };
+        assert_eq!(m.fstype.as_deref(), Some("jffs2"));
+        assert_eq!(m.options, ["noatime", "sync", "ro"]);
+        assert_eq!((m.source.as_deref(), m.target.as_deref()), (Some("/dev/mtdblock9"), Some("/nvdata")));
+        let Ok(SystemCommand::Mount(m)) = parse(&["mount", "-o", "remount,rw", "/nvdata"]) else { panic!("remount") };
+        assert_eq!((m.options.as_slice(), m.source.as_deref(), m.target), (&["remount".to_string(), "rw".to_string()][..], Some("/nvdata"), None));
+        let Ok(SystemCommand::Mount(m)) = parse(&["mount", "-r", "-t", "proc", "proc", "/proc"]) else { panic!("-r") };
+        assert!(m.read_only && !m.read_write);
+        bad(&["mount", "-t"]);
+        bad(&["mount", "-r", "-w", "a", "b"]);
+        bad(&["mount", "a", "b", "c"]);
+        bad(&["mount", "--bind", "a", "b"]);
+    }
+
+    #[test]
+    fn module_and_unmount_arguments() {
+        let Ok(SystemCommand::Umount(u)) = parse(&["umount", "-l", "/a", "-f", "/b"]) else { panic!("umount") };
+        assert_eq!((u.force, u.lazy, u.targets.as_slice()), (true, true, &["/a".to_string(), "/b".to_string()][..]));
+        bad(&["umount"]);
+        bad(&["umount", "-f"]);
+        let Ok(SystemCommand::Insmod(i)) = parse(&["insmod", "/lib/modules/x.ko", "debug=1", "mode=a"]) else { panic!("insmod") };
+        assert_eq!((i.file.to_str(), i.parameters.as_slice()), (Some("/lib/modules/x.ko"), &["debug=1".to_string(), "mode=a".to_string()][..]));
+        bad(&["insmod"]);
+        let Ok(SystemCommand::Modprobe(m)) = parse(&["modprobe", "bcm_vpm", "x=1"]) else { panic!("modprobe") };
+        assert_eq!((m.name.as_str(), m.parameters.len()), ("bcm_vpm", 1));
+        bad(&["modprobe"]);
+        let Ok(SystemCommand::Rmmod(r)) = parse(&["rmmod", "-f", "a", "b"]) else { panic!("rmmod") };
+        assert_eq!((r.force, r.names.len()), (true, 2));
+        bad(&["rmmod"]);
+        assert!(matches!(parse(&["lsmod"]), Ok(SystemCommand::Lsmod)));
+        bad(&["lsmod", "x"]);
+        assert!(matches!(parse(&["dmesg"]), Ok(SystemCommand::Dmesg(Dmesg { clear: false }))));
+        assert!(matches!(parse(&["dmesg", "-c"]), Ok(SystemCommand::Dmesg(Dmesg { clear: true }))));
+        bad(&["dmesg", "-x"]);
+    }
+
+    /// The usual ways of asking `ps` for every process.
+    #[test]
+    fn ps_arguments() {
+        for good in [&["ps"][..], &["ps", "aux"], &["ps", "-ef"], &["ps", "-A"], &["ps", "-e", "-f"], &["ps", "auxww"], &["ps", "-eww"]] {
+            assert!(matches!(parse(good), Ok(SystemCommand::Ps(_))), "{good:?}");
+        }
+        bad(&["ps", "-p", "1"]);
+        bad(&["ps", "axo"]);
+        bad(&["ps", "aux", "more"]);
+    }
+
+    fn args(words: &[&str]) -> ShutdownArgs {
+        let mut all = vec!["reboot"];
+        all.extend(words);
+        match parse(&all) {
+            Ok(SystemCommand::Reboot(a)) => a,
+            other => panic!("{words:?}: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shutdown_arguments() {
+        for name in ["reboot", "poweroff", "halt"] {
+            assert!(parse(&[name]).is_ok() && parse(&[name, "-f", "why"]).is_ok() && parse(&[name, "--force"]).is_ok(), "{name}");
+            // The kind is the command's name, not an option.
+            bad(&[name, "--halt"]);
+        }
+    }
     /// `dphone reboot REASON` (and `halt`, `poweroff`): the reason is in
     /// `reboot_reason`, whole, by the time the init role is signaled or the
     /// system call is made.
@@ -344,7 +484,7 @@ mod tests {
         assert_eq!(run(Shutdown::Reboot, &[], true), (Shutdown::Reboot, false, "dphone: requested\n".to_string()));
         // Options are not part of the reason, wherever they stand.
         assert_eq!(
-            run(Shutdown::Reboot, &["going", "-f", "dark", "--halt"], true),
+            run(Shutdown::Halt, &["going", "-f", "dark"], true),
             (Shutdown::Halt, true, "dphone: going dark\n".to_string())
         );
         assert_eq!(
@@ -363,7 +503,7 @@ mod tests {
         );
 
         // A failure to hand over is reported.
-        let e = shutdown_with(Shutdown::Reboot, &[], &paths, true, |_, _| Err("cannot signal PID 1: no".into()));
+        let e = shutdown_with(Shutdown::Reboot, &args(&[]), &paths, true, |_, _| Err("cannot signal PID 1: no".into()));
         assert_eq!(e, Err("cannot signal PID 1: no".to_string()));
     }
 }

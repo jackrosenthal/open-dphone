@@ -414,6 +414,7 @@ dependencies = [
 name = "cargo-dphone-app"
 version = "3.0.0"
 dependencies = [
+ "clap",
  "dphone-app-sdk",
  "serde_json",
  "wit-component 0.263.0",
@@ -529,6 +530,7 @@ dependencies = [
  "anstyle",
  "clap_lex",
  "strsim",
+ "terminal_size",
 ]
 
 [[package]]
@@ -999,6 +1001,7 @@ name = "dphone"
 version = "3.0.0"
 dependencies = [
  "async-trait",
+ "clap",
  "dphone-apps",
  "dphone-bt",
  "dphone-config",
@@ -1041,6 +1044,7 @@ name = "dphone-apps"
 version = "3.0.0"
 dependencies = [
  "cargo-dphone-app",
+ "clap",
  "dphone-apps",
  "dphone-hal",
  "dphone-state",
@@ -1101,6 +1105,7 @@ dependencies = [
 name = "dphone-hal"
 version = "3.0.0"
 dependencies = [
+ "clap",
  "dphone-state",
  "libc",
  "log",
@@ -1123,6 +1128,7 @@ name = "dphone-media"
 version = "3.0.0"
 dependencies = [
  "aes",
+ "clap",
  "dphone-vpm",
  "getrandom 0.2.17",
  "hmac",
@@ -1210,6 +1216,7 @@ dependencies = [
  "buffa",
  "buffa-codegen",
  "bytes",
+ "clap",
  "connectrpc",
  "connectrpc-build",
  "crc32fast",
@@ -2012,6 +2019,7 @@ checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 name = "jffs2-image"
 version = "3.0.0"
 dependencies = [
+ "clap",
  "miniz_oxide 0.8.9",
  "ruzstd",
 ]
@@ -3589,6 +3597,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal_size"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
+dependencies = [
+ "rustix",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4738,6 +4756,9 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 [[package]]
 name = "xtask"
 version = "3.0.0"
+dependencies = [
+ "clap",
+]
 
 [[package]]
 name = "zerocopy"

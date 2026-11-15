@@ -2,45 +2,71 @@
 //! process, not through the diag socket, so they work over SSH or the serial
 //! console even when the main role is down.
 //!
-//! This is also the way back to stock firmware: `dphone update FILE.eff`
-//! accepts a stock EFF.
+//! This is also the way back to stock firmware: `dphone update install
+//! FILE.eff` accepts a stock EFF.
 
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use clap::Subcommand;
 use dphone_hal::Mtd;
 use dphone_hal::phone::PhoneMtd;
 use dphone_update::{Bank, Options, Updater, inspect, select_bank, trial};
 
 use crate::init::trial::TrialRecord;
 
-const USAGE: &str = "\
-usage: dphone update status
-       dphone update FILE.eff [--bank a|b] [--allow-unbootable-other]
-       dphone update switch-bank a|b
-       dphone update write-userdata IMAGE.jffs2
-       dphone update arm-trial [--return-to a|b]
-  status       show both banks, the ctrl record, and what boot2 will boot next
-  FILE.eff     install an image (Open DPhone or stock) into the bank that is
-               not running, verify it, and select it for the next boot;
-               reboot afterwards with 'dphone reboot'
-  switch-bank  select a bank for the next boot without writing an image
-               (refused unless that bank holds a bootable image)
-  arm-trial    record a trial boot of the bank 'ctrl' selects for the next
-               boot, for an image installed and selected by other means
-               (e.g., by the stock updater, or with switch-bank, which
-               must come first because it removes a trial record): Open
-               DPhone returns to the other bank by itself if the image
-               does not come up healthy within a few boots.  The bank to
-               return to is the running one (root= on the kernel command
-               line); when that is the selected bank itself or neither
-               bank (a kernel started from RAM), name it with --return-to
-  write-userdata
-               erase the unused 'userdata' partition and write a root file
-               system image there, for booting a test kernel from RAM with
-               root=/dev/mtdblockN without touching either firmware bank
-";
+#[derive(Debug, Subcommand)]
+pub enum UpdateCommand {
+    /// Show both banks, the ctrl record, and what boot2 will boot next
+    Status,
+    /// Install an image into the bank that is not running, and select it
+    ///
+    /// The image (Open DPhone or stock) is written, verified, and selected
+    /// for the next boot; reboot afterwards with 'dphone reboot'.
+    Install {
+        /// The image (an EFF file)
+        file: PathBuf,
+        /// The bank to write [default: the one that is not running]
+        #[arg(long, value_parser = parse_bank)]
+        bank: Option<Bank>,
+        /// Go ahead even if the bank that stays is not bootable (for
+        /// recovery work from a system started from RAM)
+        #[arg(long)]
+        allow_unbootable_other: bool,
+    },
+    /// Select a bank for the next boot without writing an image
+    ///
+    /// Refused unless that bank holds a bootable image.  Removes a trial
+    /// record.
+    SwitchBank {
+        #[arg(value_parser = parse_bank)]
+        bank: Bank,
+    },
+    /// Record a trial boot of the bank 'ctrl' selects for the next boot
+    ///
+    /// For an image installed and selected by other means (e.g., by the
+    /// stock updater, or with switch-bank, which must come first because it
+    /// removes a trial record): Open DPhone returns to the other bank by
+    /// itself if the image does not come up healthy within a few boots.
+    ArmTrial {
+        /// The bank to return to [default: the running one]
+        ///
+        /// The running bank is the one in root= on the kernel command line;
+        /// when that is the selected bank itself or neither bank (a kernel
+        /// started from RAM), name the bank to return to.
+        #[arg(long, value_name = "BANK", value_parser = parse_bank)]
+        return_to: Option<Bank>,
+    },
+    /// Erase the unused 'userdata' partition and write a root file system image there
+    ///
+    /// For booting a test kernel from RAM with root=/dev/mtdblockN without
+    /// touching either firmware bank.
+    WriteUserdata {
+        /// The image (JFFS2); '-' reads it from standard input
+        image: PathBuf,
+    },
+}
 
 fn cmdline() -> String {
     std::fs::read_to_string("/proc/cmdline").unwrap_or_default()
@@ -55,11 +81,11 @@ fn open_mtd() -> Result<PhoneMtd, String> {
     PhoneMtd::open().map_err(|e| format!("flash not available: {e}"))
 }
 
-fn parse_bank(s: &str) -> Option<Bank> {
-    match s.to_ascii_lowercase().as_str() {
-        "a" | "0" => Some(Bank::A),
-        "b" | "1" => Some(Bank::B),
-        _ => None,
+fn parse_bank(s: &str) -> Result<Bank, String> {
+    match s {
+        "a" | "A" => Ok(Bank::A),
+        "b" | "B" => Ok(Bank::B),
+        _ => Err("not a bank (a or b)".into()),
     }
 }
 
@@ -82,25 +108,15 @@ pub fn rollback_hook(record: &TrialRecord) -> std::io::Result<()> {
     trial::rollback(&mut mtd, model, &cmdline(), previous).map_err(Into::into)
 }
 
-pub fn run(args: &[String]) -> i32 {
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    let result = match args.as_slice() {
-        ["status"] => status(),
-        ["switch-bank", bank] => match parse_bank(bank) {
-            Some(b) => switch_bank(b),
-            None => Err(format!("unknown bank '{bank}' (a or b)")),
-        },
-        ["write-userdata", file] => write_userdata(file),
-        ["arm-trial"] => arm_trial(None),
-        ["arm-trial", "--return-to", bank] => match parse_bank(bank) {
-            Some(b) => arm_trial(Some(b)),
-            None => Err(format!("unknown bank '{bank}' (a or b)")),
-        },
-        [file, rest @ ..] if !file.starts_with('-') && *file != "help" => install(file, rest),
-        _ => {
-            crate::err!("{USAGE}");
-            return 2;
+pub fn run(command: UpdateCommand) -> i32 {
+    let result = match command {
+        UpdateCommand::Status => status(),
+        UpdateCommand::Install { file, bank, allow_unbootable_other } => {
+            install(&file, Options { target: bank, allow_unbootable_other, ..Options::default() })
         }
+        UpdateCommand::SwitchBank { bank } => switch_bank(bank),
+        UpdateCommand::ArmTrial { return_to } => arm_trial(return_to),
+        UpdateCommand::WriteUserdata { image } => write_userdata(&image),
     };
     match result {
         Ok(()) => 0,
@@ -169,21 +185,9 @@ fn arm_trial(return_to: Option<Bank>) -> Result<(), String> {
     Ok(())
 }
 
-fn install(file: &str, rest: &[&str]) -> Result<(), String> {
-    let mut options = Options::default();
-    let mut it = rest.iter();
-    while let Some(a) = it.next() {
-        match *a {
-            "--bank" => {
-                let b = it.next().and_then(|b| parse_bank(b)).ok_or("--bank needs a or b")?;
-                options.target = Some(b);
-            }
-            "--allow-unbootable-other" => options.allow_unbootable_other = true,
-            other => return Err(format!("unknown option '{other}'\n{USAGE}")),
-        }
-    }
+fn install(file: &Path, options: Options) -> Result<(), String> {
     let model = model().ok_or("model unknown (no digium_board= and no devicetree match)")?;
-    let reader = BufReader::with_capacity(64 * 1024, File::open(Path::new(file)).map_err(|e| format!("{file}: {e}"))?);
+    let reader = BufReader::with_capacity(64 * 1024, File::open(file).map_err(|e| format!("{}: {e}", file.display()))?);
     let mut mtd = open_mtd()?;
     let parts = mtd.partitions().map_err(|e| e.to_string())?;
     if parts.is_empty() {
@@ -224,14 +228,14 @@ fn install(file: &str, rest: &[&str]) -> Result<(), String> {
 
 /// Write a root file system image to `userdata`, which stock leaves unused.
 /// Neither bank and nothing boot2 reads is touched.
-fn write_userdata(file: &str) -> Result<(), String> {
+fn write_userdata(file: &Path) -> Result<(), String> {
     const PART: &str = "userdata";
     // Streamed one erase block at a time ("-" is standard input): a stock
     // phone has too little free memory to hold the image twice.
-    let mut input: Box<dyn Read> = if file == "-" {
+    let mut input: Box<dyn Read> = if file == Path::new("-") {
         Box::new(std::io::stdin().lock())
     } else {
-        Box::new(File::open(Path::new(file)).map_err(|e| format!("{file}: {e}"))?)
+        Box::new(File::open(file).map_err(|e| format!("{}: {e}", file.display()))?)
     };
     let mounts = std::fs::read_to_string("/proc/mounts").unwrap_or_default();
     let mut mtd = open_mtd()?;
@@ -256,7 +260,7 @@ fn write_userdata(file: &str) -> Result<(), String> {
                 Ok(0) => break,
                 Ok(k) => n += k,
                 Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
-                Err(e) => return Err(format!("{file}: {e}")),
+                Err(e) => return Err(format!("{}: {e}", file.display())),
             }
         }
         if n == 0 {
@@ -275,4 +279,60 @@ fn write_userdata(file: &str) -> Result<(), String> {
     }
     crate::outln!("wrote and verified {total} bytes; boot with root=/dev/mtdblock{} rootfstype=jffs2 ro", info.index);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Debug, Parser)]
+    struct Cli {
+        #[command(subcommand)]
+        command: UpdateCommand,
+    }
+
+    fn parse(words: &[&str]) -> Result<UpdateCommand, clap::Error> {
+        Cli::try_parse_from(std::iter::once(&"update").chain(words)).map(|c| c.command)
+    }
+
+    #[test]
+    fn commands() {
+        assert!(matches!(parse(&["status"]), Ok(UpdateCommand::Status)));
+        let Ok(UpdateCommand::Install { file, bank, allow_unbootable_other }) = parse(&["install", "/tmp/fw.eff"]) else {
+            panic!("install does not parse")
+        };
+        assert_eq!((file.as_path(), bank, allow_unbootable_other), (Path::new("/tmp/fw.eff"), None, false));
+        let Ok(UpdateCommand::Install { bank, allow_unbootable_other, .. }) =
+            parse(&["install", "--bank", "b", "fw.eff", "--allow-unbootable-other"])
+        else {
+            panic!("install with options does not parse")
+        };
+        assert_eq!((bank, allow_unbootable_other), (Some(Bank::B), true));
+        assert!(matches!(parse(&["switch-bank", "A"]), Ok(UpdateCommand::SwitchBank { bank: Bank::A })));
+        assert!(matches!(parse(&["arm-trial"]), Ok(UpdateCommand::ArmTrial { return_to: None })));
+        assert!(matches!(parse(&["arm-trial", "--return-to", "a"]), Ok(UpdateCommand::ArmTrial { return_to: Some(Bank::A) })));
+        assert!(matches!(parse(&["write-userdata", "-"]), Ok(UpdateCommand::WriteUserdata { .. })));
+    }
+
+    #[test]
+    fn mistakes() {
+        for bad in [
+            &[][..],
+            // An image is installed by the command that says so.
+            &["fw.eff"],
+            &["install"],
+            &["install", "a.eff", "b.eff"],
+            &["install", "a.eff", "--bank"],
+            &["install", "a.eff", "--bank", "c"],
+            &["switch-bank"],
+            &["switch-bank", "2"],
+            &["arm-trial", "a"],
+            &["arm-trial", "--return-to"],
+            &["write-userdata"],
+            &["status", "now"],
+        ] {
+            assert!(parse(bad).is_err(), "{bad:?}");
+        }
+    }
 }

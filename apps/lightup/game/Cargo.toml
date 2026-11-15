@@ -8,3 +8,7 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+
+[dev-dependencies]
+# The command line of the timing example.
+clap = { version = "4", features = ["derive"] }

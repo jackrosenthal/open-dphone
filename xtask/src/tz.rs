@@ -3,7 +3,7 @@
 //! current rule as a POSIX TZ string; that line is all the phone needs.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::{Result, repo_root};
 
@@ -36,9 +36,15 @@ fn walk(base: &Path, dir: &Path, out: &mut Vec<(String, String)>) -> Result<()> 
     Ok(())
 }
 
-pub fn table(args: &[String]) -> Result<()> {
-    let dir = args.first().map(String::as_str).unwrap_or("/usr/share/zoneinfo");
-    let base = Path::new(dir);
+#[derive(Debug, clap::Args)]
+pub struct TzTable {
+    /// The zone database
+    #[arg(default_value = "/usr/share/zoneinfo")]
+    zoneinfo_dir: PathBuf,
+}
+
+pub fn table(args: TzTable) -> Result<()> {
+    let base = args.zoneinfo_dir.as_path();
     let mut zones = Vec::new();
     walk(base, base, &mut zones)?;
     zones.sort();

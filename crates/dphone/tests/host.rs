@@ -137,9 +137,23 @@ fn diag_commands_and_restart() {
     assert_eq!(code, 0);
     assert!(out.contains("simulator"), "{out}");
 
+    // A mistake is reported by the client, in clap's words, with clap's
+    // exit status; so is help for a command the main role answers.
     let (code, _, err) = diag(&socket, &["no-such-command"]);
-    assert_eq!(code, 127);
-    assert!(err.contains("unknown command"), "{err}");
+    assert_eq!(code, 2);
+    assert!(err.contains("unrecognized subcommand 'no-such-command'"), "{err}");
+    let (code, _, err) = diag(&socket, &["hook", "up"]);
+    assert_eq!(code, 2);
+    assert!(err.contains("invalid value 'up'"), "{err}");
+    let (code, out, _) = diag(&socket, &["config", "set", "--help"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("Usage: dphone config set <ID> <VALUE>"), "{out}");
+    // Keys are checked before any is pressed.
+    let (code, _, err) = diag(&socket, &["key", "1", "nope"]);
+    assert_eq!(code, 2);
+    assert!(err.contains("invalid value 'nope'"), "{err}");
+    let (code, _, err) = diag(&socket, &["key", "1", "2", "#"]);
+    assert_eq!(code, 0, "{err}");
 
     wait_for("healthy", Duration::from_secs(10), || diag(&socket, &["health"]).0 == 0);
     let (code, out, _) = diag(&socket, &["log", "-n", "50"]);
@@ -329,10 +343,11 @@ fn output_into_a_closed_pipe_is_not_a_panic() {
     assert_eq!(run_into_closed_pipes(None, &["mount"]), 0);
     assert_eq!(run_into_closed_pipes(None, &[]), 2);
     assert_eq!(run_into_closed_pipes(None, &["update"]), 2);
-    assert_eq!(run_into_closed_pipes(None, &["update", "switch-bank", "c"]), 1);
-    assert_eq!(run_into_closed_pipes(None, &["umount"]), 1);
+    assert_eq!(run_into_closed_pipes(None, &["update", "switch-bank", "c"]), 2);
+    assert_eq!(run_into_closed_pipes(None, &["umount"]), 2);
+    assert_eq!(run_into_closed_pipes(None, &["umount", "/no/such/mount/point"]), 1);
     assert_eq!(run_into_closed_pipes(None, &["main", "--no-such-option"]), 2);
-    assert_eq!(run_into_closed_pipes(None, &["init", "--no-such-option"]), 2);
+    assert_eq!(run_into_closed_pipes(None, &["supervise", "--no-such-option"]), 2);
 
     // Commands relayed from the main role, and the main role not being there.
     let dir = temp();
@@ -340,8 +355,9 @@ fn output_into_a_closed_pipe_is_not_a_panic() {
     assert_eq!(run_into_closed_pipes(Some(&dir.path().join("none.sock")), &["ping"]), 1);
     wait_for("diag socket", Duration::from_secs(10), || socket.exists());
     wait_for("main role", Duration::from_secs(10), || diag(&socket, &["ping"]).0 == 0);
-    assert_eq!(run_into_closed_pipes(Some(&socket), &["help"]), 1);
-    assert_eq!(run_into_closed_pipes(Some(&socket), &["no-such-command"]), 127);
+    assert_eq!(run_into_closed_pipes(Some(&socket), &["state"]), 1);
+    assert_eq!(run_into_closed_pipes(Some(&socket), &["help"]), 0);
+    assert_eq!(run_into_closed_pipes(Some(&socket), &["no-such-command"]), 2);
     // Following the log would never end by itself.
     assert_eq!(run_into_closed_pipes(Some(&socket), &["log", "-f"]), 1);
 
@@ -393,7 +409,7 @@ fn supervisor_confirms_trial_and_restarts_main() {
     let log = dir.path().join("log");
     let _show_log = ShowOnPanic(log.clone());
     let sup = Command::new(BIN)
-        .args(["init", "--supervise-only", "--nvdata"])
+        .args(["supervise", "--nvdata"])
         .arg(&nv)
         .arg("--run-dir")
         .arg(&run)
@@ -461,7 +477,7 @@ fn start_trial_supervisor(dir: &Path, main: &[&str]) -> (KillOnDrop, PathBuf, Pa
     let marker = dir.join("rolled-back-to");
     let log = dir.join("log");
     let sup = Command::new(BIN)
-        .args(["init", "--supervise-only", "--nvdata"])
+        .args(["supervise", "--nvdata"])
         .arg(&nv)
         .arg("--run-dir")
         .arg(&run)

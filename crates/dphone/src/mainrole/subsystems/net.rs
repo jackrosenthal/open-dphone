@@ -36,6 +36,7 @@ use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use clap::{Parser, Subcommand};
 use dphone_net::{
     AddressSource, Ipv4Config, Ipv6Config, MacAddr, NetConfig, NetManager, NetState, PcPort, Phase, PortMode,
     VlanDiscovery,
@@ -895,50 +896,70 @@ fn publish(ctx: &Context, state: &NetState, active: &NetConfig) {
     }
 }
 
+/// The network: status, and the PC port's bridge
+///
+/// Without a subcommand: status.
+#[derive(Debug, Parser)]
+#[command(name = "net")]
+pub struct NetCommand {
+    #[command(subcommand)]
+    action: Option<NetAction>,
+}
+
+#[derive(Debug, Subcommand)]
+enum NetAction {
+    /// Show the interfaces, addresses, and what the network task is doing
+    Status,
+    /// Turn the bridge to the PC jack on or off
+    ///
+    /// Until the settings are applied again, or for good with --save.
+    Bridge {
+        state: crate::cli::OnOff,
+        /// Keep it: 'off --save' writes the file that holds the PC jack off
+        /// whatever the settings say, and 'on --save' removes it
+        #[arg(long)]
+        save: bool,
+    },
+    /// Apply the plainest arrangement: DHCP, no VLAN, PC jack down
+    Plain,
+    /// Apply the arrangement the settings ask for
+    Configured,
+    /// Synchronize the clock with the time server now
+    SyncTime,
+}
+
 fn register_diag(ctx: &Context, tx: mpsc::Sender<Cmd>) {
-    ctx.diag.register(
-        "net",
-        "net [status] | bridge on|off [--save] | plain | configured | sync-time",
-        move |args: Vec<String>, out: Output| {
-            let tx = tx.clone();
-            async move {
-                let args: Vec<&str> = args.iter().map(String::as_str).collect();
-                let (reply_tx, reply_rx) = oneshot::channel();
-                let cmd = match args.as_slice() {
-                    [] | ["status"] => Cmd::Show(reply_tx),
-                    ["bridge", onoff @ ("on" | "off")] => Cmd::Bridge { on: *onoff == "on", save: false, reply: reply_tx },
-                    ["bridge", onoff @ ("on" | "off"), "--save"] => {
-                        Cmd::Bridge { on: *onoff == "on", save: true, reply: reply_tx }
-                    }
-                    ["plain"] => Cmd::Plain(reply_tx),
-                    ["configured"] => Cmd::Configured(reply_tx),
-                    ["sync-time"] => {
-                        let _ = tx.send(Cmd::SyncTime).await;
-                        out.out("time synchronization requested\n").await;
-                        return 0;
-                    }
-                    _ => {
-                        out.err("usage: dphone net [status] | bridge on|off [--save] | plain | configured | sync-time\n").await;
-                        return 2;
-                    }
-                };
-                if tx.send(cmd).await.is_err() {
-                    out.err("dphone net: the network task is not running\n").await;
-                    return 1;
+    ctx.diag.register(move |args: NetCommand, out: Output| {
+        let tx = tx.clone();
+        async move {
+            let (reply_tx, reply_rx) = oneshot::channel();
+            let cmd = match args.action.unwrap_or(NetAction::Status) {
+                NetAction::Status => Cmd::Show(reply_tx),
+                NetAction::Bridge { state, save } => Cmd::Bridge { on: state.is_on(), save, reply: reply_tx },
+                NetAction::Plain => Cmd::Plain(reply_tx),
+                NetAction::Configured => Cmd::Configured(reply_tx),
+                NetAction::SyncTime => {
+                    let _ = tx.send(Cmd::SyncTime).await;
+                    out.out("time synchronization requested\n").await;
+                    return 0;
                 }
-                match tokio::time::timeout(Duration::from_secs(10), reply_rx).await {
-                    Ok(Ok(text)) => {
-                        out.out(&text).await;
-                        0
-                    }
-                    _ => {
-                        out.err("dphone net: no answer from the network task (still starting?)\n").await;
-                        1
-                    }
+            };
+            if tx.send(cmd).await.is_err() {
+                out.err("dphone net: the network task is not running\n").await;
+                return 1;
+            }
+            match tokio::time::timeout(Duration::from_secs(10), reply_rx).await {
+                Ok(Ok(text)) => {
+                    out.out(&text).await;
+                    0
+                }
+                _ => {
+                    out.err("dphone net: no answer from the network task (still starting?)\n").await;
+                    1
                 }
             }
-        },
-    );
+        }
+    });
 }
 
 /// A state name for people, from an enum's variant name: "LldpDiscovery"

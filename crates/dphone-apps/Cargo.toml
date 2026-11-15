@@ -15,13 +15,16 @@ default = []
 # which precompiles the built-in apps, and the host tests.
 compile = ["wasmtime/cranelift", "wasmtime/pulley"]
 # The host tool that componentizes, precompiles, and packs apps.
-build-tool = ["compile", "cargo-dphone-app/tool"]
+build-tool = ["compile", "cargo-dphone-app/tool", "cli"]
+# The command lines of this crate's programs.
+cli = ["dep:clap"]
 # Fake view and services for tests.
 test-util = []
 # `UiShell`: the adapter from the phone UI toolkit to this crate's `Shell`.
 ui = ["dep:dphone-ui"]
 
 [dependencies]
+clap = { version = "4", features = ["derive"], optional = true }
 dphone-state = { path = "../dphone-state" }
 dphone-ui = { path = "../dphone-ui", optional = true }
 getrandom = "0.3"
@@ -40,7 +43,7 @@ required-features = ["build-tool"]
 # Spike S1 measurement (see README): run on the phone or under qemu-arm.
 [[bin]]
 name = "dphone-apps-s1"
-required-features = ["test-util"]
+required-features = ["test-util", "cli"]
 
 [dev-dependencies]
 dphone-apps = { path = ".", features = ["build-tool", "test-util", "ui"] }
