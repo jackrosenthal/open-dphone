@@ -7,8 +7,7 @@
 //!   stock.  `/nvdata/open/net-no-bridge` holds it off whatever the settings
 //!   say (`dphone net bridge off --save` writes the file, `on --save`
 //!   removes it); `dphone net bridge on|off` alone changes the running
-//!   arrangement only.  The hold exists for bring-up: bridging over the b53
-//!   switch had not run on hardware when it became the default.
+//!   arrangement only.
 //! - Whatever configuration is in force, if the phone has no address
 //!   [`FALLBACK_SECS`] after it was applied (or after the address was
 //!   lost), the manager is switched to the plainest configuration

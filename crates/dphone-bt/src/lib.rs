@@ -21,10 +21,6 @@
 //! named [`ALSA_CARD`]: one mono S16_LE device at 8 kHz.  While
 //! [`Event::AudioOpened`] holds, that device carries the headset's
 //! microphone and earpiece.
-//!
-//! **Nothing here has run against a controller.**  No D65 was available;
-//! the protocol encoders, parsers, and the AT dialogue are covered by unit
-//! tests, the socket code is not.
 
 pub mod hfp;
 pub mod mgmt;

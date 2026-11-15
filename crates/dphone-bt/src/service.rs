@@ -5,8 +5,6 @@
 //! One headset is connected at a time.  The caller drives it with
 //! [`Command`]s and hears back through the [`Event`] callback, which runs on
 //! this thread.
-//!
-//! Not exercised against a controller: see the crate documentation.
 
 use std::collections::HashMap;
 use std::io;
