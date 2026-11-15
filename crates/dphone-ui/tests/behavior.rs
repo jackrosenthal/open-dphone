@@ -261,7 +261,7 @@ fn menu_shortcuts_and_settings() {
     r.tap(Key::Digit(1));
     r.tap(Key::Right);
     r.ui.pump();
-    assert_eq!(r.sim.brightness(Screen::Main), Some(19)); // 6/10 of 32
+    assert_eq!(r.sim.brightness(Screen::Main), Some(20)); // the stock level of brightness 6
     assert!(Rig::drain(&r.config).is_empty());
     r.tap(Key::Cancel);
     assert_eq!(Rig::drain(&r.config), vec![Command::SetSettings { settings: vec![("brightness".into(), "6".into())] }]);
@@ -487,18 +487,31 @@ fn backlight_dims_and_wakes() {
     assert!(store.get::<dphone_state::Ui>().backlight_on);
     std::thread::sleep(std::time::Duration::from_millis(1100));
     ui.pump();
-    assert_eq!(sim.brightness(Screen::Main), Some(8)); // dimmed to a quarter
+    assert_eq!(sim.brightness(Screen::Main), Some(6)); // the stock level of dim level 2
     sim.tap(Key::Up);
     ui.pump();
     assert_eq!(sim.brightness(Screen::Main), Some(32));
-    // With dimming off, the timeout switches the light off.
-    ui.handle().set_config(UiConfig { backlight_timeout_secs: 1, brightness: 10, dim_backlight: false, ..Default::default() });
+    // Dim level 0 is off.
+    ui.handle().set_config(UiConfig { backlight_timeout_secs: 1, brightness: 10, backlight_dim_level: 0, ..Default::default() });
     ui.pump();
     std::thread::sleep(std::time::Duration::from_millis(1100));
     ui.pump();
     assert_eq!(sim.brightness(Screen::Main), Some(0));
     assert!(!store.get::<dphone_state::Ui>().backlight_on);
-    // A ringing call wakes it.
+    // With dimming off the backlight is lit again and stays lit, as in stock.
+    ui.handle().set_config(UiConfig { backlight_timeout_secs: 1, brightness: 10, dim_backlight: false, ..Default::default() });
+    ui.pump();
+    assert_eq!(sim.brightness(Screen::Main), Some(32));
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    ui.pump();
+    assert_eq!(sim.brightness(Screen::Main), Some(32));
+    assert!(store.get::<dphone_state::Ui>().backlight_on);
+    // A ringing call wakes a dimmed backlight.
+    ui.handle().set_config(UiConfig { backlight_timeout_secs: 1, brightness: 10, ..Default::default() });
+    ui.pump();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    ui.pump();
+    assert_eq!(sim.brightness(Screen::Main), Some(6));
     store.update::<Calls, _>(|c| {
         let mut call = Call::new(CallId(1), AccountId(0), Direction::Incoming, Party::default());
         call.state = CallState::Ringing;
@@ -734,7 +747,7 @@ fn an_app_can_keep_the_backlight_on() {
     }
     std::thread::sleep(std::time::Duration::from_millis(1100));
     ui.pump();
-    assert_eq!(sim.brightness(Screen::Main), Some(8));
+    assert_eq!(sim.brightness(Screen::Main), Some(6));
     store.post(Command::ResetIdleTimer);
     ui.pump();
     assert_eq!(sim.brightness(Screen::Main), Some(32), "and woken");

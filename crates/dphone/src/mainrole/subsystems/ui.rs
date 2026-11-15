@@ -91,6 +91,9 @@ fn ui_config(ctx: &Context, cfg: Option<&Config>) -> UiConfig {
         out.brightness = v.min(10);
     }
     out.dim_backlight = cfg.setting_bool("dim_backlight", out.dim_backlight);
+    if let Some(v) = cfg.setting_num::<u8>("backlight_dim_level") {
+        out.backlight_dim_level = v.min(10);
+    }
     // Stock: 10 s when unset or over 600; 0 turns idle apps off.
     if let Some(v) = cfg.setting_num::<u32>("idle_cycle_seconds") {
         out.idle_cycle_secs = if v > 600 { 10 } else { v };

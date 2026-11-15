@@ -28,11 +28,15 @@ pub struct UiConfig {
     pub utc_offset_secs: i32,
     /// Backlight brightness 0..=10 (stock `brightness`).
     pub brightness: u8,
-    /// Dim (rather than switch off) the backlight when idle (stock
-    /// `dim_backlight`).
+    /// Dim the backlight when idle (stock `dim_backlight`).  As in stock,
+    /// the backlight is never switched off by the timeout: without
+    /// dimming it stays at `brightness`.
     pub dim_backlight: bool,
-    /// Seconds of inactivity before the backlight dims or goes off; 0
-    /// keeps it on (stock `backlight_timeout`).
+    /// The brightness level 0..=10 the backlight dims to (stock
+    /// `backlight_dim_level`, 2 unless set; 0 is off).
+    pub backlight_dim_level: u8,
+    /// Seconds of inactivity before the backlight dims; 0 keeps it on
+    /// (stock `backlight_timeout`).
     pub backlight_timeout_secs: u32,
     /// Gray panels: contrast level (stock `contrast`).
     pub contrast: u8,
@@ -56,6 +60,7 @@ impl Default for UiConfig {
             utc_offset_secs: 0,
             brightness: 5,
             dim_backlight: true,
+            backlight_dim_level: 2,
             backlight_timeout_secs: 60,
             contrast: 0,
             contrast_max: 0,
@@ -162,7 +167,6 @@ fn make_base(kind: BaseKind) -> Box<dyn Screen> {
 enum Light {
     On,
     Dim,
-    Off,
 }
 
 struct Popup {
@@ -650,26 +654,41 @@ impl Ui {
 
     // ------------------------------------------------------------ light
 
-    fn hw_level(&self, brightness: u8) -> u8 {
-        let max = self.backlight.max_brightness(dphone_hal::Screen::Main) as u32;
-        let l = brightness.min(10) as u32 * max / 10;
-        if brightness > 0 { l.max(1) as u8 } else { 0 }
+    /// The raw level of a screen's backlight for a brightness setting,
+    /// by the stock table of the model.
+    fn hw_level(&self, screen: dphone_hal::Screen, brightness: u8) -> u8 {
+        dphone_hal::backlight_level(self.model, screen, brightness).min(self.backlight.max_brightness(screen))
+    }
+
+    /// The raw level a screen's backlight has while lit: a level set by
+    /// command, or the `brightness` setting's.
+    fn on_level(&self, screen: dphone_hal::Screen) -> u8 {
+        if self.level > 0 {
+            self.level.min(self.backlight.max_brightness(screen))
+        } else {
+            self.hw_level(screen, self.cfg.brightness)
+        }
     }
 
     fn apply_light(&mut self, light: Light) {
-        let on = if self.level > 0 { self.level } else { self.hw_level(self.cfg.brightness) };
-        let level = match light {
-            Light::On => on,
-            Light::Dim => (on / 4).max(1).min(on),
-            Light::Off => 0,
-        };
         self.light = light;
+        let mut main = (0, 0);
         for s in self.display.screens() {
+            let on = self.on_level(s);
+            let level = match light {
+                Light::On => on,
+                // Stock dims to the level of `backlight_dim_level`; never
+                // brighter than the lit level.
+                Light::Dim => self.hw_level(s, self.cfg.backlight_dim_level).min(on),
+            };
             let _ = self.backlight.set_brightness(s, level);
+            if s == dphone_hal::Screen::Main {
+                main = (on, level);
+            }
         }
         self.store.update::<ds::Ui, _>(|u| {
-            u.backlight_on = light != Light::Off;
-            u.backlight_level = on;
+            u.backlight_on = main.1 > 0;
+            u.backlight_level = main.0;
         });
     }
 
@@ -682,7 +701,7 @@ impl Ui {
 
     fn light_deadline(&self) -> Option<u64> {
         let t = self.cfg.backlight_timeout_secs as u64;
-        (t > 0 && self.light == Light::On).then(|| self.last_activity_ms + t * 1000)
+        (t > 0 && self.cfg.dim_backlight && self.light == Light::On).then(|| self.last_activity_ms + t * 1000)
     }
 
     fn check_light(&mut self) {
@@ -693,7 +712,7 @@ impl Ui {
         }
         if let Some(d) = self.light_deadline()
             && clock::mono_ms() >= d {
-                self.apply_light(if self.cfg.dim_backlight { Light::Dim } else { Light::Off });
+                self.apply_light(Light::Dim);
             }
     }
 
@@ -1043,11 +1062,16 @@ impl Ui {
             Msg::Config(mut cfg) => {
                 cfg.contrast_max = self.cfg.contrast_max;
                 let brightness_changed = cfg.brightness != self.cfg.brightness;
+                let dimming_changed = cfg.dim_backlight != self.cfg.dim_backlight
+                    || cfg.backlight_dim_level != self.cfg.backlight_dim_level;
                 let contrast_changed = cfg.contrast != self.cfg.contrast;
                 self.cfg = Arc::new(cfg);
                 if brightness_changed {
                     self.level = 0;
                     self.apply_light(self.light);
+                } else if dimming_changed {
+                    // Dimming switched off lights a dimmed backlight again.
+                    self.apply_light(if self.cfg.dim_backlight { self.light } else { Light::On });
                 }
                 if contrast_changed && self.cfg.contrast_max > 0 {
                     let c = self.cfg.contrast.min(self.cfg.contrast_max);

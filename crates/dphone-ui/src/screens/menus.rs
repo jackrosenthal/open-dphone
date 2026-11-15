@@ -609,19 +609,23 @@ pub(crate) fn accounts() -> Box<dyn Screen> {
 
 fn display_menu() -> Box<dyn Screen> {
     Menu::boxed("display", tr::DISPLAY, |cx| {
-        let max = cx.model.backlight_max();
+        // The setting and the raw level are related by the stock table.
+        let model = cx.model;
+        let setting = move |raw: u8| dphone_hal::backlight_setting(model, dphone_hal::Screen::Main, raw);
         let mut v = vec![Item::new(tr::BRIGHTNESS, move |_| {
             Nav::Push(
                 Level::boxed(
                     tr::BRIGHTNESS,
-                    10,
-                    move |cx| ((cx.st.ui.backlight_level as u32 * 10 + max as u32 / 2) / max.max(1) as u32) as u8,
-                    move |cx, v| cx.post(Command::SetBacklight { level: (v as u32 * max as u32 / 10) as u8 }),
+                    dphone_hal::BRIGHTNESS_SETTING_MAX,
+                    move |cx| setting(cx.st.ui.backlight_level),
+                    move |cx, v| {
+                        cx.post(Command::SetBacklight { level: dphone_hal::backlight_level(model, dphone_hal::Screen::Main, v) })
+                    },
                 )
                 .with_commit(|cx, v| set(cx, "brightness", v.to_string())),
             )
         })
-        .value(format!("{}", (cx.st.ui.backlight_level as u32 * 10 + max as u32 / 2) / max.max(1) as u32))];
+        .value(format!("{}", setting(cx.st.ui.backlight_level)))];
         if cx.th.gray {
             let cmax = cx.cfg.contrast_max.max(1);
             v.push(
