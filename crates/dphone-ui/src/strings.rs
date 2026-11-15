@@ -224,6 +224,8 @@ pub const UPD_VERIFYING: &str = "Verifying";
 pub const UPD_COMMITTING: &str = "Finishing";
 pub const UPD_COMPLETE: &str = "Update complete; restarting";
 pub const UPD_FAILED: &str = "Update failed";
+/// The new image runs and its trial is not yet confirmed.
+pub const UPD_TRIAL: &str = "Firmware update in progress...";
 pub const TRIAL_PENDING: &str = "New firmware on trial";
 pub const ROLLED_BACK: &str = "Firmware was rolled back";
 

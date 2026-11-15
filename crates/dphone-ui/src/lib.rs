@@ -43,7 +43,7 @@ mod atlas {
 }
 
 pub use appview::{AppEvent, AppEvents, AppView};
-pub use ui::{IdleSoftkey, Ui, UiConfig, UiHandle};
+pub use ui::{IdleSoftkey, Ui, UiConfig, UiHandle, TRIAL_COVER_MAX_SECS};
 
 /// Size in pixels of the area on the idle screen offered to an app's idle
 /// view ([`UiHandle::add_idle_view`]).  Widget rectangles in that view are

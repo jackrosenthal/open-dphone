@@ -416,8 +416,18 @@ impl Screen for Provision {
     }
 }
 
-/// Firmware update progress.  Keys are ignored while flashing.
-pub(crate) struct UpdateScreen;
+/// Firmware update, from the image arriving to its trial being confirmed.
+///
+/// While the image is received and written, keys are ignored.  After the
+/// restart into the new image this screen comes back as the trial cover
+/// (`finishing`), in place of the idle screen, until the trial is
+/// confirmed or the phone goes back to the old image; no key does
+/// anything on the cover itself, but calls work over it as over any base
+/// screen (see `Stack::wanted` in `ui.rs` for when it shows and for how
+/// long).
+pub(crate) struct UpdateScreen {
+    pub finishing: bool,
+}
 
 /// (label, percent) for an update phase.
 pub(crate) fn update_progress(p: &UpdatePhase) -> (&'static str, Option<u32>) {
@@ -437,19 +447,19 @@ pub(crate) fn update_progress(p: &UpdatePhase) -> (&'static str, Option<u32>) {
 
 impl Screen for UpdateScreen {
     fn name(&self) -> String {
-        "update".into()
+        if self.finishing { "update-trial".into() } else { "update".into() }
     }
     fn key(&mut self, _cx: &Cx, _key: Key) -> Nav {
-        Nav::Stay
+        if self.finishing { Nav::Ignored } else { Nav::Stay }
     }
     fn hook(&mut self, _cx: &Cx, _off: bool) -> Nav {
-        Nav::Stay
+        if self.finishing { Nav::Ignored } else { Nav::Stay }
     }
     fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
         let u = &cx.st.update;
-        let (label, pct) = update_progress(&u.phase);
+        let (label, pct) = if self.finishing { (tr::UPD_TRIAL, None) } else { update_progress(&u.phase) };
         let mut text = label.to_string();
-        if !u.incoming_version.is_empty() {
+        if !self.finishing && !u.incoming_version.is_empty() {
             text = format!("{text} ({})", u.incoming_version);
         }
         if !matches!(u.phase, UpdatePhase::Complete) {

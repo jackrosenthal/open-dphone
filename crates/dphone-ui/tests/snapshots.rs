@@ -481,7 +481,18 @@ fn all_screens(model: Model) {
     });
     r.shot("32-update");
     assert_eq!(r.ui.screen_name(), "update");
-    r.store.update::<Update, _>(|u| u.phase = UpdatePhase::Idle);
+    // After the restart into the new image: the same screen, until the
+    // trial is confirmed.
+    r.store.update::<Update, _>(|u| {
+        u.phase = UpdatePhase::Idle;
+        u.incoming_version.clear();
+        u.trial = TrialBoot::Pending { boots_left: 2 };
+    });
+    r.shot("33-update-trial");
+    assert_eq!(r.ui.screen_name(), "update-trial");
+    r.store.update::<Update, _>(|u| u.trial = TrialBoot::None);
+    r.ui.pump();
+    assert_eq!(r.ui.screen_name(), "idle");
 
     // Apps.
     let (view, _events) = sample_app(model);

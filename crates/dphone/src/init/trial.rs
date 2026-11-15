@@ -121,6 +121,15 @@ pub fn count_boot(open_dir: &Path) -> Option<TrialRecord> {
 mod tests {
     use super::*;
 
+    /// The display is covered while a trial is pending.  The cover must
+    /// not end before the init role has ended an unhealthy trial boot (the
+    /// user would see the idle screen and then a restart), and it gives up
+    /// right after that, when nothing is going to end the trial.
+    #[test]
+    fn the_trial_cover_lasts_as_long_as_a_trial_boot_may() {
+        assert_eq!(dphone_ui::TRIAL_COVER_MAX_SECS, TRIAL_HEALTHY_SECS);
+    }
+
     #[test]
     fn lifecycle() {
         let dir = tempfile::tempdir().unwrap();

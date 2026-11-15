@@ -90,9 +90,6 @@ pub(crate) fn status_icons(cx: &Cx) -> Vec<(&'static str, u32)> {
     if st.audio.muted {
         v.push(("mute", 0));
     }
-    if matches!(st.update.trial, dphone_state::TrialBoot::Pending { .. }) {
-        v.push(("update", 0));
-    }
     v
 }
 

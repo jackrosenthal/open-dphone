@@ -192,10 +192,31 @@ enum BaseKind {
     Boot,
     Recovery,
     Provision,
+    /// An image is being received or written.
     Update,
+    /// The trial cover: the new image runs and its trial is not yet
+    /// confirmed.  The same screen as [`BaseKind::Update`], in place of
+    /// the idle screen or the setup screens.
+    Finishing,
     Idle,
 }
 
+/// The longest the trial cover stays up, counted from when the UI first
+/// sees the pending trial (in practice, from when the UI starts).
+///
+/// A trial normally ends within seconds of the phone having its network:
+/// the main role confirms it once it is healthy.  One that does not is
+/// ended by the init role, which restarts the phone when a trial boot is
+/// not healthy after its `TRIAL_HEALTHY_SECS`, and rolls back after the
+/// trial's boots are used up.  This is that same time (a test in `dphone`
+/// holds the two together), so the cover outlasts a trial only when
+/// nothing is going to end it (the rollback failed and the phone stays on
+/// this image, or the record could not be removed).  The phone is then
+/// usable as it is, and the web interface and the reset menu still show
+/// the trial.
+pub const TRIAL_COVER_MAX_SECS: u64 = 300;
+
+/// The base screen the state calls for, the trial cover aside.
 fn base_kind(st: &ds::State) -> BaseKind {
     if !matches!(st.update.phase, UpdatePhase::Idle | UpdatePhase::Failed(_)) {
         return BaseKind::Update;
@@ -216,7 +237,8 @@ fn make_base(kind: BaseKind) -> Box<dyn Screen> {
         BaseKind::Boot => Box::new(boot::Boot::default()),
         BaseKind::Recovery => Box::new(boot::Recovery),
         BaseKind::Provision => Box::new(boot::Provision::default()),
-        BaseKind::Update => Box::new(boot::UpdateScreen),
+        BaseKind::Update => Box::new(boot::UpdateScreen { finishing: false }),
+        BaseKind::Finishing => Box::new(boot::UpdateScreen { finishing: true }),
         BaseKind::Idle => Box::new(idle::Idle),
     }
 }
@@ -238,6 +260,9 @@ struct Stack {
     stack: Vec<Box<dyn Screen>>,
     soft_page: u8,
     seen_ringing: Vec<CallId>,
+    /// When the trial cover ends at the latest (monotonic milliseconds);
+    /// set when a pending trial is first seen.
+    cover_until: Option<u64>,
 }
 
 /// The four softkey positions of a native screen: action id (0: none) and
@@ -261,6 +286,40 @@ fn soft_slots(keys: &[Soft], page: u8) -> [(u32, String); 4] {
 }
 
 impl Stack {
+    fn new(st: &ds::State, now_ms: u64) -> Stack {
+        let mut s = Stack {
+            kind: BaseKind::Boot,
+            base: make_base(BaseKind::Boot),
+            stack: Vec::new(),
+            soft_page: 0,
+            seen_ringing: Vec::new(),
+            cover_until: None,
+        };
+        s.kind = s.wanted(st, now_ms);
+        s.base = make_base(s.kind);
+        s
+    }
+
+    /// The base screen for the state.  While a firmware trial is pending,
+    /// the cover stands in for the idle screen and for the setup screens
+    /// (which come up when the trial is confirmed), for at most
+    /// [`TRIAL_COVER_MAX_SECS`].  The start-up screen is not covered: it
+    /// says what the phone is waiting for and leads to the network
+    /// settings, which a trial that cannot get its network needs.
+    fn wanted(&mut self, st: &ds::State, now_ms: u64) -> BaseKind {
+        let kind = base_kind(st);
+        let covered = matches!(st.update.trial, ds::TrialBoot::Pending { .. })
+            && now_ms < *self.cover_until.get_or_insert(now_ms + TRIAL_COVER_MAX_SECS * 1000);
+        if covered && matches!(kind, BaseKind::Idle | BaseKind::Provision) { BaseKind::Finishing } else { kind }
+    }
+
+    /// Whether going off-hook with no call opens the dialer: on the idle
+    /// screen, and on the trial cover when the idle screen is what it
+    /// covers (the cover never stands between the user and a call).
+    fn dial_base(&self, st: &ds::State) -> bool {
+        self.kind == BaseKind::Idle || (self.kind == BaseKind::Finishing && base_kind(st) == BaseKind::Idle)
+    }
+
     fn top(&mut self) -> &mut Box<dyn Screen> {
         self.stack.last_mut().unwrap_or(&mut self.base)
     }
@@ -322,13 +381,22 @@ impl Stack {
 
     /// Follows the state: base screen kind, and the call screen.
     fn sync(&mut self, cx: &Cx) {
-        let kind = base_kind(cx.st);
+        let kind = self.wanted(cx.st, cx.now_ms);
         if kind != self.kind {
-            self.truncate(cx, 0);
-            self.base.leave(cx);
+            // The trial cover giving way to the idle screen leaves what
+            // is above it (a dialer, a call) alone.
+            if !(self.kind == BaseKind::Finishing && kind == BaseKind::Idle) {
+                self.truncate(cx, 0);
+            }
+            let top = self.stack.is_empty();
+            if top {
+                self.base.leave(cx);
+            }
             self.kind = kind;
             self.base = make_base(kind);
-            self.base.enter(cx);
+            if top {
+                self.base.enter(cx);
+            }
         }
         if kind == BaseKind::Update {
             return;
@@ -400,6 +468,7 @@ impl Stack {
         let ringing = calls.ringing().next().map(|c| c.id);
         let focused = calls.focused().filter(|c| !c.state.is_ended()).or_else(|| calls.live().next());
         let idle_base = self.kind == BaseKind::Idle;
+        let dial_base = self.dial_base(st);
         match key {
             Key::Mute if live => cx.post(Command::SetMute { on: !st.audio.muted }),
             Key::Speaker | Key::Headset => {
@@ -418,7 +487,7 @@ impl Stack {
                     } else {
                         cx.post(Command::SetAudioPath { path });
                     }
-                } else if idle_base {
+                } else if dial_base {
                     // Either key alone goes off-hook on its path, as on
                     // the stock firmware (observed on a D60: the Headset
                     // key at idle opens New Call, attaches the headset,
@@ -464,7 +533,7 @@ impl Stack {
                                 _ => cx.post(Command::Focus { call: *call }),
                             }
                             self.raise_call_screen(cx);
-                        } else if idle_base && !live {
+                        } else if dial_base && !live {
                             let path = if cx.off_hook {
                                 AudioPath::Handset
                             } else if st.audio.headset_mode {
@@ -518,7 +587,7 @@ impl Stack {
                 cx.post(Command::Answer { call: call.id, path: Some(AudioPath::Handset) });
             } else if !calls.is_idle() {
                 cx.post(Command::SetAudioPath { path: AudioPath::Handset });
-            } else if self.kind == BaseKind::Idle {
+            } else if self.dial_base(cx.st) {
                 let d = Dialer::off_hook(cx, AudioPath::Handset, None);
                 self.push(cx, Box::new(d));
             }
@@ -627,7 +696,7 @@ impl Ui {
         };
         let commands = Some(store.handle(Domain::Ui));
         let off_hook = input.off_hook().unwrap_or(false);
-        let kind = base_kind(&store.snapshot());
+        let nav = Stack::new(&store.snapshot(), clock::mono_ms());
         let mut ui = Ui {
             store,
             model,
@@ -639,7 +708,7 @@ impl Ui {
             main,
             side,
             cfg: Arc::new(cfg),
-            nav: Stack { kind, base: make_base(kind), stack: Vec::new(), soft_page: 0, seen_ringing: Vec::new() },
+            nav,
             off_hook,
             popup: None,
             notice_deadlines: Vec::new(),
@@ -1234,6 +1303,10 @@ impl Ui {
                 nav.apply(cx, r);
             });
         }
+        // The trial cover has had its time.
+        if self.nav.kind == BaseKind::Finishing && self.nav.cover_until.is_some_and(|t| now_ms >= t) {
+            self.with_cx(|nav, cx| nav.sync(cx));
+        }
         if self.nav.top_ref().dirty() {
             self.needs_draw = true;
         }
@@ -1259,6 +1332,9 @@ impl Ui {
         }
         if self.fixed_time.is_none() {
             add(self.screen_deadline);
+            if self.nav.kind == BaseKind::Finishing {
+                add(self.nav.cover_until);
+            }
         }
         d
     }

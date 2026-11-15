@@ -1014,3 +1014,210 @@ fn volume_popup_while_the_ringer_sounds() {
     assert_eq!(r.screen(), plain.screen());
     assert!(shot(&r) == shot(&plain), "the hookswitch takes the popup down");
 }
+
+// ------------------------------------------------------- the trial cover
+
+const COVER_MS: u64 = dphone_ui::TRIAL_COVER_MAX_SECS * 1000;
+
+/// A phone whose state is set before the UI starts, as on a real start:
+/// the main role seeds the trial before the UI comes up.
+fn rig_with(model: Model, f: impl FnOnce(&Store)) -> Rig {
+    let mut hal = Hal::sim(model);
+    let sim = hal.sim.clone().unwrap();
+    let store = Store::new(model);
+    store.update::<System, _>(|s| s.phase = Phase::Running);
+    f(&store);
+    let calls = store.handle(Domain::Calls);
+    let audio = store.handle(Domain::Audio);
+    let apps = store.handle(Domain::Apps);
+    let config = store.handle(Domain::Config);
+    let mut ui = Ui::from_hal(&mut hal, store.clone(), UiConfig { backlight_timeout_secs: 0, ..Default::default() });
+    ui.pump();
+    Rig { store, ui, sim, calls, audio, apps, config }
+}
+
+fn on_trial(store: &Store) {
+    store.update::<Update, _>(|u| u.trial = TrialBoot::Pending { boots_left: 2 });
+}
+
+fn confirm_trial(r: &mut Rig) {
+    r.store.update::<Update, _>(|u| u.trial = TrialBoot::None);
+    r.ui.pump();
+}
+
+fn main_frame(r: &Rig) -> Vec<u8> {
+    r.sim.frame(Screen::Main).expect("main frame").pixels.clone()
+}
+
+#[test]
+fn a_pending_trial_covers_the_idle_screen_until_it_is_confirmed() {
+    for model in [Model::D40, Model::D60] {
+        let mut r = rig_with(model, on_trial);
+        assert_eq!(r.screen(), "update-trial");
+        assert_eq!(r.store.get::<dphone_state::Ui>().screen, "update-trial");
+        // Nothing on the cover leads into the menus.
+        for key in [Key::Select, Key::Menu, Key::Soft(1), Key::Soft(4), Key::Digit(5), Key::Up, Key::Cancel] {
+            r.tap(key);
+            assert_eq!(r.screen(), "update-trial", "{model:?} {key:?}");
+        }
+        assert!(r.call_cmds().is_empty());
+        // Confirmed (the main role is healthy): the idle screen, by itself.
+        confirm_trial(&mut r);
+        assert_eq!(r.screen(), "idle");
+        r.tap(Key::Select);
+        assert_eq!(r.screen(), "menu");
+    }
+}
+
+#[test]
+fn the_idle_screen_has_no_trial_icon() {
+    // Past the cover's time the idle screen shows with the trial still
+    // pending, and it is the idle screen of a phone with no trial.
+    // (A monotonic time far beyond any real one: the UI started on the
+    // real clock.)
+    const LATER: (u64, u64) = (1 << 50, 1_794_607_087);
+    for model in [Model::D40, Model::D60] {
+        let mut plain = Rig::new(model);
+        plain.ui.set_fixed_time(Some(LATER));
+        plain.ui.pump();
+        let mut r = rig_with(model, on_trial);
+        assert_eq!(r.screen(), "update-trial");
+        r.ui.set_fixed_time(Some(LATER));
+        r.ui.pump();
+        assert_eq!(r.screen(), "idle");
+        assert!(main_frame(&r) == main_frame(&plain), "{model:?}: the idle screen shows the trial");
+    }
+}
+
+#[test]
+fn the_trial_cover_ends_by_itself_after_its_time() {
+    let mut hal = Hal::sim(Model::D60);
+    let store = Store::new(Model::D60);
+    let mut ui = Ui::from_hal(&mut hal, store.clone(), UiConfig::default());
+    ui.set_fixed_time(Some((1_000_000, 1_794_607_087)));
+    ui.pump();
+    assert_eq!(ui.screen_name(), "boot");
+    // The time counts from when the UI first sees the trial.
+    on_trial(&store);
+    ui.pump();
+    assert_eq!(ui.screen_name(), "boot");
+    ui.set_fixed_time(Some((1_030_000, 1_794_607_087)));
+    store.update::<System, _>(|s| s.phase = Phase::Running);
+    ui.pump();
+    assert_eq!(ui.screen_name(), "update-trial");
+    ui.set_fixed_time(Some((1_000_000 + COVER_MS - 20_000, 1_794_607_087)));
+    ui.pump();
+    assert_eq!(ui.screen_name(), "update-trial");
+    // No state change and no key: the time alone ends it.
+    ui.set_fixed_time(Some((1_000_000 + COVER_MS, 1_794_607_087)));
+    ui.pump();
+    assert_eq!(ui.screen_name(), "idle");
+    // The trial is still there for the reset menu and the web interface.
+    assert_eq!(store.get::<Update>().trial, TrialBoot::Pending { boots_left: 2 });
+    // And the cover does not come back.
+    store.update::<Update, _>(|u| u.trial = TrialBoot::Pending { boots_left: 1 });
+    ui.pump();
+    assert_eq!(ui.screen_name(), "idle");
+}
+
+#[test]
+fn an_incoming_call_shows_over_the_trial_cover() {
+    let mut r = rig_with(Model::D60, on_trial);
+    let id = r.add_call(CallState::Ringing);
+    assert_eq!(r.screen(), "call");
+    r.hook(true);
+    assert_eq!(r.call_cmds(), vec![Command::Answer { call: id, path: Some(AudioPath::Handset) }]);
+    r.store.update::<Calls, _>(|c| c.calls[0].state = CallState::Active);
+    r.ui.pump();
+    assert_eq!(r.screen(), "call");
+    // The trial is confirmed during the call: the call screen stays.
+    confirm_trial(&mut r);
+    assert_eq!(r.screen(), "call");
+    r.store.update::<Calls, _>(|c| c.calls.clear());
+    r.ui.pump();
+    assert_eq!(r.screen(), "idle");
+
+    // A call that ends while the trial is still pending: back to the cover.
+    let mut r = rig_with(Model::D40, on_trial);
+    r.add_call(CallState::Ringing);
+    assert_eq!(r.screen(), "call");
+    r.store.update::<Calls, _>(|c| c.calls.clear());
+    r.ui.pump();
+    assert_eq!(r.screen(), "update-trial");
+}
+
+#[test]
+fn lifting_the_handset_on_the_trial_cover_gives_a_dial_tone() {
+    let mut r = rig_with(Model::D60, on_trial);
+    r.hook(true);
+    assert_eq!(r.screen(), "dialer");
+    assert_eq!(
+        r.audio_cmds(),
+        vec![
+            Command::SetAudioPath { path: AudioPath::Handset },
+            Command::PlayTone { tone: Tone::Dial, duration_ms: 0 }
+        ]
+    );
+    r.tap(Key::Digit(1));
+    r.audio_cmds();
+    // The trial is confirmed while the user dials: the dialer and what
+    // was typed stay, and no tone is cut off.
+    confirm_trial(&mut r);
+    assert_eq!(r.screen(), "dialer");
+    assert_eq!(r.store.get::<dphone_state::Ui>().dial_buffer, "1");
+    assert!(r.audio_cmds().is_empty());
+    r.hook(false);
+    assert_eq!(r.screen(), "idle");
+
+    // Hanging up with the trial still pending: back to the cover.  The
+    // speaker key does the same as the handset.
+    let mut r = rig_with(Model::D60, on_trial);
+    r.tap(Key::Speaker);
+    assert_eq!(r.screen(), "dialer");
+    r.tap(Key::Speaker);
+    assert_eq!(r.screen(), "update-trial");
+}
+
+#[test]
+fn the_trial_cover_comes_before_the_server_menu() {
+    // A factory-fresh phone on its first boot of a new image: the server
+    // menu waits for the trial, and comes up when it is confirmed.
+    let mut r = rig_with(Model::D60, |store| {
+        on_trial(store);
+        store.update::<System, _>(|s| s.phase = Phase::Provisioning);
+        store.update::<Provisioning, _>(|p| p.phase = ProvisionPhase::AwaitingServer);
+    });
+    assert_eq!(r.screen(), "update-trial");
+    // No account yet: there is nothing to dial with.
+    r.hook(true);
+    assert_eq!(r.screen(), "update-trial");
+    assert!(r.audio_cmds().is_empty());
+    r.hook(false);
+    confirm_trial(&mut r);
+    assert_eq!(r.screen(), "provisioning");
+}
+
+#[test]
+fn the_trial_cover_leaves_start_up_and_installing_alone() {
+    // Waiting for the network: the start-up screen, with its way into
+    // the network settings.
+    let mut r = rig_with(Model::D60, |store| {
+        on_trial(store);
+        store.update::<System, _>(|s| s.phase = Phase::NetworkWait);
+    });
+    assert_eq!(r.screen(), "boot");
+    r.tap(Key::Soft(1));
+    assert_eq!(r.screen(), "network");
+    r.tap(Key::Cancel);
+    r.store.update::<System, _>(|s| s.phase = Phase::Running);
+    r.ui.pump();
+    assert_eq!(r.screen(), "update-trial");
+    // Another image arrives during the trial: the installing screen, on
+    // which the handset does nothing.
+    r.store.update::<Update, _>(|u| u.phase = UpdatePhase::WritingKernel { percent: 10 });
+    r.ui.pump();
+    assert_eq!(r.screen(), "update");
+    r.hook(true);
+    assert_eq!(r.screen(), "update");
+    assert!(r.audio_cmds().is_empty());
+}
