@@ -465,7 +465,7 @@ fn tones_ring_and_volume() {
             r.core.tick();
         }
         let played = std::mem::take(&mut r.audio.lock().unwrap().played);
-        assert!(goertzel(&played[..played.len() / 2], 1000, r.rate) > 1000.0, "{family:?}");
+        assert!(goertzel(&played[..played.len() / 2], 988, r.rate) > 1000.0, "{family:?}");
         r.core.handle(Command::PlayRing(None, 4096));
         assert!(!r.events.try_iter().any(|e| matches!(e, Event::SoundEnded { .. })), "a ring is not a sound file");
 

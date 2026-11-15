@@ -50,6 +50,17 @@ const fn sine_table() -> [i16; TABLE_LEN] {
 
 static SINE: [i16; TABLE_LEN] = sine_table();
 
+/// The sine of `phase` (a full turn is 2^32), -32767..=32767: the table,
+/// linearly interpolated.
+#[inline]
+pub fn sin_q15(phase: u32) -> i32 {
+    let idx = (phase >> (32 - TABLE_BITS)) as usize;
+    let frac = ((phase >> (32 - TABLE_BITS - 8)) & 0xff) as i32;
+    let a = i32::from(SINE[idx]);
+    let b = i32::from(SINE[(idx + 1) & (TABLE_LEN - 1)]);
+    a + (((b - a) * frac) >> 8)
+}
+
 /// One sine oscillator.
 #[derive(Clone, Debug)]
 pub struct Osc {
@@ -67,11 +78,7 @@ impl Osc {
     #[inline]
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> i16 {
-        let idx = (self.phase >> (32 - TABLE_BITS)) as usize;
-        let frac = ((self.phase >> (32 - TABLE_BITS - 8)) & 0xff) as i32;
-        let a = i32::from(SINE[idx]);
-        let b = i32::from(SINE[(idx + 1) & (TABLE_LEN - 1)]);
-        let s = a + (((b - a) * frac) >> 8);
+        let s = sin_q15(self.phase);
         self.phase = self.phase.wrapping_add(self.step);
         ((s * self.amp) >> 15) as i16
     }

@@ -82,7 +82,7 @@ pub fn source_in(nvdata: Option<&Path>, name: &str) -> RingSource {
     }
     match nvdata.and_then(|nv| load(nv, name)) {
         Some(samples) => RingSource::Pcm { samples, pause_ms: PAUSE_MS },
-        None => RingSource::Builtin(BuiltinRing::Classic),
+        None => RingSource::Builtin(BuiltinRing::DEFAULT),
     }
 }
 
@@ -116,11 +116,16 @@ mod tests {
         // A built-in name is the built-in ring, whatever is on disk.
         std::fs::write(nv.join("ringtones/Chime.sln16"), [1, 0]).unwrap();
         assert!(matches!(source_in(Some(nv), "chime"), RingSource::Builtin(BuiltinRing::Chime)));
-        // Unknown, empty, or unusable names ring the default.
-        for name in ["Nope", "Empty", "../etc/enet", ""] {
-            assert!(matches!(source_in(Some(nv), name), RingSource::Builtin(BuiltinRing::Classic)), "{name}");
+        // Every built-in name is its own ring.
+        for ring in BuiltinRing::ALL {
+            assert!(matches!(source_in(Some(nv), ring.name()), RingSource::Builtin(r) if r == ring), "{ring:?}");
         }
-        assert!(matches!(source_in(None, "Mine"), RingSource::Builtin(BuiltinRing::Classic)));
+        // Unknown, empty, or unusable names, and names of rings that are
+        // no more, ring the default.
+        for name in ["Nope", "Soft", "Empty", "../etc/enet", ""] {
+            assert!(matches!(source_in(Some(nv), name), RingSource::Builtin(BuiltinRing::DEFAULT)), "{name}");
+        }
+        assert!(matches!(source_in(None, "Mine"), RingSource::Builtin(BuiltinRing::DEFAULT)));
 
         // A replaced file is read again.
         std::fs::write(nv.join("ringtones/Mine.sln16"), [5, 0, 6, 0]).unwrap();

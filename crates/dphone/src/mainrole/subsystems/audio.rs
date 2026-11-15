@@ -1282,7 +1282,7 @@ fn register_diag(ctx: &Context, service: AudioService) {
                         Ok(String::new())
                     }
                     ["ring"] | ["ring", _] => svc.available().map(|()| {
-                        svc.ring(Some(args.get(1).copied().unwrap_or("Classic")));
+                        svc.ring(Some(args.get(1).copied().unwrap_or(dphone_media::ring::BuiltinRing::DEFAULT.name())));
                         String::new()
                     }),
                     ["volume", target, level] => {

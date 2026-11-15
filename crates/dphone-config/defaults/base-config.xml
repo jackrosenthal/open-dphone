@@ -121,7 +121,7 @@
     <setting id="display_mc_notification" value="1"/>
     <setting id="display_mc_notifications" value="1"/>
     <setting id="use_call_photos" value="0" url=""/>
-    <setting id="default_ringtone" value="Classic" conflict="freeze"/>
+    <setting id="default_ringtone" value="Marimba" conflict="freeze"/>
 
     <!-- Display -->
     <setting id="brightness" value="5"/>
@@ -160,9 +160,12 @@
 
     <ringtones>
         <tones>
+            <tone id="Marimba" display="Marimba" type="phone"/>
             <tone id="Classic" display="Classic" type="phone"/>
             <tone id="Chime" display="Chime" type="phone"/>
-            <tone id="Soft" display="Soft" type="phone"/>
+            <tone id="Pulse" display="Pulse" type="phone"/>
+            <tone id="Rise" display="Rise" type="phone"/>
+            <tone id="Mellow" display="Mellow" type="phone"/>
         </tones>
     </ringtones>
 
