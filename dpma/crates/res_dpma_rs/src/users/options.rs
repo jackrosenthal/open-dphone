@@ -301,6 +301,7 @@ pub fn set_user_option(ctx: &mut UserCtx, phone: &mut Phone, name: &[u8], value:
         b"ring_headset_only" => phone.ring_headset_only = ast_true(value),
         b"call_waiting_tone" => phone.call_waiting_tone = ast_true(value),
         b"wallpaper_file" => phone.wallpaper_file = s,
+        b"dphone_palette_file" => phone.dphone_palette_file = s,
         b"ehs" => phone.ehs = s,
         b"8021x_passthrough" => phone.dot1x_passthrough = s,
         b"8021x_method" => phone.dot1x_method = s,

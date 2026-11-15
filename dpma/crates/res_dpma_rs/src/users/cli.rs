@@ -378,6 +378,11 @@ fn show_phone(a: &CliArgs) -> CliResult {
     );
     bwriteln!(
         o,
+        "Open DPhone palette file: {}",
+        or(&p.dphone_palette_file, "None")
+    );
+    bwriteln!(
+        o,
         "Open DPhone SSH authorized keys: {}",
         p.dphone_ssh_authorized_keys.len()
     );

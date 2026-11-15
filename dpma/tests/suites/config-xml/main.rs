@@ -146,6 +146,15 @@ const DPHONE_KEYS: &str = concat!(
     "</config>\n",
 );
 
+/// The lines of `doc` that start with `prefix`.
+fn find_all(doc: &[u8], prefix: &str) -> Vec<String> {
+    String::from_utf8_lossy(doc)
+        .lines()
+        .filter(|line| line.starts_with(prefix))
+        .map(str::to_owned)
+        .collect()
+}
+
 /// The Open DPhone options: present as configured for `fullphone`, and
 /// absent from the document of a phone that does not set them.
 fn dphone_options(ctx: &mut Ctx) -> Result<()> {
@@ -158,6 +167,25 @@ fn dphone_options(ctx: &mut Ctx) -> Result<()> {
     ctx.c.check(
         "fullphone: Open DPhone SSH keys",
         doc.contains_str(DPHONE_KEYS) && !doc.contains_str("PRIVATE KEY"),
+        "",
+    );
+    // The palette file is offered as the wallpaper is: here, not in the
+    // file directory, so from each network's file URL prefix.
+    let palette = find_all(&doc, "<setting id=\"dphone_palette_file\"");
+    ctx.c.check(
+        "fullphone: Open DPhone palette file",
+        !palette.is_empty()
+            && palette.len() == find_all(&doc, "<setting id=\"wallpaper_file\"").len()
+            && palette.iter().all(|line| {
+                line.contains("value=\"user\"")
+                    && line.contains("wall.txtpb\" path=\"/wallpaper_palette.txtpb\" conflict=\"freeze\" network_id=\"")
+            }),
+        palette.join("\n"),
+    );
+    let plain = document(ctx, "dpmadev config altphone D65")?;
+    ctx.c.check(
+        "altphone: no Open DPhone palette file",
+        !plain.contains_str("dphone_palette_file"),
         "",
     );
     // A firmware file found on the server has its checksum stated; one

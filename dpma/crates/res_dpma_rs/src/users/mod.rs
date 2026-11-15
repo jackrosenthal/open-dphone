@@ -212,6 +212,9 @@ pub struct Phone {
     pub dphone_disabled_apps: Vec<Vec<u8>>,
     /// Open DPhone: each softkey of `dphone_idle_softkeys`, in order.
     pub dphone_idle_softkeys: Vec<Vec<u8>>,
+    /// Open DPhone: `dphone_palette_file`, the palette file for the
+    /// wallpaper.
+    pub dphone_palette_file: Vec<u8>,
     /// Open DPhone: each `dphone_ssh_authorized_key`, a public key line.
     pub dphone_ssh_authorized_keys: Vec<Vec<u8>>,
     pub multicastpages: Vec<Vec<u8>>,
@@ -389,6 +392,7 @@ impl Phone {
             dphone_static_dns: Vec::new(),
             dphone_disabled_apps: Vec::new(),
             dphone_idle_softkeys: Vec::new(),
+            dphone_palette_file: Vec::new(),
             dphone_ssh_authorized_keys: Vec::new(),
             multicastpages: Vec::new(),
             logos: Vec::new(),

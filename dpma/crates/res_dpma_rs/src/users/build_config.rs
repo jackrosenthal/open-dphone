@@ -497,7 +497,8 @@ fn file_exists(dir: &[u8], name: &[u8]) -> bool {
     .is_ok()
 }
 
-/// A user image setting (`logo_file`, `wallpaper_file`): served from the
+/// A user image setting (`logo_file`, `wallpaper_file`, and Open DPhone's
+/// `dphone_palette_file`): served from the
 /// file directory when the file is there, otherwise from every network's
 /// file URL prefix.
 fn user_image(
@@ -1570,6 +1571,18 @@ fn build_config(
             "wallpaper_file",
             &p.wallpaper_file,
             "/user_wallpaper.png",
+        );
+    }
+    // Open DPhone: the palette file that goes with the wallpaper.
+    if !p.dphone_palette_file.is_empty() {
+        user_image(
+            &mut o,
+            reg,
+            p,
+            dir,
+            "dphone_palette_file",
+            &p.dphone_palette_file,
+            "/wallpaper_palette.txtpb",
         );
     }
 
