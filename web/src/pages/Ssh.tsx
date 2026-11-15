@@ -53,69 +53,71 @@ function WebSwitch({ onError }: { onError: (e: unknown) => void }) {
   );
 }
 
-/// The EHS header as seen when attaching a USB serial cable, with the
-/// cable's wire colors and each pin's function from the phone's side.
+/// The EHS header as seen when attaching a USB serial cable (two rows of
+/// three; position 3 is the key), with the cable's wire colors and each
+/// pin's function from the phone's side.
 function EhsPinout() {
-  const x = (pin: number) => 35 + (pin - 1) * 50;
+  const col = [120, 160, 200];
+  const row = [72, 108];
+  const at = (pin: number) => ({ x: col[(pin - 1) % 3], y: row[pin > 3 ? 1 : 0] });
   const ink = "fill-slate-700 dark:fill-slate-200";
   const muted = "fill-slate-500 dark:fill-slate-400";
   // Each wire is drawn over a wider gray line, so that white shows on the
   // light theme and black on the dark one.
-  const wire = (px: number, y1: number, color: string) => (
+  const wire = (x: number, y1: number, y2: number, color: string) => (
     <>
-      <path d={`M${px} ${y1}V122`} className="stroke-slate-500" strokeWidth={8} strokeLinecap="round" />
-      <path d={`M${px} ${y1}V122`} stroke={color} strokeWidth={5} strokeLinecap="round" />
+      <path d={`M${x} ${y1}V${y2}`} className="stroke-slate-500" strokeWidth={8} strokeLinecap="round" />
+      <path d={`M${x} ${y1}V${y2}`} stroke={color} strokeWidth={5} strokeLinecap="round" />
     </>
   );
-  const caption = (px: number, color: string, what: string) => (
+  const caption = (x: number, y: number, color: string, what: string, small = false) => (
     <>
-      <text x={px} y={139} className={ink} fontWeight={600}>
+      <text x={x} y={y} className={ink} fontWeight={600}>
         {color}
       </text>
-      <text x={px} y={153} className={muted}>
+      <text x={x} y={y + 13} fontSize={small ? 10 : 11} className={muted}>
         {what}
       </text>
     </>
   );
   return (
     <svg
-      viewBox="0 0 320 160"
+      viewBox="0 0 320 186"
       className="block h-auto w-full max-w-sm"
       fontSize={11}
       textAnchor="middle"
       role="img"
-      aria-label="Pin 1: ground, black wire. Pin 2: TX, white wire. Pin 4: 3.3 V, not connected. Pin 5: RX, green wire. Pin 6: ground. Red wire: not connected."
+      aria-label="Top row, left to right: pin 1, ground, black wire; pin 2, TX, white wire; key. Bottom row, left to right: pin 4, 3.3 V, not connected; pin 5, RX, green wire; pin 6, ground. Red wire: not connected."
     >
-      <rect x={8} y={26} width={304} height={36} rx={4} className="fill-slate-200 stroke-slate-400 dark:fill-slate-800 dark:stroke-slate-600" />
-      {[1, 2, 3, 4, 5, 6].map((pin) => (
+      <rect x={96} y={50} width={128} height={80} rx={4} className="fill-slate-200 stroke-slate-400 dark:fill-slate-800 dark:stroke-slate-600" />
+      {[1, 2, 4, 5, 6].map((pin) => (
         <g key={pin}>
-          <text x={x(pin)} y={18} className={pin === 3 ? muted : ink} fontWeight={pin === 3 ? 400 : 600}>
-            {pin === 3 ? "Key" : pin}
+          <rect x={at(pin).x - 11} y={at(pin).y - 11} width={22} height={22} rx={2} className="fill-amber-400" />
+          <text x={at(pin).x} y={at(pin).y + 4} fontWeight={700} fill="#0f172a">
+            {pin}
           </text>
-          {pin !== 3 && <rect x={x(pin) - 6} y={38} width={12} height={12} className="fill-amber-500" />}
         </g>
       ))}
-      {wire(x(1), 44, "#111111")}
-      {wire(x(2), 44, "#ffffff")}
-      {wire(x(5), 44, "#16a34a")}
-      {wire(x(6), 104, "#dc2626")}
-      <text x={x(4)} y={78} className={ink}>
+      <rect x={at(3).x - 11} y={at(3).y - 11} width={22} height={22} rx={2} fill="none" strokeDasharray="3 3" className="stroke-slate-400 dark:stroke-slate-500" />
+      <text x={232} y={at(3).y + 4} textAnchor="start" className={muted}>
+        Key
+      </text>
+      {wire(at(1).x, 57, 34, "#111111")}
+      {wire(at(2).x, 57, 34, "#ffffff")}
+      {wire(at(5).x, 123, 150, "#16a34a")}
+      {wire(280, 132, 150, "#dc2626")}
+      {caption(at(1).x, 12, "Black", "GND")}
+      {caption(at(2).x, 12, "White", "TX")}
+      {caption(at(5).x, 166, "Green", "RX")}
+      {caption(280, 166, "Red", "Not connected", true)}
+      <text x={88} y={at(4).y - 2} textAnchor="end" className={ink}>
         3.3 V
       </text>
-      <text x={x(4)} y={90} fontSize={10} className={muted}>
+      <text x={88} y={at(4).y + 10} textAnchor="end" fontSize={10} className={muted}>
         Not connected
       </text>
-      <text x={x(6)} y={78} className={ink}>
+      <text x={232} y={at(6).y + 4} textAnchor="start" className={ink}>
         GND
-      </text>
-      {caption(x(1), "Black", "GND")}
-      {caption(x(2), "White", "TX")}
-      {caption(x(5), "Green", "RX")}
-      <text x={x(6)} y={139} className={ink} fontWeight={600}>
-        Red
-      </text>
-      <text x={x(6)} y={152} fontSize={10} className={muted}>
-        Not connected
       </text>
     </svg>
   );
