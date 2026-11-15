@@ -350,7 +350,9 @@ fn dispatch_locked(tree: &mut Tree, key: Key, now_ms: u64, events: &mut Vec<AppE
     match key {
         Key::Line(1) => return Dispatch::Background,
         Key::VolumeUp | Key::VolumeDown | Key::Mute | Key::Speaker | Key::Headset => return Dispatch::Ignored,
-        Key::Soft(n @ 1..=4) => {
+        // A full-screen view has no softkey bar: its softkey keys are
+        // keys like any other.
+        Key::Soft(n @ 1..=4) if !tree.full_screen => {
             return match softkey_slots(tree)[n as usize - 1].clone() {
                 Slot::Empty => Dispatch::Ignored,
                 Slot::Action(id, _) => {

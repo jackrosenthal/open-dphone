@@ -223,6 +223,9 @@ impl AppWindow for UiWindow {
             Err(_) => false,
         }
     }
+    fn set_full_screen(&mut self, on: bool) {
+        self.view.set_full_screen(on);
+    }
     fn theme_color(&self, role: ColorRole) -> Color {
         let (r, g, b) = self.view.theme_color(match role {
             ColorRole::Background => tk::ThemeColor::Background,

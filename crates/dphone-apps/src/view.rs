@@ -85,6 +85,9 @@ pub trait AppWindow: Send {
     fn define_image(&mut self, _name: &str, _file: &[u8]) -> bool {
         false
     }
+    /// Gives the window the whole display, with no softkey bar, or the
+    /// usual area again; [`AppWindow::metrics`] follows.
+    fn set_full_screen(&mut self, _on: bool) {}
     /// A color of the skin (capability `canvas`).
     fn theme_color(&self, _role: ColorRole) -> Color {
         Color { r: 0, g: 0, b: 0 }

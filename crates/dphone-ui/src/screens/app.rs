@@ -38,6 +38,9 @@ impl Screen for AppScreen {
     fn raw_softkeys(&self, _cx: &Cx) -> Option<[String; 4]> {
         Some(appview_impl::softkey_labels(&self.view.batch_quiet()))
     }
+    fn full_screen(&self) -> bool {
+        self.view.batch_quiet().full_screen
+    }
     fn key(&mut self, cx: &Cx, key: Key) -> Nav {
         match appview_impl::dispatch(&self.view, key, cx.now_ms) {
             Dispatch::Consumed => Nav::Stay,

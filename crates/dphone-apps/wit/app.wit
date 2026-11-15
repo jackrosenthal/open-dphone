@@ -277,6 +277,17 @@ interface ui {
   /// An unclaimed `cancel` backgrounds the app.
   claim-keys: func(w: widget, keys: list<string>);
 
+  /// Gives the app's window the whole display (`true`), or the usual
+  /// area above the softkey bar again.  A full-screen window has no
+  /// softkey bar: softkeys are not shown, and the four keys under the
+  /// display do nothing unless the app claims them (`sk1` to `sk4`).
+  /// `get-metrics` reports the size the window now has (480x272, 320x160,
+  /// or 240x120 when full-screen); widgets keep their bounds.  An
+  /// unclaimed `cancel` still leaves the app and line key 1 always does,
+  /// and a call or a notice of the phone comes over a full-screen window
+  /// as over any other.  The idle window is not affected.
+  set-full-screen: func(on: bool);
+
   /// Softkeys attached to a widget; the bar shows the keys of the focused
   /// widget or its nearest ancestor that has any.  More than four become a
   /// "More" page.

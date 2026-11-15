@@ -46,6 +46,8 @@ pub struct Win {
     pub images: Vec<(String, usize)>,
     /// How many times the app has drawn on a canvas.
     pub draws: u32,
+    /// The window has the whole display.
+    pub full_screen: bool,
     events: VecDeque<WindowEvent>,
     wake: Option<Arc<dyn Fn() + Send + Sync>>,
 }
@@ -186,6 +188,11 @@ impl FakeUi {
                 .filter_map(|n| n.drawing.clone().map(|d| (n.bounds, d)))
                 .collect()
         })
+    }
+
+    /// Whether the app's window has the whole display.
+    pub fn full_screen(&self, app: &str) -> bool {
+        self.with(app, |w| w.full_screen)
     }
 
     /// How many times the app has drawn on a canvas.
@@ -440,7 +447,15 @@ impl FakeWindow {
 
 impl AppWindow for FakeWindow {
     fn metrics(&self) -> Metrics {
-        metrics_for(self.ui.model.unwrap_or(dphone_state::Model::D60))
+        let model = self.ui.model.unwrap_or(dphone_state::Model::D60);
+        let mut m = metrics_for(model);
+        if self.with(|w| w.full_screen) {
+            m.height = model.main_screen().height;
+        }
+        m
+    }
+    fn set_full_screen(&mut self, on: bool) {
+        self.with(|w| w.full_screen = on)
     }
     fn create(&mut self, kind: WidgetKind, parent: Option<u32>, bounds: Rect) -> u32 {
         self.add(kind, parent, bounds, false)

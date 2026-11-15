@@ -512,6 +512,9 @@ impl api::ui::Host for AppCtx {
             win.claim_keys(id, &keys);
         }
     }
+    fn set_full_screen(&mut self, on: bool) {
+        self.window.set_full_screen(on);
+    }
     fn set_softkeys(&mut self, w: u32, keys: Vec<Softkey>) {
         if let Some((win, id)) = self.win(w) {
             win.set_softkeys(id, &keys);

@@ -67,6 +67,11 @@
 //! than four, the toolkit shows three and a "More" key that pages.  A press
 //! sends [`AppEvent::Softkey`] with the action's `id`.
 //!
+//! **Full screen.**  [`AppView::set_full_screen`] gives the view the whole
+//! main screen: no softkey bar is drawn, [`AppView::metrics`] reports the
+//! screen's size, and the softkey keys go the way of every other key (to
+//! a claimant, or nowhere).
+//!
 //! **Lifecycle.**  [`AppEvent::Foreground`] / [`AppEvent::Background`]
 //! report when the view becomes or stops being the top screen.  Changes to
 //! a view that is not on screen are kept and shown later.
@@ -489,6 +494,7 @@ impl Node {
 /// The widget tree.  Obtained with [`AppView::batch`]; every [`AppView`]
 /// mutator is also available here.
 pub struct Tree {
+    pub(crate) model: Model,
     pub(crate) metrics: Metrics,
     pub(crate) nodes: Vec<Node>,
     pub(crate) roots: Vec<WidgetId>,
@@ -498,14 +504,17 @@ pub struct Tree {
     pub(crate) window_claims: KeyClaims,
     pub(crate) softkey_page: u8,
     pub(crate) background: Color,
+    /// The view has the whole screen; there is no softkey bar.
+    pub(crate) full_screen: bool,
     /// Multi-tap state of the focused input (see `crate::input`).
     pub(crate) multitap: crate::multitap::MultiTap,
 }
 
 impl Tree {
-    pub(crate) fn new(metrics: Metrics) -> Tree {
+    pub(crate) fn new(model: Model) -> Tree {
         Tree {
-            metrics,
+            model,
+            metrics: Metrics::for_model(model),
             nodes: Vec::new(),
             roots: Vec::new(),
             next_id: 1,
@@ -514,6 +523,7 @@ impl Tree {
             window_claims: KeyClaims::default(),
             softkey_page: 0,
             background: Color::Default,
+            full_screen: false,
             multitap: Default::default(),
         }
     }
@@ -617,6 +627,15 @@ impl Tree {
         if let Some(n) = self.node_mut(id) {
             n.border = on;
         }
+    }
+    /// Gives the view the whole main screen (no softkey bar), or the app
+    /// content area again.  [`Tree::metrics`] follows.
+    pub fn set_full_screen(&mut self, on: bool) {
+        self.full_screen = on;
+        self.metrics.height = if on { self.model.main_screen().height } else { self.model.app_content_area().height };
+    }
+    pub fn full_screen(&self) -> bool {
+        self.full_screen
     }
     /// Background of the whole content area.
     pub fn set_background(&mut self, color: Color) {
@@ -859,7 +878,7 @@ impl AppView {
         let inner = Arc::new(Inner {
             name: name.to_string(),
             model,
-            tree: Mutex::new(Tree::new(Metrics::for_model(model))),
+            tree: Mutex::new(Tree::new(model)),
             dirty: AtomicBool::new(true),
             queue: Mutex::new(VecDeque::new()),
             cond: Condvar::new(),
@@ -876,8 +895,10 @@ impl AppView {
     pub fn model(&self) -> Model {
         self.inner.model
     }
+    /// The sizes the app lays out with; the height is the whole screen's
+    /// while the view is full-screen.
     pub fn metrics(&self) -> Metrics {
-        Metrics::for_model(self.inner.model)
+        self.batch_quiet().metrics
     }
 
     /// Locks the tree for several changes painted together.
@@ -896,6 +917,7 @@ impl AppView {
         fn set_visible(&self, id: WidgetId, visible: bool);
         fn set_colors(&self, id: WidgetId, fg: Color, bg: Color);
         fn set_border(&self, id: WidgetId, on: bool);
+        fn set_full_screen(&self, on: bool);
         fn set_background(&self, color: Color);
         fn set_text(&self, id: WidgetId, text: &str);
         fn text(&self, id: WidgetId) -> Option<String>;
