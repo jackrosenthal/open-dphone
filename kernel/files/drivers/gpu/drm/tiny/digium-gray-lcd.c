@@ -3,10 +3,9 @@
  * DRM driver for the SPI grayscale LCDs of the Digium/Sangoma D40, D45, D50,
  * and D70 desk phones.
  *
- * FIRST DRAFT.  Compile-tested only; never run on hardware.  Written from
- * the behavior recovered from the vendor 2.6.27.18 kernels ("digium onephone
- * fb", functions opfb_*); see NOTES.md in this directory for the evidence
- * behind every constant.
+ * Written from the behavior recovered from the vendor 2.6.27.18 kernels
+ * ("digium onephone fb", functions opfb_*).  The 240x120 main panel runs on
+ * a D40; the D70's two panels have not run.
  *
  * Two kinds of panel are handled:
  *
@@ -43,6 +42,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/property.h>
+#include <linux/sched.h>
 #include <linux/spi/spi.h>
 #include <linux/workqueue.h>
 
@@ -68,6 +68,13 @@
 
 #define DGL_MAX_PANELS		2
 #define DGL_CMD_BUF_LEN		32
+/*
+ * Pixel data goes out in pieces of this size, about 1 ms on the wire at the
+ * panels' 8.33 MHz, with a scheduling point after each: the SPI host sends a
+ * piece without giving up the CPU (PL022 in polling mode), and the phone's
+ * audio thread must not wait for a whole frame.
+ */
+#define DGL_DATA_CHUNK		1024
 
 /*
  * Main panel commands.  Names follow drivers/gpu/drm/sitronix/st7586.c where
@@ -178,6 +185,37 @@ static int dgl_write(struct dgl_panel *p, bool data, const void *buf, size_t len
 	gpiod_set_value_cansleep(p->dgl->dc, data);
 
 	return spi_write(p->spi, buf, len);
+}
+
+/*
+ * Pixel data, in pieces.  The chip select stays asserted from the first
+ * piece to the last, so the controller sees one write.
+ */
+static int dgl_write_pixels(struct dgl_panel *p, const u8 *buf, size_t len)
+{
+	int err;
+
+	gpiod_set_value_cansleep(p->dgl->dc, 1);
+
+	while (len) {
+		size_t n = min_t(size_t, len, DGL_DATA_CHUNK);
+		struct spi_transfer xfer = {
+			.tx_buf = buf,
+			.len = n,
+			/* On the last transfer of a message: keep it selected. */
+			.cs_change = len > n,
+		};
+
+		err = spi_sync_transfer(p->spi, &xfer, 1);
+		if (err)
+			return err;
+
+		buf += n;
+		len -= n;
+		cond_resched();
+	}
+
+	return 0;
 }
 
 /* ------------------------------------------------------------------------
@@ -302,7 +340,7 @@ static int dgl_main_flush(struct dgl_panel *p)
 	if (err)
 		return err;
 
-	return dgl_write(p, true, p->shadow, p->shadow_len);
+	return dgl_write_pixels(p, p->shadow, p->shadow_len);
 }
 
 /*
@@ -424,7 +462,7 @@ static int dgl_dss_flush(struct dgl_panel *p)
 	if (err)
 		return err;
 
-	return dgl_write(p, true, p->shadow, p->shadow_len);
+	return dgl_write_pixels(p, p->shadow, p->shadow_len);
 }
 
 /*
@@ -508,16 +546,22 @@ static void dgl_panel_pack(struct dgl_panel *p, const struct drm_rect *clip)
 		dgl_main_pack(p, clip);
 }
 
+/*
+ * (Re)starts the idle interval: called after every frame, so that, like the
+ * vendor driver, only a panel that has not been sent anything for the
+ * interval is refreshed.
+ */
 static void dgl_panel_schedule_refresh(struct dgl_panel *p)
 {
 	if (refresh_ms)
-		schedule_delayed_work(&p->refresh, msecs_to_jiffies(refresh_ms));
+		mod_delayed_work(system_dfl_wq, &p->refresh,
+				 msecs_to_jiffies(refresh_ms));
 }
 
 /*
- * The vendor driver re-initializes the controller and repaints the panel
- * every two seconds even without new content, presumably so that a
- * controller upset by ESD recovers by itself.
+ * The vendor driver re-initializes the controller and repaints a panel
+ * that has not been sent for two seconds even without new content,
+ * presumably so that a controller upset by ESD recovers by itself.
  */
 static void dgl_panel_refresh_work(struct work_struct *work)
 {
@@ -706,6 +750,8 @@ static void dgl_plane_atomic_update(struct drm_plane *plane,
 	dgl_panel_pack(p, &clip);
 
 	err = p->enabled ? dgl_panel_flush(p) : 0;
+	if (p->enabled)
+		dgl_panel_schedule_refresh(p);
 
 	mutex_unlock(&dgl->lock);
 

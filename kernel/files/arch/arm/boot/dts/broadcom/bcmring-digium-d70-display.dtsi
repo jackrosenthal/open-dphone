@@ -18,6 +18,15 @@
 		/* Chip select 0: main panel.  Chip select 1: side display. */
 		reg = <0>, <1>;
 		spi-max-frequency = <10000000>;
+		/*
+		 * Polling transfers.  In interrupt mode the PL022 takes an
+		 * interrupt for every eleven bytes or so, back to back for
+		 * the length of a frame (about 860 for the 9,600 bytes of
+		 * the 240x120 panel), which starved the audio thread for
+		 * longer than its playback queue lasts at every repaint.
+		 * The driver sends the frame in pieces of about 1 ms.
+		 */
+		pl022,com-mode = <1>;
 		dc-gpios = <&gpio0 22 GPIO_ACTIVE_HIGH>;
 		reset-gpios = <&gpio1 10 GPIO_ACTIVE_LOW>,	/* GPIO 42 */
 			      <&gpio1 1 GPIO_ACTIVE_LOW>;	/* GPIO 33 */
