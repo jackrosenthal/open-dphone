@@ -742,10 +742,12 @@ struct Args {
     web_disabled: bool,
     /// Start in recovery (nvdata could not be mounted).
     recovery: bool,
+    /// Start with failed and stopped subsystems and a failed provisioning.
+    failing: bool,
 }
 
 fn args() -> Args {
-    let mut a = Args { model: Model::D60, http: 8480, https: Some(8443), nvdata: None, web_disabled: false, recovery: false };
+    let mut a = Args { model: Model::D60, http: 8480, https: Some(8443), nvdata: None, web_disabled: false, recovery: false, failing: false };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         let mut value = || it.next().unwrap_or_else(|| panic!("{arg} needs a value"));
@@ -756,7 +758,8 @@ fn args() -> Args {
             "--nvdata" => a.nvdata = Some(value().into()),
             "--web-disabled" => a.web_disabled = true,
             "--recovery" => a.recovery = true,
-            other => panic!("unknown argument {other}; use --model, --port, --https-port, --nvdata, --web-disabled, --recovery"),
+            "--failing" => a.failing = true,
+            other => panic!("unknown argument {other}; use --model, --port, --https-port, --nvdata, --web-disabled, --recovery, --failing"),
         }
     }
     a
@@ -790,6 +793,12 @@ fn main() -> std::io::Result<()> {
     fabricate(&store, model);
     if args.recovery {
         store.update::<st::System, _>(|s| s.phase = st::Phase::Recovery);
+    }
+    if args.failing {
+        store.set_health(st::Subsystem::Sip, st::HealthStatus::Failed("no configuration".into()));
+        store.set_health(st::Subsystem::Dpma, st::HealthStatus::Degraded("not responding".into()));
+        store.set_health(st::Subsystem::Ssh, st::HealthStatus::Stopped);
+        store.update::<st::Health, _>(|h| h.healthy = false);
     }
     let switch = dphone_web::WebSwitch::from_config(&config.lock().unwrap().config());
     if args.web_disabled {

@@ -1,9 +1,11 @@
 import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { Badge, Card, Dot, Empty, KeyValue, PageHeader, Spinner } from "../components/ui";
 import { CallDirection } from "../gen/dphone/v1/calls_pb";
 import { NetPhase } from "../gen/dphone/v1/network_pb";
 import { ProvisionPhase } from "../gen/dphone/v1/provisioning_pb";
-import { HealthState, SystemPhase } from "../gen/dphone/v1/status_pb";
+import { HealthState, SystemPhase, type StatusSnapshot } from "../gen/dphone/v1/status_pb";
+import { RegistrationState } from "../gen/dphone/v1/accounts_pb";
 import { dateTime, duration } from "../lib/format";
 import { addressSourceNames, codecNames, discoverySourceNames, label, netPhaseNames, provisionPhaseNames, subsystemNames, systemPhaseNames, vlanSourceNames } from "../lib/labels";
 import { useStatus } from "../lib/status";
@@ -19,6 +21,89 @@ const healthTone = {
   [HealthState.DEGRADED]: "amber",
   [HealthState.FAILED]: "red",
 } as const;
+
+/// A reason as the firmware words it, in the wording of this interface.
+/// A reason with no entry is shown as it is, capitalized.
+const reasons: Record<string, string> = {
+  "no listener": "Not listening",
+  "not listening": "Not listening",
+  "no configuration": "No configuration",
+  "not responding": "Not responding",
+  "no UI": "Phone UI not running",
+  "no MAC address": "No MAC address",
+  "no hardware layer": "No hardware layer",
+  "manager task ended": "Network manager stopped",
+  "the UI did not start": "Phone UI did not start",
+  "the display does not answer": "Display not responding",
+  "the app runtime thread panicked": "App runtime crashed",
+};
+const reason = (text: string) => reasons[text] ?? text.charAt(0).toUpperCase() + text.slice(1);
+
+type Problem = { key: string; name: ReactNode; state: string; why: string; tone: "red" | "amber" };
+
+/// Everything the phone reports as failed or degraded, each with its reason.
+function problems(status: StatusSnapshot): Problem[] {
+  const list: Problem[] = [];
+  for (const h of status.health) {
+    if (h.state !== HealthState.FAILED && h.state !== HealthState.DEGRADED) continue;
+    const failed = h.state === HealthState.FAILED;
+    list.push({ key: h.subsystem, name: label(subsystemNames, h.subsystem), state: failed ? "Failed" : "Degraded", why: reason(h.detail), tone: failed ? "red" : "amber" });
+  }
+  const net = status.network;
+  if (net?.phase === NetPhase.FAILED && !list.some((p) => p.key === "net")) {
+    list.push({ key: "network", name: "Network", state: "Failed", why: reason(net.detail), tone: "red" });
+  }
+  for (const a of status.accounts) {
+    if (a.state !== RegistrationState.FAILED) continue;
+    const why = [a.code ? String(a.code) : "", a.reason].filter(Boolean).join(" ");
+    list.push({ key: `account${a.index}`, name: a.label, state: "Registration failed", why, tone: "red" });
+  }
+  const prov = status.provisioning;
+  if (prov?.phase === ProvisionPhase.FAILED) {
+    const why = `${reason(prov.failureReason)}${prov.failureCode !== undefined ? ` (code ${prov.failureCode})` : ""}`;
+    list.push({ key: "provisioning", name: "Provisioning", state: "Failed", why, tone: "red" });
+  }
+  return list;
+}
+
+const quietState: Partial<Record<HealthState, string>> = {
+  [HealthState.STOPPED]: "Stopped",
+  [HealthState.STARTING]: "Starting",
+  [HealthState.UNSPECIFIED]: "Unknown",
+};
+
+function StatusCard({ status }: { status: StatusSnapshot }) {
+  const failing = problems(status);
+  const rest = status.health.filter((h) => h.state !== HealthState.FAILED && h.state !== HealthState.DEGRADED);
+  const warning = failing.length > 0 || !status.healthy;
+  return (
+    <Card title="Status" actions={warning ? <Badge tone="amber">Warning</Badge> : <Badge tone="green">OK</Badge>}>
+      <div className="space-y-4">
+        {failing.length > 0 && (
+          <ul className="space-y-2">
+            {failing.map((p) => (
+              <li key={p.key} className={p.tone === "red" ? "rounded-lg bg-red-50 px-3 py-2 text-sm ring-1 ring-inset ring-red-200 dark:bg-red-950/40 dark:ring-red-900" : "rounded-lg bg-amber-50 px-3 py-2 text-sm ring-1 ring-inset ring-amber-200 dark:bg-amber-950/40 dark:ring-amber-900"}>
+                <p className={p.tone === "red" ? "font-semibold text-red-900 dark:text-red-200" : "font-semibold text-amber-900 dark:text-amber-200"}>
+                  {p.name}: {p.state}
+                </p>
+                {p.why && <p className="text-slate-700 dark:text-slate-300">{p.why}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+        <ul className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
+          {rest.map((h) => (
+            <li key={h.subsystem} className="flex items-center gap-2">
+              <Dot tone={healthTone[h.state]} />
+              <span>{label(subsystemNames, h.subsystem)}</span>
+              {quietState[h.state] && <span className="text-xs text-slate-500 dark:text-slate-400">{quietState[h.state]}</span>}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Card>
+  );
+}
 
 export function Dashboard() {
   const { status, elapsed } = useStatus();
@@ -140,17 +225,7 @@ export function Dashboard() {
 
         {sys.hasExpansion && <ExpansionCard />}
 
-        <Card title="Services" actions={!status.healthy && <Badge tone="amber">Warning</Badge>}>
-          <ul className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
-            {status.health.map((h) => (
-              <li key={h.subsystem} className="flex items-center gap-2" title={h.detail}>
-                <Dot tone={healthTone[h.state]} />
-                <span>{label(subsystemNames, h.subsystem)}</span>
-                {h.detail && <span className="truncate text-xs text-slate-400">{h.detail}</span>}
-              </li>
-            ))}
-          </ul>
-        </Card>
+        <StatusCard status={status} />
       </div>
     </>
   );
