@@ -171,11 +171,37 @@ impl Screen for Recovery {
 }
 
 /// DPMA provisioning, following `Provisioning::phase`.
+///
+/// While the server list holds exactly one server, the screen counts down
+/// and then selects it by itself, as stock's `choosePbx.js` does
+/// (`startSingleCountdown`): the count starts when the list is first drawn
+/// with its one entry, a key press other than Select stops it for as long
+/// as the list is shown, and so does a second server.
 #[derive(Default)]
 pub(crate) struct Provision {
     servers: ListState,
     users: ListState,
+    countdown: Countdown,
 }
+
+/// The lone-server countdown of the server list.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Countdown {
+    /// The list is not shown, or holds no server yet.
+    #[default]
+    Idle,
+    /// Counting since this monotonic time (the first draw of the list with
+    /// its one server).
+    Since(u64),
+    /// Stopped by a key or by a second server, or run out.
+    Stopped,
+}
+
+/// Stock counts 5, 4, 3, 2, 1, 0, one number a second, and selects a
+/// second after the 0: six seconds in all.
+const AUTO_SELECT_MS: u64 = 6000;
+/// Followed by the seconds left (stock: "Automatically selecting in...%s").
+const AUTO_SELECTING: &str = "Automatically selecting in\u{2026}";
 
 fn manual_server() -> Box<dyn Screen> {
     EditScreen::boxed("provision-server", tr::PROV_ENTER_SERVER, "", InputMode::Text, |cx, text| {
@@ -190,6 +216,30 @@ fn manual_server() -> Box<dyn Screen> {
 impl Provision {
     fn server_rows(cx: &Cx) -> usize {
         cx.st.provisioning.discovered.len() + 2
+    }
+    /// Follows the list: called at each draw, so the count runs only for a
+    /// list that has been painted.
+    fn follow(&mut self, cx: &Cx) {
+        let p = &cx.st.provisioning;
+        self.countdown = match (self.countdown, &p.phase, p.discovered.len()) {
+            (_, phase, _) if *phase != ProvisionPhase::AwaitingServer => Countdown::Idle,
+            (Countdown::Idle, _, 1) => {
+                // Stock puts the selection on the entry it counts down to.
+                self.servers = ListState::default();
+                Countdown::Since(cx.now_ms)
+            }
+            (Countdown::Since(_), _, n) if n != 1 => Countdown::Stopped,
+            (other, _, _) => other,
+        };
+    }
+    /// The seconds shown while the count runs.
+    fn seconds_left(&self, cx: &Cx) -> Option<u64> {
+        match self.countdown {
+            Countdown::Since(t) if cx.st.provisioning.phase == ProvisionPhase::AwaitingServer => {
+                Some((AUTO_SELECT_MS / 1000 - 1).saturating_sub(cx.now_ms.saturating_sub(t) / 1000))
+            }
+            _ => None,
+        }
     }
     fn pick_server(&self, cx: &Cx) -> Nav {
         let d = &cx.st.provisioning.discovered;
@@ -253,7 +303,38 @@ impl Screen for Provision {
             _ => Nav::Stay,
         }
     }
+    fn deadline(&self, cx: &Cx) -> Option<u64> {
+        match self.countdown {
+            Countdown::Since(t) if cx.st.provisioning.phase == ProvisionPhase::AwaitingServer => {
+                // The next change of the number, or the end.
+                let elapsed = cx.now_ms.saturating_sub(t);
+                Some(t + ((elapsed / 1000 + 1) * 1000).min(AUTO_SELECT_MS))
+            }
+            _ => None,
+        }
+    }
+    fn tick(&mut self, cx: &Cx) -> Nav {
+        if let Countdown::Since(t) = self.countdown {
+            let p = &cx.st.provisioning;
+            if p.phase == ProvisionPhase::AwaitingServer && p.discovered.len() == 1 && cx.now_ms >= t + AUTO_SELECT_MS {
+                self.countdown = Countdown::Stopped;
+                cx.post(Command::StartProvisioning { server: Some(p.discovered[0].address.clone()) });
+            }
+        }
+        Nav::Stay
+    }
+    fn leave(&mut self, _cx: &Cx) {
+        // Covered by another screen (address entry, status): stock stops
+        // the count for Settings, Info, and About alike.
+        if self.countdown != Countdown::Idle {
+            self.countdown = Countdown::Stopped;
+        }
+    }
     fn key(&mut self, cx: &Cx, key: Key) -> Nav {
+        // Any key but Select stops the count; Select picks the entry now.
+        if self.countdown != Countdown::Idle {
+            self.countdown = Countdown::Stopped;
+        }
         let (st, len) = match cx.st.provisioning.phase {
             ProvisionPhase::AwaitingServer => (&mut self.servers, Self::server_rows(cx)),
             ProvisionPhase::AwaitingUser => (&mut self.users, cx.st.provisioning.users.len()),
@@ -276,6 +357,7 @@ impl Screen for Provision {
         }
     }
     fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
+        self.follow(cx);
         let th = cx.th;
         let p = &cx.st.provisioning;
         let f = th.font(Font::Normal);
@@ -297,6 +379,12 @@ impl Screen for Provision {
                 rows.push(tr::PROV_ENTER_MANUALLY.into());
                 rows.push(tr::PROV_NO_SERVER.into());
                 listing(c, tr::PROV_SELECT_SERVER, rows, &mut self.servers);
+                if let Some(n) = self.seconds_left(cx) {
+                    // The last line of the body, below the three rows.
+                    let line = IRect { y: area.bottom() - th.line_h, h: th.line_h, ..area };
+                    c.fill(line, th.bg);
+                    c.text_in(f, line, &format!("{}{n}", AUTO_SELECTING), th.fg, HAlign::Center);
+                }
             }
             ProvisionPhase::AwaitingUser => {
                 let rows = p

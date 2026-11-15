@@ -375,10 +375,9 @@ impl Machine {
     /// or typed) or the saved one (`config_server_url`, written once a
     /// server has provisioned the phone) is used without asking.  A phone
     /// with neither, as after a factory reset, lists what discovery found
-    /// and waits for the user, whether that is one server or several.
-    /// (Stock's `choosePbx.js` shows the same list; with exactly one entry
-    /// it selects that entry by itself after six seconds without a key
-    /// press.)
+    /// and waits for a `StartProvisioning`.  The server menu sends it: for
+    /// the user's choice, or by itself for a lone entry after stock's
+    /// six-second countdown (`choosePbx.js`, `startSingleCountdown`).
     fn pick_server(&self) -> (Option<DiscoveredServer>, Vec<DiscoveredServer>) {
         let mut found = Vec::new();
         if let Some(o) = self.option66.as_deref().map(str::trim).filter(|o| o.starts_with("sip:") || o.starts_with("sips:")) {
@@ -487,10 +486,18 @@ impl Machine {
         // new one may be on its way.
         self.stop_resources();
         if full || !self.link.has_session() {
-            self.phase(ProvisionPhase::Discovering);
             let (server, found) = self.pick_server();
+            // A phone that waits for its user stays in that phase while
+            // the list follows discovery: the screen that shows the list
+            // (and counts down to a lone entry) is not started over.
+            let Some(server) = server else {
+                self.store.update::<Provisioning, _>(|p| {
+                    p.discovered = found;
+                    p.phase = ProvisionPhase::AwaitingServer;
+                });
+                return Ok(Outcome::NeedServer);
+            };
             self.store.update::<Provisioning, _>(|p| p.discovered = found);
-            let Some(server) = server else { return Ok(Outcome::NeedServer) };
             let server_uri = sip_uri(&server.address);
             self.link.set_server(&server_uri);
             self.server = Some(server.clone());

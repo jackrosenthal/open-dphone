@@ -192,9 +192,51 @@ pub async fn feed_discovery(ctx: Context, net: NetHandle, dpma: DpmaHandle) {
     }
 }
 
-/// Starts [`feed_discovery`].
+/// Whether the phone is in its setup (`Phase::Provisioning`: the display
+/// shows the provisioning screens, not the idle screen), given the phase
+/// it is in, the DPMA client's, and the number of SIP accounts.
+///
+/// As on stock (`stateMachine.js`, `StateMachine.start`), setup begins on
+/// a phone with no saved server and no accounts: the DPMA client reaches
+/// `AwaitingServer` only without a saved server, as after a factory reset.
+/// Setup ends when the phone is provisioned or the user chose to go on
+/// without a server.  A phone with a saved server or with accounts of its
+/// own never enters it.
+pub fn system_phase(now: dphone_state::Phase, provisioning: &ProvisionPhase, accounts: usize) -> dphone_state::Phase {
+    use dphone_state::Phase;
+    match (now, provisioning) {
+        (Phase::Running, ProvisionPhase::AwaitingServer) if accounts == 0 => Phase::Provisioning,
+        (Phase::Provisioning, ProvisionPhase::Provisioned | ProvisionPhase::Standalone) => Phase::Running,
+        (now, _) => now,
+    }
+}
+
+/// Keeps `System::phase` at [`system_phase`].
+pub async fn follow_setup(ctx: Context) {
+    let sub = ctx.store.subscribe([Topic::System, Topic::Provisioning, Topic::Accounts]);
+    loop {
+        let provisioning = ctx.store.read::<Provisioning, _>(|p| p.phase.clone());
+        let accounts = ctx.store.read::<dphone_state::Accounts, _>(|a| a.accounts.len());
+        let now = ctx.store.read::<dphone_state::System, _>(|s| s.phase);
+        let next = system_phase(now, &provisioning, accounts);
+        if next != now {
+            info!("dpma: {}", if next == dphone_state::Phase::Provisioning { "no saved server and no accounts; showing the server menu" } else { "setup is over" });
+            // Only the step that was decided on: a shutdown that began in
+            // between stays.
+            ctx.store.update::<dphone_state::System, _>(|s| {
+                if s.phase == now {
+                    s.phase = next;
+                }
+            });
+        }
+        sub.changed().await;
+    }
+}
+
+/// Starts [`feed_discovery`] and [`follow_setup`].
 pub fn start_discovery(ctx: &Context, net: &NetHandle, dpma: &DpmaHandle) {
     tokio::spawn(feed_discovery(ctx.clone(), net.clone(), dpma.clone()));
+    tokio::spawn(follow_setup(ctx.clone()));
 }
 
 #[cfg(test)]
@@ -283,6 +325,34 @@ mod tests {
         assert_eq!(f.read("contact_lists/0"), None);
         assert!(f.list("ringtones").is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn setup_is_for_a_phone_with_no_server_and_no_accounts() {
+        use dphone_state::Phase;
+        let failed = ProvisionPhase::Failed { reason: "no answer".into(), code: None };
+        // After a factory reset: no saved server, so the client waits for
+        // one, and no accounts.  The server menu takes the display.
+        assert_eq!(system_phase(Phase::Running, &ProvisionPhase::AwaitingServer, 0), Phase::Provisioning);
+        // It keeps it through the choice of a server and of a user, and
+        // through a failure.
+        for p in [ProvisionPhase::AwaitingServer, ProvisionPhase::Handshaking, ProvisionPhase::AwaitingUser, ProvisionPhase::FetchingConfig, ProvisionPhase::Applying, failed.clone(), ProvisionPhase::Idle] {
+            assert_eq!(system_phase(Phase::Provisioning, &p, 0), Phase::Provisioning, "{p:?}");
+        }
+        // Provisioned, or used without a server: the idle screen.
+        assert_eq!(system_phase(Phase::Provisioning, &ProvisionPhase::Provisioned, 1), Phase::Running);
+        assert_eq!(system_phase(Phase::Provisioning, &ProvisionPhase::Standalone, 0), Phase::Running);
+        // A phone with a saved server goes straight to it and never waits
+        // for one; whatever happens then, the idle screen stays.
+        for p in [ProvisionPhase::Idle, ProvisionPhase::Handshaking, ProvisionPhase::AwaitingUser, ProvisionPhase::FetchingConfig, failed, ProvisionPhase::Provisioned] {
+            assert_eq!(system_phase(Phase::Running, &p, 0), Phase::Running, "{p:?}");
+        }
+        // A phone with accounts of its own and no server is not held up.
+        assert_eq!(system_phase(Phase::Running, &ProvisionPhase::AwaitingServer, 1), Phase::Running);
+        // Start-up, recovery, and shutdown are not setup's to change.
+        for now in [Phase::Starting, Phase::NetworkWait, Phase::Recovery, Phase::ShuttingDown] {
+            assert_eq!(system_phase(now, &ProvisionPhase::AwaitingServer, 0), now);
+        }
     }
 
     #[test]

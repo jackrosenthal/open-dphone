@@ -152,6 +152,29 @@ fn diag_commands_and_restart() {
     assert_eq!(status.code(), Some(0));
 }
 
+/// A phone with no saved server and no accounts (the state after a factory
+/// reset) shows the server menu, not the idle screen, until the user goes
+/// on without a server or the phone is provisioned.
+#[test]
+fn a_phone_with_no_server_and_no_accounts_shows_the_server_menu() {
+    let dir = temp();
+    let (_main, socket) = start_main(dir.path(), &["--no-ssh"]);
+    wait_for("diag socket", Duration::from_secs(10), || socket.exists());
+    let state = |topic: &str| diag(&socket, &["state", topic]).1;
+    wait_for("the server menu", Duration::from_secs(30), || state("ui").contains("screen: \"provisioning\""));
+    assert!(state("system").contains("phase: Provisioning"), "{}", state("system"));
+    assert!(state("provisioning").contains("phase: AwaitingServer"), "{}", state("provisioning"));
+    // Nothing is announced to the simulator, so nothing is selected: the
+    // menu is still there after stock's six seconds.
+    std::thread::sleep(Duration::from_secs(7));
+    assert!(state("ui").contains("screen: \"provisioning\""), "{}", state("ui"));
+    // The rows are "Enter address..." and "Use without a server".
+    assert_eq!(diag(&socket, &["key", "down", "select"]).0, 0);
+    wait_for("the idle screen", Duration::from_secs(10), || state("ui").contains("screen: \"idle\""));
+    assert!(state("system").contains("phase: Running"), "{}", state("system"));
+    assert!(state("provisioning").contains("phase: Standalone"), "{}", state("provisioning"));
+}
+
 /// The speaker, headset, and mute lamps follow the audio state the main
 /// role keeps.
 #[test]
