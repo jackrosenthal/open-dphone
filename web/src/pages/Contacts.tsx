@@ -2,7 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useRef, useState } from "react";
 import { Icons } from "../components/icons";
-import { Badge, Button, Card, ConfirmButton, Empty, Field, Input, Modal, PageHeader, Select, Spinner, td, th } from "../components/ui";
+import { Badge, Button, Card, ConfirmButton, Dpma, Empty, Field, Input, Modal, PageHeader, Select, Spinner, td, th } from "../components/ui";
 import { ContactGroupSchema, ContactNumberSchema, ContactSchema, ContactsService, type Contact, type ContactGroup } from "../gen/dphone/v1/contacts_pb";
 import { CallsService } from "../gen/dphone/v1/calls_pb";
 import { client, errorMessage } from "../lib/transport";
@@ -65,7 +65,9 @@ function ContactEditor({ contact, onSave, onClose }: { contact: Contact; onSave:
   );
 }
 
-function ListEditor({ name }: { name: string }) {
+/// `dpma`: the provisioning server supplies the list, which is then not
+/// editable here.
+function ListEditor({ name, dpma }: { name: string; dpma: boolean }) {
   const list = useQuery(ContactsService.method.getContactList, { name });
   const [groups, setGroups] = useState<ContactGroup[]>();
   const [editing, setEditing] = useState<{ group: number; index: number; contact: Contact }>();
@@ -97,12 +99,18 @@ function ListEditor({ name }: { name: string }) {
         <div className="flex-1" />
         {dirty && <Badge tone="amber">Unsaved changes</Badge>}
         {dirty && <Button onClick={() => setGroups(undefined)}>Discard</Button>}
-        <Button variant="primary" disabled={!dirty} busy={put.isPending} onClick={() => put.mutate({ name, groups: current })}>
-          Save
-        </Button>
+        <Dpma on={dpma}>
+          <Button variant="primary" disabled={!dirty} busy={put.isPending} onClick={() => put.mutate({ name, groups: current })}>
+            Save
+          </Button>
+        </Dpma>
       </div>
       {current.length === 0 && (
-        <Button onClick={() => setGroups([create(ContactGroupSchema, { id: "local", name: "Contacts" })])}>Add Group</Button>
+        <Dpma on={dpma} className="w-fit">
+          <Button disabled={dpma} onClick={() => setGroups([create(ContactGroupSchema, { id: "local", name: "Contacts" })])}>
+            Add Group
+          </Button>
+        </Dpma>
       )}
       {current.map((g, gi) => {
         const rows = g.contacts.map((c, index) => ({ c, index })).filter(({ c }) => !q || `${c.firstName} ${c.lastName} ${c.organization} ${c.numbers.map((n) => n.dial).join(" ")}`.toLowerCase().includes(q));
@@ -112,9 +120,11 @@ function ListEditor({ name }: { name: string }) {
               <h3 className="text-sm font-semibold">
                 {g.name || g.id || "Group"} <span className="font-normal text-slate-400">{g.contacts.length}</span>
               </h3>
-              <Button size="sm" onClick={() => setEditing({ group: gi, index: -1, contact: create(ContactSchema, { contactType: "sip", numbers: [create(ContactNumberSchema, { primary: true })] }) })}>
-                Add Contact
-              </Button>
+              <Dpma on={dpma}>
+                <Button size="sm" disabled={dpma} onClick={() => setEditing({ group: gi, index: -1, contact: create(ContactSchema, { contactType: "sip", numbers: [create(ContactNumberSchema, { primary: true })] }) })}>
+                  Add Contact
+                </Button>
+              </Dpma>
             </div>
             {rows.length === 0 ? (
               <Empty>{q ? "No results" : "No contacts"}</Empty>
@@ -143,12 +153,14 @@ function ListEditor({ name }: { name: string }) {
                           ))}
                         </td>
                         <td className={`${td} whitespace-nowrap text-right`}>
-                          <Button size="sm" onClick={() => setEditing({ group: gi, index, contact: c })}>
-                            Edit
-                          </Button>{" "}
-                          <Button size="sm" variant="ghost" aria-label="Delete contact" onClick={() => update(gi, g.contacts.filter((_, j) => j !== index))}>
-                            <Icons.trash className="size-4" />
-                          </Button>
+                          <Dpma on={dpma} className="inline-block">
+                            <Button size="sm" disabled={dpma} onClick={() => setEditing({ group: gi, index, contact: c })}>
+                              Edit
+                            </Button>{" "}
+                            <Button size="sm" variant="ghost" aria-label="Delete contact" disabled={dpma} onClick={() => update(gi, g.contacts.filter((_, j) => j !== index))}>
+                              <Icons.trash className="size-4" />
+                            </Button>
+                          </Dpma>
                         </td>
                       </tr>
                     ))}
@@ -185,6 +197,8 @@ export function Contacts() {
   if (!lists.data) return <Spinner />;
   const names = lists.data.lists;
   const name = selected && names.some((l) => l.name === selected) ? selected : names[0]?.name;
+
+  const dpma = !!names.find((l) => l.name === name)?.provisioned;
 
   async function importFile(f: File) {
     setError("");
@@ -257,9 +271,20 @@ export function Contacts() {
                 </Select>
               </span>
             }
-            actions={name && <ConfirmButton size="sm" variant="secondary" label="Delete List" title={`Delete ${name}?`} confirmLabel="Delete" onConfirm={() => remove.mutateAsync({ name })} />}
+            actions={
+              name &&
+              (dpma ? (
+                <Dpma on>
+                  <Button size="sm" disabled>
+                    Delete List
+                  </Button>
+                </Dpma>
+              ) : (
+                <ConfirmButton size="sm" variant="secondary" label="Delete List" title={`Delete ${name}?`} confirmLabel="Delete" onConfirm={() => remove.mutateAsync({ name })} />
+              ))
+            }
           >
-            {name && <ListEditor key={name} name={name} />}
+            {name && <ListEditor key={name} name={name} dpma={dpma} />}
           </Card>
         )}
       </div>

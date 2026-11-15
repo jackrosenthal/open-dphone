@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useState } from "react";
-import { Alert, Badge, Button, Card, ConfirmButton, Empty, Field, Input, Modal, PageHeader, Select, Spinner, Toggle } from "../components/ui";
+import { Alert, Badge, Button, Card, ConfirmButton, Dpma, Empty, Field, Input, Modal, PageHeader, Select, Spinner, Toggle } from "../components/ui";
 import { AccountConfigSchema, AccountsService, SipTransport, type AccountConfig } from "../gen/dphone/v1/accounts_pb";
 import { useStatus } from "../lib/status";
 import { ErrorNote, RegistrationBadge } from "./common";
@@ -111,6 +111,8 @@ export function Accounts() {
   }
   const { accounts, maxAccounts, local } = list.data;
   const live = status?.accounts ?? list.data.status;
+  // Accounts that are not the phone's own are the provisioning server's.
+  const dpma = !local && accounts.length > 0;
   const free = Array.from({ length: maxAccounts }, (_, i) => i).filter((i) => !accounts.some((a) => a.index === i));
 
   const saveOne = (a: AccountConfig) => save.mutate({ accounts: [...accounts.filter((x) => x.index !== a.index), a] });
@@ -123,21 +125,20 @@ export function Accounts() {
         actions={
           <>
             <Button onClick={() => rereg.mutate({})}>Re-register</Button>
-            <Button
-              variant="primary"
-              disabled={free.length === 0}
-              onClick={() => setEditing(create(AccountConfigSchema, { index: free[0], enabled: true, register: true, transport: SipTransport.UDP }))}
-            >
-              Add Account
-            </Button>
+            <Dpma on={dpma}>
+              <Button
+                variant="primary"
+                disabled={dpma || free.length === 0}
+                onClick={() => setEditing(create(AccountConfigSchema, { index: free[0], enabled: true, register: true, transport: SipTransport.UDP }))}
+              >
+                Add Account
+              </Button>
+            </Dpma>
           </>
         }
       />
       <div className="space-y-5">
         {!editing && <ErrorNote error={error} />}
-        {!local && accounts.length > 0 && (
-          <Alert tone="blue" title="Accounts are provisioned." />
-        )}
         {local && (
           <Alert
             tone="blue"
@@ -170,10 +171,23 @@ export function Accounts() {
                     </div>
                     <div className="flex items-center gap-2">
                       {st && <RegistrationBadge a={st} />}
-                      <Button size="sm" onClick={() => setEditing({ ...a, password: "" })}>
-                        Edit
-                      </Button>
-                      <ConfirmButton size="sm" variant="secondary" label="Remove" title={`Remove Line ${a.index + 1}?`} confirmLabel="Remove" onConfirm={() => remove(a.index)} />
+                      {dpma ? (
+                        <Dpma on className="flex items-center gap-2">
+                          <Button size="sm" disabled>
+                            Edit
+                          </Button>
+                          <Button size="sm" disabled>
+                            Remove
+                          </Button>
+                        </Dpma>
+                      ) : (
+                        <>
+                          <Button size="sm" onClick={() => setEditing({ ...a, password: "" })}>
+                            Edit
+                          </Button>
+                          <ConfirmButton size="sm" variant="secondary" label="Remove" title={`Remove Line ${a.index + 1}?`} confirmLabel="Remove" onConfirm={() => remove(a.index)} />
+                        </>
+                      )}
                     </div>
                   </li>
                 );
