@@ -464,7 +464,7 @@ mod tests {
         assert_eq!(c.replay(), [Command::StartProvisioning { server: Some("10.0.0.5:5060".into()) }]);
         // An address, then "Use without a server": the client gets both,
         // and stays out of the way until asked again.
-        c.take(&Command::SkipProvisioning);
+        assert_eq!(c.take(&Command::SkipProvisioning), (Some(ProvisionPhase::Standalone), Ok(Reply::Done)));
         assert_eq!(c.replay(), [Command::StartProvisioning { server: Some("10.0.0.5:5060".into()) }, Command::SkipProvisioning]);
         // What needs the client says so.
         assert!(c.take(&Command::SelectUser { id: "100".into(), pin: String::new() }).1.is_err());

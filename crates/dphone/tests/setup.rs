@@ -5,7 +5,6 @@
 //! in-process DPMA server of `dphone-dpma`'s tests.
 
 #[path = "../../dphone-dpma/tests/common/mod.rs"]
-#[allow(dead_code)]
 mod common;
 
 use std::sync::{Arc, Mutex};
