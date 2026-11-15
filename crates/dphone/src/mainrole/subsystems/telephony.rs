@@ -634,7 +634,7 @@ async fn run(
             // Contact lists and the like that the configuration names by
             // HTTP URL are fetched with the phone's resolver; HTTPS servers
             // are checked against the trust bundle.
-            handle.set_http_source(super::provisioning::resource_source(&net, config.clone()));
+            handle.set_http_source(super::provisioning::http_source(&net, config.clone()));
             // Whoever waited for the client (the firmware updater) gets it
             // now, before the first report below starts provisioning.
             telephony.set_dpma(handle.clone());

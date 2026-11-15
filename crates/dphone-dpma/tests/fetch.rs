@@ -2,6 +2,10 @@
 //! statuses, and bodies that end early; and against an HTTPS server: the
 //! certificate check.
 
+#[cfg(feature = "https")]
+#[path = "common/https.rs"]
+mod https;
+
 use dphone_dpma::fetch::HttpSource;
 use dphone_dpma::firmware::FirmwareSource;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -96,50 +100,13 @@ fn streams_redirects_and_reports_failures() {
     assert!(source.open("http://127.0.0.1:1/fw.eff", "x").is_err());
 }
 
-/// An HTTPS server presenting the test certificate (`pbx.test`, 127.0.0.1)
-/// that answers every request with `ok`.
-#[cfg(feature = "https")]
-fn https_server() -> u16 {
-    use rustls::pki_types::pem::PemObject;
-    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
-    let certs: Vec<_> =
-        CertificateDer::pem_slice_iter(include_bytes!("../../dphone-sip/tests/data/test-cert.pem")).flatten().collect();
-    let key = PrivateKeyDer::from_pem_slice(include_bytes!("../../dphone-sip/tests/data/test-key.pem")).unwrap();
-    let config = rustls::ServerConfig::builder_with_provider(Arc::new(rustls_rustcrypto::provider()))
-        .with_safe_default_protocol_versions()
-        .unwrap()
-        .with_no_client_auth()
-        .with_single_cert(certs, key)
-        .unwrap();
-    let config = Arc::new(config);
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    std::thread::spawn(move || {
-        for tcp in listener.incoming() {
-            let Ok(tcp) = tcp else { break };
-            let conn = rustls::ServerConnection::new(config.clone()).unwrap();
-            let mut tls = rustls::StreamOwned::new(conn, tcp);
-            // A client that refuses the certificate ends the handshake.
-            let mut reader = BufReader::new(&mut tls);
-            let mut line = String::new();
-            while reader.read_line(&mut line).is_ok_and(|n| n > 0) && !line.trim().is_empty() {
-                line.clear();
-            }
-            let _ = tls.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
-            tls.conn.send_close_notify();
-            let _ = tls.flush();
-        }
-    });
-    port
-}
-
 #[cfg(feature = "https")]
 #[test]
 fn https_servers_are_checked_as_the_trust_policy_says() {
     use dphone_dpma::fetch::Trust;
     const CA: &[u8] = include_bytes!("../../dphone-sip/tests/data/test-ca.pem");
     const OTHER_CA: &[u8] = include_bytes!("../../dphone-sip/tests/data/wild-ca.pem");
-    let port = https_server();
+    let port = https::https_server(b"ok".to_vec());
     let get = |source: &HttpSource, host: &str| {
         let mut out = Vec::new();
         source
@@ -169,7 +136,7 @@ fn https_servers_are_checked_as_the_trust_policy_says() {
     bundle.extend_from_slice(CA);
     assert_eq!(get(&with(Trust::Roots(bundle.clone())), "127.0.0.1").unwrap(), b"ok");
     let e = get(&with(Trust::Roots(OTHER_CA.to_vec())), "127.0.0.1").unwrap_err();
-    assert!(e.contains("UnknownIssuer"), "{e}");
+    assert!(e.contains("TLS handshake with 127.0.0.1 failed") && e.contains("UnknownIssuer"), "{e}");
     // The name must match as well.
     assert_eq!(get(&with(Trust::Roots(bundle.clone())), "pbx.test").unwrap(), b"ok");
     let e = get(&with(Trust::Roots(bundle)), "other.test").unwrap_err();

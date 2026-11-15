@@ -4,6 +4,9 @@
 #![cfg(feature = "update")]
 
 mod common;
+#[cfg(feature = "https")]
+#[path = "common/https.rs"]
+mod https;
 
 use common::MemStorage;
 use dphone_dpma::firmware::{
@@ -181,6 +184,13 @@ impl Rig {
 
     fn run(&self, config: &str) -> Outcome {
         self.runner(CMDLINE_A).run(config.as_bytes())
+    }
+
+    /// A check that downloads from `source`, not from the fake one.
+    fn run_from(&self, source: Arc<dyn FirmwareSource>, config: &str) -> Outcome {
+        let mut runner = self.runner(CMDLINE_A);
+        runner.source = source;
+        runner.run(config.as_bytes())
     }
 
     fn opens(&self) -> usize {
@@ -422,4 +432,55 @@ fn unknown_running_image_means_no_update() {
     assert!(matches!(runner.run(config("12", "http://pbx/fw.eff", "").as_bytes()), Outcome::Unknown(_)));
     assert_eq!(r.opens(), 0);
     assert!(r.bank_b_untouched());
+}
+
+/// The real download client, with every name resolving to the local server
+/// and a trust policy the test changes.
+#[cfg(feature = "https")]
+fn https_source(trust: &Arc<Mutex<dphone_dpma::fetch::Trust>>) -> Arc<dyn FirmwareSource> {
+    let trust = trust.clone();
+    Arc::new(
+        dphone_dpma::fetch::HttpSource::with_lookup(Box::new(|_, port| Ok(([127, 0, 0, 1], port).into())))
+            .with_trust(Box::new(move || trust.lock().unwrap().clone())),
+    )
+}
+
+#[cfg(feature = "https")]
+#[test]
+fn https_server_with_an_unknown_issuer_is_refused_and_nothing_is_written() {
+    use dphone_dpma::fetch::Trust;
+    const CA: &[u8] = include_bytes!("../../dphone-sip/tests/data/test-ca.pem");
+    const OTHER_CA: &[u8] = include_bytes!("../../dphone-sip/tests/data/wild-ca.pem");
+    let (other, sum) = image("D60", "4", 4);
+    let port = https::https_server(other);
+    let cfg = config("4", &format!("https://pbx.test:{port}/fw.eff"), "");
+
+    // The phone trusts other authorities than the server's: no download,
+    // no write, a reason that names the certificate, and nothing held
+    // against the image.
+    let r = Rig::new();
+    let trust = Arc::new(Mutex::new(Trust::Roots(OTHER_CA.to_vec())));
+    let source = https_source(&trust);
+    let outcome = r.run_from(source.clone(), &cfg);
+    let Outcome::Unknown(why) = &outcome else { panic!("{outcome:?}") };
+    assert!(why.contains("TLS handshake with pbx.test failed") && why.contains("UnknownIssuer"), "{why}");
+    assert!(r.bank_b_untouched());
+    assert!(r.storage.read(ATTEMPT_FILE).is_none());
+    assert_eq!(r.boots(), (Bank::A, true));
+    assert!(r.reboots.lock().unwrap().is_empty());
+
+    // With the server's authority among the roots, the image is installed.
+    *trust.lock().unwrap() = Trust::Roots([OTHER_CA, CA].concat());
+    assert_eq!(r.run_from(source, &cfg), Outcome::Installed(sum));
+    assert_eq!(r.boots(), (Bank::B, true));
+
+    // `allow_insecure_ssl`: the same server without its authority.
+    let r = Rig::new();
+    let trust = Arc::new(Mutex::new(Trust::Roots(OTHER_CA.to_vec())));
+    let source = https_source(&trust);
+    assert!(matches!(r.run_from(source.clone(), &cfg), Outcome::Unknown(_)));
+    assert!(r.bank_b_untouched());
+    *trust.lock().unwrap() = Trust::Any;
+    assert_eq!(r.run_from(source, &cfg), Outcome::Installed(sum));
+    assert_eq!(r.boots(), (Bank::B, true));
 }

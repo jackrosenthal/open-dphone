@@ -128,31 +128,34 @@ pub async fn start(ctx: &Context, opts: &Options) {
         hub.on_change(move |cfg| audio.apply_config(cfg));
     }
 
-    // The EHS headset adapter on UART A, when the configuration gives it the
-    // UART (`serial_console` off); otherwise the serial console keeps it.
+    // UART A: the EHS headset adapter's by default; the serial console's
+    // when `serial_console` is on.
     {
         let ehs = ehs::start(ctx, hal.clone());
-        if let Some(cfg) = config.as_ref().map(|c| c.lock().unwrap().config()) {
-            ehs.apply_config(&cfg);
+        match config.as_ref().map(|c| c.lock().unwrap().config()) {
+            Some(cfg) => ehs.apply_config(&cfg),
+            None => ehs.no_config(),
         }
         hub.on_change(move |cfg| ehs.apply_config(cfg));
     }
 
-    // 6. The main role's own command domains: Config, Network, Update, System.
+    // 7. The main role's own command domains: Config, Network, Update, System.
     let firmware_mtd = mtd.clone();
     system::start(ctx, system::Parts { config: config.clone(), hub: hub.clone(), net: net.clone(), mtd });
 
     // Provisioned certificates, kept in nvdata for the TLS users below.
     trust::start(ctx, config.clone(), &hub);
 
-    // 7. dphone-sip and dphone-dpma: accounts, provisioning.
+    // 8. dphone-sip and dphone-dpma: accounts, provisioning.
     let telephony = telephony::start(ctx, config.clone(), &hub, net.clone(), audio.clone());
     // Provisioned firmware: downloaded over HTTP(S) and written by the
     // updater.  The DPMA client does not exist yet (it starts once the
     // phone has an address and SIP runs), so the updater is handed over
-    // when it does, before its first provisioning pass.
-    if let Some(mtd) = firmware_mtd {
-        let source = provisioning::http_source(&net);
+    // when it does, before its first provisioning pass.  (Without a
+    // configuration there is no DPMA client at all.)  An HTTPS server is
+    // checked against the trust bundle, like every other download.
+    if let (Some(mtd), Some(config)) = (firmware_mtd, config.clone()) {
+        let source = provisioning::http_source(&net, config);
         let installer = dphone_dpma::install::MtdInstaller {
             mtd,
             model: super::state_model(ctx.model),

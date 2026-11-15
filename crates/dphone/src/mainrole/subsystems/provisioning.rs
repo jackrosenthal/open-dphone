@@ -98,19 +98,13 @@ fn downloader(net: &NetHandle) -> dphone_dpma::fetch::HttpSource {
     }))
 }
 
-/// The HTTP client for firmware images.  Like stock's (`curl --insecure`),
-/// it does not check an `https://` server's certificate.  Call it on the
-/// runtime; the downloads themselves run on blocking threads.
-pub fn http_source(net: &NetHandle) -> Arc<dyn dphone_dpma::firmware::FirmwareSource> {
-    Arc::new(downloader(net))
-}
-
-/// The HTTP client for the files a configuration names by URL (contact
-/// lists, ringtones).  As on stock, an `https://` server is checked against
+/// The HTTP client for what a configuration names by URL: firmware images,
+/// contact lists, and ringtones.  An `https://` server is checked against
 /// the trust bundle ([`super::trust::roots`]) unless `allow_insecure_ssl`
-/// is set: the policy of SIP over TLS and of the apps' requests.  Call it
-/// on the runtime.
-pub fn resource_source(net: &NetHandle, config: super::SharedConfig) -> Arc<dyn dphone_dpma::firmware::FirmwareSource> {
+/// is set: the policy of SIP over TLS and of the apps' requests.  (Stock
+/// fetches firmware with `curl --insecure`; we check that server too.)
+/// Call it on the runtime; the downloads themselves run on blocking threads.
+pub fn http_source(net: &NetHandle, config: super::SharedConfig) -> Arc<dyn dphone_dpma::firmware::FirmwareSource> {
     use dphone_dpma::fetch::Trust;
     Arc::new(downloader(net).with_trust(Box::new(move || {
         let store = config.lock().unwrap();

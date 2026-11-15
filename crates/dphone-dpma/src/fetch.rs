@@ -4,14 +4,13 @@
 //! does with `-L`.  curl's other schemes (FTP, TFTP) are not supported.
 //!
 //! How an `https://` server is checked is the caller's choice
-//! ([`HttpSource::with_trust`]), because stock has two:
-//!
-//! - Firmware is downloaded with `curl --insecure -L`: no certificate
-//!   check, whatever the configuration says.  That is the default here.
-//! - The files a configuration names by URL (contact lists, ringtones) come
-//!   through `core`'s own client, which checks the server's certificate and
-//!   name against the trust bundle `/nvdata/certs/certs.crt` unless
-//!   `allow_insecure_ssl` is set.
+//! ([`HttpSource::with_trust`]); without a policy no server is checked.  The
+//! phone checks every download, firmware included, against its trust bundle
+//! `/nvdata/certs/certs.crt` unless `allow_insecure_ssl` is set.  (Stock
+//! does so for the files a configuration names by URL, through `core`'s own
+//! client, but fetches firmware with `curl --insecure -L`.)  The handshake
+//! is completed before the request is sent, so a refused certificate is
+//! reported as such.
 
 use crate::firmware::{FetchError, FirmwareSource};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -183,7 +182,11 @@ mod tls {
         let name = ServerName::try_from(host.to_string())
             .or_else(|_| tcp.peer_addr().map(|a| ServerName::IpAddress(a.ip().into())))
             .map_err(|e| e.to_string())?;
-        let conn = ClientConnection::new(Arc::new(config), name).map_err(|e| e.to_string())?;
+        let mut conn = ClientConnection::new(Arc::new(config), name).map_err(|e| e.to_string())?;
+        let mut tcp = tcp;
+        while conn.is_handshaking() {
+            conn.complete_io(&mut tcp).map_err(|e| e.to_string())?;
+        }
         Ok(StreamOwned::new(conn, tcp))
     }
 }
@@ -269,7 +272,7 @@ impl HttpSource {
             #[cfg(feature = "https")]
             {
                 let trust = self.trust.as_ref().map_or(Trust::Any, |policy| policy());
-                Box::new(tls::wrap(&u.host, tcp, &trust).map_err(|e| err(format!("TLS with {}: {e}", u.host)))?)
+                Box::new(tls::wrap(&u.host, tcp, &trust).map_err(|e| err(format!("TLS handshake with {} failed: {e}", u.host)))?)
             }
             #[cfg(not(feature = "https"))]
             {
