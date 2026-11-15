@@ -105,6 +105,11 @@ pub struct Theme {
     /// The boot screen's loading bar: the empty track and the filled part.
     pub load_track: Rgb,
     pub load_fill: Rgb,
+    /// Text and icons drawn on the wallpaper itself: the idle screen's
+    /// clock, date, and status icons, and an app's idle view.  The same
+    /// as `fg` unless the wallpaper and the menus' background are unlike
+    /// (a bright wallpaper over dark menus, or the reverse).
+    pub wallpaper_fg: Rgb,
 }
 
 static SMALL_GRAY: Theme = gray_theme(Skin::SmallGray);
@@ -161,6 +166,7 @@ static COLOR: Theme = Theme {
     tab_fg: rgb(0xEE, 0xEE, 0xEE),
     load_track: rgb(0x1F, 0x35, 0x5E),
     load_fill: rgb(0x2F, 0x80, 0xED),
+    wallpaper_fg: rgb(0xEE, 0xEE, 0xEE),
 };
 
 const fn gray_theme(skin: Skin) -> Theme {
@@ -219,6 +225,7 @@ const fn gray_theme(skin: Skin) -> Theme {
         tab_fg: GRAY[0],
         load_track: GRAY[3],
         load_fill: GRAY[0],
+        wallpaper_fg: GRAY[0],
     }
 }
 
@@ -253,12 +260,13 @@ pub struct Palette {
     pub tab_fg: Rgb,
     pub load_track: Rgb,
     pub load_fill: Rgb,
+    pub wallpaper_fg: Rgb,
 }
 
 impl Palette {
     /// The names of the roles (as a palette file has them) with their
     /// colors, in the order of the fields.
-    pub fn roles(&self) -> [(&'static str, Rgb); 26] {
+    pub fn roles(&self) -> [(&'static str, Rgb); 27] {
         [
             ("bg", self.bg),
             ("fg", self.fg),
@@ -286,6 +294,7 @@ impl Palette {
             ("tab_fg", self.tab_fg),
             ("load_track", self.load_track),
             ("load_fill", self.load_fill),
+            ("wallpaper_fg", self.wallpaper_fg),
         ]
     }
 
@@ -318,6 +327,7 @@ impl Palette {
             "tab_fg" => self.tab_fg = color,
             "load_track" => self.load_track = color,
             "load_fill" => self.load_fill = color,
+            "wallpaper_fg" => self.wallpaper_fg = color,
             _ => return false,
         }
         true
@@ -367,7 +377,7 @@ impl Palette {
     /// background, the least contrast it should have).  From the drawing
     /// code: lists and menus, dialogs and notices, inputs, the softkey
     /// bar, the line-key tabs, and the call cards.  (The idle screen's
-    /// text is on the wallpaper, which is not a role.)
+    /// text, `wallpaper_fg`, is on the wallpaper, which is not a role.)
     pub fn pairings(&self) -> Vec<(&'static str, Rgb, Rgb, f32)> {
         const TEXT: f32 = TEXT_CONTRAST;
         const GRAPHIC: f32 = GRAPHIC_CONTRAST;
@@ -441,6 +451,7 @@ impl Theme {
             tab_fg: self.tab_fg,
             load_track: self.load_track,
             load_fill: self.load_fill,
+            wallpaper_fg: self.wallpaper_fg,
         }
     }
 
@@ -473,6 +484,7 @@ impl Theme {
             tab_fg: p.tab_fg,
             load_track: p.load_track,
             load_fill: p.load_fill,
+            wallpaper_fg: p.wallpaper_fg,
             skin: self.skin,
             gray: self.gray,
             fonts: self.fonts,

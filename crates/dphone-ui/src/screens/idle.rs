@@ -331,7 +331,7 @@ impl Screen for Idle {
         if th.gray {
             gray_header(cx, c, header, None);
         } else {
-            draw_status_icons(cx, c, header, th.fg);
+            draw_status_icons(cx, c, header, th.wallpaper_fg);
         }
         draw_tabs(cx, c, th.idle_tab_x);
 
@@ -343,8 +343,10 @@ impl Screen for Idle {
             if th.gray {
                 crate::appview_impl::render(&mut tree, c, th, app, cx.now_ms);
             } else {
-                // Over the wallpaper: the app's widgets without a fill.
-                crate::appview_impl::render_over(&mut tree, c, th, app, cx.now_ms);
+                // Over the wallpaper: the app's widgets without a fill,
+                // text in the wallpaper's text color where the app sets
+                // none.
+                crate::appview_impl::render_over(&mut tree, c, th, app, cx.now_ms, th.wallpaper_fg);
             }
             main = rest;
         }
@@ -359,22 +361,22 @@ impl Screen for Idle {
         if th.gray {
             let mw = if mer.is_empty() { 0 } else { sub.width(mer) + 3 };
             let x = lay.date_cx - (tw + mw) / 2;
-            c.text(big, x, lay.time_base, &time, th.fg);
+            c.text(big, x, lay.time_base, &time, th.wallpaper_fg);
             if !mer.is_empty() {
-                c.text(sub, x + tw + 3, lay.time_base, mer, th.fg);
+                c.text(sub, x + tw + 3, lay.time_base, mer, th.wallpaper_fg);
             }
         } else {
             // With a meridiem the time ends where stock's does; without
             // one it is centered over the date.
             let x = if mer.is_empty() { lay.date_cx - tw / 2 } else { lay.time_right - tw };
-            c.text(big, x, lay.time_base, &time, th.fg);
+            c.text(big, x, lay.time_base, &time, th.wallpaper_fg);
             if !mer.is_empty() {
-                c.text(th.meridiem_font(), lay.mer_x, lay.time_base, mer, th.fg);
+                c.text(th.meridiem_font(), lay.mer_x, lay.time_base, mer, th.wallpaper_fg);
             }
         }
         if clock_set {
             let date = civil.date();
-            c.text(sub, lay.date_cx - sub.width(&date) / 2, lay.date_base, &date, th.fg);
+            c.text(sub, lay.date_cx - sub.width(&date) / 2, lay.date_base, &date, th.wallpaper_fg);
         }
     }
     fn deadline(&self, cx: &Cx) -> Option<u64> {

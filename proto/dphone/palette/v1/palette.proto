@@ -53,8 +53,8 @@ message Palette {
 
   // Background of menus, lists, and app screens.
   optional string bg = 10;
-  // Text and icons on the background, on the wallpaper (the idle
-  // screen's clock, date, and status icons), and on the call cards.
+  // Text and icons on the background and on the call cards; and, unless
+  // `wallpaper_fg` is given, on the wallpaper.
   optional string fg = 11;
   // Title bar, and the state band of the call screens.
   optional string title_bg = 12;
@@ -104,4 +104,9 @@ message Palette {
   optional string load_track = 34;
   // Loading bar: the filled part.
   optional string load_fill = 35;
+  // Text and icons on the wallpaper itself: the idle screen's clock,
+  // date, and status icons.  Default: `fg`.  Give it when the wallpaper
+  // and the menus' background are unlike, e.g., a bright picture over
+  // dark menus.
+  optional string wallpaper_fg = 36;
 }

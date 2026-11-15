@@ -133,6 +133,7 @@ impl Scheme {
                 Palette {
                     bg: surface,
                     fg: ink,
+                    wallpaper_fg: ink,
                     title_bg: toward(primary, 0, 2),
                     title_fg: WHITE,
                     sel_bg: primary,
@@ -225,6 +226,11 @@ pub fn palette_from(light: bool, primary: Option<Rgb>, surface: Option<Rgb>, rol
         Scheme::Skin
     };
     let mut palette = scheme.palette(&skin);
+    // Text on the wallpaper is the text color unless the file says
+    // otherwise.
+    if let Some((_, fg)) = roles.iter().find(|(role, _)| *role == "fg") {
+        palette.wallpaper_fg = *fg;
+    }
     let unknown = roles.iter().filter(|(role, color)| !palette.set(role, *color)).map(|(role, _)| role.to_string()).collect();
     (palette, unknown)
 }
@@ -331,8 +337,20 @@ enum Base {
     /// in the gradient's color at its center, lighter or darker by up to
     /// `amp`.
     Poly { grad: Grad, cell: i32, jitter: i32, seed: u32, amp: i32 },
+    /// A flowing field of color: every point has a position along the
+    /// stops, and the flow bends the lines of equal position.
+    Flow { flow: Flow, stops: Stops },
     /// The first wallpaper this firmware had, pixel for pixel.
     Original,
+}
+
+/// How the colors of [`Base::Flow`] run: from a straight run across the
+/// screen along (`ax`, `ay`) (as [`Grad::Linear`], neither negative),
+/// bent.  Amounts are out of 4096, the whole run.
+enum Flow {
+    /// Bent by waves: (amount, the wave's length in pixels along x and
+    /// along y (0: it does not vary that way), phase in 1/256 turn).
+    Ribbons { ax: i32, ay: i32, waves: &'static [(i32, i32, i32, i32)] },
 }
 
 /// A slanted band: (start, width, opacity at its leading edge, opacity at
@@ -460,6 +478,24 @@ fn hash(x: i32, y: i32, seed: u32) -> u32 {
     h ^ (h >> 15)
 }
 
+impl Flow {
+    /// The position along the stops (0..=[`ONE`]) of pixel (`x`, `y`).
+    fn at(&self, x: i32, y: i32) -> i32 {
+        let straight = |ax: i32, ay: i32| (x * ax + y * ay) * ONE / (WIDTH * ax + HEIGHT * ay);
+        let t = match *self {
+            Flow::Ribbons { ax, ay, waves } => {
+                let mut t = straight(ax, ay);
+                for &(amount, px, py, phase) in waves {
+                    let turn = if px != 0 { x * 65536 / px } else { 0 } + if py != 0 { y * 65536 / py } else { 0 } + phase * 256;
+                    t += (amount * sin(turn)) >> 12;
+                }
+                t
+            }
+        };
+        t.clamp(0, ONE)
+    }
+}
+
 /// The sine of `turn` / 65536 of a full turn, times [`ONE`].
 fn sin(turn: i32) -> i32 {
     // sin(pi z) for z in -1..1 is close to 4z(1 - |z|); one correction
@@ -516,6 +552,13 @@ fn render(spec: &Spec) -> Vec<u32> {
             }
         }
         Base::Poly { grad, cell, jitter, seed, amp } => poly(&mut buf, grad, *cell, *jitter, *seed, *amp),
+        Base::Flow { flow, stops } => {
+            for y in 0..HEIGHT {
+                for x in 0..WIDTH {
+                    buf[(y * WIDTH + x) as usize] = pack(stops_at(stops, flow.at(x, y)));
+                }
+            }
+        }
         Base::Original => {
             for (o, p) in buf.iter_mut().zip(original()) {
                 *o = pack(px(p));

@@ -27,7 +27,7 @@ pub const PALETTE_SETTING: &str = "dphone_palette_file";
 pub const MAX_PALETTE_FILE: usize = 16 * 1024;
 
 /// The roles a palette file can set, by field name.
-pub const ROLES: [&str; 26] = [
+pub const ROLES: [&str; 27] = [
     "bg",
     "fg",
     "title_bg",
@@ -54,6 +54,7 @@ pub const ROLES: [&str; 26] = [
     "tab_fg",
     "load_track",
     "load_fill",
+    "wallpaper_fg",
 ];
 
 /// A palette file as read.  Colors are `0x00RRGGBB`.
@@ -132,6 +133,7 @@ impl PaletteFile {
             ("tab_fg", color("tab_fg", &msg.tab_fg)),
             ("load_track", color("load_track", &msg.load_track)),
             ("load_fill", color("load_fill", &msg.load_fill)),
+            ("wallpaper_fg", color("wallpaper_fg", &msg.wallpaper_fg)),
         ];
         out.primary = primary;
         out.surface = surface;

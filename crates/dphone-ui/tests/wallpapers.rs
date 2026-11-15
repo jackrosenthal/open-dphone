@@ -313,7 +313,7 @@ fn every_palette_can_be_read() {
         // pixel it can be on.
         let mut idle = f64::MAX;
         for (what, area) in text_areas(th) {
-            let ratio = least_contrast(&pixels, area, th.fg);
+            let ratio = least_contrast(&pixels, area, th.wallpaper_fg);
             idle = idle.min(ratio);
             check(what, ratio, TEXT);
         }
@@ -365,6 +365,17 @@ fn palettes_from_palette_files() {
     assert_eq!((p.sel_bg, p.bg), (skin.sel_bg, 0x0F1E18));
     let p = wallpaper::palette_from(true, None, None, &[]).0;
     assert!(p.is_light() && p.low_contrast().is_empty(), "{:?}", p.low_contrast());
+    // Text on the wallpaper is the text color, unless it is given.
+    let p = wallpaper::palette_from(false, None, None, &[("fg", 0xC0C0C0)]).0;
+    assert_eq!((p.fg, p.wallpaper_fg), (0xC0C0C0, 0xC0C0C0));
+    let p = wallpaper::palette_from(false, None, None, &[("wallpaper_fg", 0x101010), ("fg", 0xC0C0C0)]).0;
+    assert_eq!((p.fg, p.wallpaper_fg), (0xC0C0C0, 0x101010));
+    // Every built-in palette but Regatta's has one text color for both;
+    // Regatta's menus are navy under a mostly yellow picture.
+    for w in wallpaper::all() {
+        let p = w.palette();
+        assert_eq!(p.wallpaper_fg == p.fg, w.id != "regatta", "{}", w.id);
+    }
     // Roles by name go over the derived colors; unknown names come back.
     let (p, unknown) = wallpaper::palette_from(false, Some(0x1F6E4E), Some(0x0F1E18), &[("title_bg", 0x14503A), ("sparkle", 1), ("accent", 0x8FD6B4)]);
     assert_eq!((p.title_bg, p.accent, p.sel_bg), (0x14503A, 0x8FD6B4, 0x1F6E4E));
@@ -389,9 +400,9 @@ fn every_screen_is_drawn_in_the_wallpapers_palette() {
         let (mut ink, mut least) = (0, f64::MAX);
         for y in 0..th.soft_y {
             for x in 0..th.idle_tab_x {
-                if at(&frame, x, y) == th.fg && at(&bare, x, y) != th.fg {
+                if at(&frame, x, y) == th.wallpaper_fg && at(&bare, x, y) != th.wallpaper_fg {
                     ink += 1;
-                    least = least.min(contrast(th.fg, at(&bare, x, y)));
+                    least = least.min(contrast(th.wallpaper_fg, at(&bare, x, y)));
                 }
             }
         }

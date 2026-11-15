@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/palette/v1/palette.proto.
  */
 export const file_dphone_palette_v1_palette: GenFile = /*@__PURE__*/
-  fileDesc("Ch9kcGhvbmUvcGFsZXR0ZS92MS9wYWxldHRlLnByb3RvEhFkcGhvbmUucGFsZXR0ZS52MSLDBwoHUGFsZXR0ZRISCgVsaWdodBgBIAEoCEgAiAEBEhQKB3ByaW1hcnkYAiABKAlIAYgBARIUCgdzdXJmYWNlGAMgASgJSAKIAQESDwoCYmcYCiABKAlIA4gBARIPCgJmZxgLIAEoCUgEiAEBEhUKCHRpdGxlX2JnGAwgASgJSAWIAQESFQoIdGl0bGVfZmcYDSABKAlIBogBARITCgZzZWxfYmcYDiABKAlIB4gBARITCgZzZWxfZmcYDyABKAlICIgBARIWCglzZWNvbmRhcnkYECABKAlICYgBARITCgZib3JkZXIYESABKAlICogBARIVCghtb2RhbF9iZxgSIAEoCUgLiAEBEhIKBXNrX2JnGBMgASgJSAyIAQESFAoHc2tfZWRnZRgUIAEoCUgNiAEBEhIKBXNrX2ZnGBUgASgJSA6IAQESEgoFc2tfZ28YFiABKAlID4gBARIUCgdza19zdG9wGBcgASgJSBCIAQESEQoEZ29vZBgYIAEoCUgRiAEBEhEKBHdhcm4YGSABKAlIEogBARISCgVlcnJvchgaIAEoCUgTiAEBEhMKBmFjY2VudBgbIAEoCUgUiAEBEhEKBGNhcmQYHCABKAlIFYgBARIZCgxjYXJkX3JpbmdpbmcYHSABKAlIFogBARIWCgljYXJkX2hlbGQYHiABKAlIF4gBARIWCgljYXJkX2RhcmsYHyABKAlIGIgBARITCgZ0YWJfYmcYICABKAlIGYgBARITCgZ0YWJfZmcYISABKAlIGogBARIXCgpsb2FkX3RyYWNrGCIgASgJSBuIAQESFgoJbG9hZF9maWxsGCMgASgJSByIAQFCCAoGX2xpZ2h0QgoKCF9wcmltYXJ5QgoKCF9zdXJmYWNlQgUKA19iZ0IFCgNfZmdCCwoJX3RpdGxlX2JnQgsKCV90aXRsZV9mZ0IJCgdfc2VsX2JnQgkKB19zZWxfZmdCDAoKX3NlY29uZGFyeUIJCgdfYm9yZGVyQgsKCV9tb2RhbF9iZ0IICgZfc2tfYmdCCgoIX3NrX2VkZ2VCCAoGX3NrX2ZnQggKBl9za19nb0IKCghfc2tfc3RvcEIHCgVfZ29vZEIHCgVfd2FybkIICgZfZXJyb3JCCQoHX2FjY2VudEIHCgVfY2FyZEIPCg1fY2FyZF9yaW5naW5nQgwKCl9jYXJkX2hlbGRCDAoKX2NhcmRfZGFya0IJCgdfdGFiX2JnQgkKB190YWJfZmdCDQoLX2xvYWRfdHJhY2tCDAoKX2xvYWRfZmlsbGIGcHJvdG8z");
+  fileDesc("Ch9kcGhvbmUvcGFsZXR0ZS92MS9wYWxldHRlLnByb3RvEhFkcGhvbmUucGFsZXR0ZS52MSLvBwoHUGFsZXR0ZRISCgVsaWdodBgBIAEoCEgAiAEBEhQKB3ByaW1hcnkYAiABKAlIAYgBARIUCgdzdXJmYWNlGAMgASgJSAKIAQESDwoCYmcYCiABKAlIA4gBARIPCgJmZxgLIAEoCUgEiAEBEhUKCHRpdGxlX2JnGAwgASgJSAWIAQESFQoIdGl0bGVfZmcYDSABKAlIBogBARITCgZzZWxfYmcYDiABKAlIB4gBARITCgZzZWxfZmcYDyABKAlICIgBARIWCglzZWNvbmRhcnkYECABKAlICYgBARITCgZib3JkZXIYESABKAlICogBARIVCghtb2RhbF9iZxgSIAEoCUgLiAEBEhIKBXNrX2JnGBMgASgJSAyIAQESFAoHc2tfZWRnZRgUIAEoCUgNiAEBEhIKBXNrX2ZnGBUgASgJSA6IAQESEgoFc2tfZ28YFiABKAlID4gBARIUCgdza19zdG9wGBcgASgJSBCIAQESEQoEZ29vZBgYIAEoCUgRiAEBEhEKBHdhcm4YGSABKAlIEogBARISCgVlcnJvchgaIAEoCUgTiAEBEhMKBmFjY2VudBgbIAEoCUgUiAEBEhEKBGNhcmQYHCABKAlIFYgBARIZCgxjYXJkX3JpbmdpbmcYHSABKAlIFogBARIWCgljYXJkX2hlbGQYHiABKAlIF4gBARIWCgljYXJkX2RhcmsYHyABKAlIGIgBARITCgZ0YWJfYmcYICABKAlIGYgBARITCgZ0YWJfZmcYISABKAlIGogBARIXCgpsb2FkX3RyYWNrGCIgASgJSBuIAQESFgoJbG9hZF9maWxsGCMgASgJSByIAQESGQoMd2FsbHBhcGVyX2ZnGCQgASgJSB2IAQFCCAoGX2xpZ2h0QgoKCF9wcmltYXJ5QgoKCF9zdXJmYWNlQgUKA19iZ0IFCgNfZmdCCwoJX3RpdGxlX2JnQgsKCV90aXRsZV9mZ0IJCgdfc2VsX2JnQgkKB19zZWxfZmdCDAoKX3NlY29uZGFyeUIJCgdfYm9yZGVyQgsKCV9tb2RhbF9iZ0IICgZfc2tfYmdCCgoIX3NrX2VkZ2VCCAoGX3NrX2ZnQggKBl9za19nb0IKCghfc2tfc3RvcEIHCgVfZ29vZEIHCgVfd2FybkIICgZfZXJyb3JCCQoHX2FjY2VudEIHCgVfY2FyZEIPCg1fY2FyZF9yaW5naW5nQgwKCl9jYXJkX2hlbGRCDAoKX2NhcmRfZGFya0IJCgdfdGFiX2JnQgkKB190YWJfZmdCDQoLX2xvYWRfdHJhY2tCDAoKX2xvYWRfZmlsbEIPCg1fd2FsbHBhcGVyX2ZnYgZwcm90bzM");
 
 /**
  * The colors of every screen of a color model (D60, D62, D65): a palette
@@ -85,8 +85,8 @@ export type Palette = Message<"dphone.palette.v1.Palette"> & {
   bg?: string | undefined;
 
   /**
-   * Text and icons on the background, on the wallpaper (the idle
-   * screen's clock, date, and status icons), and on the call cards.
+   * Text and icons on the background and on the call cards; and, unless
+   * `wallpaper_fg` is given, on the wallpaper.
    *
    * @generated from field: optional string fg = 11;
    */
@@ -259,6 +259,16 @@ export type Palette = Message<"dphone.palette.v1.Palette"> & {
    * @generated from field: optional string load_fill = 35;
    */
   loadFill?: string | undefined;
+
+  /**
+   * Text and icons on the wallpaper itself: the idle screen's clock,
+   * date, and status icons.  Default: `fg`.  Give it when the wallpaper
+   * and the menus' background are unlike, e.g., a bright picture over
+   * dark menus.
+   *
+   * @generated from field: optional string wallpaper_fg = 36;
+   */
+  wallpaperFg?: string | undefined;
 };
 
 /**

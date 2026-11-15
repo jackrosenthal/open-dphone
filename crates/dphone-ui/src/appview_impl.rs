@@ -1,7 +1,7 @@
 //! Rendering and key dispatch for [`crate::appview`] trees.
 
 use crate::appview::*;
-use crate::gfx::{Canvas, HAlign, IRect};
+use crate::gfx::{Canvas, HAlign, IRect, Rgb};
 use crate::skin::Theme;
 use crate::strings as tr;
 use crate::widgets::{self, Edit, ListState};
@@ -119,7 +119,7 @@ fn offset_within(tree: &Tree, id: WidgetId, scroll: WidgetId) -> i32 {
     y
 }
 
-fn draw_node(tree: &mut Tree, c: &mut Canvas, th: &Theme, id: WidgetId, ox: i32, oy: i32, now_ms: u64) {
+fn draw_node(tree: &mut Tree, c: &mut Canvas, th: &Theme, id: WidgetId, ox: i32, oy: i32, now_ms: u64, ink: Rgb) {
     let Some(node) = tree.node(id).cloned() else { return };
     if !node.visible {
         return;
@@ -135,11 +135,11 @@ fn draw_node(tree: &mut Tree, c: &mut Canvas, th: &Theme, id: WidgetId, ox: i32,
         && let Some(bg) = th.resolve(node.bg, None) {
             c.fill(r, bg);
         }
-    let fg = th.resolve(node.fg, Some(th.fg)).unwrap_or(th.fg);
+    let fg = th.resolve(node.fg, Some(ink)).unwrap_or(ink);
     match node.kind {
         WidgetKind::Group => {
             for ch in &node.children {
-                draw_node(tree, c, th, *ch, r.x, r.y, now_ms);
+                draw_node(tree, c, th, *ch, r.x, r.y, now_ms, ink);
             }
         }
         WidgetKind::Scroll => {
@@ -169,7 +169,7 @@ fn draw_node(tree: &mut Tree, c: &mut Canvas, th: &Theme, id: WidgetId, ox: i32,
                 n.content_h = content_h.clamp(0, u16::MAX as i32) as u16;
             }
             for ch in &node.children {
-                draw_node(tree, c, th, *ch, r.x, r.y - sy, now_ms);
+                draw_node(tree, c, th, *ch, r.x, r.y - sy, now_ms, ink);
             }
             widgets::scroll_bar(c, th, r, content_h, r.h, sy);
         }
@@ -303,15 +303,16 @@ fn draw_node(tree: &mut Tree, c: &mut Canvas, th: &Theme, id: WidgetId, ox: i32,
 pub(crate) fn render(tree: &mut Tree, c: &mut Canvas, th: &Theme, area: IRect, now_ms: u64) {
     let bg = th.resolve(tree.background, Some(th.bg)).unwrap_or(th.bg);
     c.fill(area, bg);
-    render_over(tree, c, th, area, now_ms);
+    render_over(tree, c, th, area, now_ms, th.fg);
 }
 
 /// Paints the tree's widgets into `area` over whatever is there (the idle
-/// view over the wallpaper).
-pub(crate) fn render_over(tree: &mut Tree, c: &mut Canvas, th: &Theme, area: IRect, now_ms: u64) {
+/// view over the wallpaper).  `ink` is the text color of a widget that
+/// sets none.
+pub(crate) fn render_over(tree: &mut Tree, c: &mut Canvas, th: &Theme, area: IRect, now_ms: u64, ink: Rgb) {
     let old = c.push_clip(area);
     for id in tree.roots.clone() {
-        draw_node(tree, c, th, id, area.x, area.y, now_ms);
+        draw_node(tree, c, th, id, area.x, area.y, now_ms, ink);
     }
     c.restore_clip(old);
 }

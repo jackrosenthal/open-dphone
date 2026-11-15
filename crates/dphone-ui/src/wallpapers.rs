@@ -37,6 +37,28 @@ macro_rules! facets {
 /// Pure red and pure yellow.
 const KETCHUP_MUSTARD: (Rgb, Rgb) = (0xFF0000, 0xFFFF00);
 
+/// Regatta's colors: vivid yellows, a navy, and red between them (the
+/// flame is the red that dark text can still be read on).
+const YELLOW: Rgb = 0xFFD21E;
+const AMBER: Rgb = 0xFFB800;
+const PALE: Rgb = 0xFFEC6A;
+const FLAME: Rgb = 0xFF6A2A;
+const RED: Rgb = 0xE5281E;
+const NAVY: Rgb = 0x14235A;
+const NAVY_DEEP: Rgb = 0x0B1640;
+/// Its palette: navy menus with light text under a yellow title bar; the
+/// selected row is yellow too, with the title's dark text.  The picture
+/// is mostly yellow, so the text on it is dark as well.
+const REGATTA: Scheme = Scheme::Dark { primary: 0x2A46A0, surface: 0x101C4A };
+const REGATTA_ROLES: &[(&str, Rgb)] = &[
+    ("title_bg", YELLOW),
+    ("title_fg", 0x1B1E24),
+    ("sel_bg", YELLOW),
+    ("sel_fg", 0x1B1E24),
+    ("accent", YELLOW),
+    ("wallpaper_fg", 0x1B1E24),
+];
+
 static ALL: [Wallpaper; 42] = [
     // ------------------------------------------------------------- Facets
     Wallpaper {
@@ -193,20 +215,19 @@ static ALL: [Wallpaper; 42] = [
         id: "regatta",
         name: "Regatta",
         family: Family::Gradients,
-        // Yellow menus under a blue title bar: the picture's proportions.
-        scheme: Scheme::Light { primary: 0x1848C8, surface: 0xFFE14A },
-        tweaks: &[],
+        scheme: REGATTA,
+        tweaks: REGATTA_ROLES,
         spec: Spec {
-            // Vivid yellow nearly everywhere; a vivid blue grows out of
-            // the lower right corner, through a sky blue and a pale
-            // yellow rather than through the gray the two would mix to.
-            // The dark text is over the yellow and the sky blue only.
-            base: Base::Grad(Grad::Radial {
-                cx: 480,
-                cy: 272,
-                r: 520,
-                stops: &[(0, 0x1848C8), (20, 0x2A6CF0), (33, 0x4AA0FF), (46, 0xFFF0A8), (60, 0xFFD21E), (100, 0xFFB400)],
-            }),
+            // Yellow from the left, bent into slow curves, with two thin
+            // ribbons of flame in it; a red edge and the navy at the
+            // right, clear of the clock, the date, and the status icons.
+            base: Base::Flow {
+                flow: Flow::Ribbons { ax: 4, ay: 1, waves: &[(230, 0, 210, 40), (120, 330, 150, 130), (60, 140, 0, 10)] },
+                stops: &[
+                    (0, AMBER), (16, YELLOW), (24, PALE), (27, FLAME), (30, YELLOW), (45, YELLOW), (49, FLAME), (52, AMBER),
+                    (68, YELLOW), (75, RED), (79, NAVY), (100, NAVY_DEEP),
+                ],
+            },
             layers: &[],
             dither: true,
         },
@@ -569,6 +590,7 @@ static ALL: [Wallpaper; 42] = [
             tab_fg: 0x000000,
             load_track: KETCHUP_MUSTARD.0,
             load_fill: KETCHUP_MUSTARD.1,
+            wallpaper_fg: 0x000000,
         }),
         tweaks: &[],
         spec: Spec {
