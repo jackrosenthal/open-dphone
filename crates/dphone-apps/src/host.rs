@@ -208,6 +208,7 @@ pub(crate) fn presence_of(e: &dphone_state::BlfEntry, target: &str) -> Presence 
         BlfState::Ringing => "ringing",
         BlfState::InUse => "busy",
         BlfState::OnHold => "hold",
+        BlfState::OnHoldRinging => "hold-ringing",
         BlfState::Unavailable => "unavailable",
     };
     let status = match e.status {

@@ -322,7 +322,9 @@ impl Stack {
 
     fn blf_press(&mut self, cx: &Cx, entry: &str, number: &str) {
         let e = cx.st.presence.get(entry);
-        if e.is_some_and(|e| e.state == BlfState::Ringing) {
+        // As stock: a press dials the contact whatever its state, unless
+        // the contact is one whose ringing calls this phone may pick up.
+        if e.is_some_and(|e| e.pickup_ringing && matches!(e.state, BlfState::Ringing | BlfState::OnHoldRinging)) {
             cx.post(Command::Pickup { blf_entry: entry.to_string() });
             return;
         }

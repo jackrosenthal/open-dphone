@@ -156,10 +156,10 @@ pub(crate) struct CallRt {
 }
 
 pub(crate) enum SubKind {
-    /// `dialog` event for a BLF entry.
+    /// `presence` event for a BLF entry: the contact's line state and the
+    /// user's status in one document.  As on stock, this is the only
+    /// subscription a watched contact has.
     Blf(String),
-    /// `presence` event for a BLF entry.
-    Presence(String),
     Mwi,
 }
 
@@ -194,8 +194,6 @@ pub(crate) struct Core {
     pub last_dialed: Option<(String, Option<AccountId>)>,
     pub listeners: Vec<mpsc::UnboundedSender<IncomingMessage>>,
     pub park_extension: String,
-    /// The latest dialog-info per BLF entry, for directed pickup.
-    pub blf_dialogs: std::collections::HashMap<String, crate::bodies::DialogInfo>,
     /// Call-IDs of CANCELs that said the call was answered elsewhere.
     pub elsewhere: Arc<std::sync::Mutex<Vec<String>>>,
     /// Registrars (as `TCP host:port`) to which a TCP connection of ours,
@@ -495,6 +493,7 @@ impl Core {
                 Some(B::Ringing) => LampState::blinking(LampColor::Red, Blink::Fast),
                 Some(B::InUse) => LampState::solid(LampColor::Red),
                 Some(B::OnHold) => LampState::blinking(LampColor::Red, Blink::Slow),
+                Some(B::OnHoldRinging) => LampState::blinking(LampColor::Red, Blink::Fast),
                 _ => LampState::OFF,
             }
         };

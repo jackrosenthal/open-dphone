@@ -259,8 +259,8 @@ impl Model {
         }
     }
 
-    /// `Digium <model> <version>`: the shape DPMA and the dialog-info
-    /// supplement depend on.
+    /// `Digium <model> <version>`: the shape DPMA and Asterisk's
+    /// `digium_presence` supplement depend on.
     pub fn user_agent(self, version: &crate::FirmwareVersion) -> String {
         format!("Digium {} {}", self.name(), version.underscored())
     }

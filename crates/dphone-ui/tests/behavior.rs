@@ -297,11 +297,19 @@ fn rapid_dial_keys_dial_or_pick_up() {
     let mut r = Rig::new(Model::D70);
     r.store.update::<Presence, _>(|p| {
         p.entries.push(BlfEntry { id: "a".into(), number: "201".into(), state: BlfState::Idle, ..Default::default() });
-        p.entries.push(BlfEntry { id: "b".into(), number: "202".into(), state: BlfState::Ringing, ..Default::default() });
+        // Both ring; only "b" is a contact whose calls may be picked up.
+        p.entries.push(BlfEntry {
+            id: "b".into(),
+            number: "202".into(),
+            state: BlfState::Ringing,
+            pickup_ringing: true,
+            ..Default::default()
+        });
+        p.entries.push(BlfEntry { id: "c".into(), number: "203".into(), state: BlfState::Ringing, ..Default::default() });
     });
     r.store.update::<Keys, _>(|k| {
         k.rapid_pages = 2;
-        for (i, e) in ["a", "b"].into_iter().enumerate() {
+        for (i, e) in ["a", "b", "c"].into_iter().enumerate() {
             k.rapid_dial.push(RapidDialKey {
                 index: i as u8,
                 page: 0,
@@ -315,12 +323,14 @@ fn rapid_dial_keys_dial_or_pick_up() {
     r.ui.pump();
     r.tap(Key::Blf(1));
     r.tap(Key::Blf(2));
+    r.tap(Key::Blf(3));
     r.tap(Key::BlfPageRight);
     assert_eq!(
         r.call_cmds(),
         vec![
             Command::Dial { target: "201".into(), account: None, path: None },
             Command::Pickup { blf_entry: "b".into() },
+            Command::Dial { target: "203".into(), account: None, path: None },
             Command::SetRapidDialPage { page: 1 },
         ]
     );

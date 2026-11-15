@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<presence>
+ <presentity uri="sip:auto_hint_1002@127.0.0.1:15060;method=SUBSCRIBE" />
+ <atom atomid="91fdb5ad-c70f-46c0-b2ad-7705a21d12e3" id="auto_hint_1002">
+  <address uri="sip:1001@127.0.0.1;user=ip" priority="0.80000">
+   <status status="inuse" />
+   <msnsubstatus substatus="onthephone" />
+  </address>
+ </atom>
+</presence>

@@ -50,7 +50,6 @@ use dphone_state::{AccountId, Domain, Features, Store, Transport};
 use rsipstack::transport::udp::UdpConnection;
 use rsipstack::transport::SipAddr;
 use rsipstack::EndpointBuilder;
-use std::collections::HashMap;
 use rsipstack::dialog::dialog_layer::DialogLayer;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
@@ -300,7 +299,6 @@ pub async fn start(
         last_dialed: None,
         listeners: Vec::new(),
         park_extension: cfg.park_extension.clone(),
-        blf_dialogs: HashMap::new(),
         page_changes: 0,
         elsewhere,
         streams,

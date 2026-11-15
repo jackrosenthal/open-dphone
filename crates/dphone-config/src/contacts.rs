@@ -21,6 +21,9 @@ pub struct Contact {
     pub contact_type: String,
     /// Extension to subscribe to for presence, if any.
     pub subscribe_to: Option<String>,
+    /// `can_pickup_ringing="1"`: a press on the contact's key while the
+    /// contact rings picks the call up.
+    pub can_pickup_ringing: bool,
     pub numbers: Vec<Number>,
     /// The contact element, for attributes not modeled here.
     pub raw: Element,
@@ -57,6 +60,7 @@ fn group(e: &Element) -> ContactGroup {
                 organization: attr(c, "organization"),
                 contact_type: attr(c, "contact_type"),
                 subscribe_to: c.attr("subscribe_to").filter(|v| !v.is_empty()).map(str::to_owned),
+                can_pickup_ringing: c.attr("can_pickup_ringing").is_some_and(|v| v.trim() == "1"),
                 numbers: c
                     .child("numbers")
                     .map(|n| {

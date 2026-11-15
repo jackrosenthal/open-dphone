@@ -1584,19 +1584,11 @@ impl Core {
                     .find(|b| b.id == blf_entry)
                     .cloned()
                     .ok_or_else(|| invalid("no such BLF entry"))?;
-                if !b.pickup_prefix.is_empty() {
-                    let target = format!("{}{}", b.pickup_prefix, b.number);
-                    return self.dial(&target, Some(b.account), None, None, None, None, Vec::new()).map(Reply::Call);
-                }
-                let info = self.blf_dialogs.get(&blf_entry).filter(|i| !i.call_id.is_empty()).cloned();
-                let uri = self.store.get::<Presence>().get(&blf_entry).map(|e| e.uri.clone()).unwrap_or_default();
-                match info {
-                    Some(i) if !uri.is_empty() => {
-                        let replaces = format!("{};to-tag={};from-tag={};early-only", i.call_id, i.remote_tag, i.local_tag);
-                        self.dial(&uri, Some(b.account), None, Some(replaces), None, None, Vec::new()).map(Reply::Call)
-                    }
-                    _ => Err(invalid("nothing to pick up")),
-                }
+                // Stock's implicit pickup action: the contact's primary
+                // dial action with one more header.  The PBX's dialplan
+                // turns the marked call into a pickup.
+                let headers = vec![("X-Digium-Call-Feature".to_string(), "feature_pickup".to_string())];
+                self.dial(&b.number, Some(b.account), None, None, None, None, headers).map(Reply::Call)
             }
             Command::SetDnd { on } => {
                 self.store.update::<Features, _>(|f| f.dnd = on);

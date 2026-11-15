@@ -119,7 +119,7 @@ impl AccountConfig {
     }
 }
 
-/// A watched extension (BLF / rapid dial with a subscription).
+/// A BLF or rapid-dial item; with `subscribe`, a watched contact.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlfConfig {
     /// Stable ID (the contact ID); becomes `BlfEntry::id`.
@@ -127,17 +127,15 @@ pub struct BlfConfig {
     pub label: String,
     /// What pressing the key dials.
     pub number: String,
-    /// The user part or full URI to SUBSCRIBE to (stock
-    /// `subscription_extension`, e.g. `auto_hint_101`); empty: no
+    /// The user part or full URI to SUBSCRIBE to for `presence` (the
+    /// contact's `subscribe_to`, e.g., `auto_hint_101`); empty: no
     /// subscription, plain rapid dial.
     pub subscribe: String,
     pub account: AccountId,
-    /// Prefix dialed with the extension for directed pickup when the
-    /// ringing dialog's identifiers are not known (e.g. `**`); empty
-    /// disables that fallback.
-    pub pickup_prefix: String,
-    /// Also subscribe to the `presence` event for the user's status.
-    pub presence: bool,
+    /// A press while the contact rings picks the call up (the contact's
+    /// `can_pickup_ringing`); otherwise it dials the contact, as in every
+    /// other state.
+    pub pickup_ringing: bool,
     /// The item's `location`, `index`, and `paging`, and whether it is a
     /// blank that only reserves its key (see [`crate::keys`]).
     pub location: BlfLocation,
@@ -239,6 +237,8 @@ pub struct SipConfig {
     /// Seconds an ended call lingers in the state before removal.
     pub ended_linger_secs: u16,
     /// Subscription lifetime requested for BLF and MWI.
+    /// The expiry asked for in a `message-summary` SUBSCRIBE (presence
+    /// subscriptions ask for stock's 600 seconds).
     pub subscribe_expires_secs: u32,
     /// The parking extension (stock `parking_lot_extension`); empty: the
     /// phone cannot park.
@@ -302,7 +302,8 @@ impl SipConfig {
     }
 
     /// `Digium <model> <version>`: DPMA reads the model from the second
-    /// word, and the dialog-info supplement keys on the vendor name.
+    /// word, and Asterisk adds `digium_presence` to presence documents
+    /// for a User-Agent that names the vendor.
     pub fn user_agent(&self) -> String {
         self.model.user_agent(&self.version)
     }

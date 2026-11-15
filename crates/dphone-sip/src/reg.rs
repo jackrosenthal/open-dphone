@@ -22,6 +22,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::oneshot;
 
+/// What a presence SUBSCRIBE accepts and the expiry it asks for, both as
+/// stock's `core` sends them (2_9_28, 0xf3c20).  Asterisk answers this
+/// `Accept` with PIDF.
+const PRESENCE_ACCEPT: &str = "application/pidf+xml, application/xpidf+xml";
+const PRESENCE_EXPIRES_SECS: u32 = 600;
+
 const ALLOW: &str = "INVITE, ACK, CANCEL, BYE, OPTIONS, NOTIFY, REFER, MESSAGE, INFO, UPDATE";
 
 impl Core {
@@ -109,7 +115,7 @@ impl Core {
                     state: prev.as_ref().map(|p| p.state).unwrap_or(BlfState::Unknown),
                     status: prev.as_ref().map(|p| p.status).unwrap_or_default(),
                     status_text: prev.map(|p| p.status_text).unwrap_or_default(),
-                    remote: Party::default(),
+                    pickup_ringing: b.pickup_ringing,
                     subscribed: false,
                 }
             })
@@ -554,10 +560,7 @@ impl Core {
         let mut seen = std::collections::HashSet::new();
         for b in self.cfg.blf.iter().filter(|b| b.account == acct && !b.blank && seen.insert(b.id.clone())) {
             if let Some(uri) = self.blf_uri(acct, &b.subscribe) {
-                wanted.push((SubKind::Blf(b.id.clone()), uri.clone()));
-                if b.presence {
-                    wanted.push((SubKind::Presence(b.id.clone()), uri));
-                }
+                wanted.push((SubKind::Blf(b.id.clone()), uri));
             }
         }
         for (kind, uri) in wanted {
@@ -625,7 +628,7 @@ impl Core {
 
     /// Sends the initial SUBSCRIBE or a refresh.
     pub fn subscribe(&mut self, id: u32) {
-        let expires = self.cfg.subscribe_expires_secs;
+        let mwi_expires = self.cfg.subscribe_expires_secs;
         let Some(s) = self.subs.iter_mut().find(|s| s.id == id) else { return };
         s.generation += 1;
         let generation = s.generation;
@@ -639,10 +642,9 @@ impl Core {
             }
         }
         let Some(s) = self.subs.iter().find(|s| s.id == id) else { return };
-        let (event, accept) = match s.kind {
-            SubKind::Blf(_) => ("dialog", "application/dialog-info+xml"),
-            SubKind::Presence(_) => ("presence", "application/pidf+xml"),
-            SubKind::Mwi => ("message-summary", "application/simple-message-summary"),
+        let (event, accept, expires) = match s.kind {
+            SubKind::Blf(_) => ("presence", PRESENCE_ACCEPT, PRESENCE_EXPIRES_SECS),
+            SubKind::Mwi => ("message-summary", "application/simple-message-summary", mwi_expires),
         };
         let headers = vec![
             Header::Event(event.to_string().into()),
@@ -657,7 +659,7 @@ impl Core {
     }
 
     fn mark_subscribed(&self, kind: &SubKind, on: bool) {
-        if let SubKind::Blf(entry) | SubKind::Presence(entry) = kind {
+        if let SubKind::Blf(entry) = kind {
             self.store.update::<Presence, _>(|p| {
                 if let Some(e) = p.entries.iter_mut().find(|e| e.id == *entry) {
                     e.subscribed = on;
@@ -671,11 +673,14 @@ impl Core {
     }
 
     pub fn on_subscribed(&mut self, id: u32, generation: u64, result: Result<Option<Response>, String>) {
-        let expires_default = self.cfg.subscribe_expires_secs;
         let Some(s) = self.subs.iter().find(|s| s.id == id) else { return };
         if s.generation != generation {
             return;
         }
+        let expires_default = match s.kind {
+            SubKind::Blf(_) => PRESENCE_EXPIRES_SECS,
+            SubKind::Mwi => self.cfg.subscribe_expires_secs,
+        };
         let resp = match result {
             Ok(Some(r)) => Some(r),
             Ok(None) => None,
@@ -772,28 +777,19 @@ impl Core {
         let (id, acct) = (self.subs[idx].id, self.subs[idx].acct);
         match &self.subs[idx].kind {
             SubKind::Blf(entry) => {
-                let entry = entry.clone();
-                if let Some(info) = bodies::parse_dialog_info(&body) {
-                    self.store.update::<Presence, _>(|p| {
-                        if let Some(e) = p.entries.iter_mut().find(|e| e.id == entry) {
-                            e.state = info.state;
-                            e.remote = if info.state == BlfState::Ringing { info.remote.clone() } else { Party::default() };
-                            e.subscribed = !terminated;
-                        }
-                    });
-                    self.blf_dialogs.insert(entry, info);
-                    self.sync_keys();
-                }
-            }
-            SubKind::Presence(entry) => {
+                // One document says both what the contact's line does and
+                // what status the user has set.
                 let entry = entry.clone();
                 if let Some(doc) = bodies::parse_presence(&body) {
                     self.store.update::<Presence, _>(|p| {
                         if let Some(e) = p.entries.iter_mut().find(|e| e.id == entry) {
+                            e.state = doc.state;
                             e.status = doc.status;
-                            e.status_text = doc.note.clone();
+                            e.status_text = doc.message.clone();
+                            e.subscribed = !terminated;
                         }
                     });
+                    self.sync_keys();
                 }
             }
             SubKind::Mwi => self.apply_mwi(acct, &body),

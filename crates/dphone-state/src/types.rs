@@ -1043,20 +1043,30 @@ impl Audio {
 
 // -------------------------------------------------------------- Presence
 
-/// Dialog state of a watched extension (`dialog-info`).
+/// Line state of a watched contact, from its `presence` subscription:
+/// the states stock's `core` reduces a presence document to, and one more
+/// for a contact whose device is not reachable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Hash, Serialize, Deserialize)]
 pub enum BlfState {
-    /// No NOTIFY yet, or the subscription failed.
+    /// No NOTIFY yet, the subscription failed, or the document said
+    /// nothing we know.
     #[default]
     Unknown,
+    /// Stock's "Ready".
     Idle,
     Ringing,
+    /// Stock's "On the phone".
     InUse,
     OnHold,
+    /// A call on hold and another one ringing.
+    OnHoldRinging,
+    /// The document is closed: no device is registered.  Stock has no such
+    /// state (it shows these contacts as unknown).
     Unavailable,
 }
 
-/// User presence (the Digium supplement and the Status app).
+/// User presence (the `digium_presence` element of a presence document,
+/// and the Status app).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Hash, Serialize, Deserialize)]
 pub enum PresenceStatus {
     #[default]
@@ -1108,10 +1118,11 @@ pub struct BlfEntry {
     pub account: Option<AccountId>,
     pub state: BlfState,
     pub status: PresenceStatus,
-    /// Free-text sub-status from the supplement.
+    /// The user's free-text message from the supplement.
     pub status_text: String,
-    /// Who is calling the watched extension, when ringing (for pickup).
-    pub remote: Party,
+    /// A press while the contact rings picks the call up instead of
+    /// dialing the contact (stock `can_pickup_ringing`).
+    pub pickup_ringing: bool,
     /// The subscription is established.
     pub subscribed: bool,
 }

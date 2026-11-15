@@ -1,19 +1,20 @@
 //! Registration with digest authentication and failover to the alternate
-//! host, MWI and BLF subscriptions, and out-of-dialog MESSAGE in both
-//! directions, against a hand-written UDP server.
+//! host, the MWI subscription and the one presence subscription of a
+//! watched contact (with pickup of its ringing call), and out-of-dialog
+//! MESSAGE in both directions, against a hand-written UDP server.
 
 mod common;
 
 use common::{base_config, phone_with, wait, Msg, Server};
 use dphone_sip::{AccountConfig, BlfConfig, HostConfig, OutMessage};
 use dphone_state::{
-    AccountId, Accounts, ActiveHost, Blink, BlfState, Keys, LampColor, Mwi, Presence, Registration,
+    AccountId, Accounts, ActiveHost, Blink, BlfState, Command, Keys, LampColor, Mwi, Presence, PresenceStatus,
+    Registration,
 };
 
-const DIALOG_INFO: &str = r#"<?xml version="1.0"?>
-<dialog-info xmlns="urn:ietf:params:xml:ns:dialog-info" version="1" state="full" entity="sip:101@pbx">
-<dialog id="x" call-id="c1" local-tag="l" remote-tag="r" direction="recipient"><state>early</state>
-<remote><identity display="Alice">sip:100@pbx</identity></remote></dialog></dialog-info>"#;
+/// Presence documents as Asterisk sent them (see `bodies.rs`).
+const RINGING: &str = include_str!("data/presence/ringing.xml");
+const READY_AWAY: &str = include_str!("data/presence/ready-away-lunch.xml");
 
 fn notify(sub: &Msg, server: std::net::SocketAddr, event: &str, ctype: &str, body: &str, seq: u32) -> String {
     let contact = sub.header("Contact").unwrap().trim_matches(|c| c == '<' || c == '>').to_string();
@@ -59,10 +60,11 @@ async fn register_failover_subscribe_message() {
                     vec![ok, n]
                 } else {
                     // The first NOTIFY may overtake the 200: send it first.
-                    vec![notify(m, me, "dialog", "application/dialog-info+xml", DIALOG_INFO, 1), ok]
+                    vec![notify(m, me, &event, "application/pidf+xml", RINGING, 1), ok]
                 }
             }
             "ACK" => vec![],
+            "INVITE" => vec![m.reply(404, "Not Found", &[], "")],
             _ => vec![m.reply(200, "OK", &[], "")],
         }
     }))
@@ -85,8 +87,7 @@ async fn register_failover_subscribe_message() {
         number: "101".into(),
         subscribe: "auto_hint_101".into(),
         account: AccountId(0),
-        pickup_prefix: String::new(),
-        presence: false,
+        pickup_ringing: true,
         location: dphone_sip::BlfLocation::Side,
         index: 0,
         paging: true,
@@ -114,25 +115,54 @@ async fn register_failover_subscribe_message() {
     // MWI from the message-summary NOTIFY.
     wait("MWI", || p.store.get::<Mwi>().accounts.first().filter(|m| m.new == 2 && m.old == 8 && m.waiting).map(|_| ())).await;
     assert_eq!(p.store.get::<Keys>().message_lamp.color, LampColor::Red);
-    // BLF from the dialog-info NOTIFY, with the caller's identity.
+    // BLF from the presence NOTIFY: the line rings; the user's status is
+    // the Digium element's, not the `on-the-phone` activity.
     wait("BLF", || p.store.get::<Presence>().get("c101").filter(|e| e.state == BlfState::Ringing).map(|_| ())).await;
     let entry = p.store.get::<Presence>().get("c101").cloned().unwrap();
-    assert_eq!(entry.remote.name, "Alice");
-    assert!(entry.subscribed);
+    assert_eq!((entry.status, entry.status_text.as_str()), (PresenceStatus::Available, ""));
+    assert!(entry.subscribed && entry.pickup_ringing);
     let keys = p.store.get::<Keys>();
     // A D60 has no rapid-dial strip: the item is on the free line key.
     assert_eq!(keys.line_keys[1].binding, dphone_state::LineKeyBinding::Blf("c101".into()));
     assert_eq!(keys.line_keys[1].lamp.blink, Blink::Fast);
     assert!(keys.rapid_dial.is_empty());
+    // The contact has one subscription: `presence`, with stock's Accept
+    // and expiry.  Nothing subscribes to `dialog`.
     let subs = good.requests("SUBSCRIBE");
-    assert!(subs.iter().any(|s| s.start.starts_with("SUBSCRIBE sip:auto_hint_101@127.0.0.1")), "{:?}", subs.iter().map(|s| &s.start).collect::<Vec<_>>());
+    let events = |uri: &str| -> Vec<String> {
+        let mut dialogs: Vec<(String, String)> = subs
+            .iter()
+            .filter(|s| s.start.starts_with(uri))
+            .map(|s| (s.header("Call-ID").unwrap().to_string(), s.header("Event").unwrap().to_string()))
+            .collect();
+        dialogs.sort();
+        dialogs.dedup();
+        dialogs.into_iter().map(|d| d.1).collect()
+    };
+    assert_eq!(events("SUBSCRIBE sip:auto_hint_101@127.0.0.1"), ["presence"]);
+    assert_eq!(events("SUBSCRIBE sip:100@127.0.0.1"), ["message-summary"]);
+    assert!(subs.iter().all(|s| s.header("Event") != Some("dialog")));
+    let sub = subs.iter().find(|s| s.header("Event") == Some("presence")).unwrap();
+    assert_eq!(sub.header("Accept"), Some("application/pidf+xml, application/xpidf+xml"));
+    assert_eq!(sub.header("Expires"), Some("600"));
+
+    // A press on the ringing contact's key is a pickup, since the contact
+    // allows it: a call to the contact's number (not to the subscription
+    // target) marked with stock's header, and no Replaces.
+    assert!(p.store.send(Command::Pickup { blf_entry: "c101".into() }).await.is_ok());
+    let invite = wait("the pickup INVITE", || good.requests("INVITE").pop()).await;
+    assert!(invite.start.starts_with("INVITE sip:101@127.0.0.1"), "{}", invite.start);
+    assert_eq!(invite.header("X-Digium-Call-Feature"), Some("feature_pickup"));
+    assert_eq!(invite.header("Replaces"), None);
 
     // A later NOTIFY belongs to the established dialog (it carries the
-    // tags both sides now know) and updates the same entry.
-    let sub = subs.iter().find(|s| s.header("Event") == Some("dialog")).unwrap();
-    let idle = notify(sub, good.addr, "dialog", "application/dialog-info+xml", &DIALOG_INFO.replace("early", "terminated"), 2);
+    // tags both sides now know) and updates the same entry: idle, and the
+    // user away with a message.
+    let idle = notify(sub, good.addr, "presence", "application/pidf+xml", READY_AWAY, 2);
     good.socket.send_to(idle.as_bytes(), format!("127.0.0.1:{}", p.handle.local_port())).await.unwrap();
     wait("BLF idle", || p.store.get::<Presence>().get("c101").filter(|e| e.state == BlfState::Idle).map(|_| ())).await;
+    let entry = p.store.get::<Presence>().get("c101").cloned().unwrap();
+    assert_eq!((entry.status, entry.status_text.as_str()), (PresenceStatus::Away, "Back at 1"));
     assert_eq!(p.store.get::<Keys>().line_keys[1].lamp.color, LampColor::Green);
 
     // MESSAGE out (as DPMA sends it: from the MAC at the phone's address).

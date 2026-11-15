@@ -7,11 +7,15 @@
 //! contact list leaves a blank; with no items at all and
 //! `enable_blf_on_unused_line_keys`, the contacts of the BLF contact group
 //! (`blf_contact_group`) fill the free keys in order; a contact is watched
-//! when it has `subscribe_to`, on the first account, and at most
-//! `contacts_max_subscriptions` different targets are watched.
+//! (one `presence` subscription) when it has `subscribe_to`, on the first
+//! account, and at most `contacts_max_subscriptions` different targets are
+//! watched; a contact with `can_pickup_ringing="1"` is picked up, not
+//! dialed, by a press while it rings.
 //!
-//! Not done: application keys (`app_id`; the key is left reserved) and the
-//! old family's dataset autofill (`datasets.xml`).
+//! Not done: application keys (`app_id`; the key is left reserved), the
+//! old family's dataset autofill (`datasets.xml`), and provisioned
+//! `<behaviors>` (lamp and press action by `target_status`): every item
+//! has stock's default behavior.
 
 use dphone_config::contacts::{Contact, ContactGroup};
 use dphone_config::{Config, Nvdata};
@@ -21,8 +25,13 @@ use dphone_state::{AccountId, Family, Model};
 /// Stock's default for `contacts_max_subscriptions`.
 const MAX_SUBSCRIPTIONS: usize = 40;
 
+/// The contact lists on disk.  A contact without an `id` gets one, as
+/// stock's loader gives it (`_digiumContactsUniqueId%d`; the number here
+/// counts such contacts across the lists): the contacts a DPMA server
+/// generates for its lines ("Internal Extensions") have none, and each is
+/// still its own contact with its own subscription.
 fn contact_groups(nv: &Nvdata) -> Vec<ContactGroup> {
-    let mut groups = Vec::new();
+    let mut groups: Vec<ContactGroup> = Vec::new();
     for name in nv.contact_list_names().unwrap_or_default() {
         if let Ok(Some(bytes)) = nv.contact_list(&name)
             && let Ok(text) = String::from_utf8(bytes)
@@ -30,6 +39,10 @@ fn contact_groups(nv: &Nvdata) -> Vec<ContactGroup> {
         {
             groups.extend(found);
         }
+    }
+    let unnamed = groups.iter_mut().flat_map(|g| &mut g.contacts).filter(|c| c.id.is_empty());
+    for (n, c) in unnamed.enumerate() {
+        c.id = format!("_digiumContactsUniqueId{n}");
     }
     groups
 }
@@ -41,8 +54,7 @@ fn blank(location: BlfLocation, index: u8, paging: bool) -> BlfConfig {
         number: String::new(),
         subscribe: String::new(),
         account: AccountId(0),
-        pickup_prefix: String::new(),
-        presence: false,
+        pickup_ringing: false,
         location,
         index,
         paging,
@@ -57,12 +69,9 @@ fn of_contact(c: &Contact, account: AccountId, location: BlfLocation, index: u8,
         id: c.id.clone(),
         label: format!("{} {}", c.first_name, c.last_name).trim().to_string(),
         number: number.dial.clone(),
-        // Stock watches a contact with one presence subscription; here
-        // the dialog state and the presence status are two.
-        presence: !subscribe.is_empty(),
         subscribe,
         account,
-        pickup_prefix: String::new(),
+        pickup_ringing: c.can_pickup_ringing,
         location,
         index,
         paging,
@@ -154,7 +163,6 @@ pub fn items(cfg: &Config, nv: &Nvdata, model: Model, accounts: usize, page_line
             watched.push(item.subscribe.clone());
         } else {
             item.subscribe.clear();
-            item.presence = false;
         }
     }
     out
@@ -168,7 +176,7 @@ mod tests {
     const CONTACTS: &str = r#"<contacts group_name="Everyone" id="all">
         <contact id="101" first_name="Ann" last_name="Lee" contact_type="sip" subscribe_to="auto_hint_101">
           <numbers><number dial="101" label="Extension" primary="1"/></numbers></contact>
-        <contact id="102" first_name="Bo" last_name="" contact_type="sip" subscribe_to="auto_hint_102">
+        <contact id="102" first_name="Bo" last_name="" contact_type="sip" subscribe_to="auto_hint_102" can_pickup_ringing="1">
           <numbers><number dial="102" label="Extension" primary="1"/></numbers></contact>
         <contact id="103" first_name="Cy" last_name="Ng" contact_type="sip">
           <numbers><number dial="5551234" label="Cell" primary="1"/></numbers></contact>
@@ -199,14 +207,14 @@ mod tests {
         type Brief<'a> = (BlfLocation, u8, bool, bool, &'a str, &'a str, &'a str, bool);
         let brief: Vec<Brief> = got
             .iter()
-            .map(|b| (b.location, b.index, b.paging, b.blank, b.id.as_str(), b.number.as_str(), b.subscribe.as_str(), b.presence))
+            .map(|b| (b.location, b.index, b.paging, b.blank, b.id.as_str(), b.number.as_str(), b.subscribe.as_str(), b.pickup_ringing))
             .collect();
         use BlfLocation::{Expansion, Main, Side};
         assert_eq!(
             brief,
             [
                 (Side, 3, true, false, "102", "102", "auto_hint_102", true),
-                (Main, 1, false, false, "101", "101", "auto_hint_101", true),
+                (Main, 1, false, false, "101", "101", "auto_hint_101", false),
                 (Side, 4, true, true, "", "", "", false),
                 // An unknown contact and an application key leave blanks;
                 // an item with neither `blank` nor an id is no item.
@@ -216,6 +224,31 @@ mod tests {
             ]
         );
         assert_eq!((got[0].label.as_str(), got[1].label.as_str()), ("Bo", "Ann Lee"));
+    }
+
+    /// The contacts a DPMA server makes of its lines carry no `id`.
+    #[test]
+    fn contacts_without_an_id_are_separate_contacts() {
+        let dir = tempfile::tempdir().unwrap();
+        let nv = Nvdata::new(dir.path());
+        let list = r#"<contacts group_name="Internal Extensions" editable="0" >
+            <contact first_name="Alice" last_name=" " contact_type="sip" account_id="1001" subscribe_to="auto_hint_1001">
+            <numbers><number dial="1001" label="Extension" primary="1" /></numbers></contact>
+            <contact first_name="Bob" last_name=" " contact_type="sip" account_id="1002" subscribe_to="auto_hint_1002">
+            <numbers><number dial="1002" label="Extension" primary="1" /></numbers></contact>
+            </contacts>"#;
+        nv.write_contact_list("0", list.as_bytes()).unwrap();
+        let root = Element::parse(r#"<config><setting id="blf_contact_group" value="Internal Extensions"/></config>"#).unwrap();
+        let cfg = Config::from_merged(root, dphone_config::Model::D65, None);
+        let got = items(&cfg, &nv, Model::D65, 1, true, AccountId(0));
+        let brief: Vec<(&str, &str, &str)> = got.iter().map(|b| (b.id.as_str(), b.label.as_str(), b.subscribe.as_str())).collect();
+        assert_eq!(
+            brief,
+            [
+                ("_digiumContactsUniqueId0", "Alice", "auto_hint_1001"),
+                ("_digiumContactsUniqueId1", "Bob", "auto_hint_1002"),
+            ]
+        );
     }
 
     #[test]

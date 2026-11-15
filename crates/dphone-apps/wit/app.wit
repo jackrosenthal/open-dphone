@@ -146,7 +146,9 @@ interface types {
     /// `available`, `chat`, `away`, `dnd`, `xa`, `unavailable`, `unknown`.
     status: string,
     text: string,
-    /// `idle`, `ringing`, `busy`, `hold`, `unknown`.
+    /// The contact's line: `idle`, `ringing`, `busy`, `hold`,
+    /// `hold-ringing` (one call held, another ringing), `unavailable` (no
+    /// device registered), `unknown`.
     line-state: string,
   }
 

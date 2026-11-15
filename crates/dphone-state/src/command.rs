@@ -91,7 +91,9 @@ pub enum Command {
     SendToVoicemail { call: CallId },
     /// Park through the PBX (DPMA/feature code, as configured).
     Park { call: CallId },
-    /// Directed pickup of a ringing BLF entry.
+    /// Pick up the call ringing at a BLF entry's contact: stock's pickup
+    /// call, the contact's number with `X-Digium-Call-Feature:
+    /// feature_pickup`.
     Pickup { blf_entry: String },
     /// Dial the voicemail number of an account.
     DialVoicemail { account: Option<AccountId> },

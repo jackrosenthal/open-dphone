@@ -50,7 +50,7 @@ pub(crate) fn line_tabs(cx: &Cx) -> Vec<Tab> {
                 Tab {
                     label: if k.label.is_empty() { e.map(|e| e.label.clone()).unwrap_or_default() } else { k.label.clone() },
                     icon: match state {
-                        BlfState::Ringing => "ring",
+                        BlfState::Ringing | BlfState::OnHoldRinging => "ring",
                         BlfState::InUse => "phone",
                         BlfState::OnHold => "hold",
                         BlfState::Idle => "registered",

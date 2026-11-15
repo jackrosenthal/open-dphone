@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<presence entity="sip:auto_hint_1002@127.0.0.1:15060" xmlns="urn:ietf:params:xml:ns:pidf" xmlns:dm="urn:ietf:params:xml:ns:pidf:data-model" xmlns:rpid="urn:ietf:params:xml:ns:pidf:rpid">
+ <note>Ringing</note>
+ <tuple id="auto_hint_1002">
+  <status>
+   <basic>open</basic>
+  </status>
+  <contact priority="1">sip:1001@127.0.0.1</contact>
+ </tuple>
+ <dm:person>
+  <rpid:activities>
+   <rpid:on-the-phone />
+  </rpid:activities>
+ </dm:person>
+ <tuple id="digium-presence">
+  <status>
+   <digium_presence type="dnd" />
+  </status>
+ </tuple>
+</presence>

@@ -4,7 +4,11 @@
 //! provisions over DPMA (handshake with a freshly minted identity, token,
 //! configuration), writes the stock-format files, and registers the line
 //! the configuration gave it; the server's own view is read back through
-//! its CLI.  Then the server's configuration changes and it tells the phone,
+//! its CLI.  The phone watches the server's other line, 1002, the way the
+//! configuration tells it to (the server's contact list on a free key, one
+//! `presence` subscription), and the key's state follows that line as it
+//! rings, is answered, and hangs up; 1002 itself is a scripted endpoint
+//! here.  Then the server's configuration changes and it tells the phone,
 //! which fetches the new one.
 //!
 //! Skipped unless `DPHONE_TEST_ASTERISK` names an Asterisk installation
@@ -14,6 +18,7 @@
 //! in it.  With `DPHONE_TEST_REQUIRE_ASTERISK` set (the Nix check sets it,
 //! and supplies both: nix/asterisk.nix) it fails instead of skipping.
 
+use std::net::UdpSocket;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -98,21 +103,97 @@ fn write(path: &Path, text: &str) {
 /// every address because the simulator has no network of its own: its
 /// configuration merge is never told an address, and selects the network
 /// as a phone at 0.0.0.0 would.
+///
+/// A second phone has line 1002.  The server makes a contact of every
+/// phone's line (the document it serves as `file://default`: "Internal
+/// Extensions", each contact with `subscribe_to` naming the hint the server
+/// creates for the line), and `blf_contact_group` with
+/// `blf_unused_linekeys` puts those contacts on the simulator's free keys.
 fn dpma_conf(timezone: &str) -> String {
     format!(
         "[general]\nuserlist_auth=disabled\nconfig_auth=mac\nservice_discovery_enabled=no\n\n\
          [everywhere]\ntype=network\nalias=Everywhere\ncidr=0.0.0.0/0\nregistration_address=127.0.0.1\n\
          registration_port={SIP_PORT}\ntransport=udp\n\n\
          [simphone]\ntype=phone\nmac={MAC}\nnetwork=everywhere\nline=1001\nfull_name=Sim Phone\n\
-         timezone={timezone}\ndphone_ssh_enabled=no\n\n\
-         [1001]\ntype=line\n"
+         timezone={timezone}\ndphone_ssh_enabled=no\ncontact=file://default\n\
+         blf_contact_group=Internal Extensions\nblf_unused_linekeys=yes\n\n\
+         [otherphone]\ntype=phone\nmac=000fd3000002\nnetwork=everywhere\nline=1002\nfull_name=Bob Watched\n\n\
+         [1001]\ntype=line\n\n[1002]\ntype=line\n"
     )
+}
+
+/// The device of line 1002: enough of a SIP endpoint to be called.  It
+/// answers an INVITE with 180, and with 200 (and an SDP answer) once
+/// `answer` is called; it says 200 to everything else (the BYE that ends
+/// the call) and nothing to an ACK.
+struct Callee {
+    socket: UdpSocket,
+    /// The 200 to the INVITE that is ringing.
+    pending: std::sync::Arc<std::sync::Mutex<Option<(String, std::net::SocketAddr)>>>,
+}
+
+impl Callee {
+    fn start() -> Callee {
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let pending = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let (rx, slot) = (socket.try_clone().unwrap(), pending.clone());
+        let port = socket.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 8192];
+            while let Ok((n, from)) = rx.recv_from(&mut buf) {
+                let text = String::from_utf8_lossy(&buf[..n]).into_owned();
+                let method = text.split(' ').next().unwrap_or("");
+                if method == "ACK" || method.starts_with("SIP/") {
+                    continue;
+                }
+                // The headers a response repeats; the To gets our tag.
+                let mut echo = String::new();
+                for line in text.lines().skip(1).take_while(|l| !l.is_empty()) {
+                    let name = line.split(':').next().unwrap_or("").trim().to_ascii_lowercase();
+                    match name.as_str() {
+                        "via" | "v" | "from" | "f" | "call-id" | "i" | "cseq" => echo.push_str(&format!("{line}\r\n")),
+                        "to" | "t" if line.contains("tag=") => echo.push_str(&format!("{line}\r\n")),
+                        "to" | "t" => echo.push_str(&format!("{line};tag=callee1002\r\n")),
+                        _ => {}
+                    }
+                }
+                let contact = format!("Contact: <sip:1002@127.0.0.1:{port}>\r\n");
+                let reply = |status: &str, body: &str| {
+                    let kind = if body.is_empty() { "" } else { "Content-Type: application/sdp\r\n" };
+                    format!("SIP/2.0 {status}\r\n{echo}{contact}{kind}Content-Length: {}\r\n\r\n{body}", body.len())
+                };
+                if method == "INVITE" {
+                    let sdp = format!(
+                        "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nc=IN IP4 127.0.0.1\r\nt=0 0\r\n\
+                         m=audio {} RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\n",
+                        port + 2 - port % 2
+                    );
+                    *slot.lock().unwrap() = Some((reply("200 OK", &sdp), from));
+                    let _ = rx.send_to(reply("180 Ringing", "").as_bytes(), from);
+                } else {
+                    let _ = rx.send_to(reply("200 OK", "").as_bytes(), from);
+                }
+            }
+        });
+        Callee { socket, pending }
+    }
+
+    fn port(&self) -> u16 {
+        self.socket.local_addr().unwrap().port()
+    }
+
+    /// Answers the ringing call; false when none rings yet.
+    fn answer(&self) -> bool {
+        let Some((ok, to)) = self.pending.lock().unwrap().take() else { return false };
+        self.socket.send_to(ok.as_bytes(), to).unwrap();
+        true
+    }
 }
 
 /// The server's configuration: the installation's samples (several modules
 /// that `res_dpma_rs` needs do not load without their files), with ours on
 /// top.
-fn configure(dir: &Path, server: &Server) -> PathBuf {
+fn configure(dir: &Path, server: &Server, callee_port: u16) -> PathBuf {
     let etc = dir.join("etc");
     std::fs::create_dir_all(&etc).unwrap();
     for entry in std::fs::read_dir(server.prefix.join("etc/asterisk")).expect("the sample configuration") {
@@ -158,7 +239,10 @@ fn configure(dir: &Path, server: &Server) -> PathBuf {
              [1001]\ntype=endpoint\ncontext=default\ndisallow=all\nallow=ulaw\nauth=1001\naors=1001\n\
              callerid=\"Alice Example\" <1001>\n\n\
              [1001]\ntype=auth\nauth_type=userpass\nusername=1001\npassword=secret1001\n\n\
-             [1001]\ntype=aor\nmax_contacts=1\n"
+             [1001]\ntype=aor\nmax_contacts=1\n\n\
+             [1002]\ntype=endpoint\ncontext=default\ndisallow=all\nallow=ulaw\naors=1002\n\
+             callerid=\"Bob Watched\" <1002>\n\n\
+             [1002]\ntype=aor\ncontact=sip:1002@127.0.0.1:{callee_port}\n"
         ),
     );
     write(&etc.join("res_digium_phone.conf"), &dpma_conf("America/Denver"));
@@ -181,14 +265,23 @@ fn diag(socket: &Path, args: &[&str]) -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// The `id` of a `BlfEntry` in the store's debug output.
+fn id_of(entry: &str) -> String {
+    let rest = entry.split("id: \"").nth(1).expect("an id");
+    rest.split('"').next().unwrap().to_string()
+}
+
 #[test]
 fn provisions_and_registers_against_asterisk() {
     let Some(server) = server() else { return };
     let dir = temp();
-    let conf = configure(&dir.path().join("ast"), &server);
+    let callee = Callee::start();
+    let conf = configure(&dir.path().join("ast"), &server, callee.port());
     let server_log = dir.path().join("ast/log/messages.log");
     let phone_log = dir.path().join("phone.log");
-    let _show = ShowOnPanic(vec![server_log.clone(), phone_log.clone()]);
+    // What the phone last said of its watched contacts and keys.
+    let blf_dump = dir.path().join("blf.txt");
+    let _show = ShowOnPanic(vec![server_log.clone(), phone_log.clone(), blf_dump.clone()]);
 
     // The server, in the foreground without a console.
     let _asterisk = KillOnDrop(
@@ -217,7 +310,8 @@ fn provisions_and_registers_against_asterisk() {
     );
     let _main = KillOnDrop(
         Command::new(BIN)
-            .args(["main", "--sim", "--model", "d60", "--no-ssh", "--nvdata"])
+            // A D65: enough line keys for both of the server's contacts.
+            .args(["main", "--sim", "--model", "d65", "--no-ssh", "--nvdata"])
             .arg(&nv)
             .arg("--run-dir")
             .arg(&run)
@@ -257,12 +351,42 @@ fn provisions_and_registers_against_asterisk() {
     let contacts = wait_for("the contact on the server", Duration::from_secs(30), || {
         cli(&server, &conf, "pjsip show contacts").filter(|s| s.contains("1001/sip:1001@127.0.0.1"))
     });
-    assert!(contacts.contains("Objects found: 1"), "{contacts}");
+    // (The other one is the scripted endpoint's, from the configuration.)
+    assert!(contacts.contains("Objects found: 2"), "{contacts}");
 
     // The server's view of the DPMA session.
     let sessions = cli(&server, &conf, "digium_phones show sessions").unwrap();
     assert!(sessions.contains("Total active sessions:1"), "{sessions}");
     assert!(sessions.to_ascii_lowercase().contains(&format!("mac:{MAC}")), "{sessions}");
+
+    // The watched line.  The server's contacts are on the free line keys
+    // (the simulator's own line among them), and 1002 has one subscription
+    // on the server: `presence`.
+    let blf = |want: &str| {
+        let what = format!("line 1002 to be {want}");
+        wait_for(&what, Duration::from_secs(30), || {
+            let presence = diag(&socket, &["state", "presence"])?;
+            let keys = diag(&socket, &["state", "keys"]).unwrap_or_default();
+            write(&blf_dump, &format!("{presence}\n{keys}"));
+            let entry = presence.split("BlfEntry {").find(|e| e.contains("auto_hint_1002@"))?;
+            entry.contains(&format!("state: {want},")).then(|| entry.to_string())
+        })
+    };
+    let entry = blf("Idle");
+    assert!(entry.contains("number: \"1002\"") && entry.contains("subscribed: true"), "{entry}");
+    let subscriptions = cli(&server, &conf, "pjsip show subscriptions inbound").unwrap();
+    assert!(subscriptions.contains("auto_hint_1002/presence"), "{subscriptions}");
+    assert!(!subscriptions.contains("/dialog"), "{subscriptions}");
+    // It is on a key of its own.
+    let keys = diag(&socket, &["state", "keys"]).unwrap();
+    assert!(keys.split("LineKey {").any(|k| k.contains("Blf(") && k.contains(&id_of(&entry))), "{keys}");
+    // The server calls 1002: it rings, answers, and the server hangs up.
+    cli(&server, &conf, "channel originate PJSIP/1002 application Wait 60").unwrap();
+    blf("Ringing");
+    wait_for("the call to ring at 1002", Duration::from_secs(10), || callee.answer().then_some(()));
+    blf("InUse");
+    cli(&server, &conf, "channel request hangup all").unwrap();
+    blf("Idle");
 
     // A push: the phone's configuration changes on the server, the server
     // tells the phone over the session, and the phone fetches it.

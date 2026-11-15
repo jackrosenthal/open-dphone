@@ -25,7 +25,8 @@ pub(crate) fn draw(cx: &Cx, c: &mut Canvas) {
         }
         let entry = cx.st.presence.get(&key.entry);
         let state = entry.map(|e| e.state).unwrap_or_default();
-        let busy = matches!(state, BlfState::InUse | BlfState::Ringing | BlfState::OnHold) || key.lamp.color == LampColor::Red;
+        let busy = matches!(state, BlfState::InUse | BlfState::Ringing | BlfState::OnHold | BlfState::OnHoldRinging)
+            || key.lamp.color == LampColor::Red;
         let (bg, fg) = if busy { (th.fg, th.bg) } else { (th.bg, th.fg) };
         let cell = IRect { h: r.h - 1, ..r };
         c.fill(cell, bg);
@@ -33,7 +34,7 @@ pub(crate) fn draw(cx: &Cx, c: &mut Canvas) {
         let (top, bottom) = cell.inset_xy(3, 2).split_top((cell.h - 4) / 2);
         c.text_in(f, top, label, fg, HAlign::Left);
         let sub = match state {
-            BlfState::Ringing => tr::RINGING.to_string(),
+            BlfState::Ringing | BlfState::OnHoldRinging => tr::RINGING.to_string(),
             BlfState::InUse => tr::BUSY.to_string(),
             BlfState::OnHold => tr::ON_HOLD.to_string(),
             _ => {

@@ -112,6 +112,7 @@ fn lamp(state: BlfState) -> LampState {
         BlfState::Ringing => (LampColor::Red, Blink::Fast),
         BlfState::InUse => (LampColor::Red, Blink::Solid),
         BlfState::OnHold => (LampColor::Red, Blink::Slow),
+        BlfState::OnHoldRinging => (LampColor::Red, Blink::Fast),
         BlfState::Unknown | BlfState::Unavailable => (LampColor::Off, Blink::Solid),
     };
     LampState { color, blink }
@@ -318,8 +319,8 @@ impl Service {
     }
 
     /// A key press: what the same key does on the phone's own rapid-dial
-    /// keys (pick up a ringing contact, otherwise dial it).  A long press
-    /// does the same.
+    /// keys (dial the contact; pick its call up instead when it rings and
+    /// the contact allows that).  A long press does the same.
     fn press(&mut self, node: u8, page: u8, key: u8, long: bool) {
         let index = page as usize * proto::KEYS_PER_PAGE + key as usize;
         let Some(item) = self.settings.keys.get(&(node, index)) else { return };
@@ -329,7 +330,7 @@ impl Service {
             return;
         }
         let entry = self.ctx.store.read::<Presence, _>(|p| p.get(&item.entry).cloned());
-        if entry.as_ref().is_some_and(|e| e.state == BlfState::Ringing) {
+        if entry.as_ref().is_some_and(|e| e.pickup_ringing && matches!(e.state, BlfState::Ringing | BlfState::OnHoldRinging)) {
             self.ctx.store.post(Command::Pickup { blf_entry: item.entry.clone() });
         } else if !item.number.is_empty() {
             self.ctx.store.post(Command::Dial { target: item.number.clone(), account: entry.and_then(|e| e.account), path: None });
