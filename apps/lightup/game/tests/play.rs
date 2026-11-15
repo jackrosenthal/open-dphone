@@ -168,3 +168,102 @@ fn what_is_not_a_grid() {
         ".#3\nLx.\n"
     );
 }
+
+#[test]
+fn changes_are_taken_back_one_by_one() {
+    use lightup_game::UNDO_STEPS;
+    let fresh = "#1.\n...\n.#0\n";
+    let mut game = Game::new(grid(fresh));
+    // Nothing to take back at first, and moving the cursor is no change.
+    assert!(!game.can_undo() && !game.undo());
+    game.set_cursor(0, 1);
+    assert!(game.move_cursor(1, 0));
+    assert!(!game.undo());
+    assert_eq!(game.cursor(), (1, 1));
+
+    // A light, a mark in its place, a light again, cleared; a mark on
+    // another cell; and keys that change nothing, which are no steps.
+    assert!(game.act(Act::Light));
+    assert!(!game.act(Act::Light));
+    assert!(game.act(Act::Mark));
+    assert!(game.act(Act::Light));
+    assert!(game.act(Act::Clear));
+    assert!(!game.act(Act::Clear));
+    game.set_cursor(2, 1);
+    assert!(game.act(Act::Mark));
+    game.set_cursor(0, 0);
+    assert!(!game.act(Act::Light), "a black cell");
+    assert_eq!(game.changes_text(), "4.4L4x4L5.");
+    assert_eq!(game.grid().to_text(), "#1.\n..x\n.#0\n");
+
+    // Back through them: each step is what the board showed before, and
+    // the cursor goes to the cell.
+    let mut copy = game.clone();
+    for (board, cursor) in [
+        ("#1.\n...\n.#0\n", (2, 1)),
+        ("#1.\n.L.\n.#0\n", (1, 1)),
+        ("#1.\n.x.\n.#0\n", (1, 1)),
+        ("#1.\n.L.\n.#0\n", (1, 1)),
+        (fresh, (1, 1)),
+    ] {
+        assert!(game.can_undo());
+        assert!(game.undo());
+        assert_eq!(
+            (game.grid().to_text().as_str(), game.cursor()),
+            (board, cursor)
+        );
+    }
+    assert!(!game.can_undo() && !game.undo());
+    assert_eq!(game.changes_text(), "");
+
+    // Two lights that see each other: taking the second back takes the
+    // error off both.
+    game.set_cursor(0, 1);
+    game.act(Act::Light);
+    game.set_cursor(2, 1);
+    game.act(Act::Light);
+    assert!(game.grid().light_conflicts(3) && game.grid().light_conflicts(5));
+    assert!(game.undo());
+    assert!(!game.grid().light_conflicts(3) && !game.grid().has_light(5));
+
+    // The changes are kept as text, and read back: the copy and a game
+    // read from its text take the same steps back.
+    let mut read = Game::new(copy.grid().clone());
+    read.set_changes(&copy.changes_text());
+    while copy.undo() {
+        assert!(read.undo());
+        assert_eq!(read.grid(), copy.grid());
+    }
+    assert!(!read.undo());
+    // Text that is not that is no changes at all.
+    for nonsense in ["4", "4.99L", "0L", "4?", "L", "4.4", "1x"] {
+        read.set_changes(nonsense);
+        assert!(!read.can_undo(), "{nonsense:?}");
+    }
+    read.set_changes("");
+    assert!(!read.can_undo());
+
+    // A solved puzzle takes nothing back.
+    game.set_cursor(2, 0);
+    assert!(game.act(Act::Light));
+    assert!(game.solved());
+    assert!(!game.can_undo() && !game.undo());
+    assert_eq!(game.grid().to_text(), "#1L\nL..\n.#0\n");
+
+    // The oldest changes are forgotten beyond the bound.
+    let mut game = Game::new(grid(fresh));
+    game.set_cursor(1, 1);
+    for _ in 0..UNDO_STEPS {
+        game.act(Act::Mark);
+        game.act(Act::Clear);
+    }
+    assert!(game.changes_text().len() <= 2 * UNDO_STEPS);
+    let mut steps = 0;
+    while game.undo() {
+        steps += 1;
+    }
+    assert_eq!(steps, UNDO_STEPS);
+    let mut long = Game::new(grid(fresh));
+    long.set_changes(&"4.4x".repeat(UNDO_STEPS));
+    assert_eq!(long.changes_text().len(), 2 * UNDO_STEPS);
+}

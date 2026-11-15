@@ -34,6 +34,11 @@ use std::time::{Duration, Instant};
 const APP: &str = "lightup";
 /// The grids the app allows a puzzle (`MAX_GRIDS` in the app).
 const MAX_GRIDS: u32 = 400;
+/// The texts beside the board while a puzzle is played: the line under
+/// the picture of the keys, and the two lines that say "Solved!" and the
+/// time when it comes to that.
+const PLAYING: [&str; 3] = ["or arrows and Select", "", ""];
+const SOFTKEYS: [&str; 4] = ["Undo", "New", "Help", "Exit"];
 
 fn storage(nvdata: &Path) -> PathBuf {
     nvdata.join("appdata").join(APP)
@@ -42,7 +47,15 @@ fn storage(nvdata: &Path) -> PathBuf {
 /// A rig whose app makes its puzzles from this seed on.
 fn rig(model: Model, seed: u64) -> Rig {
     listen();
-    let r = Rig::with_root(staged(), FakeConfig::default(), model);
+    // The time the phone gives an app for an event, not the shorter time
+    // of the other tests: a turn of making a puzzle is 50 ms of work, and
+    // a busy build machine can hold a test up for longer than the rest.
+    let r = Rig::with_budget(
+        staged(),
+        FakeConfig::default(),
+        model,
+        Duration::from_secs(2),
+    );
     std::fs::create_dir_all(storage(&r.nvdata)).unwrap();
     std::fs::write(storage(&r.nvdata).join("seed"), seed.to_string()).unwrap();
     r
@@ -195,6 +208,28 @@ fn expected(model: Model, game: &Game) -> Vec<Vec<Op>> {
     );
     let mut lists: Vec<Vec<Op>> = (0..side).map(|row| painter.row(game.grid(), row)).collect();
     lists.push(painter.cursor(game));
+    // The picture of the keys, until the puzzle is solved.
+    if !game.solved() {
+        let l = Layout::new(area.width, area.height, side);
+        let line = if model.is_color() {
+            25
+        } else if area.height > 102 {
+            17
+        } else {
+            15
+        };
+        // The fake screen's foreground color.
+        let ink = Rgb(32, 32, 32);
+        lists.push(
+            lightup_game::draw::keymap(
+                l.panel_width - 2 * (line / 2),
+                area.height - line - 2,
+                palette,
+                ink,
+            )
+            .ops,
+        );
+    }
     lists
 }
 
@@ -205,7 +240,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     assert_eq!(r.ui.top().as_deref(), Some(APP));
     // Nothing is kept yet: the sizes and difficulties come first.
     assert_eq!(r.ui.texts(APP), ["New puzzle"]);
-    assert_eq!(r.ui.softkeys(APP), ["Play", "Exit"]);
+    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Exit"]);
     let names: Vec<String> = r.ui.items(APP).into_iter().map(|i| i.0).collect();
     assert_eq!(
         names,
@@ -223,21 +258,21 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     );
     r.softkey(APP, "Play");
     wait(&mut r);
-    assert_eq!(r.ui.texts(APP), ["7x7", "Easy", "", ""]);
-    assert_eq!(r.ui.softkeys(APP), ["New", "Exit"]);
+    assert_eq!(r.ui.texts(APP), PLAYING);
+    assert_eq!(r.ui.softkeys(APP), SOFTKEYS);
 
     // The puzzle is the one the seed gives, and it is written down.
     let puzzle = native(7, Difficulty::Easy, 11);
     assert_eq!(parse(&file(&r)), (puzzle.clone(), (0, 0)));
     assert!(
-        file(&r).starts_with("size=7\ndifficulty=easy\nelapsed=0\ncursor=0,0\n"),
+        file(&r).starts_with("size=7\ndifficulty=easy\nelapsed=0\ncursor=0,0\nundo=\n"),
         "{}",
         file(&r)
     );
     // A canvas for each row and one for the cursor, each drawn once.
     let mut game = Game::new(puzzle.clone());
     assert_eq!(drawn(&r), expected(Model::D60, &game));
-    assert_eq!(r.ui.draw_count(APP), 8);
+    assert_eq!(r.ui.draw_count(APP), 9);
     let bounds: Vec<_> = r.ui.drawings(APP).into_iter().map(|d| d.0).collect();
     assert_eq!(
         (bounds[0].width, bounds[0].height, bounds[1].y - bounds[0].y),
@@ -250,7 +285,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
 
     // The arrows and 4, 2, 6, 8 move the cursor; only the cursor is
     // drawn again.  At an edge nothing happens and nothing is drawn.
-    let mut draws = 8;
+    let mut draws = 9;
     for (key, dx, dy) in [
         (Key::Right, 1, 0),
         (Key::Digit(6), 1, 0),
@@ -275,7 +310,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
         );
         assert_eq!(drawn(&r), expected(Model::D60, &game), "{key:?}");
     }
-    assert_eq!(draws, 8 + 8);
+    assert_eq!(draws, 9 + 8);
     assert_eq!(game.cursor(), (0, 0));
 
     // 5 and Select put a light, 3 a no-light mark, 1 clears; the other
@@ -352,7 +387,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
         .filter(|i| solved.has_light(*i) && !game.grid().has_light(*i))
         .collect();
     for (n, cell) in lights.iter().enumerate() {
-        assert_eq!(r.ui.texts(APP), ["7x7", "Easy", "", ""]);
+        assert_eq!(r.ui.texts(APP), PLAYING);
         at(&mut r, &mut game, *cell);
         r.key(
             APP,
@@ -368,10 +403,11 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     // Solved: said so, with the time taken; the solved puzzle is written
     // down at once, and the cursor is gone.
     let texts = r.ui.texts(APP);
-    assert_eq!(texts[..3], ["7x7", "Easy", "Solved!"]);
-    let seconds: u32 = texts[3]
+    assert_eq!(texts.len(), 2, "the keys' picture and its line are gone");
+    assert_eq!(texts[0], "Solved!");
+    let seconds: u32 = texts[1]
         .strip_prefix("Time 0:")
-        .expect(&texts[3])
+        .expect(&texts[1])
         .parse()
         .unwrap();
     assert!(seconds < 60);
@@ -379,7 +415,8 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     assert!(game.grid().is_solved());
     assert_eq!(drawn(&r), expected(Model::D60, &game));
     assert!(drawn(&r)[7].is_empty());
-    assert_eq!(r.ui.softkeys(APP), ["New", "Exit"]);
+    assert_eq!(drawn(&r).len(), 8);
+    assert_eq!(r.ui.softkeys(APP), ["New", "Help", "Exit"]);
     // The keys do nothing any more.
     let draws = r.ui.draw_count(APP);
     keys(
@@ -400,7 +437,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     // New: the list again, at the size and difficulty played, and Back
     // (the softkey or Cancel) is the solved puzzle as it was.
     r.softkey(APP, "New");
-    assert_eq!(r.ui.softkeys(APP), ["Play", "Back"]);
+    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Back"]);
     r.softkey(APP, "Back");
     assert_eq!(r.ui.texts(APP), texts);
     r.softkey(APP, "New");
@@ -413,7 +450,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     r.key(APP, Key::Down);
     r.key(APP, Key::Select);
     wait(&mut r);
-    assert_eq!(r.ui.texts(APP), ["7x7", "Medium", "", ""]);
+    assert_eq!(r.ui.texts(APP), PLAYING);
     assert_eq!(
         parse(&file(&r)),
         (native(7, Difficulty::Medium, 12), (0, 0))
@@ -446,7 +483,7 @@ fn errors_are_drawn_as_errors_in_color_and_in_black_and_white() {
         let mut r = rig_with(model, WRONG);
         r.launch(APP);
         // The puzzle that was kept, with no generating.
-        assert_eq!(r.ui.texts(APP), ["7x7", "Hard", "", ""], "{model:?}");
+        assert_eq!(r.ui.texts(APP), PLAYING, "{model:?}");
         assert_eq!(drawn(&r), expected(model, &game), "{model:?}");
         let lists = drawn(&r);
         let colors = |ops: &[Op]| -> Vec<Rgb> {
@@ -464,7 +501,7 @@ fn errors_are_drawn_as_errors_in_color_and_in_black_and_white() {
                 .iter()
                 .map(|ops| colors(ops).iter().filter(|c| **c == red).count())
                 .collect();
-            assert_eq!(reds, [0, 2, 2, 0, 0, 0, 0, 0]);
+            assert_eq!(reds, [0, 2, 2, 0, 0, 0, 0, 0, 0]);
         } else {
             // The fake screen's foreground and background, and nothing
             // else.
@@ -505,7 +542,7 @@ fn the_puzzle_is_kept_and_a_call_does_not_end_it() {
         .replace("cursor=3,1", "cursor=4,1");
     let rows = |f: &str| {
         f.lines()
-            .filter(|l| !l.starts_with("elapsed="))
+            .filter(|l| !l.starts_with("elapsed=") && !l.starts_with("undo="))
             .map(String::from)
             .collect::<Vec<_>>()
     };
@@ -532,7 +569,7 @@ fn the_puzzle_is_kept_and_a_call_does_not_end_it() {
     r.ui.cover(APP, false);
     r.settle();
     assert_eq!(drawn(&r), shown);
-    assert_eq!(r.ui.texts(APP), ["7x7", "Hard", "", ""]);
+    assert_eq!(r.ui.texts(APP), PLAYING);
     r.ui.cover(APP, true);
     r.settle();
     assert!(
@@ -552,7 +589,7 @@ fn the_puzzle_is_kept_and_a_call_does_not_end_it() {
     let left = WRONG.replace("cursor=3,1", "cursor=4,1");
     assert_eq!(rows(&file(&r)), rows(&left));
     r.launch(APP);
-    assert_eq!(r.ui.texts(APP), ["7x7", "Hard", "", ""]);
+    assert_eq!(r.ui.texts(APP), PLAYING);
     let (grid, cursor) = parse(&left);
     let mut game = Game::new(grid);
     game.set_cursor(cursor.0, cursor.1);
@@ -575,10 +612,7 @@ fn the_puzzle_is_kept_and_a_call_does_not_end_it() {
     )
     .unwrap();
     r.launch(APP);
-    assert_eq!(
-        r.ui.texts(APP),
-        ["10x10", "Medium", "Solved!", "Time 1:02:05"]
-    );
+    assert_eq!(r.ui.texts(APP), ["Solved!", "Time 1:02:05"]);
     assert!(drawn(&r)[10].is_empty());
     r.softkey(APP, "Exit");
 
@@ -596,7 +630,7 @@ fn the_puzzle_is_kept_and_a_call_does_not_end_it() {
         std::fs::write(&puzzle, nonsense).unwrap();
         r.launch(APP);
         assert_eq!(r.ui.texts(APP), ["New puzzle"], "{nonsense:?}");
-        assert_eq!(r.ui.softkeys(APP), ["Play", "Exit"]);
+        assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Exit"]);
         r.softkey(APP, "Exit");
         assert!(!r.mgr.is_running(APP));
     }
@@ -607,12 +641,246 @@ fn the_puzzle_is_kept_and_a_call_does_not_end_it() {
 }
 
 #[test]
+fn undo_takes_changes_back_one_by_one_and_is_kept() {
+    let (grid, cursor) = parse(WRONG);
+    let mut game = Game::new(grid);
+    game.set_cursor(cursor.0, cursor.1);
+    let start = game.clone();
+    let mut r = rig_with(Model::D60, WRONG);
+    r.launch(APP);
+    assert_eq!(r.ui.softkeys(APP), SOFTKEYS);
+    // Nothing to take back: nothing happens, and nothing is drawn.
+    let draws = r.ui.draw_count(APP);
+    r.softkey(APP, "Undo");
+    assert_eq!(r.ui.draw_count(APP), draws);
+    assert_eq!(drawn(&r), expected(Model::D60, &game));
+
+    // Clearing the light under the cursor takes three errors off (the
+    // lights at the other end of its row and below it are no longer
+    // shone on); Undo brings the light and the errors back.
+    let red = |r: &Rig| {
+        drawn(r)
+            .iter()
+            .flatten()
+            .filter(|op| matches!(op, Op::Fill { color, .. } | Op::Bitmap { color, .. } if *color == Rgb(0xE0, 0x20, 0x20)))
+            .count()
+    };
+    assert_eq!(red(&r), 4);
+    r.key(APP, Key::Digit(1));
+    game.act(Act::Clear);
+    assert_eq!(red(&r), 1);
+    r.softkey(APP, "Undo");
+    assert!(game.undo());
+    assert_eq!(game, start);
+    assert_eq!((drawn(&r), red(&r)), (expected(Model::D60, &game), 4));
+
+    // A light that makes an error, taken back: the error drawing goes.
+    keys(&mut r, &[Key::Down, Key::Down, Key::Down, Key::Digit(5)]);
+    for _ in 0..3 {
+        game.move_cursor(0, 1);
+    }
+    assert!(!game.act(Act::Light), "a black cell: no step");
+    keys(&mut r, &[Key::Right, Key::Digit(5)]);
+    game.move_cursor(1, 0);
+    assert!(game.act(Act::Light));
+    assert!(game.grid().clue_overfull(game.grid().index(3, 4)));
+    assert_eq!(red(&r), 5, "the 0 with a light beside it");
+    assert_eq!(drawn(&r), expected(Model::D60, &game));
+    let with_error = red(&r);
+    r.softkey(APP, "Undo");
+    game.undo();
+    assert!(red(&r) < with_error);
+    assert_eq!((drawn(&r), red(&r)), (expected(Model::D60, &game), 4));
+    assert_eq!(game.grid(), start.grid());
+
+    // Each kind of change, several on one cell and some elsewhere; the
+    // cursor moves in between are no steps.
+    keys(
+        &mut r,
+        &[
+            Key::Up,
+            Key::Digit(3),
+            Key::Digit(5),
+            Key::Digit(1),
+            Key::Digit(3),
+        ],
+    );
+    game.move_cursor(0, -1);
+    for act in [Act::Mark, Act::Light, Act::Clear, Act::Mark] {
+        assert!(game.act(act));
+    }
+    keys(
+        &mut r,
+        &[Key::Left, Key::Left, Key::Left, Key::Digit(5), Key::Up],
+    );
+    for _ in 0..3 {
+        game.move_cursor(-1, 0);
+    }
+    assert!(game.act(Act::Light));
+    game.move_cursor(0, -1);
+    assert_eq!(state(&mut r), (game.grid().clone(), game.cursor()));
+    assert_eq!(game.changes_text(), "25.25x25L25.22.");
+    // Written down with the puzzle, as the changes and no more.
+    assert!(
+        file(&r).contains("\nundo=25.25x25L25.22.\n"),
+        "{}",
+        file(&r)
+    );
+
+    // Two steps back now; each puts the cursor on its cell and draws
+    // what the board showed before.
+    for _ in 0..2 {
+        r.softkey(APP, "Undo");
+        assert!(game.undo());
+        assert_eq!(drawn(&r), expected(Model::D60, &game));
+    }
+    assert_eq!(game.cursor(), (4, 3));
+    // The rest after the app was left and opened again.
+    r.key(APP, Key::Cancel);
+    assert!(!r.mgr.is_running(APP));
+    assert!(file(&r).contains("\nundo=25.25x25L\n"), "{}", file(&r));
+    r.launch(APP);
+    assert_eq!(drawn(&r), expected(Model::D60, &game));
+    while game.undo() {
+        r.softkey(APP, "Undo");
+        assert_eq!(drawn(&r), expected(Model::D60, &game));
+    }
+    assert_eq!(game.grid(), start.grid());
+    let draws = r.ui.draw_count(APP);
+    r.softkey(APP, "Undo");
+    assert_eq!(r.ui.draw_count(APP), draws, "nothing left to take back");
+    assert_eq!(state(&mut r), (start.grid().clone(), (4, 3)));
+    assert!(file(&r).contains("\nundo=\n"));
+
+    // Changes kept in a file that makes no sense are no changes.
+    r.softkey(APP, "Exit");
+    std::fs::write(
+        storage(&r.nvdata).join("puzzle"),
+        WRONG.replace("cursor=3,1\n", "cursor=3,1\nundo=7.999L\n"),
+    )
+    .unwrap();
+    r.launch(APP);
+    let draws = r.ui.draw_count(APP);
+    r.softkey(APP, "Undo");
+    assert_eq!(r.ui.draw_count(APP), draws);
+}
+
+#[test]
+fn help_shows_how_to_play_and_leaves_the_puzzle_as_it_was() {
+    use lightup_game::help::PAGES;
+    for model in [Model::D60, Model::D40, Model::D70] {
+        let mut r = rig_with(model, WRONG);
+        r.launch(APP);
+        keys(&mut r, &[Key::Right, Key::Digit(3)]);
+        let (shown, kept) = (drawn(&r), state(&mut r));
+        let elapsed = |r: &Rig| {
+            file(r)
+                .lines()
+                .find_map(|l| l.strip_prefix("elapsed="))
+                .unwrap()
+                .parse::<u64>()
+                .unwrap()
+        };
+        let before = elapsed(&r);
+
+        r.softkey(APP, "Help");
+        assert_eq!(r.ui.softkeys(APP), ["Next", "Back"]);
+        let area = model.app_content_area();
+        let palette = if model.is_color() {
+            Palette::color()
+        } else {
+            Palette::gray(Rgb(32, 32, 32), Rgb(16, 16, 16))
+        };
+        let page = |r: &Rig, n: usize| {
+            assert_eq!(
+                r.ui.texts(APP),
+                [format!("How to play ({}/4)", n + 1).as_str(), PAGES[n].text],
+                "{model:?}"
+            );
+            // One picture, drawn as the board draws that grid, inside
+            // the window below the title.
+            let (mut width, mut height, mut ops) =
+                lightup_game::draw::picture(&PAGES[n].grid(), area.width * 3 / 10 / 5, palette);
+            if !model.is_color() {
+                // Framed, where a lit cell is as white as the page.
+                (width, height, ops) =
+                    lightup_game::draw::framed(width, height, ops, Rgb(32, 32, 32));
+            }
+            assert_eq!(drawn(r), [ops], "{model:?} page {n}");
+            let bounds = r.ui.drawings(APP)[0].0;
+            assert_eq!((bounds.width, bounds.height), (width, height));
+            assert!(
+                bounds.y >= 15 && bounds.y as u16 + height <= area.height,
+                "{model:?}: {bounds:?}"
+            );
+            assert!(bounds.x as u16 + width < area.width / 2);
+        };
+        page(&r, 0);
+        // Next, Select, and the arrows turn the pages, around the ends.
+        r.softkey(APP, "Next");
+        page(&r, 1);
+        r.key(APP, Key::Select);
+        page(&r, 2);
+        r.key(APP, Key::Right);
+        page(&r, 3);
+        r.key(APP, Key::Down);
+        page(&r, 0);
+        r.key(APP, Key::Left);
+        page(&r, 3);
+        r.key(APP, Key::Up);
+        page(&r, 2);
+        // The keys of the puzzle do nothing here.
+        keys(
+            &mut r,
+            &[Key::Digit(5), Key::Digit(1), Key::Digit(3), Key::Digit(6)],
+        );
+        page(&r, 2);
+        // The time does not run while the help is read.
+        std::thread::sleep(Duration::from_millis(1500));
+        r.softkey(APP, "Back");
+        assert_eq!(r.ui.texts(APP), PLAYING);
+        assert_eq!(r.ui.softkeys(APP), SOFTKEYS);
+        assert_eq!(drawn(&r), shown, "{model:?}");
+        assert_eq!(state(&mut r), kept);
+        assert!(elapsed(&r) - before < 1000, "the time ran during the help");
+        // The change before the help can still be taken back.
+        r.softkey(APP, "Undo");
+        assert_ne!(drawn(&r), shown);
+        // Cancel leaves the help too, and something over the help (a
+        // call) leaves it where it was.
+        let shown = drawn(&r);
+        r.softkey(APP, "Help");
+        r.softkey(APP, "Next");
+        r.ui.cover(APP, true);
+        r.settle();
+        r.ui.cover(APP, false);
+        r.settle();
+        page(&r, 1);
+        r.key(APP, Key::Cancel);
+        assert!(r.mgr.is_running(APP));
+        assert_eq!(drawn(&r), shown);
+        r.softkey(APP, "Exit");
+    }
+    // From the list of sizes, before any puzzle: back to the list.
+    let mut r = rig(Model::D40, 3);
+    r.launch(APP);
+    r.softkey(APP, "Help");
+    assert_eq!(r.ui.texts(APP)[0], "How to play (1/4)");
+    r.softkey(APP, "Back");
+    assert_eq!(r.ui.texts(APP), ["New puzzle"]);
+    r.softkey(APP, "Help");
+    r.key(APP, Key::Cancel);
+    assert_eq!(r.ui.texts(APP), ["New puzzle"]);
+    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Exit"]);
+}
+
+#[test]
 fn generating_goes_on_in_turns_and_waits_while_a_call_has_the_screen() {
     let mut r = rig_with(Model::D60, WRONG);
     r.launch(APP);
     r.softkey(APP, "New");
     // The list is at the puzzle's size and difficulty.
-    assert_eq!(r.ui.softkeys(APP), ["Play", "Back"]);
+    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Back"]);
     r.key(APP, Key::Select);
     assert_eq!(r.ui.texts(APP), ["7x7 Hard", "Generating\u{2026}"]);
     wait(&mut r);
@@ -642,12 +910,12 @@ fn generating_goes_on_in_turns_and_waits_while_a_call_has_the_screen() {
     r.ui.cover(APP, false);
     r.settle();
     wait(&mut r);
-    assert_eq!(r.ui.texts(APP), ["14x14", "Hard", "", ""]);
+    assert_eq!(r.ui.texts(APP), PLAYING);
     // The same puzzle as when made in one go.
     let large = native(14, Difficulty::Hard, 2);
     assert_eq!(parse(&file(&r)), (large.clone(), (0, 0)));
     assert!(file(&r).starts_with("size=14\ndifficulty=hard\nelapsed=0\n"));
-    assert_eq!(r.ui.drawings(APP).len(), 15);
+    assert_eq!(r.ui.drawings(APP).len(), 16);
 
     // New while generating is the list again; Back from there is the
     // puzzle there was, untouched.
@@ -657,7 +925,7 @@ fn generating_goes_on_in_turns_and_waits_while_a_call_has_the_screen() {
     assert!(generating(&r));
     r.softkey(APP, "New");
     assert_eq!(r.ui.texts(APP), ["New puzzle"]);
-    assert_eq!(r.ui.softkeys(APP), ["Play", "Back"]);
+    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Back"]);
     std::thread::sleep(Duration::from_millis(30));
     r.settle();
     assert_eq!(
@@ -666,7 +934,7 @@ fn generating_goes_on_in_turns_and_waits_while_a_call_has_the_screen() {
         "the abandoned puzzle does not turn up"
     );
     r.softkey(APP, "Back");
-    assert_eq!(r.ui.texts(APP), ["14x14", "Hard", "", ""]);
+    assert_eq!(r.ui.texts(APP), PLAYING);
     assert_eq!(state(&mut r), played);
 
     // Exit while generating: the app stops, and the puzzle there was is
@@ -676,7 +944,7 @@ fn generating_goes_on_in_turns_and_waits_while_a_call_has_the_screen() {
     r.softkey(APP, "Exit");
     assert!(!r.mgr.is_running(APP));
     r.launch(APP);
-    assert_eq!(r.ui.texts(APP), ["14x14", "Hard", "", ""]);
+    assert_eq!(r.ui.texts(APP), PLAYING);
     assert_eq!(state(&mut r), played);
     // Cancel while generating leaves too.
     choose_from_play(&mut r, 10, Difficulty::Hard);
@@ -722,10 +990,7 @@ fn every_size_is_made_and_drawn_on_every_kind_of_display() {
                 puzzle,
                 "{model:?} {side} {difficulty:?}"
             );
-            assert_eq!(
-                r.ui.texts(APP),
-                [format!("{side}x{side}").as_str(), difficulty.name(), "", ""]
-            );
+            assert_eq!(r.ui.texts(APP), PLAYING);
             let game = Game::new(puzzle);
             assert_eq!(drawn(&r), expected(model, &game), "{model:?} {side}");
             let bounds: Vec<_> = r.ui.drawings(APP).into_iter().map(|d| d.0).collect();
@@ -782,7 +1047,13 @@ fn without_a_seed_file_every_puzzle_is_a_new_one() {
     // phone twice) do not get the same one.
     let mut puzzles = Vec::new();
     for _ in 0..3 {
-        let mut r = Rig::new(FakeConfig::default());
+        let mut r = Rig::with_budget(
+            staged(),
+            FakeConfig::default(),
+            Model::D60,
+            Duration::from_secs(2),
+        );
+        listen();
         r.launch(APP);
         choose(&mut r, 10, Difficulty::Easy);
         wait(&mut r);
@@ -1131,6 +1402,26 @@ fn pictures(model: Model) -> [Phone; 3] {
     }
     list.settle();
     assert_eq!(parse(&list.file()).0, native(7, Difficulty::Easy, 7));
+    // The pages of the help, from the third softkey of a puzzle.
+    let mut help = Phone::new(model, &puzzle_file(7, Difficulty::Easy, 30, "play"));
+    let puzzle = help.pixels().0;
+    help.tap(&[Key::Soft(3)]);
+    for page in 1..=4 {
+        help.shot(&format!("help-{page}"));
+        help.tap(&[Key::Soft(1)]);
+    }
+    // Back, the second softkey there, is the puzzle as it was.
+    help.tap(&[Key::Soft(2)]);
+    assert_eq!(help.pixels().0, puzzle);
+    // Undo, the first softkey, takes back a light just put: the display
+    // is as before again.
+    help.tap(&[Key::Right, Key::Right]);
+    let before = help.pixels().0;
+    if help.tap(&[Key::Digit(3)]) > 0 {
+        assert_ne!(help.pixels().0, before);
+        help.tap(&[Key::Soft(1)]);
+        assert_eq!(help.pixels().0, before);
+    }
     large.try_into().ok().expect("three phones")
 }
 
@@ -1193,7 +1484,9 @@ fn drawn_on_a_color_phone() {
     // lit on the fresh puzzle, all of the solved one is, and that has no
     // cursor and no red.
     let (yellow, red, blue, unlit) = (0xFFF070, 0xE02020, 0x1060F0, 0xC4C4C4);
-    assert_eq!((fresh.count(yellow), fresh.count(red)), (0, 0));
+    // (But for the lit cell in the picture of the keys.)
+    assert!(fresh.count(yellow) > 0 && fresh.count(yellow) < 46 * 46);
+    assert_eq!(fresh.count(red), 0);
     assert!(fresh.count(unlit) > 100 * 16 * 16 && fresh.count(blue) > 4 * 17);
     assert!(play.count(yellow) > 30 * 16 * 16 && play.count(unlit) > 16 * 16);
     assert!(

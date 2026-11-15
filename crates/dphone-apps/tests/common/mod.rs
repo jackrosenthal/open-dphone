@@ -108,6 +108,17 @@ impl Rig {
     }
 
     pub fn with_root(root: &Path, config: FakeConfig, model: Model) -> Rig {
+        Rig::with_budget(root, config, model, std::time::Duration::from_millis(300))
+    }
+
+    /// A rig whose apps get `budget` for each event (the phone gives
+    /// them 2 seconds).
+    pub fn with_budget(
+        root: &Path,
+        config: FakeConfig,
+        model: Model,
+        budget: std::time::Duration,
+    ) -> Rig {
         let dir = temp_dir("rig");
         let store = Store::new(model);
         let ui = FakeUi::new(model);
@@ -124,7 +135,7 @@ impl Rig {
         let (nvdata, tmp) = (dir.0.join("nvdata"), dir.0.join("tmp"));
         let mut cfg = ManagerConfig::rooted(root, &nvdata, &tmp);
         cfg.target = Target::Pulley64;
-        cfg.call_budget = std::time::Duration::from_millis(300);
+        cfg.call_budget = budget;
         let mut mgr = AppManager::new(cfg, store.clone(), ui.shell(), services(&pbx, config))
             .expect("engine");
         mgr.scan();

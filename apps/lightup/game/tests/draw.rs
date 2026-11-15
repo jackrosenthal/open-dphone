@@ -291,3 +291,118 @@ fn the_cursor_is_a_frame_that_stays_clear_of_what_the_cell_shows() {
             .is_empty()
     );
 }
+
+#[test]
+fn the_picture_of_the_keys_fits_beside_every_board() {
+    use lightup_game::draw::{KEYS, keymap};
+    // The line height of each display: a line of text goes under the
+    // keys, and the panel has half a line of margin on each side.
+    for ((w, h, color), line) in WINDOWS.into_iter().zip([15u16, 17, 25]) {
+        for side in [7, 10, 14] {
+            let what = format!("{w}x{h} {side}");
+            let l = Layout::new(w, h, side);
+            let room = (l.panel_width - 2 * (line / 2), h - line - 2);
+            let map = keymap(
+                room.0,
+                room.1,
+                palette(color),
+                if color { WHITE } else { BLACK },
+            );
+            assert!(
+                map.width > 0 && map.width <= room.0 && map.height <= room.1,
+                "{what}: {}x{}",
+                map.width,
+                map.height
+            );
+            // Every key is at least 24 pixels high, even beside the
+            // largest board on the smallest display.
+            assert!(map.height >= 3 * 24, "{what}: {}", map.height);
+            assert!(map.ops.len() <= 100);
+            let ground = Rgb(1, 2, 3);
+            let px = paint(&map.ops, map.width as usize, map.height as usize, ground);
+            // Seven keys where the keypad has them: something is drawn
+            // in each of their places and nothing in the two empty ones.
+            let (kw, kh, gap) = (map.key.0 as usize, map.key.1 as usize, map.gap as usize);
+            for row in 0..3 {
+                for column in 0..3 {
+                    let (x0, y0) = (column * (kw + gap), row * (kh + gap));
+                    let painted = (0..kh)
+                        .flat_map(|y| (0..kw).map(move |x| (x, y)))
+                        .filter(|(x, y)| px[(y0 + y) * map.width as usize + x0 + x] != ground)
+                        .count();
+                    let key = KEYS
+                        .iter()
+                        .any(|k| (k.1 as usize, k.2 as usize) == (column, row));
+                    assert_eq!(
+                        painted > 40,
+                        key,
+                        "{what}: key at {column}, {row}: {painted}"
+                    );
+                    assert!(key || painted == 0, "{what}");
+                }
+            }
+            if !color {
+                assert!(
+                    px.iter()
+                        .all(|p| *p == ground || *p == BLACK || *p == WHITE),
+                    "{what}"
+                );
+            } else {
+                // The light's key shows the board's lit cell and light.
+                let c = Palette::color();
+                assert!(
+                    px.contains(&c.lit)
+                        && px.contains(&c.light)
+                        && px.contains(&c.mark)
+                        && px.contains(&c.unlit)
+                );
+            }
+        }
+    }
+    assert_eq!(KEYS.map(|k| k.0), [1, 2, 3, 4, 5, 6, 8]);
+    // No room, no picture.
+    assert!(keymap(30, 30, palette(false), BLACK).ops.is_empty());
+}
+
+#[test]
+fn the_help_pictures_show_what_their_pages_say() {
+    use lightup_game::draw::picture;
+    use lightup_game::help::PAGES;
+    let grids: Vec<Grid> = PAGES.iter().map(|p| p.grid()).collect();
+    // A light, and a cell its light does not reach behind a black cell.
+    let g = &grids[0];
+    assert!(g.is_lit(g.index(0, 1)) && g.is_lit(g.index(1, 2)) && !g.is_lit(g.index(4, 1)));
+    assert!((0..15).all(|i| !g.light_conflicts(i)));
+    // Two lights in error.
+    let g = &grids[1];
+    assert_eq!((0..15).filter(|i| g.light_conflicts(*i)).count(), 2);
+    // A 1 that is met and a 1 with two lights, and no other error.
+    let g = &grids[2];
+    assert!(!g.clue_overfull(g.index(1, 1)) && g.lights_beside(g.index(1, 1)) == 1);
+    assert!(g.clue_overfull(g.index(3, 1)));
+    assert!((0..15).all(|i| !g.light_conflicts(i)));
+    // Marks beside a 0.
+    let g = &grids[3];
+    assert_eq!(g.clue(2), Some(0));
+    assert!(g.is_marked(1) && g.is_marked(3) && g.is_marked(7));
+    for page in &PAGES {
+        // Short enough for five lines of the smallest display.
+        assert!(page.text.len() <= 105, "{}", page.text.len());
+        let g = page.grid();
+        assert_eq!((g.width(), g.height()), (5, 3));
+        for (pitch, color) in [(14, false), (19, false), (28, true)] {
+            let (w, h, ops) = picture(&g, pitch, palette(color));
+            assert_eq!((w, h), (5 * pitch + 1, 3 * pitch + 1));
+            let px = paint(&ops, w as usize, h as usize, Rgb(1, 2, 3));
+            assert!(
+                !px.contains(&Rgb(1, 2, 3)),
+                "the picture paints all of itself"
+            );
+            // Each cell is drawn as the board's painter draws that look
+            // (the first row of a board of the same width).
+            let board = Painter::new(5, pitch, palette(color));
+            let first = paint(&board.row(&g, 0), w as usize, pitch as usize, Rgb(1, 2, 3));
+            assert_eq!(px[..first.len()], first[..]);
+        }
+    }
+}

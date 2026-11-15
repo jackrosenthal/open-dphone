@@ -8,7 +8,11 @@
 //! The arrow keys, or 4, 2, 6, and 8, move the cursor.  5 or Select puts a
 //! light on the cell, 3 marks it with a square (no light here), and 1
 //! clears it.  "New" offers the sizes and difficulties; each puzzle is
-//! made on the spot and has exactly one solution.
+//! made on the spot and has exactly one solution.  "Undo" takes the last
+//! change to the board back, and the one before, as far as the fresh
+//! puzzle; the changes are kept with the puzzle.  "Help" is four pages of
+//! how to play, each a picture of a rule.  Beside the board is a picture
+//! of the keys and what each does.
 //!
 //! Making a puzzle takes a while on the phone, so it is done in short
 //! turns from a timer while "Generating…" is on the screen, and only
@@ -19,8 +23,9 @@
 
 use dphone_app_sdk::prelude::*;
 use dphone_app_sdk::{Align, Font, canvas, read_string};
-use lightup_game::draw::{Layout, Look, Op, Painter, Palette, Rgb};
+use lightup_game::draw::{self, Layout, Look, Op, Painter, Palette, Rgb};
 use lightup_game::generate::{Difficulty, Generator, Params, Progress, SIZES};
+use lightup_game::help::PAGES;
 use lightup_game::{Act, Game, Grid};
 
 const SK_NEW: u32 = 1;
@@ -28,6 +33,9 @@ const SK_EXIT: u32 = 2;
 const SK_PLAY: u32 = 3;
 const SK_BACK: u32 = 4;
 const SK_RETRY: u32 = 5;
+const SK_HELP: u32 = 6;
+const SK_NEXT: u32 = 7;
+const SK_UNDO: u32 = 8;
 
 /// The file, in the app's own storage, that holds the puzzle with its
 /// lights and marks, the time spent on it, and the cursor.
@@ -55,6 +63,7 @@ enum Screen {
     Generating,
     Failed,
     Play,
+    Help,
 }
 
 /// The widgets of the playing screen.
@@ -64,6 +73,10 @@ struct Board {
     rows: Vec<(Widget, Vec<Look>)>,
     cursor: Widget,
     cursor_at: Option<(usize, usize)>,
+    /// The picture of the keys beside the board, and the line under it;
+    /// "Solved!" and the time take their place.
+    keys: [Widget; 2],
+    solved_shown: bool,
     status: Widget,
     time: Widget,
 }
@@ -95,6 +108,10 @@ struct LightUp {
     made: u64,
     board: Option<Board>,
     list: Option<Widget>,
+    /// The page of the help on show, and whether it was opened from the
+    /// list of sizes (else from the puzzle).
+    page: usize,
+    help_from_list: bool,
     /// What the puzzle file holds.
     saved: String,
 }
@@ -113,6 +130,8 @@ impl Default for LightUp {
             made: 0,
             board: None,
             list: None,
+            page: 0,
+            help_from_list: false,
             saved: String::new(),
         }
     }
@@ -126,7 +145,18 @@ fn color(c: Rgb) -> canvas::Color {
     }
 }
 
-fn draw(w: Widget, ops: Vec<Op>) {
+/// The colors of the pictures on this display.
+fn palette() -> Palette {
+    if ui::get_metrics().color {
+        Palette::color()
+    } else {
+        let fg = canvas::theme_color(canvas::Role::Foreground);
+        let bg = canvas::theme_color(canvas::Role::Background);
+        Palette::gray(Rgb(fg.r, fg.g, fg.b), Rgb(bg.r, bg.g, bg.b))
+    }
+}
+
+fn paint(w: Widget, ops: Vec<Op>) {
     let ops: Vec<canvas::Op> = ops
         .into_iter()
         .map(|op| match op {
@@ -242,6 +272,7 @@ impl LightUp {
             .split(',')
             .map(|n| n.parse::<usize>().unwrap_or(0));
         game.set_cursor(at.next().unwrap_or(0), at.next().unwrap_or(0));
+        game.set_changes(field("undo"));
         self.elapsed = field("elapsed").parse().unwrap_or(0);
         self.game = Some(game);
     }
@@ -259,8 +290,9 @@ impl LightUp {
         if let Some(game) = &self.game {
             let (x, y) = game.cursor();
             now.push_str(&format!(
-                "elapsed={}\ncursor={x},{y}\n{}",
+                "elapsed={}\ncursor={x},{y}\nundo={}\n{}",
                 self.spent(),
+                game.changes_text(),
                 game.grid().to_text()
             ));
         }
@@ -320,7 +352,14 @@ impl LightUp {
         } else {
             Softkey::new(SK_EXIT, "Exit")
         };
-        ui::set_softkeys(ROOT, &[Softkey::new(SK_PLAY, "Play"), other]);
+        ui::set_softkeys(
+            ROOT,
+            &[
+                Softkey::new(SK_PLAY, "Play"),
+                Softkey::new(SK_HELP, "Help"),
+                other,
+            ],
+        );
         ui::set_focus(list);
         self.list = Some(list);
     }
@@ -450,13 +489,7 @@ impl LightUp {
         );
         let m = ui::get_metrics();
         let l = Layout::new(m.width, m.height, self.side);
-        let palette = if m.color {
-            Palette::color()
-        } else {
-            let fg = canvas::theme_color(canvas::Role::Foreground);
-            let bg = canvas::theme_color(canvas::Role::Background);
-            Palette::gray(Rgb(fg.r, fg.g, fg.b), Rgb(bg.r, bg.g, bg.b))
-        };
+        let palette = palette();
         let painter = Painter::new(self.side, l.pitch, palette);
         let rows = (0..game.grid().height())
             .map(|row| {
@@ -471,25 +504,50 @@ impl LightUp {
             Rect::new(l.board_x, l.board_y, l.board_side, l.board_side),
         );
 
-        // The panel: four lines in the middle of its height.
+        // The panel beside the board: the picture of the keys with a
+        // line under it, in the middle of its height.  "Solved!" and the
+        // time, when it comes to that, are two lines in the middle.
         let gap = (m.line_height / 2) as i16;
-        let (x, width) = (l.panel_x + gap, l.panel_width.saturating_sub(gap as u16));
-        let top = (m.height.saturating_sub(4 * m.line_height) / 2) as i16;
+        let (x, width) = (
+            l.panel_x + gap,
+            l.panel_width.saturating_sub(2 * gap as u16),
+        );
+        let ink = canvas::theme_color(canvas::Role::Foreground);
+        let room = m.height.saturating_sub(m.line_height + 2);
+        let keymap = draw::keymap(width, room, palette, Rgb(ink.r, ink.g, ink.b));
+        let top = ((m.height - keymap.height - m.line_height) / 2) as i16;
+        let left = x + ((width - keymap.width) / 2) as i16;
+        let keys = canvas::create(ROOT, Rect::new(left, top, keymap.width, keymap.height));
+        paint(keys, keymap.ops);
+        let also = text(
+            Rect::new(x, top + keymap.height as i16 + 2, width, m.line_height),
+            Font::Small,
+            Align::Center,
+            "or arrows and Select",
+        );
+        let top = (m.height.saturating_sub(2 * m.line_height) / 2) as i16;
         let line = |n: u16| Rect::new(x, top + (n * m.line_height) as i16, width, m.line_height);
-        text(line(0), Font::Bold, Align::Left, &size_name(self.side));
-        text(line(1), Font::Normal, Align::Left, self.difficulty.name());
         self.board = Some(Board {
             painter,
             rows,
             cursor,
             cursor_at: None,
-            status: text(line(2), Font::Bold, Align::Left, ""),
-            time: text(line(3), Font::Normal, Align::Left, ""),
+            keys: [keys, also],
+            solved_shown: false,
+            status: text(line(0), Font::Bold, Align::Left, ""),
+            time: text(line(1), Font::Normal, Align::Left, ""),
         });
-        ui::set_softkeys(
-            ROOT,
-            &[Softkey::new(SK_NEW, "New"), Softkey::new(SK_EXIT, "Exit")],
-        );
+        // Undo first, where it is quickest to reach; a solved puzzle
+        // has nothing to take back.
+        let mut softkeys = vec![
+            Softkey::new(SK_NEW, "New"),
+            Softkey::new(SK_HELP, "Help"),
+            Softkey::new(SK_EXIT, "Exit"),
+        ];
+        if !game.solved() {
+            softkeys.insert(0, Softkey::new(SK_UNDO, "Undo"));
+        }
+        ui::set_softkeys(ROOT, &softkeys);
         self.update();
         self.run_clock(true);
     }
@@ -503,18 +561,89 @@ impl LightUp {
         for (row, (canvas, shown)) in board.rows.iter_mut().enumerate() {
             let now = board.painter.row_state(game.grid(), row);
             if *shown != now {
-                draw(*canvas, board.painter.row(game.grid(), row));
+                paint(*canvas, board.painter.row(game.grid(), row));
                 *shown = now;
             }
         }
         let at = (!game.solved()).then(|| game.cursor());
         if board.cursor_at != at {
-            draw(board.cursor, board.painter.cursor(game));
+            paint(board.cursor, board.painter.cursor(game));
             board.cursor_at = at;
         }
-        if game.solved() {
+        if game.solved() && !board.solved_shown {
+            // The keys do nothing any more: their picture makes room.
+            board.solved_shown = true;
+            for w in board.keys {
+                ui::set_visible(w, false);
+            }
             ui::set_text(board.status, "Solved!");
             ui::set_text(board.time, &format!("Time {}", clock(self.elapsed)));
+            ui::set_softkeys(
+                ROOT,
+                &[
+                    Softkey::new(SK_NEW, "New"),
+                    Softkey::new(SK_HELP, "Help"),
+                    Softkey::new(SK_EXIT, "Exit"),
+                ],
+            );
+        }
+    }
+
+    /// A page of how to play: a picture of a rule, drawn as the board
+    /// draws it, and its sentences beside it.
+    fn show_help(&mut self, page: usize) {
+        if self.screen != Screen::Help {
+            self.help_from_list = self.screen == Screen::Choose;
+        }
+        // The time does not run meanwhile.
+        self.leave_screen();
+        self.screen = Screen::Help;
+        self.page = page % PAGES.len();
+        let area = screen(&format!("How to play ({}/{})", self.page + 1, PAGES.len()));
+        ui::claim_keys(
+            ROOT,
+            &["up", "down", "left", "right", "select", "cancel"].map(String::from),
+        );
+        let m = ui::get_metrics();
+        let shown = &PAGES[self.page];
+        let grid = shown.grid();
+        // The picture takes three tenths of the width.
+        let pitch = (m.width * 3 / 10 / grid.width() as u16).max(7);
+        let (mut width, mut height, mut ops) = draw::picture(&grid, pitch, palette());
+        if !m.color {
+            let ink = canvas::theme_color(canvas::Role::Foreground);
+            (width, height, ops) = draw::framed(width, height, ops, Rgb(ink.r, ink.g, ink.b));
+        }
+        let gap = (m.line_height / 2) as i16;
+        let top = area.y + (area.height.saturating_sub(height) / 2) as i16;
+        let picture = canvas::create(ROOT, Rect::new(gap, top, width, height));
+        paint(picture, ops);
+        let x = 2 * gap + width as i16;
+        let words = text(
+            Rect::new(
+                x,
+                area.y,
+                m.width.saturating_sub(x as u16 + gap as u16),
+                area.height,
+            ),
+            Font::Normal,
+            Align::Left,
+            shown.text,
+        );
+        ui::set_wrap(words, true);
+        ui::set_softkeys(
+            ROOT,
+            &[Softkey::new(SK_NEXT, "Next"), Softkey::new(SK_BACK, "Back")],
+        );
+    }
+
+    /// Leaves the help for where it was opened: the puzzle as it was, or
+    /// the list of sizes.
+    fn back(&mut self) {
+        if self.screen == Screen::Help && self.help_from_list {
+            self.show_choose();
+        } else {
+            self.show_play();
         }
     }
 
@@ -588,7 +717,20 @@ impl App for LightUp {
             }
             Event::Softkey(SK_EXIT) => self.leave(),
             Event::Softkey(SK_NEW) => self.show_choose(),
-            Event::Softkey(SK_BACK) => self.show_play(),
+            Event::Softkey(SK_BACK) => self.back(),
+            Event::Softkey(SK_HELP) => self.show_help(0),
+            Event::Softkey(SK_UNDO) => {
+                if self.screen == Screen::Play && self.game.as_mut().is_some_and(Game::undo) {
+                    if self.game.as_ref().is_some_and(Game::solved) {
+                        self.run_clock(false);
+                        self.update();
+                        self.save();
+                    } else {
+                        self.update();
+                    }
+                }
+            }
+            Event::Softkey(SK_NEXT) => self.show_help(self.page + 1),
             Event::Softkey(SK_RETRY) => self.generate(),
             Event::Softkey(SK_PLAY) => {
                 if let Some(list) = self.list {
@@ -606,6 +748,9 @@ impl App for LightUp {
                 ("select" | "5", Screen::Play) => self.act(Act::Light),
                 ("3", Screen::Play) => self.act(Act::Mark),
                 ("1", Screen::Play) => self.act(Act::Clear),
+                ("right" | "down" | "select", Screen::Help) => self.show_help(self.page + 1),
+                ("left" | "up", Screen::Help) => self.show_help(self.page + PAGES.len() - 1),
+                ("cancel", Screen::Help) => self.back(),
                 ("cancel", Screen::Choose) if self.game.is_some() => self.show_play(),
                 ("cancel", _) => self.leave(),
                 _ => {}

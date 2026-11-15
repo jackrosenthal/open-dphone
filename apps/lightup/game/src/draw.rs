@@ -217,8 +217,9 @@ impl Picture {
     }
 }
 
-/// The digits 0 to 4, 5 by 7.
-const DIGITS: [[&str; 7]; 5] = [
+/// The digits 0 to 8, 5 by 7 (the board shows 0 to 4; the picture of the
+/// keys shows the keys' own).
+const DIGITS: [[&str; 7]; 9] = [
     [
         ".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###.",
     ],
@@ -233,6 +234,18 @@ const DIGITS: [[&str; 7]; 5] = [
     ],
     [
         "...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#.",
+    ],
+    [
+        "#####", "#....", "####.", "....#", "....#", "#...#", ".###.",
+    ],
+    [
+        ".###.", "#....", "####.", "#...#", "#...#", "#...#", ".###.",
+    ],
+    [
+        "#####", "....#", "...#.", "..#..", "..#..", "..#..", "..#..",
+    ],
+    [
+        ".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###.",
     ],
 ];
 
@@ -520,5 +533,232 @@ impl Painter {
         // a white cell and white around a black one.
         let black = grid.is_black(grid.index(cx, cy));
         frame(0, thick, if black { p.number } else { p.black }).into()
+    }
+}
+
+/// The operations moved by (`dx`, `dy`).
+pub fn shifted(ops: Vec<Op>, dx: i16, dy: i16) -> Vec<Op> {
+    ops.into_iter()
+        .map(|op| match op {
+            Op::Fill {
+                x,
+                y,
+                width,
+                height,
+                color,
+            } => Op::Fill {
+                x: x + dx,
+                y: y + dy,
+                width,
+                height,
+                color,
+            },
+            Op::Bitmap {
+                x,
+                y,
+                width,
+                height,
+                scale,
+                bits,
+                color,
+            } => Op::Bitmap {
+                x: x + dx,
+                y: y + dy,
+                width,
+                height,
+                scale,
+                bits,
+                color,
+            },
+        })
+        .collect()
+}
+
+/// A grid drawn whole, as the board draws it but without a cursor: its
+/// width and height in pixels, and the operations from its top left.
+pub fn picture(grid: &Grid, pitch: u16, palette: Palette) -> (u16, u16, Vec<Op>) {
+    // The painter draws square boards; a row is as wide as the grid.
+    let painter = Painter::new(grid.width(), pitch, palette);
+    let mut ops = Vec::new();
+    for row in 0..grid.height() {
+        let mut list = painter.row(grid, row);
+        if row + 1 == grid.height() && grid.height() != grid.width() {
+            // The line under the last row, which the painter draws only
+            // under the last row of a square board.
+            if let Some(Op::Fill { height, .. }) = list.first_mut() {
+                *height = pitch + 1;
+            }
+            if !palette.two_tone {
+                list.insert(
+                    1,
+                    Op::Fill {
+                        x: 0,
+                        y: pitch as i16,
+                        width: grid.width() as u16 * pitch + 1,
+                        height: 1,
+                        color: palette.line,
+                    },
+                );
+            }
+        }
+        ops.extend(shifted(list, 0, (row as u16 * pitch) as i16));
+    }
+    (
+        grid.width() as u16 * pitch + 1,
+        grid.height() as u16 * pitch + 1,
+        ops,
+    )
+}
+
+/// A picture with a frame around it, two pixels away: for a display
+/// without colors, where a lit cell is as white as the page.
+pub fn framed(width: u16, height: u16, ops: Vec<Op>, ink: Rgb) -> (u16, u16, Vec<Op>) {
+    let (w, h) = (width + 6, height + 6);
+    let bar = |x, y, width, height| Op::Fill {
+        x,
+        y,
+        width,
+        height,
+        color: ink,
+    };
+    let mut all = vec![
+        bar(0, 0, w, 1),
+        bar(0, h as i16 - 1, w, 1),
+        bar(0, 0, 1, h),
+        bar(w as i16 - 1, 0, 1, h),
+    ];
+    all.extend(shifted(ops, 3, 3));
+    (w, h, all)
+}
+
+/// What a key of the keypad does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyUse {
+    Up,
+    Down,
+    Left,
+    Right,
+    /// Puts a light: shown as a cell with a light.
+    Light,
+    /// Marks "no light": shown as a cell with the square.
+    Mark,
+    /// Clears: shown as an empty cell.
+    Clear,
+}
+
+/// The keys of the game where they are on the keypad (column and row of
+/// the three columns of digits), each with its digit and what it does.
+pub const KEYS: [(u8, u8, u8, KeyUse); 7] = [
+    (1, 0, 0, KeyUse::Clear),
+    (2, 1, 0, KeyUse::Up),
+    (3, 2, 0, KeyUse::Mark),
+    (4, 0, 1, KeyUse::Left),
+    (5, 1, 1, KeyUse::Light),
+    (6, 2, 1, KeyUse::Right),
+    (8, 1, 2, KeyUse::Down),
+];
+
+/// A picture of the keys.
+pub struct Keymap {
+    pub width: u16,
+    pub height: u16,
+    /// The size of a key, and the space between two.
+    pub key: (u16, u16),
+    pub gap: u16,
+    pub ops: Vec<Op>,
+}
+
+/// A triangle pointing up, in a square of odd side `t`.
+fn arrow(t: u16, dir: KeyUse) -> Picture {
+    let t = t as i32;
+    let (rows, center) = ((t + 1) / 2, (t - 1) / 2);
+    let top = (t - rows) / 2;
+    Picture::new(t as u16, t as u16, |x, y| {
+        // Along the arrow (from its point), and across it.
+        let (along, across) = match dir {
+            KeyUse::Up => (y, x),
+            KeyUse::Down => (t - 1 - y, x),
+            KeyUse::Left => (x, y),
+            _ => (t - 1 - x, y),
+        };
+        let r = along - top;
+        (0..rows).contains(&r) && (across - center).abs() <= r
+    })
+}
+
+/// The picture of the keys for a space of `width` by `height` pixels: the
+/// seven keys as on the keypad, three across, each a frame with its digit
+/// and, beside it, what it does: an arrow, or the cell as the board would
+/// show it (with a light, with the no-light square, or empty).  `ink` is
+/// the color of frames, digits, and arrows.  The keys are as large as the
+/// space allows, up to a size that suits the largest display.
+pub fn keymap(width: u16, height: u16, palette: Palette, ink: Rgb) -> Keymap {
+    let fits = |key_height: u16| -> Option<(u16, u16, u8, u16, u16)> {
+        let scale: u16 = if key_height >= 36 { 2 } else { 1 };
+        let pad = 2 + scale;
+        // The cell beside the digit, with its grid lines.
+        let cell = key_height.checked_sub(2 * pad + 2)?;
+        let key_width = 5 * scale + cell + 3 * pad + 2;
+        let gap = 1 + scale;
+        (cell >= 7 && 3 * key_width + 2 * gap <= width && 3 * key_height + 2 * gap <= height)
+            .then_some((key_width, cell, scale as u8, pad, gap))
+    };
+    let Some((key_height, (key_width, cell, scale, pad, gap))) =
+        (13..=46).rev().find_map(|h| Some((h, fits(h)?)))
+    else {
+        return Keymap {
+            width: 0,
+            height: 0,
+            key: (0, 0),
+            gap: 0,
+            ops: Vec::new(),
+        };
+    };
+    let painter = Painter::new(1, cell - 1, palette);
+    let digits: Vec<Picture> = DIGITS.iter().map(|d| Picture::rows(d)).collect();
+    let line = scale as u16;
+    let mut ops = Vec::new();
+    for (digit, column, row, what) in KEYS {
+        let x = (column as u16 * (key_width + gap)) as i16;
+        let y = (row as u16 * (key_height + gap)) as i16;
+        let mut bar = |x, y, width, height| {
+            ops.push(Op::Fill {
+                x,
+                y,
+                width,
+                height,
+                color: ink,
+            })
+        };
+        bar(x, y, key_width, line);
+        bar(x, y + (key_height - line) as i16, key_width, line);
+        bar(x, y, line, key_height);
+        bar(x + (key_width - line) as i16, y, line, key_height);
+        let inside = (line + pad) as i16;
+        let digit_y = y + ((key_height - 7 * scale as u16) / 2) as i16;
+        ops.push(digits[digit as usize].op(x + inside, digit_y, scale, ink));
+        let (cx, cy) = (
+            x + inside + (5 * scale as u16 + pad) as i16,
+            y + ((key_height - cell) / 2) as i16,
+        );
+        let shown = match what {
+            KeyUse::Light => "L",
+            KeyUse::Mark => "x",
+            KeyUse::Clear => ".",
+            _ => {
+                let t = if cell % 2 == 1 { cell } else { cell - 1 };
+                ops.push(arrow(t, what).op(cx, cy, 1, ink));
+                continue;
+            }
+        };
+        let grid = Grid::parse(shown).expect("a cell");
+        ops.extend(shifted(painter.row(&grid, 0), cx, cy));
+    }
+    Keymap {
+        width: 3 * key_width + 2 * gap,
+        height: 3 * key_height + 2 * gap,
+        key: (key_width, key_height),
+        gap,
+        ops,
     }
 }

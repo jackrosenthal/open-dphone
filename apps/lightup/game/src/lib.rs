@@ -14,6 +14,7 @@
 
 pub mod draw;
 pub mod generate;
+pub mod help;
 pub mod rng;
 pub mod solver;
 
@@ -579,13 +580,21 @@ pub enum Act {
     Clear,
 }
 
+/// The most changes a game remembers to take back; older ones are
+/// forgotten.  Written down, a change is at most four characters.
+pub const UNDO_STEPS: usize = 500;
+
 /// A puzzle being played: the grid with the player's lights and marks,
-/// and the cursor.  Once solved, it no longer changes.
+/// the cursor, and the changes made, to take back.  Once solved, it no
+/// longer changes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Game {
     grid: Grid,
     cursor: (u8, u8),
     solved: bool,
+    /// The changes, oldest first: the cell, and what it held before
+    /// (`.` nothing, `L` a light, `x` a mark).
+    changes: Vec<(u8, u8)>,
 }
 
 impl Game {
@@ -597,7 +606,88 @@ impl Game {
             grid,
             cursor: (0, 0),
             solved,
+            changes: Vec::new(),
         }
+    }
+
+    fn held(&self, i: usize) -> u8 {
+        if self.grid.has_light(i) {
+            b'L'
+        } else if self.grid.is_marked(i) {
+            b'x'
+        } else {
+            b'.'
+        }
+    }
+
+    /// Whether there is a change to take back.
+    pub fn can_undo(&self) -> bool {
+        !self.solved && !self.changes.is_empty()
+    }
+
+    /// Takes the last change back and puts the cursor on its cell.  False
+    /// if there is none, or the puzzle is solved.
+    pub fn undo(&mut self) -> bool {
+        if self.solved {
+            return false;
+        }
+        let Some((cell, before)) = self.changes.pop() else {
+            return false;
+        };
+        let i = cell as usize;
+        self.grid.remove_light(i);
+        self.grid.set_mark(i, false);
+        match before {
+            b'L' => {
+                self.grid.place_light(i);
+            }
+            b'x' => {
+                self.grid.set_mark(i, true);
+            }
+            _ => {}
+        }
+        self.cursor = (self.grid.column(i) as u8, (i / self.grid.width()) as u8);
+        self.solved = self.grid.is_solved();
+        true
+    }
+
+    /// The changes as text, to keep with the puzzle: for each, oldest
+    /// first, the number of the cell and what it held before.
+    pub fn changes_text(&self) -> String {
+        let mut out = String::new();
+        for (cell, before) in &self.changes {
+            out.push_str(&cell.to_string());
+            out.push(*before as char);
+        }
+        out
+    }
+
+    /// Takes the changes from text written by [`Game::changes_text`].
+    /// Text that is anything else (a cell outside the grid, a black cell)
+    /// leaves no changes to take back.
+    pub fn set_changes(&mut self, text: &str) {
+        self.changes.clear();
+        let mut cell: Option<usize> = None;
+        for c in text.bytes() {
+            match (c, cell) {
+                (b'0'..=b'9', n) => {
+                    let n = n.unwrap_or(0) * 10 + (c - b'0') as usize;
+                    cell = Some(n.min(MAX_CELLS));
+                }
+                (b'.' | b'L' | b'x', Some(i))
+                    if i < self.grid.cells() && !self.grid.is_black(i) =>
+                {
+                    self.changes.push((i as u8, c));
+                    cell = None;
+                }
+                _ => return self.changes.clear(),
+            }
+        }
+        if cell.is_some() {
+            self.changes.clear();
+        }
+        let extra = self.changes.len().saturating_sub(UNDO_STEPS);
+        self.changes.drain(..extra);
     }
 
     pub fn grid(&self) -> &Grid {
@@ -640,6 +730,7 @@ impl Game {
         if self.solved || self.grid.is_black(i) {
             return false;
         }
+        let before = self.held(i);
         let changed = match act {
             Act::Light => self.grid.place_light(i),
             Act::Mark => {
@@ -648,6 +739,12 @@ impl Game {
             }
             Act::Clear => self.grid.remove_light(i) || self.grid.set_mark(i, false),
         };
+        if changed {
+            if self.changes.len() == UNDO_STEPS {
+                self.changes.remove(0);
+            }
+            self.changes.push((i as u8, before));
+        }
         self.solved = self.grid.is_solved();
         changed
     }
