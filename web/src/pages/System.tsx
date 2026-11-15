@@ -7,7 +7,7 @@ import { SystemService } from "../gen/dphone/v1/system_pb";
 import { dateTime } from "../lib/format";
 import { getSession, setSession } from "../lib/session";
 import { useStatus } from "../lib/status";
-import { AccessCard } from "./Ssh";
+import { AccessCard, EhsPortCard } from "./Ssh";
 import { ErrorNote } from "./common";
 import { FirmwareCard } from "./Firmware";
 import { SettingsCard, type Item } from "./Settings";
@@ -156,7 +156,10 @@ export function System() {
         <Card title="Password">
           <PasswordForm />
         </Card>
-        <SettingsCard title="Logging" items={logging} />
+        <div className="space-y-5">
+          <SettingsCard title="Logging" items={logging} />
+          <EhsPortCard />
+        </div>
         <AccessCard />
         <Backup />
       </div>

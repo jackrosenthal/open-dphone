@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useRef, useState, type FormEvent } from "react";
-import { Badge, Button, Card, ConfirmButton, Empty, Field, Modal, Select, Toggle, td, th } from "../components/ui";
+import { Badge, Button, Card, ConfirmButton, Empty, Modal, Select, Toggle, td, th } from "../components/ui";
 import { ConfigService } from "../gen/dphone/v1/config_pb";
 import { SshService, type SshStatus } from "../gen/dphone/v1/ssh_pb";
 import { SystemService } from "../gen/dphone/v1/system_pb";
@@ -83,7 +83,7 @@ function EhsPinout() {
   return (
     <svg
       viewBox="14 0 250 186"
-      className="block h-auto w-full max-w-xs"
+      className="mx-auto block h-auto w-full max-w-xs"
       fontSize={11}
       textAnchor="middle"
       role="img"
@@ -122,22 +122,28 @@ function EhsPinout() {
 }
 
 /// UART A is the EHS headset adapter's unless the serial console is chosen.
-function SerialPort({ onError }: { onError: (e: unknown) => void }) {
+export function EhsPortCard() {
+  const [error, setError] = useState<unknown>();
   const loaded = useQuery(SystemService.method.getSerialConsole, {});
-  const set = useMutation(SystemService.method.setSerialConsole, { onError, onSuccess: () => (onError(undefined), loaded.refetch()) });
+  const set = useMutation(SystemService.method.setSerialConsole, { onError: setError, onSuccess: () => (setError(undefined), loaded.refetch()) });
   const setting = loaded.data?.serialConsole;
   // The choice as made, before the phone has confirmed it.
-  const console = set.isPending ? !!set.variables?.serialConsole : !!setting?.value;
+  const serial = set.isPending ? !!set.variables?.serialConsole : !!setting?.value;
+  const origin = settingOrigin(setting);
   return (
-    <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
-      <Field label="EHS port" hint={settingOrigin(setting) || undefined} className="w-full max-w-xs">
-        <Select value={console ? "console" : "ehs"} disabled={!setting || setting.locked || set.isPending} onChange={(e) => set.mutate({ serialConsole: e.target.value === "console" })}>
-          <option value="ehs">Headset</option>
-          <option value="console">Serial Console (115200 8N1)</option>
-        </Select>
-      </Field>
-      {console && <EhsPinout />}
-    </div>
+    <Card title="EHS Port">
+      <div className="space-y-4">
+        <ErrorNote error={error ?? loaded.error} />
+        <div>
+          <Select aria-label="EHS port" value={serial ? "console" : "ehs"} disabled={!setting || setting.locked || set.isPending} onChange={(e) => set.mutate({ serialConsole: e.target.value === "console" })}>
+            <option value="ehs">Headset</option>
+            <option value="console">Serial Console (115200 8N1)</option>
+          </Select>
+          {origin && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{origin}</p>}
+        </div>
+        {serial && <EhsPinout />}
+      </div>
+    </Card>
   );
 }
 
@@ -183,7 +189,6 @@ export function AccessCard() {
           {stopped && <Badge tone="red">SSH not running</Badge>}
           <MetricsSwitch onError={setError} />
         </div>
-        <SerialPort onError={setError} />
 
         <div className="border-t border-slate-100 pt-4 dark:border-slate-800">
           <h3 className="mb-2 text-sm font-semibold">SSH Keys</h3>
