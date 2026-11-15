@@ -1,6 +1,7 @@
 //! End-to-end tests on the build host: the real binary, in simulator mode.
 
 use std::io::{BufRead, BufReader};
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -55,10 +56,17 @@ impl Drop for ShowOnPanic {
     }
 }
 
+/// A child started with `process_group(0)`, ended with everything it started
+/// when the test is over, also when the test fails: a supervisor that is
+/// killed cannot stop its main role, which would otherwise live on (and
+/// keep the test run's output pipe open).
 struct KillOnDrop(Child);
 
 impl Drop for KillOnDrop {
     fn drop(&mut self) {
+        // SAFETY: plain kill(2) on the process group our child leads; the
+        // child is not reaped yet, so the group ID cannot have been reused.
+        unsafe { libc::kill(-(self.0.id() as i32), libc::SIGKILL) };
         let _ = self.0.kill();
         let _ = self.0.wait();
     }
@@ -85,6 +93,7 @@ fn start_main(dir: &Path, extra: &[&str]) -> (KillOnDrop, PathBuf) {
         .args(extra)
         .stdin(Stdio::null())
         .stderr(Stdio::piped())
+        .process_group(0)
         .spawn()
         .unwrap();
     let socket = run.join("diag.sock");
@@ -247,6 +256,7 @@ fn output_into_a_closed_pipe_is_not_a_panic() {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
+        .process_group(0)
         .spawn()
         .unwrap();
     let mut reader = BufReader::new(follow.stdout.take().unwrap());
@@ -289,6 +299,7 @@ fn supervisor_confirms_trial_and_restarts_main() {
         .arg(&run)
         .stdin(Stdio::null())
         .stderr(std::fs::File::create(&log).unwrap())
+        .process_group(0)
         .spawn()
         .unwrap();
     let sup = KillOnDrop(sup);
@@ -355,6 +366,7 @@ fn start_trial_supervisor(dir: &Path, main: &[&str]) -> (KillOnDrop, PathBuf, Pa
         .args(main)
         .stdin(Stdio::null())
         .stderr(std::fs::File::create(&log).unwrap())
+        .process_group(0)
         .spawn()
         .unwrap();
     (KillOnDrop(sup), trial, marker, log)
@@ -550,6 +562,7 @@ fn ssh_exec_and_sftp_with_openssh_client() {
         .env("DPHONE_SHELL", "/bin/sh")
         .stdin(Stdio::null())
         .stderr(Stdio::piped())
+        .process_group(0)
         .spawn()
         .unwrap();
     let stderr = child.stderr.take().unwrap();
