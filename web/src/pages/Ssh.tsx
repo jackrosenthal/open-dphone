@@ -70,24 +70,24 @@ function EhsPinout() {
       <path d={`M${x} ${y1}V${y2}`} stroke={color} strokeWidth={5} strokeLinecap="round" />
     </>
   );
-  const caption = (x: number, y: number, color: string, what: string, small = false) => (
+  const caption = (x: number, y: number, color: string, what: string) => (
     <>
       <text x={x} y={y} className={ink} fontWeight={600}>
         {color}
       </text>
-      <text x={x} y={y + 13} fontSize={small ? 10 : 11} className={muted}>
+      <text x={x} y={y + 13} className={muted}>
         {what}
       </text>
     </>
   );
   return (
     <svg
-      viewBox="0 0 320 186"
-      className="block h-auto w-full max-w-sm"
+      viewBox="14 0 250 186"
+      className="block h-auto w-full max-w-xs"
       fontSize={11}
       textAnchor="middle"
       role="img"
-      aria-label="Top row, left to right: pin 1, ground, black wire; pin 2, TX, white wire; key. Bottom row, left to right: pin 4, 3.3 V, not connected; pin 5, RX, green wire; pin 6, ground. Red wire: not connected."
+      aria-label="Top row, left to right: pin 1, ground, black wire; pin 2, TX, white wire; key. Bottom row, left to right: pin 4, 3.3 V, not connected; pin 5, RX, green wire; pin 6, ground."
     >
       <rect x={96} y={50} width={128} height={80} rx={4} className="fill-slate-200 stroke-slate-400 dark:fill-slate-800 dark:stroke-slate-600" />
       {[1, 2, 4, 5, 6].map((pin) => (
@@ -105,11 +105,9 @@ function EhsPinout() {
       {wire(at(1).x, 57, 34, "#111111")}
       {wire(at(2).x, 57, 34, "#ffffff")}
       {wire(at(5).x, 123, 150, "#16a34a")}
-      {wire(280, 132, 150, "#dc2626")}
       {caption(at(1).x, 12, "Black", "GND")}
       {caption(at(2).x, 12, "White", "TX")}
       {caption(at(5).x, 166, "Green", "RX")}
-      {caption(280, 166, "Red", "Not connected", true)}
       <text x={88} y={at(4).y - 2} textAnchor="end" className={ink}>
         3.3 V
       </text>
@@ -128,15 +126,17 @@ function SerialPort({ onError }: { onError: (e: unknown) => void }) {
   const loaded = useQuery(SystemService.method.getSerialConsole, {});
   const set = useMutation(SystemService.method.setSerialConsole, { onError, onSuccess: () => (onError(undefined), loaded.refetch()) });
   const setting = loaded.data?.serialConsole;
+  // The choice as made, before the phone has confirmed it.
+  const console = set.isPending ? !!set.variables?.serialConsole : !!setting?.value;
   return (
     <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
-      <Field label="Serial port" hint={settingOrigin(setting) || undefined} className="w-full max-w-xs">
-        <Select value={setting?.value ? "console" : "ehs"} disabled={!setting || setting.locked || set.isPending} onChange={(e) => set.mutate({ serialConsole: e.target.value === "console" })}>
-          <option value="ehs">EHS headset</option>
-          <option value="console">Console (115200 8N1)</option>
+      <Field label="EHS port" hint={settingOrigin(setting) || undefined} className="w-full max-w-xs">
+        <Select value={console ? "console" : "ehs"} disabled={!setting || setting.locked || set.isPending} onChange={(e) => set.mutate({ serialConsole: e.target.value === "console" })}>
+          <option value="ehs">Headset</option>
+          <option value="console">Serial Console (115200 8N1)</option>
         </Select>
       </Field>
-      <EhsPinout />
+      {console && <EhsPinout />}
     </div>
   );
 }
