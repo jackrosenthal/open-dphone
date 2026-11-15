@@ -246,22 +246,17 @@ impl Screen for Idle {
                 IdleSoftkey::CallLog => tr::CALL_LOG,
                 IdleSoftkey::Contacts => tr::CONTACTS,
                 IdleSoftkey::Status => tr::STATUS,
-                IdleSoftkey::Info => tr::INFO,
                 IdleSoftkey::Menu => tr::MENU,
                 IdleSoftkey::Apps => tr::APPS,
                 IdleSoftkey::Dnd if cx.st.features.dnd => tr::DND_OFF,
                 IdleSoftkey::Dnd => tr::DND,
                 IdleSoftkey::Forward => tr::FORWARD,
                 IdleSoftkey::Redial => tr::REDIAL,
-                IdleSoftkey::App { name, label } => {
+                IdleSoftkey::App(name) => {
                     // An app the phone does not have, or one that is
                     // switched off, has no softkey.
                     let app = cx.st.apps.installed.iter().find(|a| a.name == *name)?;
-                    match label {
-                        Some(label) => label,
-                        None if app.display_name.is_empty() => name,
-                        None => &app.display_name,
-                    }
+                    if app.display_name.is_empty() { name } else { &app.display_name }
                 }
             };
             Some(soft(i as u32 + 1, label))
@@ -278,7 +273,7 @@ impl Screen for Idle {
                 cx.post(Command::LaunchApp { name: "contacts".into() });
                 Nav::Stay
             }
-            IdleSoftkey::Status | IdleSoftkey::Info => Nav::Push(menus::about()),
+            IdleSoftkey::Status => Nav::Push(menus::about()),
             IdleSoftkey::Menu => Nav::Push(menus::main_menu()),
             IdleSoftkey::Apps => Nav::Push(menus::launcher()),
             IdleSoftkey::Dnd => {
@@ -290,7 +285,7 @@ impl Screen for Idle {
                 cx.post(Command::Redial);
                 Nav::Stay
             }
-            IdleSoftkey::App { name, .. } => {
+            IdleSoftkey::App(name) => {
                 cx.post(Command::LaunchApp { name: name.clone() });
                 Nav::Stay
             }

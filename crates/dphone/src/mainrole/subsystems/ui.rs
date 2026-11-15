@@ -144,8 +144,8 @@ fn dial_plan(plan: &str) -> Option<DialPlan> {
 }
 
 /// The configured idle softkeys as the UI's.
-fn idle_softkeys(keys: &[dphone_config::IdleSoftkey]) -> Vec<dphone_ui::IdleSoftkey> {
-    keys.iter().filter_map(|k| dphone_ui::IdleSoftkey::from_name(&k.name, k.label.as_deref())).collect()
+fn idle_softkeys(keys: &[String]) -> Vec<dphone_ui::IdleSoftkey> {
+    keys.iter().filter_map(|k| dphone_ui::IdleSoftkey::from_name(k)).collect()
 }
 
 pub struct UiParts {

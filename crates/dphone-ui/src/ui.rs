@@ -27,10 +27,8 @@ pub enum IdleSoftkey {
     /// The call log; labeled "Missed Calls" while there are unseen ones.
     CallLog,
     Contacts,
-    /// Phone information ("Status").
+    /// Phone information.
     Status,
-    /// Phone information ("Info").
-    Info,
     Menu,
     /// The app launcher.
     Apps,
@@ -39,42 +37,27 @@ pub enum IdleSoftkey {
     /// The call forwarding menu.
     Forward,
     Redial,
-    /// Opens the app `name`; not shown while the phone has no such app
-    /// (absent, or switched off).  Without a `label`, the app's display
-    /// name.
-    App { name: String, label: Option<String> },
+    /// Opens the app of this name, and is labeled with its display name;
+    /// not shown while the phone has no such app (absent, or switched
+    /// off).
+    App(String),
 }
 
 impl IdleSoftkey {
     /// The softkey a configured name stands for: `call_log`, `contacts`,
-    /// `status`, `info`, `menu`, `apps`, `dnd`, `forward`, `redial`, or
-    /// `app:<name>`.  `label` is a keymap entry's label:
-    /// text, or one of stock's string tokens (`_CONTACTS`).
-    pub fn from_name(name: &str, label: Option<&str>) -> Option<IdleSoftkey> {
+    /// `status`, `menu`, `apps`, `dnd`, `forward`, `redial`, or
+    /// `app:<name>`.
+    pub fn from_name(name: &str) -> Option<IdleSoftkey> {
         Some(match name {
             "call_log" => IdleSoftkey::CallLog,
             "contacts" => IdleSoftkey::Contacts,
             "status" => IdleSoftkey::Status,
-            "info" => IdleSoftkey::Info,
             "menu" => IdleSoftkey::Menu,
             "apps" => IdleSoftkey::Apps,
             "dnd" => IdleSoftkey::Dnd,
             "forward" => IdleSoftkey::Forward,
             "redial" => IdleSoftkey::Redial,
-            _ => {
-                let app = name.strip_prefix("app:").filter(|a| !a.is_empty())?;
-                let label = match label {
-                    Some("_CONTACTS") => Some(tr::CONTACTS),
-                    Some("_STATUS") => Some(tr::STATUS),
-                    Some("_FORWARD") => Some(tr::FORWARD),
-                    Some("_PARKED_CALLS") => Some(tr::PARKED_CALLS),
-                    Some("_QUEUES") => Some(tr::QUEUES),
-                    // Another token: the app's own name serves.
-                    Some(l) if l.starts_with('_') || l.is_empty() => None,
-                    l => l,
-                };
-                IdleSoftkey::App { name: app.to_string(), label: label.map(str::to_string) }
-            }
+            _ => IdleSoftkey::App(name.strip_prefix("app:").filter(|a| !a.is_empty())?.to_string()),
         })
     }
 }

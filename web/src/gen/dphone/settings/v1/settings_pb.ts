@@ -68,11 +68,11 @@ export type DphoneSettings = Message<"dphone.settings.v1.DphoneSettings"> & {
 
   /**
    * The idle screen's softkeys, in order, as a comma-separated list of:
-   * call_log, contacts, status, info, menu, apps, dnd, forward, redial, and
+   * call_log, contacts, status, menu, apps, dnd, forward, redial, and
    * app:<name> (opens the app of that name; not shown while the phone has
-   * no such app).  Default: the softkeys of the "idle" keymap state in the
-   * XML configuration, as on the stock firmware.  The provisioned form
-   * carries the same list:
+   * no such app).  Default: call_log,contacts,status,menu,apps,dnd,forward.
+   * The softkeys of the "idle" keymap state in the XML configuration are
+   * not used.  The provisioned form carries the same list:
    * <setting id="dphone_idle_softkeys" value="call_log,contacts,menu"/>.
    *
    * @generated from field: optional string idle_softkeys = 5;

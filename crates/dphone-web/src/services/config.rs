@@ -128,7 +128,6 @@ fn idle_softkeys(app: &App, cfg: &dphone_config::Config) -> pb::IdleSoftkeys {
         ("call_log", "Call Log"),
         ("contacts", "Contacts"),
         ("status", "Status"),
-        ("info", "Info"),
         ("menu", "Menu"),
         ("apps", "Apps"),
         ("dnd", "DND"),
@@ -147,12 +146,12 @@ fn idle_softkeys(app: &App, cfg: &dphone_config::Config) -> pb::IdleSoftkeys {
     // A softkey in effect for an app the phone does not have keeps its
     // entry (the phone does not show it).
     for key in &set.keys {
-        if !choices.iter().any(|c| c.name == key.name) {
-            choices.push(choice(&key.name, key.name.strip_prefix("app:").unwrap_or(&key.name)));
+        if !choices.iter().any(|c| c.name == *key) {
+            choices.push(choice(key, key.strip_prefix("app:").unwrap_or(key)));
         }
     }
     pb::IdleSoftkeys {
-        softkeys: set.keys.into_iter().map(|k| k.name).collect(),
+        softkeys: set.keys,
         source: super::ssh::setting_source(set.source).into(),
         locked: set.locked,
         choices,

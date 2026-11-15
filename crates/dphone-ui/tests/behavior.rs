@@ -364,8 +364,8 @@ fn idle_softkeys_follow_the_configuration() {
     // left, and there is no "More..." page.
     r.store.update::<Apps, _>(|a| a.installed.push(AppInfo { name: "parking".into(), ..Default::default() }));
     let keys = ["app:parking", "app:calendar", "redial", "dnd", "menu"];
-    let keys = keys.iter().map(|k| IdleSoftkey::from_name(k, Some("_PARKED_CALLS")).unwrap()).collect::<Vec<_>>();
-    assert_eq!(keys[0], IdleSoftkey::App { name: "parking".into(), label: Some("Parked Calls".into()) });
+    let keys = keys.iter().map(|k| IdleSoftkey::from_name(k).unwrap()).collect::<Vec<_>>();
+    assert_eq!(keys[0], IdleSoftkey::App("parking".into()));
     r.ui.handle().set_config(UiConfig { backlight_timeout_secs: 0, idle_softkeys: keys, ..Default::default() });
     r.ui.pump();
     r.tap(Key::Soft(1));
@@ -385,9 +385,9 @@ fn idle_softkeys_follow_the_configuration() {
     r.tap(Key::Soft(2));
     assert_eq!(r.screen(), "menu");
     // Names that are not softkeys.
-    assert_eq!(IdleSoftkey::from_name("lunch", None), None);
-    assert_eq!(IdleSoftkey::from_name("bluetooth", None), None);
-    assert_eq!(IdleSoftkey::from_name("app:", None), None);
+    for name in ["lunch", "info", "bluetooth", "app:"] {
+        assert_eq!(IdleSoftkey::from_name(name), None, "{name}");
+    }
 }
 
 #[test]

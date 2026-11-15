@@ -487,9 +487,10 @@ impl Config {
     /// The idle screen's softkeys.  The sources combine as for the other
     /// Open DPhone settings: a frozen provisioned list wins, then the local
     /// list, then an ordinary provisioned list; with none of those, the
-    /// softkeys are those of the `idle` keymap state, as on stock (the
-    /// base layer's, or the ones a provisioning server sent).  A list that
-    /// does not parse counts as not set.
+    /// default list ([`settings::DEFAULT_IDLE_SOFTKEYS`]).  A list that
+    /// does not parse counts as not set.  The `idle` keymap state is not
+    /// used: a DPMA server sends one to every phone, whatever its
+    /// administrator set, so it does not count as a list that was set.
     pub fn idle_softkeys(&self) -> IdleSoftkeys {
         let list = |l: Option<&str>| l.and_then(|l| settings::parse_idle_softkeys(l).ok()).filter(|k| !k.is_empty());
         let id = settings::PROVISIONED_IDLE_SOFTKEYS;
@@ -501,13 +502,7 @@ impl Config {
             (_, Some(keys)) => IdleSoftkeys { keys, source: SettingSource::Local, locked: false },
             (Some(keys), None) => IdleSoftkeys { keys, source: SettingSource::Provisioned, locked: false },
             (None, None) => IdleSoftkeys {
-                keys: self
-                    .softkeys("idle")
-                    .iter()
-                    .filter_map(|k| {
-                        settings::idle_softkey_for_action(&k.action, k.args.first().map(String::as_str), k.label.as_deref())
-                    })
-                    .collect(),
+                keys: settings::DEFAULT_IDLE_SOFTKEYS.split(',').map(str::to_owned).collect(),
                 source: SettingSource::Default,
                 locked: false,
             },

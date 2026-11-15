@@ -202,17 +202,14 @@
     <multicastpage/>
 
     <keymap>
-        <!-- "apps" and "dnd" are Open DPhone actions.  (Stock: call log,
-             contacts, status, info, forward, menu.) -->
         <state id="idle" conflict="replace">
             <softkeys>
                 <key id="0" action="missed_or_call_log"/>
                 <key id="1" action="show_application" label1="_CONTACTS"><arg>contacts</arg></key>
                 <key id="2" action="status"/>
-                <key id="3" action="menu"/>
-                <key id="4" action="apps"/>
-                <key id="5" action="dnd"/>
-                <key id="6" action="forward_calls" label1="_FORWARD"/>
+                <key id="3" action="info"/>
+                <key id="4" action="forward_calls" label1="_FORWARD"/>
+                <key id="5" action="menu"/>
             </softkeys>
         </state>
         <state id="hold" conflict="replace">
