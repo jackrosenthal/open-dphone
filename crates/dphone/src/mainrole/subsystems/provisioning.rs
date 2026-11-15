@@ -18,8 +18,12 @@ use crate::mainrole::Context;
 
 /// The files the merged configuration names, as stock reads them:
 /// `<contacts id url md5>`, `<ringtones><tones><tone id url md5>`,
-/// `<smart_blf><blf_items url md5>`, `<smart_blf><datasets url md5>`, and,
-/// for the log only, the app packages of `<appconfig id><url url/>`.
+/// `<smart_blf><blf_items url md5>`, `<smart_blf><datasets url md5>`,
+/// `<setting id="wallpaper_file" url md5>` with this firmware's
+/// `<setting id="dphone_palette_file" url md5>` (the palette for that
+/// picture: fetched only when the picture is named, and on a model with a
+/// color screen), and, for the log only, the app packages of
+/// `<appconfig id><url url/>`.
 pub fn wanted_resources(cfg: &Config) -> Wanted {
     let mut wanted = Wanted::default();
     for c in cfg.contact_sources() {
@@ -43,6 +47,19 @@ pub fn wanted_resources(cfg: &Config) -> Wanted {
                     });
                 }
             }
+        }
+    }
+    // Stock sends the wallpaper setting to every model; only a color
+    // screen shows one.
+    if cfg.model().is_new_family() {
+        use dphone_config::palette::{PALETTE_SETTING, WALLPAPER_SETTING};
+        let named = |id: &str, kind: Kind| {
+            let url = cfg.setting_attr(id, "url").map(str::trim).filter(|u| !u.is_empty())?;
+            Some(Resource { kind, id: String::new(), url: url.to_string(), md5: cfg.setting_attr(id, "md5").map(str::to_string) })
+        };
+        if let Some(picture) = named(WALLPAPER_SETTING, Kind::Wallpaper) {
+            wanted.resources.push(picture);
+            wanted.resources.extend(named(PALETTE_SETTING, Kind::Palette));
         }
     }
     for app in root.children_named("appconfig") {
@@ -404,6 +421,34 @@ mod tests {
         // one is, and is only ever logged.
         assert_eq!(w.apps, vec![PushedApp { id: "queues".into(), url: "file://queues.zip".into() }]);
         assert_eq!(wanted_resources(&config("<config/>")), Wanted::default());
+    }
+
+    #[test]
+    fn the_wallpaper_picture_and_its_palette_file_are_resources() {
+        // The shapes `res_dpma_rs` builds (`wallpaper_file`, and
+        // `dphone_palette_file` beside it).
+        let xml = |extra: &str| {
+            format!(
+                r#"<config>
+<setting id="wallpaper_file" value="user" url="file://wall.png" path="/user_wallpaper.png" conflict="freeze" />
+{extra}</config>"#
+            )
+        };
+        let palette = r#"<setting id="dphone_palette_file" value="user" url="http://pbx/files/wall.txtpb" md5="ab" path="/wallpaper_palette.txtpb" conflict="freeze" />"#;
+        let on = |model, xml: &str| wanted_resources(&Config::from_merged(Element::parse(xml).unwrap(), model, None)).resources;
+        let r = |kind, url: &str, md5: Option<&str>| Resource { kind, id: String::new(), url: url.into(), md5: md5.map(str::to_string) };
+        let d65 = dphone_config::Model::D65;
+        assert_eq!(on(d65, &xml("")), vec![r(Kind::Wallpaper, "file://wall.png", None)]);
+        assert_eq!(
+            on(d65, &xml(palette)),
+            vec![r(Kind::Wallpaper, "file://wall.png", None), r(Kind::Palette, "http://pbx/files/wall.txtpb", Some("ab"))]
+        );
+        // A palette file without a picture is not fetched; neither is
+        // anything on a model with a gray screen.
+        assert_eq!(on(d65, &format!("<config>{palette}</config>")), vec![]);
+        assert_eq!(on(dphone_config::Model::D50, &xml(palette)), vec![]);
+        // A setting without a URL names nothing.
+        assert_eq!(on(d65, r#"<config><setting id="wallpaper_file" value="user" url=" "/></config>"#), vec![]);
     }
 
     #[test]

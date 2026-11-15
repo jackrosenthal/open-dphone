@@ -463,3 +463,70 @@ fn a_provisioned_allow_app_dev_is_carried_and_unused() {
     let c = s.apply_fetched(&provisioned(r#"<setting id="allow_app_dev" value="1"/>"#)).unwrap();
     assert_eq!(c.setting("allow_app_dev"), Some("1"));
 }
+
+#[test]
+fn wallpaper_sources() {
+    use dphone_config::{Wallpaper, WallpaperChoice};
+    use SettingSource::*;
+    let (dir, nv, mut s) = store();
+    let builtin = |name: &str, source, locked, fallback: &str| Wallpaper {
+        choice: WallpaperChoice::Builtin(name.into()),
+        source,
+        locked,
+        builtin: fallback.into(),
+    };
+    let picture = |source, locked, fallback: &str| Wallpaper { choice: WallpaperChoice::Picture, source, locked, builtin: fallback.into() };
+    // Nothing set: the default wallpaper (no name).
+    assert_eq!(s.config().wallpaper(), builtin("", Default, false, ""));
+    assert!(!s.config().palette_file_named());
+
+    // A name chosen on the phone is kept in the settings file, and comes
+    // back after a restart.
+    let c = s.update_dphone_settings(|d| d.wallpaper = Some(" Dusk ".into())).unwrap();
+    assert_eq!(c.wallpaper(), builtin("dusk", Local, false, "dusk"));
+    assert!(nv.read_string(FILE).unwrap().unwrap().contains("wallpaper: \" Dusk \""));
+    assert_eq!(reopen(&dir, &nv).config().wallpaper(), builtin("dusk", Local, false, "dusk"));
+    // It is not a stock setting ID.
+    assert!(s.set("dphone_wallpaper", "tides").is_err());
+
+    // A provisioned name: the name chosen on the phone goes first, unless
+    // the server froze its own.
+    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_wallpaper" value="Tides"/>"#)).unwrap();
+    assert_eq!(c.wallpaper(), builtin("dusk", Local, false, "dusk"));
+    let c = s.update_dphone_settings(|d| d.wallpaper = None).unwrap();
+    assert_eq!(c.wallpaper(), builtin("tides", Provisioned, false, "tides"));
+    // An empty name on the phone is no choice.
+    let c = s.update_dphone_settings(|d| d.wallpaper = Some("  ".into())).unwrap();
+    assert_eq!(c.wallpaper(), builtin("tides", Provisioned, false, "tides"));
+    let c = s.update_dphone_settings(|d| d.wallpaper = Some("slate".into())).unwrap();
+    assert_eq!(c.wallpaper(), builtin("slate", Local, false, "slate"));
+    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_wallpaper" value="tides" conflict="freeze"/>"#)).unwrap();
+    assert_eq!(c.wallpaper(), builtin("tides", Provisioned, true, "slate"));
+    // A name the configuration layer does not judge: the UI shows the
+    // default wallpaper for one it does not have.
+    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_wallpaper" value="no-such"/>"#)).unwrap();
+    assert_eq!(c.wallpaper(), builtin("slate", Local, false, "slate"));
+
+    // A provisioned picture (stock's setting, as a DPMA server sends it:
+    // frozen) goes before everything; unfrozen, after the phone's choice;
+    // and before a provisioned name.
+    let file = r#"<setting id="wallpaper_file" value="user" url="file://wall.png" path="/user_wallpaper.png" conflict="freeze"/>"#;
+    let c = s.apply_fetched(&provisioned(file)).unwrap();
+    assert_eq!(c.wallpaper(), picture(Provisioned, true, "slate"));
+    assert!(!c.palette_file_named());
+    let unfrozen = r#"<setting id="wallpaper_file" value="user" url="http://pbx/wall.png"/><setting id="dphone_wallpaper" value="tides"/>"#;
+    let c = s.apply_fetched(&provisioned(unfrozen)).unwrap();
+    assert_eq!(c.wallpaper(), builtin("slate", Local, false, "slate"));
+    let c = s.update_dphone_settings(|d| d.wallpaper = None).unwrap();
+    assert_eq!(c.wallpaper(), picture(Provisioned, false, "tides"));
+    // The setting without a URL names no picture.
+    let c = s.apply_fetched(&provisioned(r#"<setting id="wallpaper_file" value="user" url=""/>"#)).unwrap();
+    assert_eq!(c.wallpaper(), builtin("", Default, false, ""));
+
+    // The palette file is named beside the picture.
+    let both = format!(r#"{file}<setting id="dphone_palette_file" value="user" url="file://wall.txtpb" conflict="freeze"/>"#);
+    let c = s.apply_fetched(&provisioned(&both)).unwrap();
+    assert_eq!(c.wallpaper(), picture(Provisioned, true, ""));
+    assert!(c.palette_file_named());
+    assert_eq!(c.setting_attr("dphone_palette_file", "url"), Some("file://wall.txtpb"));
+}

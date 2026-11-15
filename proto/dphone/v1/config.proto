@@ -12,6 +12,9 @@ service ConfigService {
   // The softkeys of the phone's idle screen, in order.
   rpc GetIdleSoftkeys(GetIdleSoftkeysRequest) returns (GetIdleSoftkeysResponse);
   rpc SetIdleSoftkeys(SetIdleSoftkeysRequest) returns (SetIdleSoftkeysResponse);
+  // The wallpaper of a color model, which sets the colors of every screen.
+  rpc GetWallpaper(GetWallpaperRequest) returns (GetWallpaperResponse);
+  rpc SetWallpaper(SetWallpaperRequest) returns (SetWallpaperResponse);
 }
 
 message Setting {
@@ -98,4 +101,43 @@ message BoolSetting {
   SettingSource source = 2;
   // The provisioning server fixed the value; it cannot be changed here.
   bool locked = 3;
+}
+
+// A built-in wallpaper.
+message WallpaperChoice {
+  // Its name in the configuration, e.g., "dusk".
+  string id = 1;
+  // The name shown.
+  string name = 2;
+  // The family it is listed under, e.g., "Gradients".
+  string family = 3;
+}
+
+message Wallpaper {
+  // The built-in wallpaper in effect (the `id` of one of `choices`).  Not
+  // what is shown while `picture` is set.
+  string id = 1;
+  SettingSource source = 2;
+  // The provisioning server fixed the wallpaper; it cannot be changed here.
+  bool locked = 3;
+  // Every built-in wallpaper, grouped by family.
+  repeated WallpaperChoice choices = 4;
+  // The provisioning server's picture is the wallpaper, not a built-in one.
+  bool picture = 5;
+}
+
+message GetWallpaperRequest {}
+
+message GetWallpaperResponse {
+  Wallpaper wallpaper = 1;
+}
+
+message SetWallpaperRequest {
+  // The `id` of a built-in wallpaper.  Empty: drop the choice made on the
+  // phone, which puts the provisioned or default wallpaper back.
+  string id = 1;
+}
+
+message SetWallpaperResponse {
+  Wallpaper wallpaper = 1;
 }

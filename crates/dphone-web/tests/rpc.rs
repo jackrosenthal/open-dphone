@@ -540,3 +540,60 @@ async fn provisioned_static_address_in_the_network_form() {
     assert!(config.network().dhcp, "the phone's own setting still says DHCP");
     assert_eq!(config.network().static_ip, None);
 }
+
+/// The wallpaper: the built-in ones are listed, a choice is kept with
+/// Open DPhone's own settings, and what the provisioning server fixed
+/// cannot be changed.
+#[tokio::test]
+async fn the_wallpaper_setting() {
+    let p = phone().await;
+    let s = login(p.addr, "789").await.ok().unwrap();
+    let (addr, s) = (p.addr, &s);
+    let get = || async move { rpc_json(addr, s, "ConfigService/GetWallpaper", "{}").await.json()["wallpaper"].clone() };
+    let set = |id: &'static str| async move {
+        rpc_json(addr, s, "ConfigService/SetWallpaper", &serde_json::json!({ "id": id }).to_string()).await
+    };
+    let w = get().await;
+    assert_eq!((&w["id"], &w["source"]), (&serde_json::json!("harbor"), &serde_json::json!("SETTING_SOURCE_DEFAULT")));
+    let choices = w["choices"].as_array().unwrap();
+    assert_eq!(choices.len(), dphone_state::WALLPAPERS.len());
+    assert_eq!(choices[0], serde_json::json!({ "id": "harbor", "name": "Harbor", "family": "Facets" }));
+    assert!(choices.iter().any(|c| c["id"] == "houndstooth" && c["family"] == "Classic"));
+
+    // A choice is saved in the settings file and is in effect.
+    let r = set("dusk").await;
+    assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    assert_eq!(r.json()["wallpaper"]["id"], "dusk");
+    assert_eq!(r.json()["wallpaper"]["source"], "SETTING_SOURCE_LOCAL");
+    let config = p.config.lock().unwrap().config();
+    assert_eq!(config.dphone_settings().wallpaper.as_deref(), Some("dusk"));
+    // Not a wallpaper: refused, and nothing changes.
+    let r = set("no-such").await;
+    assert_eq!(r.json()["code"], "invalid_argument");
+    assert_eq!(get().await["id"], "dusk");
+    // A name in the file that this firmware does not have is the default
+    // wallpaper, as on the phone's screen.
+    p.config.lock().unwrap().update_dphone_settings(|d| d.wallpaper = Some("from-the-future".into())).unwrap();
+    assert_eq!(get().await["id"], "harbor");
+
+    // The provisioning server's picture, frozen as a DPMA server sends
+    // it: it is the wallpaper, and it cannot be changed here.
+    p.config
+        .lock()
+        .unwrap()
+        .apply_fetched(r#"<config><setting id="wallpaper_file" value="user" url="file://wall.png" conflict="freeze"/></config>"#)
+        .unwrap();
+    let w = get().await;
+    assert_eq!((&w["picture"], &w["locked"], &w["source"]), (&serde_json::json!(true), &serde_json::json!(true), &serde_json::json!("SETTING_SOURCE_PROVISIONED")));
+    assert_eq!(set("tides").await.json()["code"], "failed_precondition");
+    // A provisioned name, not frozen: shown as the server's until one is
+    // chosen here; an empty choice puts the server's back.
+    p.config.lock().unwrap().update_dphone_settings(|d| d.wallpaper = None).unwrap();
+    p.config.lock().unwrap().apply_fetched(r#"<config><setting id="dphone_wallpaper" value="slate"/></config>"#).unwrap();
+    let w = get().await;
+    assert_eq!((&w["id"], &w["source"]), (&serde_json::json!("slate"), &serde_json::json!("SETTING_SOURCE_PROVISIONED")));
+    assert!(w.get("picture").is_none() && w.get("locked").is_none());
+    assert_eq!(set("tides").await.json()["wallpaper"]["source"], "SETTING_SOURCE_LOCAL");
+    let r = set("").await;
+    assert_eq!((&r.json()["wallpaper"]["id"], &r.json()["wallpaper"]["source"]), (&serde_json::json!("slate"), &serde_json::json!("SETTING_SOURCE_PROVISIONED")));
+}

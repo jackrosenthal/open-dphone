@@ -1,5 +1,7 @@
-//! Generates the `DphoneSettings` message type (with protobuf text-format
-//! support) from `proto/dphone/settings/v1/settings.proto`.  Rust only:
+//! Generates the `DphoneSettings` and `Palette` message types (with
+//! protobuf text-format support) from
+//! `proto/dphone/settings/v1/settings.proto` and
+//! `proto/dphone/palette/v1/palette.proto`.  Rust only:
 //! protox compiles the proto, so no `protoc` is needed, and buffa-codegen
 //! emits the message type.
 
@@ -14,15 +16,17 @@ fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
     let root = manifest.join("../../proto");
-    let name = "dphone/settings/v1/settings.proto";
-    println!("cargo:rerun-if-changed={}", root.join(name).display());
+    let names = ["dphone/settings/v1/settings.proto", "dphone/palette/v1/palette.proto"];
+    for name in names {
+        println!("cargo:rerun-if-changed={}", root.join(name).display());
+    }
 
-    let fds = protox::Compiler::new([&root])
-        .expect("proto include path")
-        .include_imports(true)
-        .open_file(name)
-        .expect("compiling settings.proto")
-        .file_descriptor_set();
+    let mut compiler = protox::Compiler::new([&root]).expect("proto include path");
+    compiler.include_imports(true);
+    for name in names {
+        compiler.open_file(name).unwrap_or_else(|e| panic!("compiling {name}: {e}"));
+    }
+    let fds = compiler.file_descriptor_set();
     let bytes = prost::Message::encode_to_vec(&fds);
     let fds = FileDescriptorSet::decode_from_slice(&bytes).expect("decoding descriptor set");
 
@@ -35,7 +39,7 @@ fn main() {
     // by `settings.rs` instead.
     config.preserve_unknown_fields = false;
     config.file_per_package = true;
-    let files = buffa_codegen::generate(&fds.file, &[name.to_owned()], &config).expect("buffa-codegen");
+    let files = buffa_codegen::generate(&fds.file, &names.map(str::to_owned), &config).expect("buffa-codegen");
     for f in files {
         fs::write(out.join(&f.name), f.content).expect("writing generated code");
     }

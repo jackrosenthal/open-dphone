@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/v1/config.proto.
  */
 export const file_dphone_v1_config: GenFile = /*@__PURE__*/
-  fileDesc("ChZkcGhvbmUvdjEvY29uZmlnLnByb3RvEglkcGhvbmUudjEiXwoHU2V0dGluZxIKCgJpZBgBIAEoCRINCgV2YWx1ZRgCIAEoCRIOCgZmcm96ZW4YAyABKAgSDgoGc2VjcmV0GAUgASgIEhMKC3Byb3Zpc2lvbmVkGAYgASgISgQIBBAFIiUKE0xpc3RTZXR0aW5nc1JlcXVlc3QSDgoGcHJlZml4GAEgASgJIlAKFExpc3RTZXR0aW5nc1Jlc3BvbnNlEiQKCHNldHRpbmdzGAEgAygLMhIuZHBob25lLnYxLlNldHRpbmcSEgoKZ2VuZXJhdGlvbhgCIAEoBCIqCg1TZXR0aW5nQ2hhbmdlEgoKAmlkGAEgASgJEg0KBXZhbHVlGAIgASgJIj8KElNldFNldHRpbmdzUmVxdWVzdBIpCgdjaGFuZ2VzGAEgAygLMhguZHBob25lLnYxLlNldHRpbmdDaGFuZ2UiKQoTU2V0U2V0dGluZ3NSZXNwb25zZRISCgpnZW5lcmF0aW9uGAEgASgEIlQKEUlkbGVTb2Z0a2V5Q2hvaWNlEjAKB3NvZnRrZXkYASABKAsyHy5kcGhvbmUuc2V0dGluZ3MudjEuSWRsZVNvZnRrZXkSDQoFbGFiZWwYAiABKAkiqgEKDElkbGVTb2Z0a2V5cxIxCghzb2Z0a2V5cxgBIAMoCzIfLmRwaG9uZS5zZXR0aW5ncy52MS5JZGxlU29mdGtleRIoCgZzb3VyY2UYAiABKA4yGC5kcGhvbmUudjEuU2V0dGluZ1NvdXJjZRIOCgZsb2NrZWQYAyABKAgSLQoHY2hvaWNlcxgEIAMoCzIcLmRwaG9uZS52MS5JZGxlU29mdGtleUNob2ljZSIYChZHZXRJZGxlU29mdGtleXNSZXF1ZXN0IkkKF0dldElkbGVTb2Z0a2V5c1Jlc3BvbnNlEi4KDWlkbGVfc29mdGtleXMYASABKAsyFy5kcGhvbmUudjEuSWRsZVNvZnRrZXlzIksKFlNldElkbGVTb2Z0a2V5c1JlcXVlc3QSMQoIc29mdGtleXMYASADKAsyHy5kcGhvbmUuc2V0dGluZ3MudjEuSWRsZVNvZnRrZXkiSQoXU2V0SWRsZVNvZnRrZXlzUmVzcG9uc2USLgoNaWRsZV9zb2Z0a2V5cxgBIAEoCzIXLmRwaG9uZS52MS5JZGxlU29mdGtleXMiVgoLQm9vbFNldHRpbmcSDQoFdmFsdWUYASABKAgSKAoGc291cmNlGAIgASgOMhguZHBob25lLnYxLlNldHRpbmdTb3VyY2USDgoGbG9ja2VkGAMgASgIKoUBCg1TZXR0aW5nU291cmNlEh4KGlNFVFRJTkdfU09VUkNFX1VOU1BFQ0lGSUVEEAASGgoWU0VUVElOR19TT1VSQ0VfREVGQVVMVBABEhgKFFNFVFRJTkdfU09VUkNFX0xPQ0FMEAISHgoaU0VUVElOR19TT1VSQ0VfUFJPVklTSU9ORUQQAzLiAgoNQ29uZmlnU2VydmljZRJPCgxMaXN0U2V0dGluZ3MSHi5kcGhvbmUudjEuTGlzdFNldHRpbmdzUmVxdWVzdBofLmRwaG9uZS52MS5MaXN0U2V0dGluZ3NSZXNwb25zZRJMCgtTZXRTZXR0aW5ncxIdLmRwaG9uZS52MS5TZXRTZXR0aW5nc1JlcXVlc3QaHi5kcGhvbmUudjEuU2V0U2V0dGluZ3NSZXNwb25zZRJYCg9HZXRJZGxlU29mdGtleXMSIS5kcGhvbmUudjEuR2V0SWRsZVNvZnRrZXlzUmVxdWVzdBoiLmRwaG9uZS52MS5HZXRJZGxlU29mdGtleXNSZXNwb25zZRJYCg9TZXRJZGxlU29mdGtleXMSIS5kcGhvbmUudjEuU2V0SWRsZVNvZnRrZXlzUmVxdWVzdBoiLmRwaG9uZS52MS5TZXRJZGxlU29mdGtleXNSZXNwb25zZWIGcHJvdG8z", [file_dphone_settings_v1_settings]);
+  fileDesc("ChZkcGhvbmUvdjEvY29uZmlnLnByb3RvEglkcGhvbmUudjEiXwoHU2V0dGluZxIKCgJpZBgBIAEoCRINCgV2YWx1ZRgCIAEoCRIOCgZmcm96ZW4YAyABKAgSDgoGc2VjcmV0GAUgASgIEhMKC3Byb3Zpc2lvbmVkGAYgASgISgQIBBAFIiUKE0xpc3RTZXR0aW5nc1JlcXVlc3QSDgoGcHJlZml4GAEgASgJIlAKFExpc3RTZXR0aW5nc1Jlc3BvbnNlEiQKCHNldHRpbmdzGAEgAygLMhIuZHBob25lLnYxLlNldHRpbmcSEgoKZ2VuZXJhdGlvbhgCIAEoBCIqCg1TZXR0aW5nQ2hhbmdlEgoKAmlkGAEgASgJEg0KBXZhbHVlGAIgASgJIj8KElNldFNldHRpbmdzUmVxdWVzdBIpCgdjaGFuZ2VzGAEgAygLMhguZHBob25lLnYxLlNldHRpbmdDaGFuZ2UiKQoTU2V0U2V0dGluZ3NSZXNwb25zZRISCgpnZW5lcmF0aW9uGAEgASgEIlQKEUlkbGVTb2Z0a2V5Q2hvaWNlEjAKB3NvZnRrZXkYASABKAsyHy5kcGhvbmUuc2V0dGluZ3MudjEuSWRsZVNvZnRrZXkSDQoFbGFiZWwYAiABKAkiqgEKDElkbGVTb2Z0a2V5cxIxCghzb2Z0a2V5cxgBIAMoCzIfLmRwaG9uZS5zZXR0aW5ncy52MS5JZGxlU29mdGtleRIoCgZzb3VyY2UYAiABKA4yGC5kcGhvbmUudjEuU2V0dGluZ1NvdXJjZRIOCgZsb2NrZWQYAyABKAgSLQoHY2hvaWNlcxgEIAMoCzIcLmRwaG9uZS52MS5JZGxlU29mdGtleUNob2ljZSIYChZHZXRJZGxlU29mdGtleXNSZXF1ZXN0IkkKF0dldElkbGVTb2Z0a2V5c1Jlc3BvbnNlEi4KDWlkbGVfc29mdGtleXMYASABKAsyFy5kcGhvbmUudjEuSWRsZVNvZnRrZXlzIksKFlNldElkbGVTb2Z0a2V5c1JlcXVlc3QSMQoIc29mdGtleXMYASADKAsyHy5kcGhvbmUuc2V0dGluZ3MudjEuSWRsZVNvZnRrZXkiSQoXU2V0SWRsZVNvZnRrZXlzUmVzcG9uc2USLgoNaWRsZV9zb2Z0a2V5cxgBIAEoCzIXLmRwaG9uZS52MS5JZGxlU29mdGtleXMiVgoLQm9vbFNldHRpbmcSDQoFdmFsdWUYASABKAgSKAoGc291cmNlGAIgASgOMhguZHBob25lLnYxLlNldHRpbmdTb3VyY2USDgoGbG9ja2VkGAMgASgIIjsKD1dhbGxwYXBlckNob2ljZRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg4KBmZhbWlseRgDIAEoCSKPAQoJV2FsbHBhcGVyEgoKAmlkGAEgASgJEigKBnNvdXJjZRgCIAEoDjIYLmRwaG9uZS52MS5TZXR0aW5nU291cmNlEg4KBmxvY2tlZBgDIAEoCBIrCgdjaG9pY2VzGAQgAygLMhouZHBob25lLnYxLldhbGxwYXBlckNob2ljZRIPCgdwaWN0dXJlGAUgASgIIhUKE0dldFdhbGxwYXBlclJlcXVlc3QiPwoUR2V0V2FsbHBhcGVyUmVzcG9uc2USJwoJd2FsbHBhcGVyGAEgASgLMhQuZHBob25lLnYxLldhbGxwYXBlciIhChNTZXRXYWxscGFwZXJSZXF1ZXN0EgoKAmlkGAEgASgJIj8KFFNldFdhbGxwYXBlclJlc3BvbnNlEicKCXdhbGxwYXBlchgBIAEoCzIULmRwaG9uZS52MS5XYWxscGFwZXIqhQEKDVNldHRpbmdTb3VyY2USHgoaU0VUVElOR19TT1VSQ0VfVU5TUEVDSUZJRUQQABIaChZTRVRUSU5HX1NPVVJDRV9ERUZBVUxUEAESGAoUU0VUVElOR19TT1VSQ0VfTE9DQUwQAhIeChpTRVRUSU5HX1NPVVJDRV9QUk9WSVNJT05FRBADMoQECg1Db25maWdTZXJ2aWNlEk8KDExpc3RTZXR0aW5ncxIeLmRwaG9uZS52MS5MaXN0U2V0dGluZ3NSZXF1ZXN0Gh8uZHBob25lLnYxLkxpc3RTZXR0aW5nc1Jlc3BvbnNlEkwKC1NldFNldHRpbmdzEh0uZHBob25lLnYxLlNldFNldHRpbmdzUmVxdWVzdBoeLmRwaG9uZS52MS5TZXRTZXR0aW5nc1Jlc3BvbnNlElgKD0dldElkbGVTb2Z0a2V5cxIhLmRwaG9uZS52MS5HZXRJZGxlU29mdGtleXNSZXF1ZXN0GiIuZHBob25lLnYxLkdldElkbGVTb2Z0a2V5c1Jlc3BvbnNlElgKD1NldElkbGVTb2Z0a2V5cxIhLmRwaG9uZS52MS5TZXRJZGxlU29mdGtleXNSZXF1ZXN0GiIuZHBob25lLnYxLlNldElkbGVTb2Z0a2V5c1Jlc3BvbnNlEk8KDEdldFdhbGxwYXBlchIeLmRwaG9uZS52MS5HZXRXYWxscGFwZXJSZXF1ZXN0Gh8uZHBob25lLnYxLkdldFdhbGxwYXBlclJlc3BvbnNlEk8KDFNldFdhbGxwYXBlchIeLmRwaG9uZS52MS5TZXRXYWxscGFwZXJSZXF1ZXN0Gh8uZHBob25lLnYxLlNldFdhbGxwYXBlclJlc3BvbnNlYgZwcm90bzM", [file_dphone_settings_v1_settings]);
 
 /**
  * @generated from message dphone.v1.Setting
@@ -316,6 +316,154 @@ export const BoolSettingSchema: GenMessage<BoolSetting> = /*@__PURE__*/
   messageDesc(file_dphone_v1_config, 12);
 
 /**
+ * A built-in wallpaper.
+ *
+ * @generated from message dphone.v1.WallpaperChoice
+ */
+export type WallpaperChoice = Message<"dphone.v1.WallpaperChoice"> & {
+  /**
+   * Its name in the configuration, e.g., "dusk".
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * The name shown.
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * The family it is listed under, e.g., "Gradients".
+   *
+   * @generated from field: string family = 3;
+   */
+  family: string;
+};
+
+/**
+ * Describes the message dphone.v1.WallpaperChoice.
+ * Use `create(WallpaperChoiceSchema)` to create a new message.
+ */
+export const WallpaperChoiceSchema: GenMessage<WallpaperChoice> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_config, 13);
+
+/**
+ * @generated from message dphone.v1.Wallpaper
+ */
+export type Wallpaper = Message<"dphone.v1.Wallpaper"> & {
+  /**
+   * The built-in wallpaper in effect (the `id` of one of `choices`).  Not
+   * what is shown while `picture` is set.
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: dphone.v1.SettingSource source = 2;
+   */
+  source: SettingSource;
+
+  /**
+   * The provisioning server fixed the wallpaper; it cannot be changed here.
+   *
+   * @generated from field: bool locked = 3;
+   */
+  locked: boolean;
+
+  /**
+   * Every built-in wallpaper, grouped by family.
+   *
+   * @generated from field: repeated dphone.v1.WallpaperChoice choices = 4;
+   */
+  choices: WallpaperChoice[];
+
+  /**
+   * The provisioning server's picture is the wallpaper, not a built-in one.
+   *
+   * @generated from field: bool picture = 5;
+   */
+  picture: boolean;
+};
+
+/**
+ * Describes the message dphone.v1.Wallpaper.
+ * Use `create(WallpaperSchema)` to create a new message.
+ */
+export const WallpaperSchema: GenMessage<Wallpaper> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_config, 14);
+
+/**
+ * @generated from message dphone.v1.GetWallpaperRequest
+ */
+export type GetWallpaperRequest = Message<"dphone.v1.GetWallpaperRequest"> & {
+};
+
+/**
+ * Describes the message dphone.v1.GetWallpaperRequest.
+ * Use `create(GetWallpaperRequestSchema)` to create a new message.
+ */
+export const GetWallpaperRequestSchema: GenMessage<GetWallpaperRequest> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_config, 15);
+
+/**
+ * @generated from message dphone.v1.GetWallpaperResponse
+ */
+export type GetWallpaperResponse = Message<"dphone.v1.GetWallpaperResponse"> & {
+  /**
+   * @generated from field: dphone.v1.Wallpaper wallpaper = 1;
+   */
+  wallpaper?: Wallpaper | undefined;
+};
+
+/**
+ * Describes the message dphone.v1.GetWallpaperResponse.
+ * Use `create(GetWallpaperResponseSchema)` to create a new message.
+ */
+export const GetWallpaperResponseSchema: GenMessage<GetWallpaperResponse> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_config, 16);
+
+/**
+ * @generated from message dphone.v1.SetWallpaperRequest
+ */
+export type SetWallpaperRequest = Message<"dphone.v1.SetWallpaperRequest"> & {
+  /**
+   * The `id` of a built-in wallpaper.  Empty: drop the choice made on the
+   * phone, which puts the provisioned or default wallpaper back.
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message dphone.v1.SetWallpaperRequest.
+ * Use `create(SetWallpaperRequestSchema)` to create a new message.
+ */
+export const SetWallpaperRequestSchema: GenMessage<SetWallpaperRequest> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_config, 17);
+
+/**
+ * @generated from message dphone.v1.SetWallpaperResponse
+ */
+export type SetWallpaperResponse = Message<"dphone.v1.SetWallpaperResponse"> & {
+  /**
+   * @generated from field: dphone.v1.Wallpaper wallpaper = 1;
+   */
+  wallpaper?: Wallpaper | undefined;
+};
+
+/**
+ * Describes the message dphone.v1.SetWallpaperResponse.
+ * Use `create(SetWallpaperResponseSchema)` to create a new message.
+ */
+export const SetWallpaperResponseSchema: GenMessage<SetWallpaperResponse> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_config, 18);
+
+/**
  * Where the value of one of Open DPhone's own settings came from.
  *
  * @generated from enum dphone.v1.SettingSource
@@ -392,6 +540,24 @@ export const ConfigService: GenService<{
     methodKind: "unary";
     input: typeof SetIdleSoftkeysRequestSchema;
     output: typeof SetIdleSoftkeysResponseSchema;
+  },
+  /**
+   * The wallpaper of a color model, which sets the colors of every screen.
+   *
+   * @generated from rpc dphone.v1.ConfigService.GetWallpaper
+   */
+  getWallpaper: {
+    methodKind: "unary";
+    input: typeof GetWallpaperRequestSchema;
+    output: typeof GetWallpaperResponseSchema;
+  },
+  /**
+   * @generated from rpc dphone.v1.ConfigService.SetWallpaper
+   */
+  setWallpaper: {
+    methodKind: "unary";
+    input: typeof SetWallpaperRequestSchema;
+    output: typeof SetWallpaperResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_dphone_v1_config, 0);

@@ -14,6 +14,7 @@
 //! - [`appview`] is the widget-tree API for apps; see its module docs.
 //! - [`gfx`], [`font`], [`skin`], and [`widgets`] are the toolkit, public
 //!   for tools and tests.
+//! - [`wallpaper`] has the color skin's built-in wallpapers.
 //!
 //! Fonts and artwork are rasterized at build time (`build.rs`) from
 //! `assets/`; drawing at run time uses no floating point.  The one file
@@ -35,6 +36,7 @@ pub mod skin;
 pub mod strings;
 pub mod time;
 mod ui;
+pub mod wallpaper;
 pub mod widgets;
 
 #[allow(clippy::all)]

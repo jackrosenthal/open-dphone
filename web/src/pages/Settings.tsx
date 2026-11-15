@@ -3,6 +3,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Button, Card, Dpma, Input, PageHeader, Select, Toggle } from "../components/ui";
 import type { IdleSoftkey } from "../gen/dphone/settings/v1/settings_pb";
 import { ConfigService, SettingSource, type IdleSoftkeys as IdleSoftkeysMessage, type Setting } from "../gen/dphone/v1/config_pb";
+import type { Wallpaper as WallpaperMessage } from "../gen/dphone/v1/config_pb";
 import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
 
@@ -218,6 +219,53 @@ function IdleSoftkeys() {
   );
 }
 
+/// The wallpaper of a color model, which sets the colors of every screen
+/// of the phone.  A change is saved as it is made.
+function WallpaperSelect() {
+  const [error, setError] = useState<unknown>();
+  const [saved, setSaved] = useState<WallpaperMessage>();
+  const skin = useStatus().status?.system?.skin;
+  const loaded = useQuery(ConfigService.method.getWallpaper, {});
+  const set = useMutation(ConfigService.method.setWallpaper, {
+    onError: setError,
+    onSuccess: (r) => {
+      setError(undefined);
+      setSaved(r.wallpaper);
+    },
+  });
+  if (skin !== "color") return null;
+  const wallpaper = saved ?? loaded.data?.wallpaper;
+  const choices = wallpaper?.choices ?? [];
+  const families = [...new Set(choices.map((c) => c.family))];
+  const dpma = viaDpma(wallpaper);
+  return (
+    <Dpma on={dpma}>
+      <ErrorNote error={error ?? loaded.error} />
+      <label className="block">
+        <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Wallpaper</span>
+        <Select
+          value={wallpaper?.picture ? "" : (wallpaper?.id ?? "")}
+          disabled={!wallpaper || dpma || set.isPending}
+          onChange={(e) => e.target.value && set.mutate({ id: e.target.value })}
+        >
+          {wallpaper?.picture && <option value="">Provisioned picture</option>}
+          {families.map((family) => (
+            <optgroup key={family} label={family}>
+              {choices
+                .filter((c) => c.family === family)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </optgroup>
+          ))}
+        </Select>
+      </label>
+    </Dpma>
+  );
+}
+
 /// True when the value of one of Open DPhone's own settings is the
 /// provisioning server's: its control is then disabled.
 export function viaDpma(s: { locked: boolean; source: SettingSource } | undefined): boolean {
@@ -232,7 +280,7 @@ export function Preferences() {
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <SettingsCard title="Sound" items={sound} />
         <div className="space-y-5">
-          <SettingsCard title="Display" items={display} />
+          <SettingsCard title="Display" items={display} after={<WallpaperSelect />} />
           <IdleSoftkeys />
         </div>
       </div>

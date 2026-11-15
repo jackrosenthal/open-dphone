@@ -106,6 +106,17 @@ async fn config_domain(ctx: Context, config: Option<SharedConfig>, hub: ConfigHu
                     .await
                 }
             }
+            Command::SetWallpaper { name } => {
+                // One of Open DPhone's own settings: its file is not one
+                // of stock's, so a read-only image saves it too.
+                let locked = config.lock().unwrap().config().wallpaper().locked;
+                if locked {
+                    Err(CommandError::Denied("the provisioning server fixed the wallpaper".into()))
+                } else {
+                    let name = name.trim().to_ascii_lowercase();
+                    write_config(config, move |store| store.update_dphone_settings(|s| s.wallpaper = (!name.is_empty()).then_some(name))).await
+                }
+            }
             other => Err(CommandError::Invalid(format!("not a configuration command: {other:?}"))),
         };
         match result {

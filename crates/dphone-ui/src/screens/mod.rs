@@ -131,6 +131,13 @@ pub(crate) trait Screen: Send {
     fn wallpaper(&self) -> bool {
         false
     }
+    /// A built-in wallpaper whose picture and palette this screen is
+    /// shown with, instead of the configured ones (color skin only).
+    fn look(&self, _cx: &Cx) -> Option<&'static crate::wallpaper::Wallpaper> {
+        None
+    }
+    /// The palette changed (color skin): `th` is the theme from now on.
+    fn theme_changed(&mut self, _th: &'static Theme) {}
     /// Whether the softkey shapes are drawn below this screen.  A screen
     /// on which no key does anything returns false and gets the whole
     /// frame to draw in.

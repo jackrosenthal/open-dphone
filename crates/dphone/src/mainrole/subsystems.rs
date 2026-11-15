@@ -51,6 +51,7 @@ pub mod system;
 pub mod telephony;
 pub mod trust;
 pub mod ui;
+pub mod wallpaper;
 #[cfg(feature = "web")]
 pub mod web;
 

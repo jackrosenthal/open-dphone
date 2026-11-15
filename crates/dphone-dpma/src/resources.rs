@@ -1,5 +1,6 @@
 //! The files a provisioned configuration names: contact lists, ringtones,
-//! the BLF items file, and the datasets file.  They are fetched after a
+//! the BLF items file, the datasets file, the wallpaper picture, and the
+//! palette file that goes with it.  They are fetched after a
 //! configuration is applied and kept where stock keeps them, so stock
 //! finds them after a flash back and this firmware finds stock's.
 //!
@@ -13,6 +14,15 @@
 //! | `<ringtones><tones><tone id url md5>` | `ringtones/<id>.sln16` | `<id>` |
 //! | `<smart_blf><blf_items url md5>` | `blf_items.xml` | `blf_items` |
 //! | `<smart_blf><datasets url md5>` | `datasets.xml` | `datasets` |
+//! | `<setting id="wallpaper_file" url md5>` | `user_wallpaper.png` | `wallpaper_file` |
+//!
+//! And one that only this firmware has, beside the wallpaper picture (the
+//! colors of every screen while that picture is the wallpaper; see
+//! `proto/dphone/palette/v1/palette.proto`):
+//!
+//! | Configuration | File under `/nvdata` | Digest name |
+//! | --- | --- | --- |
+//! | `<setting id="dphone_palette_file" url md5>` | `open/wallpaper_palette.txtpb` | `dphone_palette_file` |
 //!
 //! In a file name, `%`, `.`, and `/` of an `id` are written `%25`, `%2E`,
 //! and `%2F`.  `md5s/<digest name>` holds the MD5 of the file as it was
@@ -24,8 +34,9 @@
 //! every URL to curl first and sends the FileRequest when curl fails; for
 //! a URL that curl can fetch, a server finds no `file://` name in that
 //! request and refuses it, so that second step is left out here.)
-//! Ringtones share a budget of 1 MiB.  Contact lists and ringtones the
-//! configuration no longer names are removed with their digests;
+//! Ringtones share a budget of 1 MiB.  Contact lists, ringtones, the
+//! wallpaper picture, and the palette file are removed with their digests
+//! when the configuration no longer names them;
 //! `local_contacts.xml`, `serialized_contacts.xml`, and ringtones with
 //! `user_upload` in the name are never touched.
 //!
@@ -55,13 +66,28 @@ pub enum Kind {
     Ringtone,
     BlfItems,
     Datasets,
+    /// The wallpaper picture of a color model (a PNG file).
+    Wallpaper,
+    /// The palette file for the wallpaper picture.
+    Palette,
 }
+
+/// The single-file kinds: (kind, file, digest name).
+const SINGLE: [(Kind, &str, &str); 4] = [
+    (Kind::BlfItems, "blf_items.xml", "blf_items"),
+    (Kind::Datasets, "datasets.xml", "datasets"),
+    (Kind::Wallpaper, "user_wallpaper.png", "wallpaper_file"),
+    (Kind::Palette, "open/wallpaper_palette.txtpb", "dphone_palette_file"),
+];
+
+/// The most a palette file may be (a complete one is under 1 KiB).
+pub const MAX_PALETTE: usize = 16 * 1024;
 
 /// One file the configuration names.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Resource {
     pub kind: Kind,
-    /// The element's `id` (unused for the BLF items and datasets files).
+    /// The element's `id` (unused for the kinds that are one file).
     pub id: String,
     pub url: String,
     pub md5: Option<String>,
@@ -138,15 +164,14 @@ impl Resource {
     /// Whether stock would act on the entry: contact lists and ringtones
     /// need an `id`, and everything needs a URL.
     fn usable(&self) -> bool {
-        !self.url.is_empty() && (!self.id.is_empty() || matches!(self.kind, Kind::BlfItems | Kind::Datasets))
+        !self.url.is_empty() && (!self.id.is_empty() || !matches!(self.kind, Kind::ContactList | Kind::Ringtone))
     }
 
     /// The name of the digest in `md5s/`.
     pub fn digest_name(&self) -> String {
         match self.kind {
             Kind::ContactList | Kind::Ringtone => file_name(&self.id),
-            Kind::BlfItems => "blf_items".into(),
-            Kind::Datasets => "datasets".into(),
+            kind => SINGLE.iter().find(|s| s.0 == kind).map_or_else(String::new, |s| s.2.into()),
         }
     }
 
@@ -155,8 +180,7 @@ impl Resource {
         match self.kind {
             Kind::ContactList => format!("contact_lists/{}", file_name(&self.id)),
             Kind::Ringtone => format!("ringtones/{}.sln16", file_name(&self.id)),
-            Kind::BlfItems => "blf_items.xml".into(),
-            Kind::Datasets => "datasets.xml".into(),
+            kind => SINGLE.iter().find(|s| s.0 == kind).map_or_else(String::new, |s| s.1.into()),
         }
     }
 }
@@ -192,7 +216,7 @@ fn stale(wanted: &[&Resource], files: &dyn Files) -> Vec<(String, String)> {
             discard(path, stem);
         }
     }
-    for (kind, path, digest_name) in [(Kind::BlfItems, "blf_items.xml", "blf_items"), (Kind::Datasets, "datasets.xml", "datasets")] {
+    for (kind, path, digest_name) in SINGLE {
         if !wanted.iter().any(|r| r.kind == kind) && digest(files, digest_name).is_some() {
             discard(path.to_string(), digest_name);
         }
@@ -288,6 +312,7 @@ pub async fn sync(wanted: &Wanted, files: &Arc<dyn Files>, fetch: &dyn Fetch) ->
         }
         let max = match r.kind {
             Kind::Ringtone => RINGTONE_BUDGET.saturating_sub(ringtone_bytes(files_ref, &path)).min(MAX_RESOURCE),
+            Kind::Palette => MAX_PALETTE,
             _ => MAX_RESOURCE,
         };
         let data = match download(r, fetch, max).await {
@@ -338,6 +363,122 @@ mod tests {
         assert_eq!((r(Kind::Datasets, "").path(), r(Kind::Datasets, "").digest_name()), ("datasets.xml".into(), "datasets".into()));
         assert!(!r(Kind::ContactList, "").usable());
         assert!(r(Kind::BlfItems, "").usable());
+        // The wallpaper picture has stock's name; the palette file is
+        // among this firmware's own files.
+        assert_eq!((r(Kind::Wallpaper, "").path(), r(Kind::Wallpaper, "").digest_name()), ("user_wallpaper.png".into(), "wallpaper_file".into()));
+        assert_eq!(
+            (r(Kind::Palette, "").path(), r(Kind::Palette, "").digest_name()),
+            ("open/wallpaper_palette.txtpb".into(), "dphone_palette_file".into())
+        );
+        assert!(r(Kind::Wallpaper, "").usable() && r(Kind::Palette, "").usable());
+    }
+
+    #[derive(Default)]
+    struct Mem(std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>);
+
+    impl Files for Mem {
+        fn read(&self, rel: &str) -> Option<Vec<u8>> {
+            self.0.lock().unwrap().get(rel).cloned()
+        }
+        fn write(&self, rel: &str, data: &[u8]) -> Result<(), String> {
+            self.0.lock().unwrap().insert(rel.into(), data.to_vec());
+            Ok(())
+        }
+        fn remove(&self, rel: &str) {
+            self.0.lock().unwrap().remove(rel);
+        }
+        fn list(&self, dir: &str) -> Vec<String> {
+            let prefix = format!("{dir}/");
+            self.0.lock().unwrap().keys().filter_map(|k| k.strip_prefix(&prefix)).filter(|n| !n.contains('/')).map(str::to_string).collect()
+        }
+    }
+
+    /// A server with files by name (`file://`) and by URL, counting what
+    /// it is asked for.
+    #[derive(Default)]
+    struct Server {
+        files: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
+        asked: std::sync::Mutex<Vec<String>>,
+    }
+
+    #[async_trait::async_trait]
+    impl Fetch for Server {
+        async fn file(&self, name: &str) -> Result<Vec<u8>, DpmaError> {
+            self.asked.lock().unwrap().push(name.into());
+            self.files.lock().unwrap().get(name).cloned().ok_or_else(|| DpmaError::Protocol(format!("no file {name}")))
+        }
+        async fn http(&self, url: &str, max: usize) -> Result<Vec<u8>, String> {
+            self.asked.lock().unwrap().push(url.into());
+            let data = self.files.lock().unwrap().get(url).cloned().ok_or("404")?;
+            if data.len() > max { Err(format!("more than {max} bytes")) } else { Ok(data) }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_wallpaper_picture_and_its_palette_file() {
+        let files: Arc<dyn Files> = Arc::new(Mem::default());
+        let server = Server::default();
+        let serve = |name: &str, data: &[u8]| server.files.lock().unwrap().insert(name.into(), data.to_vec());
+        let has = |rel: &str| files.read(rel);
+        serve("wall.png", b"\x89PNG picture");
+        serve("http://pbx/files/wall.txtpb", b"primary: \"#1F6E4E\"\n");
+        let r = |kind, url: &str, md5: Option<&str>| Resource { kind, id: String::new(), url: url.into(), md5: md5.map(str::to_string) };
+        let both = Wanted {
+            resources: vec![r(Kind::Wallpaper, "file://wall.png", None), r(Kind::Palette, "http://pbx/files/wall.txtpb", None)],
+            apps: vec![],
+        };
+        // Fetched, kept where they belong, with their digests.
+        let report = sync(&both, &files, &server).await;
+        assert_eq!((report.fetched, report.failed, report.removed, report.changed), (2, 0, 0, true));
+        assert_eq!(has("user_wallpaper.png").as_deref(), Some(&b"\x89PNG picture"[..]));
+        assert_eq!(has("open/wallpaper_palette.txtpb").as_deref(), Some(&b"primary: \"#1F6E4E\"\n"[..]));
+        assert_eq!(has("md5s/wallpaper_file").unwrap(), md5_hex(b"\x89PNG picture").into_bytes());
+        assert_eq!(has("md5s/dphone_palette_file").unwrap(), md5_hex(b"primary: \"#1F6E4E\"\n").into_bytes());
+        // Without `md5` they are asked for again each pass; the same
+        // content changes nothing.
+        let report = sync(&both, &files, &server).await;
+        assert_eq!((report.fetched, report.changed), (2, false));
+        // With a matching `md5` they are not asked for.
+        let (png_md5, palette_md5) = (md5_hex(b"\x89PNG picture"), md5_hex(b"primary: \"#1F6E4E\"\n"));
+        let pinned = Wanted {
+            resources: vec![
+                r(Kind::Wallpaper, "file://wall.png", Some(&png_md5.to_uppercase())),
+                r(Kind::Palette, "http://pbx/files/wall.txtpb", Some(&palette_md5)),
+            ],
+            apps: vec![],
+        };
+        server.asked.lock().unwrap().clear();
+        let report = sync(&pinned, &files, &server).await;
+        assert_eq!((report.matched, report.fetched), (2, 0));
+        assert!(server.asked.lock().unwrap().is_empty());
+        // A new palette file takes the old one's place.
+        serve("http://pbx/files/wall.txtpb", b"light: true\n");
+        let report = sync(&both, &files, &server).await;
+        assert!(report.changed);
+        assert_eq!(has("open/wallpaper_palette.txtpb").as_deref(), Some(&b"light: true\n"[..]));
+        // A palette file over its limit is refused; the one on the phone
+        // stays.
+        serve("http://pbx/files/wall.txtpb", &vec![b'#'; MAX_PALETTE + 1]);
+        let report = sync(&both, &files, &server).await;
+        assert_eq!((report.fetched, report.failed), (1, 1));
+        assert_eq!(has("open/wallpaper_palette.txtpb").as_deref(), Some(&b"light: true\n"[..]));
+        // The palette file is no longer named: it goes, with its digest;
+        // the picture stays.
+        let picture_only = Wanted { resources: vec![r(Kind::Wallpaper, "file://wall.png", None)], apps: vec![] };
+        let report = sync(&picture_only, &files, &server).await;
+        assert_eq!((report.removed, report.changed), (1, true));
+        assert_eq!((has("open/wallpaper_palette.txtpb"), has("md5s/dphone_palette_file")), (None, None));
+        assert!(has("user_wallpaper.png").is_some());
+        // Neither is named: the picture goes too.
+        let report = sync(&Wanted::default(), &files, &server).await;
+        assert_eq!(report.removed, 1);
+        assert_eq!((has("user_wallpaper.png"), has("md5s/wallpaper_file")), (None, None));
+        // A picture that this mechanism did not download (it has no
+        // digest: a stock firmware's upload, say) is left alone.
+        files.write("user_wallpaper.png", b"someone's own").unwrap();
+        let report = sync(&Wanted::default(), &files, &server).await;
+        assert_eq!(report.removed, 0);
+        assert!(has("user_wallpaper.png").is_some());
     }
 
     #[test]

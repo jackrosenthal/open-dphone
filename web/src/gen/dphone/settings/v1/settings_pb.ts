@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/settings/v1/settings.proto.
  */
 export const file_dphone_settings_v1_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSLuAgoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBARIbCg5zZXJpYWxfY29uc29sZRgDIAEoCEgCiAEBEhwKD21ldHJpY3NfZW5hYmxlZBgEIAEoCEgDiAEBEjYKDWlkbGVfc29mdGtleXMYBSADKAsyHy5kcGhvbmUuc2V0dGluZ3MudjEuSWRsZVNvZnRrZXkSPAoNZGlzYWJsZWRfYXBwcxgGIAEoCzIgLmRwaG9uZS5zZXR0aW5ncy52MS5EaXNhYmxlZEFwcHNIBIgBAUIOCgxfc3NoX2VuYWJsZWRCHgocX2lnbm9yZV9wcm92aXNpb25lZF9maXJtd2FyZUIRCg9fc2VyaWFsX2NvbnNvbGVCEgoQX21ldHJpY3NfZW5hYmxlZEIQCg5fZGlzYWJsZWRfYXBwcyITCgNBcHASDAoEbmFtZRgBIAEoCSLKAgoLSWRsZVNvZnRrZXkSPAoIZnVuY3Rpb24YASABKA4yKC5kcGhvbmUuc2V0dGluZ3MudjEuSWRsZVNvZnRrZXkuRnVuY3Rpb25IABImCgNhcHAYAiABKAsyFy5kcGhvbmUuc2V0dGluZ3MudjEuQXBwSAAiygEKCEZ1bmN0aW9uEhgKFEZVTkNUSU9OX1VOU1BFQ0lGSUVEEAASFQoRRlVOQ1RJT05fQ0FMTF9MT0cQARIVChFGVU5DVElPTl9DT05UQUNUUxACEhMKD0ZVTkNUSU9OX1NUQVRVUxADEhEKDUZVTkNUSU9OX01FTlUQBBIRCg1GVU5DVElPTl9BUFBTEAUSEAoMRlVOQ1RJT05fRE5EEAYSFAoQRlVOQ1RJT05fRk9SV0FSRBAHEhMKD0ZVTkNUSU9OX1JFRElBTBAIQggKBmFjdGlvbiI1CgxEaXNhYmxlZEFwcHMSJQoEYXBwcxgBIAMoCzIXLmRwaG9uZS5zZXR0aW5ncy52MS5BcHBiBnByb3RvMw");
+  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSKUAwoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBARIbCg5zZXJpYWxfY29uc29sZRgDIAEoCEgCiAEBEhwKD21ldHJpY3NfZW5hYmxlZBgEIAEoCEgDiAEBEjYKDWlkbGVfc29mdGtleXMYBSADKAsyHy5kcGhvbmUuc2V0dGluZ3MudjEuSWRsZVNvZnRrZXkSPAoNZGlzYWJsZWRfYXBwcxgGIAEoCzIgLmRwaG9uZS5zZXR0aW5ncy52MS5EaXNhYmxlZEFwcHNIBIgBARIWCgl3YWxscGFwZXIYByABKAlIBYgBAUIOCgxfc3NoX2VuYWJsZWRCHgocX2lnbm9yZV9wcm92aXNpb25lZF9maXJtd2FyZUIRCg9fc2VyaWFsX2NvbnNvbGVCEgoQX21ldHJpY3NfZW5hYmxlZEIQCg5fZGlzYWJsZWRfYXBwc0IMCgpfd2FsbHBhcGVyIhMKA0FwcBIMCgRuYW1lGAEgASgJIsoCCgtJZGxlU29mdGtleRI8CghmdW5jdGlvbhgBIAEoDjIoLmRwaG9uZS5zZXR0aW5ncy52MS5JZGxlU29mdGtleS5GdW5jdGlvbkgAEiYKA2FwcBgCIAEoCzIXLmRwaG9uZS5zZXR0aW5ncy52MS5BcHBIACLKAQoIRnVuY3Rpb24SGAoURlVOQ1RJT05fVU5TUEVDSUZJRUQQABIVChFGVU5DVElPTl9DQUxMX0xPRxABEhUKEUZVTkNUSU9OX0NPTlRBQ1RTEAISEwoPRlVOQ1RJT05fU1RBVFVTEAMSEQoNRlVOQ1RJT05fTUVOVRAEEhEKDUZVTkNUSU9OX0FQUFMQBRIQCgxGVU5DVElPTl9ETkQQBhIUChBGVU5DVElPTl9GT1JXQVJEEAcSEwoPRlVOQ1RJT05fUkVESUFMEAhCCAoGYWN0aW9uIjUKDERpc2FibGVkQXBwcxIlCgRhcHBzGAEgAygLMhcuZHBob25lLnNldHRpbmdzLnYxLkFwcGIGcHJvdG8z");
 
 /**
  * Settings that only Open DPhone has.  Stored on the phone in protobuf text
@@ -100,6 +100,23 @@ export type DphoneSettings = Message<"dphone.settings.v1.DphoneSettings"> & {
    * @generated from field: optional dphone.settings.v1.DisabledApps disabled_apps = 6;
    */
   disabledApps?: DisabledApps | undefined;
+
+  /**
+   * The wallpaper of the color models (D60, D62, D65), by the name of a
+   * built-in one (e.g., "dusk"; the phone's Display menu and the web UI
+   * list them).  Every screen is drawn in the wallpaper's palette.
+   * Default: "harbor".  An unknown name is the default wallpaper.  The
+   * provisioned form carries the same name:
+   * <setting id="dphone_wallpaper" value="dusk"/>.  A provisioning server
+   * can instead supply a picture (stock's wallpaper_file setting), and a
+   * palette for it (dphone_palette_file; see
+   * proto/dphone/palette/v1/palette.proto).  Of what the server supplies,
+   * the picture goes before the name; a name chosen on the phone goes
+   * before both unless the server marked its own conflict="freeze".
+   *
+   * @generated from field: optional string wallpaper = 7;
+   */
+  wallpaper?: string | undefined;
 };
 
 /**

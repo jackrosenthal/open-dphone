@@ -35,6 +35,15 @@ impl Screen for AppScreen {
     fn app_name(&self) -> Option<&str> {
         Some(&self.name)
     }
+    /// The app's `theme-color` answers change.  An app in the foreground
+    /// is told it is in the foreground again, on which apps draw anew;
+    /// one in the background is told when it comes forward, as ever.
+    fn theme_changed(&mut self, th: &'static Theme) {
+        self.view.set_theme(th);
+        if self.foreground {
+            self.view.push_event(AppEvent::Foreground);
+        }
+    }
     fn raw_softkeys(&self, _cx: &Cx) -> Option<[String; 4]> {
         Some(appview_impl::softkey_labels(&self.view.batch_quiet()))
     }

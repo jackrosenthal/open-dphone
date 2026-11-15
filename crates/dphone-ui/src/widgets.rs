@@ -342,7 +342,7 @@ pub fn text_field(
         c.frame(r, th.fg);
     } else {
         c.fill_round(r, 4, if focused { th.accent } else { th.sk_edge });
-        c.fill_round(r.inset(1), 3, 0x141414);
+        c.fill_round(r.inset(1), 3, th.input_bg());
     }
     let inner = r.inset_xy(th.pad.max(4), 2);
     if text.is_empty() && !placeholder.is_empty() {

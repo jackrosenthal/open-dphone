@@ -53,6 +53,11 @@ impl Screen for Boot {
     fn wallpaper(&self) -> bool {
         true
     }
+    /// Always the default wallpaper and the skin's own palette: the
+    /// artwork is drawn for them.
+    fn look(&self, _cx: &Cx) -> Option<&'static crate::wallpaper::Wallpaper> {
+        Some(crate::wallpaper::default())
+    }
     fn softkeys(&self, cx: &Cx) -> Vec<Soft> {
         if cx.st.system.phase == Phase::NetworkWait {
             vec![soft(1, tr::NETWORK), soft(0, ""), soft(0, ""), soft(4, tr::STATUS)]

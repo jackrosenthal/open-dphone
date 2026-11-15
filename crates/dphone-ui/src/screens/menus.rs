@@ -646,8 +646,128 @@ fn display_menu() -> Box<dyn Screen> {
             .value(if dim { tr::ON } else { tr::OFF }),
         );
         v.push(edit_setting(tr::BACKLIGHT_TIMEOUT, "backlight_timeout", cx.cfg.backlight_timeout_secs.to_string(), InputMode::Pin));
+        // Gray screens have no wallpaper.
+        if !cx.th.gray {
+            v.push(
+                Item::new(tr::WALLPAPER, |cx| Nav::Push(wallpapers(cx)))
+                    .value(crate::wallpaper::find_or_default(&cx.cfg.wallpaper).name),
+            );
+        }
         v
     })
+}
+
+/// The wallpaper menu: the wallpapers by name, and a picture of the one
+/// the selection is on.  The menu itself is drawn in that wallpaper's
+/// palette, so its title bar, selection, and softkeys show what every
+/// screen would look like.  Up and Down step through the wallpapers; Left
+/// and Right go to the first of the previous or next family.
+struct Wallpapers {
+    st: ListState,
+}
+
+fn wallpapers(cx: &Cx) -> Box<dyn Screen> {
+    let current = crate::wallpaper::find_or_default(&cx.cfg.wallpaper).id;
+    let selected = crate::wallpaper::all().iter().position(|w| w.id == current).unwrap_or(0);
+    Box::new(Wallpapers { st: ListState { selected, ..ListState::default() } })
+}
+
+impl Wallpapers {
+    fn selected(&self) -> &'static crate::wallpaper::Wallpaper {
+        let all = crate::wallpaper::all();
+        &all[self.st.selected.min(all.len() - 1)]
+    }
+
+    /// The first wallpaper of the family before (`by` -1) or after (1) the
+    /// selected one's.
+    fn family_step(&self, by: i32) -> usize {
+        use crate::wallpaper::Family;
+        let n = Family::ALL.len() as i32;
+        let here = Family::ALL.iter().position(|f| *f == self.selected().family).unwrap_or(0) as i32;
+        let family = Family::ALL[(here + by).rem_euclid(n) as usize];
+        crate::wallpaper::all().iter().position(|w| w.family == family).unwrap_or(0)
+    }
+}
+
+impl Screen for Wallpapers {
+    fn name(&self) -> String {
+        "wallpaper".into()
+    }
+    fn look(&self, _cx: &Cx) -> Option<&'static crate::wallpaper::Wallpaper> {
+        Some(self.selected())
+    }
+    fn softkeys(&self, cx: &Cx) -> Vec<Soft> {
+        // A wallpaper the provisioning server fixed can be looked at only.
+        let select = if cx.cfg.wallpaper_locked { soft(0, "") } else { soft(1, tr::SELECT) };
+        vec![select, soft(0, ""), soft(0, ""), soft(4, tr::BACK)]
+    }
+    fn softkey(&mut self, cx: &Cx, id: u32) -> Nav {
+        match id {
+            1 if !cx.cfg.wallpaper_locked => {
+                cx.post(Command::SetWallpaper { name: self.selected().id.into() });
+                Nav::Pop
+            }
+            4 => Nav::Pop,
+            _ => Nav::Stay,
+        }
+    }
+    fn key(&mut self, cx: &Cx, key: Key) -> Nav {
+        let len = crate::wallpaper::all().len();
+        match key {
+            Key::Up => {
+                self.st.step(-1, len, true);
+            }
+            Key::Down => {
+                self.st.step(1, len, true);
+            }
+            Key::Left => self.st.selected = self.family_step(-1),
+            Key::Right => self.st.selected = self.family_step(1),
+            Key::Select => return self.softkey(cx, 1),
+            Key::Cancel => return Nav::Pop,
+            _ => return Nav::Ignored,
+        }
+        Nav::Stay
+    }
+    fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
+        use crate::wallpaper::{HEIGHT, WIDTH};
+        let th = cx.th;
+        c.fill(area, th.bg);
+        let (title, body) = area.split_top(th.title_h);
+        widgets::title_bar(c, th, title, tr::WALLPAPER);
+        // The picture at half size, at the right; the names beside it.
+        let (pw, ph) = (WIDTH / 2, HEIGHT / 2);
+        let (names, pane) = body.split_right(pw + 2 * th.pad);
+        let all = crate::wallpaper::all();
+        let f = th.font(Font::Normal);
+        let in_use = if cx.cfg.wallpaper_picture.is_some() { "" } else { crate::wallpaper::find_or_default(&cx.cfg.wallpaper).id };
+        widgets::list(c, th, widgets::body_rows(th, names), all.len(), &mut self.st, th.row_h, true, |c, r, i, _, fg| {
+            let (mark, rest) = r.split_left(th.icon + 2 * th.pad);
+            if all[i].id == in_use
+                && let Some(icon) = th.icon("ok")
+            {
+                c.icon_in(icon, mark, fg);
+            }
+            c.text_in(f, rest, all[i].name, fg, HAlign::Left);
+        });
+        let w = self.selected();
+        let small = th.font(Font::Small);
+        let (px, py) = (pane.x + th.pad, pane.y + (pane.h - ph - th.line_h) / 2);
+        c.frame(IRect::new(px - 1, py - 1, pw + 2, ph + 2), th.border);
+        w.with_pixels(|src| {
+            let mut rgba = Vec::with_capacity((pw * ph * 4) as usize);
+            for y in 0..ph {
+                for x in 0..pw {
+                    // The mean of each two-by-two block.
+                    let block = [0, 1, WIDTH, WIDTH + 1].map(|d| src[(2 * y * WIDTH + 2 * x + d) as usize]);
+                    let ch = |s: u32| (block.iter().map(|p| (p >> s) & 255).sum::<u32>() / 4) as u8;
+                    rgba.extend_from_slice(&[ch(16), ch(8), ch(0), 255]);
+                }
+            }
+            c.rgba(px, py, pw, ph, &rgba);
+        });
+        let place = format!("{}  {}/{}", w.family.name(), self.st.selected + 1, all.len());
+        c.text_in(small, IRect::new(px, py + ph + 2, pw, th.line_h), &place, th.secondary, HAlign::Left);
+    }
 }
 
 fn sounds_menu() -> Box<dyn Screen> {

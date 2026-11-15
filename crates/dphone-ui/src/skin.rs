@@ -222,7 +222,317 @@ const fn gray_theme(skin: Skin) -> Theme {
     }
 }
 
+/// The colors of a theme: every color role a skin has, and nothing else.
+/// Each built-in wallpaper has one ([`crate::wallpaper::Wallpaper::palette`]),
+/// and a wallpaper picture from the provisioning server can come with one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Palette {
+    pub bg: Rgb,
+    pub fg: Rgb,
+    pub title_bg: Rgb,
+    pub title_fg: Rgb,
+    pub sel_bg: Rgb,
+    pub sel_fg: Rgb,
+    pub secondary: Rgb,
+    pub border: Rgb,
+    pub modal_bg: Rgb,
+    pub sk_bg: Rgb,
+    pub sk_edge: Rgb,
+    pub sk_fg: Rgb,
+    pub sk_go: Rgb,
+    pub sk_stop: Rgb,
+    pub good: Rgb,
+    pub warn: Rgb,
+    pub error: Rgb,
+    pub accent: Rgb,
+    pub card: Rgb,
+    pub card_ringing: Rgb,
+    pub card_held: Rgb,
+    pub card_dark: Rgb,
+    pub tab_bg: Rgb,
+    pub tab_fg: Rgb,
+    pub load_track: Rgb,
+    pub load_fill: Rgb,
+}
+
+impl Palette {
+    /// The names of the roles (as a palette file has them) with their
+    /// colors, in the order of the fields.
+    pub fn roles(&self) -> [(&'static str, Rgb); 26] {
+        [
+            ("bg", self.bg),
+            ("fg", self.fg),
+            ("title_bg", self.title_bg),
+            ("title_fg", self.title_fg),
+            ("sel_bg", self.sel_bg),
+            ("sel_fg", self.sel_fg),
+            ("secondary", self.secondary),
+            ("border", self.border),
+            ("modal_bg", self.modal_bg),
+            ("sk_bg", self.sk_bg),
+            ("sk_edge", self.sk_edge),
+            ("sk_fg", self.sk_fg),
+            ("sk_go", self.sk_go),
+            ("sk_stop", self.sk_stop),
+            ("good", self.good),
+            ("warn", self.warn),
+            ("error", self.error),
+            ("accent", self.accent),
+            ("card", self.card),
+            ("card_ringing", self.card_ringing),
+            ("card_held", self.card_held),
+            ("card_dark", self.card_dark),
+            ("tab_bg", self.tab_bg),
+            ("tab_fg", self.tab_fg),
+            ("load_track", self.load_track),
+            ("load_fill", self.load_fill),
+        ]
+    }
+
+    /// Sets the role called `name`; false when there is no such role.
+    pub fn set(&mut self, name: &str, color: Rgb) -> bool {
+        match name {
+            "bg" => self.bg = color,
+            "fg" => self.fg = color,
+            "title_bg" => self.title_bg = color,
+            "title_fg" => self.title_fg = color,
+            "sel_bg" => self.sel_bg = color,
+            "sel_fg" => self.sel_fg = color,
+            "secondary" => self.secondary = color,
+            "border" => self.border = color,
+            "modal_bg" => self.modal_bg = color,
+            "sk_bg" => self.sk_bg = color,
+            "sk_edge" => self.sk_edge = color,
+            "sk_fg" => self.sk_fg = color,
+            "sk_go" => self.sk_go = color,
+            "sk_stop" => self.sk_stop = color,
+            "good" => self.good = color,
+            "warn" => self.warn = color,
+            "error" => self.error = color,
+            "accent" => self.accent = color,
+            "card" => self.card = color,
+            "card_ringing" => self.card_ringing = color,
+            "card_held" => self.card_held = color,
+            "card_dark" => self.card_dark = color,
+            "tab_bg" => self.tab_bg = color,
+            "tab_fg" => self.tab_fg = color,
+            "load_track" => self.load_track = color,
+            "load_fill" => self.load_fill = color,
+            _ => return false,
+        }
+        true
+    }
+}
+
+/// The least contrast ratio text may have against what is behind it (the
+/// WCAG figure for body text).
+pub const TEXT_CONTRAST: f32 = 4.5;
+/// The least for an icon or another graphic that carries a state (the
+/// WCAG figure for graphical objects).
+pub const GRAPHIC_CONTRAST: f32 = 3.0;
+
+/// The contrast ratio of two colors (WCAG 2): 1 to 21.
+pub fn contrast(a: Rgb, b: Rgb) -> f32 {
+    fn luminance(c: Rgb) -> f32 {
+        let lin = |v: u32| {
+            let v = (v & 255) as f32 / 255.0;
+            if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * lin(c >> 16) + 0.7152 * lin(c >> 8) + 0.0722 * lin(c)
+    }
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
+impl Palette {
+    /// True for dark text on a light background.
+    pub fn is_light(&self) -> bool {
+        let sum = |c: Rgb| (c >> 16) + ((c >> 8) & 255) + (c & 255);
+        sum(self.fg) < sum(self.bg)
+    }
+
+    /// The fill of a text input: sunk below the background in a dark
+    /// palette (stock's 0x141414 on the skin's own gray), the fill of
+    /// dialogs in a light one.
+    pub fn input_bg(&self) -> Rgb {
+        if self.is_light() {
+            return self.modal_bg;
+        }
+        let ch = |s: u32| (((self.bg >> s) & 255) * 20 / 33) << s;
+        ch(16) | ch(8) | ch(0)
+    }
+
+    /// Every pairing of roles that the screens draw as text, or as a
+    /// graphic that carries a state, on a fill: (what, foreground,
+    /// background, the least contrast it should have).  From the drawing
+    /// code: lists and menus, dialogs and notices, inputs, the softkey
+    /// bar, the line-key tabs, and the call cards.  (The idle screen's
+    /// text is on the wallpaper, which is not a role.)
+    pub fn pairings(&self) -> Vec<(&'static str, Rgb, Rgb, f32)> {
+        const TEXT: f32 = TEXT_CONTRAST;
+        const GRAPHIC: f32 = GRAPHIC_CONTRAST;
+        vec![
+            ("text (fg) on the background (bg)", self.fg, self.bg, TEXT),
+            ("secondary text on the background (bg)", self.secondary, self.bg, TEXT),
+            ("title (title_fg) on the title bar (title_bg)", self.title_fg, self.title_bg, TEXT),
+            ("selected row (sel_fg on sel_bg)", self.sel_fg, self.sel_bg, TEXT),
+            ("text (fg) in a dialog (modal_bg)", self.fg, self.modal_bg, TEXT),
+            ("text (fg) in an input", self.fg, self.input_bg(), TEXT),
+            ("placeholder (secondary) in an input", self.secondary, self.input_bg(), TEXT),
+            ("softkey label (sk_fg on sk_bg)", self.sk_fg, self.sk_bg, TEXT),
+            // Stock's own green softkey is 3.5 under its label.
+            ("label of the green softkey (sk_fg on sk_go)", self.sk_fg, self.sk_go, GRAPHIC),
+            ("label of the red softkey (sk_fg on sk_stop)", self.sk_fg, self.sk_stop, TEXT),
+            ("line-key label (tab_fg on tab_bg)", self.tab_fg, self.tab_bg, TEXT),
+            ("active call card (fg on card)", self.fg, self.card, TEXT),
+            ("ringing call card (fg on card_ringing)", self.fg, self.card_ringing, TEXT),
+            ("held call card (fg on card_held)", self.fg, self.card_held, TEXT),
+            ("dark part of a call card (fg on card_dark)", self.fg, self.card_dark, TEXT),
+            ("error text on the background (bg)", self.error, self.bg, TEXT),
+            ("error icon in a dialog (modal_bg)", self.error, self.modal_bg, GRAPHIC),
+            ("warning icon (warn) in a dialog (modal_bg)", self.warn, self.modal_bg, GRAPHIC),
+            ("information icon (accent) in a dialog (modal_bg)", self.accent, self.modal_bg, GRAPHIC),
+            ("good on the background (bg)", self.good, self.bg, GRAPHIC),
+            ("focus ring (accent) on the background (bg)", self.accent, self.bg, GRAPHIC),
+            ("scroll thumb (secondary) on its track (border)", self.secondary, self.border, GRAPHIC),
+        ]
+    }
+
+    /// The pairings with less contrast than they should have, as text
+    /// for a log.
+    pub fn low_contrast(&self) -> Vec<String> {
+        self.pairings()
+            .into_iter()
+            .filter_map(|(what, fg, bg, least)| {
+                let ratio = contrast(fg, bg);
+                (ratio < least).then(|| format!("{what}: contrast {ratio:.1}, under {least}"))
+            })
+            .collect()
+    }
+}
+
 impl Theme {
+    /// The colors of this theme.
+    pub fn palette(&self) -> Palette {
+        Palette {
+            bg: self.bg,
+            fg: self.fg,
+            title_bg: self.title_bg,
+            title_fg: self.title_fg,
+            sel_bg: self.sel_bg,
+            sel_fg: self.sel_fg,
+            secondary: self.secondary,
+            border: self.border,
+            modal_bg: self.modal_bg,
+            sk_bg: self.sk_bg,
+            sk_edge: self.sk_edge,
+            sk_fg: self.sk_fg,
+            sk_go: self.sk_go,
+            sk_stop: self.sk_stop,
+            good: self.good,
+            warn: self.warn,
+            error: self.error,
+            accent: self.accent,
+            card: self.card,
+            card_ringing: self.card_ringing,
+            card_held: self.card_held,
+            card_dark: self.card_dark,
+            tab_bg: self.tab_bg,
+            tab_fg: self.tab_fg,
+            load_track: self.load_track,
+            load_fill: self.load_fill,
+        }
+    }
+
+    /// This theme in other colors.
+    fn with_palette(&self, p: &Palette) -> Theme {
+        Theme {
+            bg: p.bg,
+            fg: p.fg,
+            title_bg: p.title_bg,
+            title_fg: p.title_fg,
+            sel_bg: p.sel_bg,
+            sel_fg: p.sel_fg,
+            secondary: p.secondary,
+            border: p.border,
+            modal_bg: p.modal_bg,
+            sk_bg: p.sk_bg,
+            sk_edge: p.sk_edge,
+            sk_fg: p.sk_fg,
+            sk_go: p.sk_go,
+            sk_stop: p.sk_stop,
+            good: p.good,
+            warn: p.warn,
+            error: p.error,
+            accent: p.accent,
+            card: p.card,
+            card_ringing: p.card_ringing,
+            card_held: p.card_held,
+            card_dark: p.card_dark,
+            tab_bg: p.tab_bg,
+            tab_fg: p.tab_fg,
+            load_track: p.load_track,
+            load_fill: p.load_fill,
+            skin: self.skin,
+            gray: self.gray,
+            fonts: self.fonts,
+            icons: self.icons,
+            icon_data: self.icon_data,
+            width: self.width,
+            height: self.height,
+            softkey_h: self.softkey_h,
+            soft_x0: self.soft_x0,
+            soft_pitch: self.soft_pitch,
+            soft_w: self.soft_w,
+            soft_y: self.soft_y,
+            soft_h: self.soft_h,
+            tab_x: self.tab_x,
+            tab_w: self.tab_w,
+            tab_h: self.tab_h,
+            idle_tab_x: self.idle_tab_x,
+            header_h: self.header_h,
+            line_h: self.line_h,
+            row_h: self.row_h,
+            title_h: self.title_h,
+            scroll_w: self.scroll_w,
+            pad: self.pad,
+            title_pad: self.title_pad,
+            icon: self.icon,
+        }
+    }
+
+    /// The fill of a text input on the color skin
+    /// ([`Palette::input_bg`]).
+    pub fn input_bg(&self) -> Rgb {
+        self.palette().input_bg()
+    }
+
+    /// The color skin in the palette of a built-in wallpaper.  The default
+    /// wallpaper's is the skin's own.
+    pub fn for_wallpaper(wallpaper: &'static crate::wallpaper::Wallpaper) -> &'static Theme {
+        static THEMES: std::sync::OnceLock<Vec<Theme>> = std::sync::OnceLock::new();
+        let all = crate::wallpaper::all();
+        let themes = THEMES.get_or_init(|| all.iter().map(|w| COLOR.with_palette(&w.palette())).collect());
+        match all.iter().position(|w| w.id == wallpaper.id) {
+            Some(i) if themes[i].palette() != COLOR.palette() => &themes[i],
+            _ => &COLOR,
+        }
+    }
+
+    /// The color skin in `palette` (a palette file's).  Each distinct
+    /// palette is kept for as long as the program runs; there are as many
+    /// as there were palette files.
+    pub fn color_in(palette: &Palette) -> &'static Theme {
+        static MADE: std::sync::Mutex<Vec<&'static Theme>> = std::sync::Mutex::new(Vec::new());
+        let mut made = MADE.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(th) = made.iter().find(|th| th.palette() == *palette) {
+            return th;
+        }
+        let th: &'static Theme = Box::leak(Box::new(COLOR.with_palette(palette)));
+        made.push(th);
+        th
+    }
+
     pub fn for_skin(skin: Skin) -> &'static Theme {
         match skin {
             Skin::SmallGray => &SMALL_GRAY,

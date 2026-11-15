@@ -227,6 +227,50 @@ pub async fn set_idle_softkeys(
     Ok(pb::SetIdleSoftkeysResponse { idle_softkeys: Some(keys).into() })
 }
 
+// -------------------------------------------------------------- wallpaper
+
+/// The wallpaper in effect and every built-in one.  A name the firmware
+/// does not have is the default wallpaper, as on the phone's screen.
+fn wallpaper(cfg: &dphone_config::Config) -> pb::Wallpaper {
+    let set = cfg.wallpaper();
+    let (name, picture) = match &set.choice {
+        dphone_config::WallpaperChoice::Builtin(name) => (name.as_str(), false),
+        dphone_config::WallpaperChoice::Picture => (set.builtin.as_str(), true),
+    };
+    let id = st::WALLPAPERS.iter().find(|w| w.id == name).unwrap_or(&st::WALLPAPERS[0]).id;
+    pb::Wallpaper {
+        id: id.to_owned(),
+        source: super::ssh::setting_source(set.source).into(),
+        locked: set.locked,
+        choices: st::WALLPAPERS
+            .iter()
+            .map(|w| pb::WallpaperChoice { id: w.id.to_owned(), name: w.name.to_owned(), family: w.family.to_owned() })
+            .collect(),
+        picture,
+    }
+}
+
+pub async fn get_wallpaper(ctx: Ctx, _req: pb::GetWallpaperRequest) -> Result<pb::GetWallpaperResponse, ConnectError> {
+    Ok(pb::GetWallpaperResponse { wallpaper: Some(wallpaper(&config_of(&ctx.app))).into() })
+}
+
+pub async fn set_wallpaper(ctx: Ctx, req: pb::SetWallpaperRequest) -> Result<pb::SetWallpaperResponse, ConnectError> {
+    let id = req.id;
+    if !id.is_empty() && !st::WALLPAPERS.iter().any(|w| w.id == id) {
+        return Err(ConnectError::invalid_argument("not a wallpaper"));
+    }
+    let set = with_config(&ctx.app, true, move |c| {
+        if c.config().wallpaper().locked {
+            return Err(super::ssh::locked());
+        }
+        let config =
+            c.update_dphone_settings(|s| s.wallpaper = (!id.is_empty()).then_some(id)).map_err(crate::services::config_error)?;
+        Ok(wallpaper(&config))
+    })
+    .await?;
+    Ok(pb::SetWallpaperResponse { wallpaper: Some(set).into() })
+}
+
 // --------------------------------------------------------------- network
 
 pub(crate) fn network_settings(app: &App) -> pb::NetworkSettings {

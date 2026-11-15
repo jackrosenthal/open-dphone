@@ -442,14 +442,12 @@ pub(crate) fn call_card(cx: &Cx, c: &mut Canvas, idx: usize, card: &Card) {
     // The colored part ends in a slanted edge with a light stripe; the
     // right part is dark.  Stock: the dark part starts at x 238 on the
     // first row and x 203 on the last.
-    // Stripe colors by measurement for the two stock fills; derived for
-    // the others.
-    let (light, mid) = if card.fill == th.card {
-        (0x67B4F1, 0x3592CA)
-    } else if card.fill == th.card_ringing {
-        (0x78E27D, 0x388E3C)
-    } else {
-        (crate::gfx::mix(card.fill, 0xFFFFFF, 4), crate::gfx::mix(card.fill, 0xFFFFFF, 2))
+    // Stripe colors by measurement for the two stock fills (the skin's
+    // own blue and green); derived for the others and in other palettes.
+    let (light, mid) = match card.fill {
+        0x01579B => (0x67B4F1, 0x3592CA),
+        0x2A6B2D => (0x78E27D, 0x388E3C),
+        fill => (crate::gfx::mix(fill, 0xFFFFFF, 4), crate::gfx::mix(fill, 0xFFFFFF, 2)),
     };
     for j in 0..r.h {
         let y = r.y + j;

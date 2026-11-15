@@ -61,6 +61,18 @@ message DphoneSettings {
   // value of app names:
   // <setting id="dphone_disabled_apps" value="calendar,parking"/>.
   optional DisabledApps disabled_apps = 6;
+  // The wallpaper of the color models (D60, D62, D65), by the name of a
+  // built-in one (e.g., "dusk"; the phone's Display menu and the web UI
+  // list them).  Every screen is drawn in the wallpaper's palette.
+  // Default: "harbor".  An unknown name is the default wallpaper.  The
+  // provisioned form carries the same name:
+  // <setting id="dphone_wallpaper" value="dusk"/>.  A provisioning server
+  // can instead supply a picture (stock's wallpaper_file setting), and a
+  // palette for it (dphone_palette_file; see
+  // proto/dphone/palette/v1/palette.proto).  Of what the server supplies,
+  // the picture goes before the name; a name chosen on the phone goes
+  // before both unless the server marked its own conflict="freeze".
+  optional string wallpaper = 7;
 }
 
 // An app, by its name (e.g., "calendar").

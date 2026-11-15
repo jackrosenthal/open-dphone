@@ -527,68 +527,27 @@ impl Canvas {
 
 // ------------------------------------------------------------- wallpaper
 
-/// The color skin's wallpaper: a deep blue vertical gradient crossed by
-/// broad diagonal facets.  Drawn procedurally (our own design in the stock
-/// firmware's palette); computed once and kept.
-fn wallpaper_pixels(w: i32, h: i32) -> &'static [u32] {
-    static PIXELS: std::sync::OnceLock<Vec<u32>> = std::sync::OnceLock::new();
-    PIXELS.get_or_init(|| {
-        let mut v = Vec::with_capacity((w * h) as usize);
-        // Vertical gradient stops: (row, r, g, b).
-        const STOPS: [(i32, i32, i32, i32); 4] =
-            [(0, 0x15, 0x1E, 0x2C), (56, 0x10, 0x24, 0x44), (150, 0x0D, 0x20, 0x3E), (268, 0x0A, 0x14, 0x26)];
-        // Facets: (slant: +1 leans right going down, -1 left; start and
-        // width along the slanted axis; strength in 1/64).  Each facet is
-        // brightest at its leading edge and fades across its width.
-        const FACETS: [(i32, i32, i32, i32); 6] =
-            [(1, 60, 170, 30), (1, 330, 150, 22), (1, 560, 190, 32), (-1, -120, 160, 24), (-1, 130, 140, 18), (-1, 300, 170, 28)];
-        for y in 0..h {
-            let (mut r, mut g, mut b) = (0x20, 0x21, 0x22);
-            if y <= 268 {
-                let i = STOPS.iter().rposition(|s| s.0 <= y).unwrap_or(0).min(STOPS.len() - 2);
-                let (a, z) = (STOPS[i], STOPS[i + 1]);
-                let (t, span) = (y - a.0, z.0 - a.0);
-                r = a.1 + (z.1 - a.1) * t / span;
-                g = a.2 + (z.2 - a.2) * t / span;
-                b = a.3 + (z.3 - a.3) * t / span;
-            }
-            for x in 0..w {
-                let (mut pr, mut pg, mut pb) = (r, g, b);
-                if y <= 268 {
-                    let mut light = 0;
-                    for (slant, start, width, strength) in FACETS {
-                        // Slope 3 across to 5 down.
-                        let u = x + slant * y * 3 / 5 - start;
-                        if (0..width).contains(&u) {
-                            light += strength * (width - u) / width;
-                        }
-                    }
-                    // Lighten toward a brighter blue.
-                    pr += 0x06 * light / 64;
-                    pg += 0x16 * light / 64;
-                    pb += 0x38 * light / 64;
-                }
-                v.push(rgb(pr.clamp(0, 255) as u8, pg.clamp(0, 255) as u8, pb.clamp(0, 255) as u8));
-            }
-        }
-        v
-    })
-}
-
 impl Canvas {
-    /// Paints the idle/call background over the whole screen: the blue
+    /// Paints the idle/call background over the whole screen: the
     /// wallpaper on the color skin, the plain background on gray.
-    pub fn wallpaper(&mut self, plain: Rgb) {
-        if self.gray || self.w != 480 || self.h != 272 {
+    pub fn wallpaper(&mut self, plain: Rgb, backdrop: crate::wallpaper::Backdrop) {
+        use crate::wallpaper::{Backdrop, HEIGHT, WIDTH};
+        if self.gray || self.w != WIDTH || self.h != HEIGHT {
             self.clear(plain);
             return;
         }
-        let src = wallpaper_pixels(self.w, self.h);
         let clip = self.clip;
-        for y in clip.y..clip.bottom() {
-            let row = (y * self.w) as usize;
-            let (a, b) = (row + clip.x as usize, row + clip.right() as usize);
-            self.pix[a..b].copy_from_slice(&src[a..b]);
+        let (w, pix) = (self.w, &mut self.pix);
+        let mut copy = |src: &[u32]| {
+            for y in clip.y..clip.bottom() {
+                let row = (y * w) as usize;
+                let (a, b) = (row + clip.x as usize, row + clip.right() as usize);
+                pix[a..b].copy_from_slice(&src[a..b]);
+            }
+        };
+        match backdrop {
+            Backdrop::Builtin(wallpaper) => wallpaper.with_pixels(copy),
+            Backdrop::Picture(picture) => copy(picture.pixels()),
         }
     }
 

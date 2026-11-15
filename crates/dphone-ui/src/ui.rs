@@ -6,6 +6,7 @@ use crate::screens::app::AppScreen;
 use crate::screens::calls::{CallScreen, Dialer, Purpose};
 use crate::screens::{boot, idle, menus, side, Cx, Nav, Screen, Soft, Tag};
 use crate::skin::Theme;
+use crate::wallpaper::{self, Backdrop};
 use crate::strings as tr;
 use crate::widgets;
 use dphone_hal::{Backlight, Blinker, Display, Hal, Input, InputEvent, Lamp, Lamps, Null, BLINK_TICK_MS};
@@ -84,6 +85,17 @@ pub struct UiConfig {
     pub idle_cycle_secs: u32,
     /// The idle screen's softkeys, in order.
     pub idle_softkeys: Vec<IdleSoftkey>,
+    /// The built-in wallpaper of the color skin, by its configuration
+    /// name ([`crate::wallpaper::Wallpaper::id`]); an empty or unknown
+    /// name is the default wallpaper.  Every screen is drawn in the
+    /// wallpaper's palette.
+    pub wallpaper: String,
+    /// A wallpaper picture from the provisioning server, shown instead of
+    /// the built-in one, with its palette (the skin's own if it has none).
+    pub wallpaper_picture: Option<Arc<wallpaper::Picture>>,
+    /// The provisioning server fixed the wallpaper: the phone's menu
+    /// shows the choices and changes nothing.
+    pub wallpaper_locked: bool,
 }
 
 impl Default for UiConfig {
@@ -107,7 +119,24 @@ impl Default for UiConfig {
                 use IdleSoftkey::*;
                 vec![CallLog, Contacts, Status, Menu, Apps, Dnd, Forward]
             },
+            wallpaper: String::new(),
+            wallpaper_picture: None,
+            wallpaper_locked: false,
         }
+    }
+}
+
+/// The theme the configuration asks for: the model's skin, and on the
+/// color skin the palette of the wallpaper in use (a wallpaper picture's
+/// own palette, or the skin's when it came with none).
+fn configured_theme(model: dphone_state::Model, cfg: &UiConfig) -> &'static Theme {
+    let skin = Theme::for_model(model);
+    if skin.gray {
+        return skin;
+    }
+    match &cfg.wallpaper_picture {
+        Some(picture) => picture.palette.as_ref().map_or(skin, Theme::color_in),
+        None => Theme::for_wallpaper(wallpaper::find_or_default(&cfg.wallpaper)),
     }
 }
 
@@ -657,7 +686,7 @@ impl Ui {
         mut cfg: UiConfig,
     ) -> Ui {
         let model = store.model();
-        let th = Theme::for_model(model);
+        let th = configured_theme(model, &cfg);
         let size = model.main_screen();
         let main = Canvas::new(size.width, size.height, th.gray);
         let side = model.side_screen().map(|s| Canvas::new(s.width, s.height, th.gray));
@@ -1069,12 +1098,12 @@ impl Ui {
         let cfg = self.cfg.clone();
         let store = self.store.clone();
         let (now_ms, unix) = self.now();
-        let th = self.th;
+        let mut th = self.th;
         let idle_view = self.idle_view.clone();
         if let Some(v) = &idle_view {
             v.take_dirty();
         }
-        let cx = Cx {
+        let mut cx = Cx {
             store: &store,
             st: &st,
             th,
@@ -1088,13 +1117,27 @@ impl Ui {
         let c = &mut self.main;
         let bounds = c.bounds();
         let top = self.nav.stack.last_mut().unwrap_or(&mut self.nav.base);
+        // The configured wallpaper and palette, unless the screen is shown
+        // with a wallpaper of its own (the boot screen, and the wallpaper
+        // menu, which previews the one its selection is on).
+        let mut backdrop = match &cfg.wallpaper_picture {
+            Some(picture) => Backdrop::Picture(picture),
+            None => Backdrop::Builtin(wallpaper::find_or_default(&cfg.wallpaper)),
+        };
+        if !th.gray
+            && let Some(own) = top.look(&cx)
+        {
+            backdrop = Backdrop::Builtin(own);
+            th = Theme::for_wallpaper(own);
+            cx.th = th;
+        }
         if top.full_screen() {
             top.draw(&cx, c, bounds);
         } else {
             // The whole frame gets a background first: the softkey shapes
             // and the line-key tabs sit on it.
             if top.wallpaper() {
-                c.wallpaper(th.bg);
+                c.wallpaper(th.bg, backdrop);
             } else {
                 c.clear(th.bg);
             }
@@ -1199,6 +1242,7 @@ impl Ui {
             }
             Msg::Command(env) => self.command(env),
             Msg::OpenApp(view) => {
+                view.set_theme(self.th);
                 let tx = self.tx.clone();
                 view.set_ui_waker(Some(Box::new(move || {
                     let _ = tx.send(Msg::Wake);
@@ -1207,6 +1251,7 @@ impl Ui {
                 self.with_cx(|nav, cx| nav.open_app(cx, view));
             }
             Msg::IdleView(view) => {
+                view.set_theme(self.th);
                 self.drop_idle_view(view.name().to_string().as_str());
                 let tx = self.tx.clone();
                 view.set_ui_waker(Some(Box::new(move || {
@@ -1222,6 +1267,17 @@ impl Ui {
                 let dimming_changed = cfg.dim_backlight != self.cfg.dim_backlight
                     || cfg.backlight_dim_level != self.cfg.backlight_dim_level;
                 let contrast_changed = cfg.contrast != self.cfg.contrast;
+                // A new wallpaper is a new palette, on every screen, now.
+                let th = configured_theme(self.model, &cfg);
+                if !std::ptr::eq(th, self.th) {
+                    self.th = th;
+                    for screen in std::iter::once(&mut self.nav.base).chain(&mut self.nav.stack) {
+                        screen.theme_changed(th);
+                    }
+                    for view in self.idle_views.iter().chain(&self.idle_view) {
+                        view.set_theme(th);
+                    }
+                }
                 self.cfg = Arc::new(cfg);
                 if brightness_changed {
                     self.level = 0;

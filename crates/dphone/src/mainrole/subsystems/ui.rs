@@ -106,6 +106,7 @@ fn ui_config(ctx: &Context, cfg: Option<&Config>) -> UiConfig {
         out.contrast = v;
     }
     out.idle_softkeys = idle_softkeys(&cfg.idle_softkeys().keys);
+    super::wallpaper::apply(cfg, &dphone_config::Nvdata::new(&ctx.paths.nvdata), &mut out);
     let active = cfg.ringtones().active;
     if let Some(name) = out.ringtones.iter().find(|n| n.eq_ignore_ascii_case(&active)) {
         out.ringtone = name.clone();

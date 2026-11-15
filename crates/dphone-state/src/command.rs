@@ -154,6 +154,10 @@ pub enum Command {
     ReloadConfig,
     /// Write settings to the user layer (`id`, `value` pairs), then merge.
     SetSettings { settings: Vec<(String, String)> },
+    /// Choose a built-in wallpaper by its configuration name (one of Open
+    /// DPhone's own settings, kept with them); an empty name drops the
+    /// choice made on the phone.
+    SetWallpaper { name: String },
     /// Contact lists changed on disk.
     ReloadContacts,
 
@@ -243,7 +247,7 @@ impl Command {
             | PlayFile { .. } | StopSound => Domain::Audio,
             InjectKey { .. } | InjectHook { .. } | Notify { .. } | DismissNotice { .. }
             | SetBacklight { .. } | SetContrast { .. } | ShowScreen { .. } | ResetIdleTimer => Domain::Ui,
-            ReloadConfig | SetSettings { .. } | ReloadContacts => Domain::Config,
+            ReloadConfig | SetSettings { .. } | SetWallpaper { .. } | ReloadContacts => Domain::Config,
             StartProvisioning { .. } | SelectUser { .. } | Reprovision | ForgetProvisioning
             | SkipProvisioning => Domain::Provisioning,
             RenewDhcp | ReconfigureNetwork | SyncTime => Domain::Network,

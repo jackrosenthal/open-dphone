@@ -148,6 +148,7 @@ pub const CONTRAST: &str = "Contrast";
 pub const DIM_BACKLIGHT: &str = "Dim when idle";
 pub const BACKLIGHT_TIMEOUT: &str = "Backlight timeout";
 pub const RINGTONE: &str = "Ringtone";
+pub const WALLPAPER: &str = "Wallpaper";
 pub const RINGER_VOLUME: &str = "Ringer volume";
 pub const ADDRESSING: &str = "Addressing";
 pub const DHCP: &str = "DHCP";

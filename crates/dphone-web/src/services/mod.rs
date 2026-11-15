@@ -107,6 +107,8 @@ service!(ConfigService {
     unary set_settings(SetSettingsRequest) -> SetSettingsResponse = config::set_settings;
     unary get_idle_softkeys(GetIdleSoftkeysRequest) -> GetIdleSoftkeysResponse = config::get_idle_softkeys;
     unary set_idle_softkeys(SetIdleSoftkeysRequest) -> SetIdleSoftkeysResponse = config::set_idle_softkeys;
+    unary get_wallpaper(GetWallpaperRequest) -> GetWallpaperResponse = config::get_wallpaper;
+    unary set_wallpaper(SetWallpaperRequest) -> SetWallpaperResponse = config::set_wallpaper;
 });
 
 service!(ContactsService {

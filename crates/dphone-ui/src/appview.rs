@@ -825,6 +825,9 @@ type Waker = Box<dyn Fn() + Send + Sync>;
 pub(crate) struct Inner {
     pub name: String,
     pub model: Model,
+    /// The theme whose colors `theme_color` answers with: the model's
+    /// skin, in the palette in use once the view is on a phone's screen.
+    theme: Mutex<&'static crate::skin::Theme>,
     pub tree: Mutex<Tree>,
     pub dirty: AtomicBool,
     queue: Mutex<VecDeque<AppEvent>>,
@@ -878,6 +881,7 @@ impl AppView {
         let inner = Arc::new(Inner {
             name: name.to_string(),
             model,
+            theme: Mutex::new(crate::skin::Theme::for_model(model)),
             tree: Mutex::new(Tree::new(model)),
             dirty: AtomicBool::new(true),
             queue: Mutex::new(VecDeque::new()),
@@ -952,10 +956,17 @@ impl AppView {
         crate::skin::Theme::for_model(self.inner.model).text_width(font, text)
     }
 
-    /// A color of this model's skin, as red, green, and blue.
+    /// A color of the theme in use (this model's skin, in the palette of
+    /// the selected wallpaper on a color model), as red, green, and blue.
+    /// The palette can change while the app runs; an app in the foreground
+    /// then gets [`AppEvent::Foreground`] again.
     pub fn theme_color(&self, color: ThemeColor) -> (u8, u8, u8) {
-        let c = crate::skin::Theme::for_model(self.inner.model).theme_color(color);
+        let c = self.inner.theme.lock().unwrap_or_else(|p| p.into_inner()).theme_color(color);
         ((c >> 16) as u8, (c >> 8) as u8, c as u8)
+    }
+
+    pub(crate) fn set_theme(&self, th: &'static crate::skin::Theme) {
+        *self.inner.theme.lock().unwrap_or_else(|p| p.into_inner()) = th;
     }
 
     pub(crate) fn mark_dirty(&self) {

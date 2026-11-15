@@ -35,7 +35,7 @@ pub const SETTINGS_FILE_BAD: &str = "dphone_settings.txtpb.bad";
 /// Field names of [`DphoneSettings`]; anything else in the file is carried
 /// through as text.  A test checks this list against the generated code.
 const KNOWN_FIELDS: &[&str] =
-    &["ssh_enabled", "ignore_provisioned_firmware", "serial_console", "metrics_enabled", "idle_softkeys", "disabled_apps"];
+    &["ssh_enabled", "ignore_provisioned_firmware", "serial_console", "metrics_enabled", "idle_softkeys", "disabled_apps", "wallpaper"];
 
 const HEADER: &str = "# Open DPhone settings (dphone.settings.v1.DphoneSettings, protobuf text format).\n\
                       # A field that is absent takes its default.\n";
@@ -79,6 +79,33 @@ pub const PROVISIONED_SERIAL_CONSOLE: &str = "dphone_serial_console";
 pub const PROVISIONED_METRICS_ENABLED: &str = "dphone_metrics_enabled";
 pub const PROVISIONED_IDLE_SOFTKEYS: &str = "dphone_idle_softkeys";
 pub const PROVISIONED_DISABLED_APPS: &str = "dphone_disabled_apps";
+pub const PROVISIONED_WALLPAPER: &str = "dphone_wallpaper";
+
+/// What the wallpaper of a color model is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WallpaperChoice {
+    /// A built-in wallpaper by name; empty is the default one.  The name
+    /// is as it was set, trimmed and in lower case: whether the firmware
+    /// has such a wallpaper is the UI's to say (it shows the default one
+    /// for a name it does not know).
+    Builtin(String),
+    /// The provisioning server's picture (`wallpaper_file`), with the
+    /// palette file that came with it, if one did.
+    Picture,
+}
+
+/// The wallpaper in effect, where the choice came from, and whether the
+/// provisioning server froze it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Wallpaper {
+    pub choice: WallpaperChoice,
+    pub source: SettingSource,
+    pub locked: bool,
+    /// The built-in wallpaper shown while a chosen picture cannot be (not
+    /// downloaded yet, or not a picture): the name set on the phone, else
+    /// the provisioned name, else empty.
+    pub builtin: String,
+}
 
 /// Parse the provisioned list of app names, which is the XML
 /// configuration's comma-separated value (`calendar,parking`).  Blank
@@ -385,6 +412,7 @@ mod tests {
             metrics_enabled: Some(true),
             idle_softkeys: vec![IdleSoftkey::Function(IdleFunction::Menu).to_setting()],
             disabled_apps: Some(DisabledApps::default()).into(),
+            wallpaper: Some("dusk".into()),
         };
         let text = encode_to_string_pretty(&all);
         // The top-level lines, `name: value` and `name {`; the encoder
