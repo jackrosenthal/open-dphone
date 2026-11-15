@@ -7,7 +7,7 @@ mod common;
 use common::{phone, wait};
 use dphone_sip::media::MediaCall;
 use dphone_state::{
-    CallId, CallLog, CallLogKind, CallState, Calls, Command, EndCause, Reply, Store,
+    Blink, CallId, CallLog, CallLogKind, CallState, Calls, Command, EndCause, Keys, LampColor, LampState, Reply, Store,
 };
 
 fn state(store: &Store, id: CallId) -> Option<CallState> {
@@ -32,9 +32,15 @@ async fn connect(a: &common::Phone, b: &common::Phone) -> (CallId, CallId) {
         matches!(state(&a.store, ca), Some(CallState::Ringback { .. })).then_some(())
     })
     .await;
+    // The message lamp is the activity light: fast green on the phone that
+    // rings, solid green on the one with a call in progress.
+    let message_lamp = |p: &common::Phone| p.store.get::<Keys>().message_lamp;
+    assert_eq!(message_lamp(b), LampState::blinking(LampColor::Green, Blink::Fast));
+    assert_eq!(message_lamp(a), LampState::solid(LampColor::Green));
     b.store.send(Command::Answer { call: cb, path: None }).await.expect("answer");
     wait("A active", || (state(&a.store, ca) == Some(CallState::Active)).then_some(())).await;
     wait("B active", || (state(&b.store, cb) == Some(CallState::Active)).then_some(())).await;
+    assert_eq!(message_lamp(b), LampState::solid(LampColor::Green));
     (ca, cb)
 }
 
@@ -63,6 +69,8 @@ async fn call_hold_dtmf_hangup() {
     wait("B held", || (state(&b.store, cb) == Some(CallState::Held { local: false, remote: true })).then_some(())).await;
     let sa = a.media.last_start(ca).unwrap();
     assert!(!sa.send && !sa.recv);
+    // A phone whose only call is held shows nothing on the message lamp.
+    assert_eq!(a.store.get::<Keys>().message_lamp, LampState::OFF);
     let sb = b.media.last_start(cb).unwrap();
     assert!(!sb.send, "B must not send to a holding peer");
 

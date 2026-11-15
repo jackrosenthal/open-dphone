@@ -73,7 +73,7 @@
   animation: lamp-slow 1s steps(1) infinite;
 }
 .lamp-fast {
-  animation: lamp-slow 0.25s steps(1) infinite;
+  animation: lamp-slow 0.5s steps(1) infinite;
 }
 .lamp-wink {
   animation: lamp-wink 3s linear infinite;

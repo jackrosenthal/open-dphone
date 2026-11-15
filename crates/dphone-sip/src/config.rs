@@ -2,7 +2,7 @@
 //! `dphone-config`'s merged view onto these, so this crate does not depend
 //! on the configuration crate.
 
-use dphone_state::{AccountId, Codec, FirmwareVersion, Model, Transport};
+use dphone_state::{AccountId, Blink, Codec, FirmwareVersion, LampColor, LampState, Model, Transport};
 use std::net::{IpAddr, Ipv4Addr};
 
 /// One `host_primary` / `host_alternate` record.  Stock keeps these
@@ -195,6 +195,31 @@ pub struct CodecPref {
     pub ptime: u16,
 }
 
+/// What the message lamp shows (stock calls it the activity light and
+/// takes these from `<activity_indicator>`; the values here are those of
+/// stock's base configuration).  When several apply, the later field wins,
+/// as in stock, and the lamp is off when none does: a phone with only held
+/// calls shows `new_vm` or nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ActivityLamps {
+    /// An account has new voicemail.
+    pub new_vm: LampState,
+    /// A call is alerting.
+    pub ringing: LampState,
+    /// A call is being dialed, is ringing at the far end, or is connected.
+    pub active: LampState,
+}
+
+impl Default for ActivityLamps {
+    fn default() -> Self {
+        ActivityLamps {
+            new_vm: LampState::blinking(LampColor::Red, Blink::Slow),
+            ringing: LampState::blinking(LampColor::Green, Blink::Fast),
+            active: LampState::solid(LampColor::Green),
+        }
+    }
+}
+
 /// Everything the service needs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SipConfig {
@@ -217,6 +242,7 @@ pub struct SipConfig {
     /// Line keys page with the rapid-dial page (stock `page_linekeys`: on
     /// for the D65).
     pub page_line_keys: bool,
+    pub activity: ActivityLamps,
     /// Seconds after a page change until the first page shows again
     /// (stock `blf_page_return_timeout`); 0: stay.
     pub blf_page_return_secs: u32,
@@ -281,6 +307,7 @@ impl SipConfig {
             events: vec![("digium.incomingCall.voicemail".into(), EventAction::App)],
             blf: Vec::new(),
             page_line_keys: model == Model::D65,
+            activity: ActivityLamps::default(),
             blf_page_return_secs: 0,
             tls: TlsConfig::default(),
             udp_keepalive_secs: 30,

@@ -76,8 +76,9 @@ impl Blinker {
             Blink::Solid => true,
             // 1 Hz, half on.
             Blink::Slow => now_ms % 1000 < 500,
-            // 4 Hz, half on.
-            Blink::Fast => now_ms % 250 < 125,
+            // 2 Hz, half on (stock's timer trigger: 251 ms on, 251 ms off;
+            // slow is 501 and 501).
+            Blink::Fast => now_ms % 500 < 250,
             // 125 ms flash every 2 s.
             Blink::Wink => now_ms % 2000 < 125,
         }
@@ -108,5 +109,23 @@ impl Blinker {
             Some(e) => Err(e),
             None => Ok(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Stock blinks with the kernel's timer trigger: 501 ms on and off for
+    /// "slow", 251 ms on and off for "fast".
+    #[test]
+    fn blink_rates_are_stocks() {
+        let on_ms = |blink| (0..1000u64).filter(|t| Blinker::phase_on(blink, *t)).count();
+        let edges = |blink| (0..1000u64).filter(|t| Blinker::phase_on(blink, *t) != Blinker::phase_on(blink, t + 1)).count();
+        assert_eq!((on_ms(Blink::Slow), edges(Blink::Slow)), (500, 2));
+        assert_eq!((on_ms(Blink::Fast), edges(Blink::Fast)), (500, 4));
+        assert_eq!(on_ms(Blink::Solid), 1000);
+        // Every edge falls on a tick.
+        assert_eq!(250 % BLINK_TICK_MS, 0);
     }
 }

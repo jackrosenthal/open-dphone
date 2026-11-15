@@ -253,6 +253,25 @@ fn codec_by_name(id: &str) -> Option<Codec> {
     })
 }
 
+/// A lamp behavior as stock's configuration writes it: `color` is `green`,
+/// `red`, or `amber`; `state` is `off`, `on`, `slow`, or `fast`.
+fn indicator_lamp(i: &dphone_config::view::Indicator) -> Option<dphone_state::LampState> {
+    use dphone_state::{Blink, LampColor, LampState};
+    let color = match i.color.as_str() {
+        "green" => LampColor::Green,
+        "red" => LampColor::Red,
+        "amber" => LampColor::Amber,
+        _ => return None,
+    };
+    Some(match i.state.as_str() {
+        "off" => LampState::OFF,
+        "on" => LampState::solid(color),
+        "slow" => LampState::blinking(color, Blink::Slow),
+        "fast" => LampState::blinking(color, Blink::Fast),
+        _ => return None,
+    })
+}
+
 fn sip_config(ctx: &Context, cfg: &Config, nv: &Nvdata, local_ip: IpAddr) -> SipConfig {
     let mut out = SipConfig::new(state_model(ctx.model), local_ip);
     let sip = cfg.sip();
@@ -300,6 +319,17 @@ fn sip_config(ctx: &Context, cfg: &Config, nv: &Nvdata, local_ip: IpAddr) -> Sip
     // at most 60 s.
     out.page_line_keys = cfg.setting_bool("page_linekeys", out.model == dphone_state::Model::D65) && out.model.blf_pages() > 1;
     out.blf = super::blfitems::items(cfg, nv, out.model, out.accounts.len(), out.page_line_keys, AccountId(0));
+    // The message lamp's behaviors (stock `<activity_indicator>`); a
+    // setting that is absent or unreadable keeps stock's base value.
+    for (id, slot) in [
+        ("new_vm", &mut out.activity.new_vm),
+        ("ringing", &mut out.activity.ringing),
+        ("active", &mut out.activity.active),
+    ] {
+        if let Some(lamp) = cfg.activity_indicator(id).and_then(|i| indicator_lamp(&i)) {
+            *slot = lamp;
+        }
+    }
     // Incoming calls the configuration singles out by the server event
     // they carry (stock `<events><event id=".." action=".."/>`); without
     // any, stock's base entry (the voicemail playback call) stays.

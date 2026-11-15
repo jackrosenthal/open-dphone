@@ -72,7 +72,7 @@ async fn d65_line_keys_page() {
     let keys = p.store.get::<Keys>();
     assert_eq!(keys.rapid_page, 1);
     assert_eq!(bindings(&keys), ["acct0", "5", "0", "-", "-", "-"]);
-    assert_eq!(keys.line_keys[2].lamp, LampState::blinking(LampColor::Red, Blink::Fast));
+    assert_eq!(keys.line_keys[2].lamp, LampState::blinking(LampColor::Green, Blink::Fast));
     assert_eq!(keys.line_keys[0].label, "Line 100");
     assert!(p.store.send(Command::SetRapidDialPage { page: 2 }).await.is_err());
 

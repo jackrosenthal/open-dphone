@@ -143,6 +143,50 @@ fn diag_commands_and_restart() {
     assert_eq!(status.code(), Some(0));
 }
 
+/// The speaker, headset, and mute lamps follow the audio state the main
+/// role keeps.
+#[test]
+fn audio_lamps_follow_the_audio_state() {
+    let dir = temp();
+    let (_main, socket) = start_main(dir.path(), &["--no-ssh"]);
+    wait_for("diag socket", Duration::from_secs(10), || socket.exists());
+    wait_for("audio engine", Duration::from_secs(10), || diag(&socket, &["audio"]).1.contains("engine: running"));
+    // The three lamps as the state store has them.
+    let lamps = || {
+        let keys = diag(&socket, &["state", "keys"]).1;
+        let field = |name: &str| {
+            let rest = keys.split_once(name).unwrap_or_else(|| panic!("no {name} in: {keys}")).1;
+            let color = rest.split_once("color: ").unwrap().1;
+            color.split(|c: char| !c.is_alphanumeric()).next().unwrap().to_string()
+        };
+        [field("speaker_lamp"), field("headset_lamp"), field("mute_lamp")]
+    };
+    let run = |args: &[&str]| assert_eq!(diag(&socket, args).0, 0, "{args:?}");
+    assert_eq!(lamps(), ["Off", "Off", "Off"]);
+
+    // On-hook dialing: the speaker path with dial tone.
+    run(&["audio", "path", "speaker"]);
+    run(&["audio", "tone", "dial"]);
+    wait_for("speaker lamp", Duration::from_secs(5), || lamps() == ["Green", "Off", "Off"]);
+    run(&["audio", "mute", "on"]);
+    wait_for("mute lamp", Duration::from_secs(5), || lamps() == ["Green", "Off", "Red"]);
+    run(&["audio", "path", "headset"]);
+    wait_for("headset lamp", Duration::from_secs(5), || lamps() == ["Off", "Green", "Red"]);
+    run(&["audio", "path", "handset"]);
+    wait_for("handset", Duration::from_secs(5), || lamps() == ["Off", "Off", "Red"]);
+    run(&["audio", "mute", "off"]);
+    run(&["audio", "tone", "off"]);
+    run(&["audio", "path", "none"]);
+    wait_for("all off", Duration::from_secs(5), || lamps() == ["Off", "Off", "Off"]);
+
+    // The ringer alone lights nothing, though it sounds on the speaker.
+    run(&["audio", "ring"]);
+    wait_for("ringing", Duration::from_secs(5), || diag(&socket, &["state", "audio"]).1.contains("ringing: true"));
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(lamps(), ["Off", "Off", "Off"]);
+    run(&["audio", "ring", "off"]);
+}
+
 /// Run the binary with standard output and standard error both connected to
 /// pipes that nobody reads, as in `dphone ... 2>&1 | head` after `head` has
 /// gone.  Returns the exit status.

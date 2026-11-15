@@ -486,17 +486,7 @@ impl Core {
         }
         // The BLF and rapid-dial items, where stock puts them.
         let layout = crate::keys::layout(model, self.accts.len(), self.cfg.page_line_keys, &self.cfg.blf);
-        let lamp_of = |entry: &str| {
-            use dphone_state::BlfState as B;
-            match presence.get(entry).map(|e| e.state) {
-                Some(B::Idle) => LampState::solid(LampColor::Green),
-                Some(B::Ringing) => LampState::blinking(LampColor::Red, Blink::Fast),
-                Some(B::InUse) => LampState::solid(LampColor::Red),
-                Some(B::OnHold) => LampState::blinking(LampColor::Red, Blink::Slow),
-                Some(B::OnHoldRinging) => LampState::blinking(LampColor::Red, Blink::Fast),
-                _ => LampState::OFF,
-            }
-        };
+        let lamp_of = |entry: &str| presence.get(entry).map_or(LampState::OFF, |e| e.state.lamp());
         let pages = layout.pages;
         let mut rapid = Vec::new();
         for (page, slots) in layout.side.iter().take(pages as usize).enumerate() {
@@ -532,7 +522,24 @@ impl Core {
                 keys
             })
             .collect();
-        let message_lamp = if mwi.any_waiting() { LampState::solid(LampColor::Red) } else { LampState::OFF };
+        // The message lamp is stock's activity light: the strongest of
+        // new voicemail, an alerting call, and a call in progress.  Held
+        // calls count for nothing.
+        let message_lamp = {
+            use dphone_state::CallState as S;
+            let act = &self.cfg.activity;
+            if calls.visible().any(|c| {
+                matches!(c.state, S::Active | S::Dialing | S::Proceeding | S::Ringback { .. } | S::Transferring)
+            }) {
+                act.active
+            } else if calls.visible().any(|c| c.state == S::Ringing) {
+                act.ringing
+            } else if mwi.any_waiting() {
+                act.new_vm
+            } else {
+                LampState::OFF
+            }
+        };
         self.store.update::<Keys, _>(|k| {
             if k.rapid_page >= pages.max(1) {
                 k.rapid_page = 0;

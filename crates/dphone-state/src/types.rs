@@ -608,9 +608,9 @@ pub enum LampColor {
 pub enum Blink {
     #[default]
     Solid,
-    /// About 1 Hz: held calls.
+    /// About 1 Hz (stock: 501 ms on, 501 ms off): held calls.
     Slow,
-    /// About 4 Hz: ringing.
+    /// About 2 Hz (stock: 251 ms on, 251 ms off): ringing.
     Fast,
     /// Short flash every few seconds: e.g., message waiting.
     Wink,
@@ -631,6 +631,25 @@ impl LampState {
     pub const fn blinking(color: LampColor, blink: Blink) -> Self {
         LampState { color, blink }
     }
+}
+
+/// The speaker, headset, and mute lamps, in that order, as stock's `phone`
+/// drives them (2_9_28, the observers at 0x319b0 and 0x31d48): the speaker
+/// or headset lamp is solid green while that path carries a call, dialing,
+/// ringback, or the tone of a failed call, and off when the phone is idle
+/// or only ringing (even though the ringer uses the speaker); headset mode
+/// alone lights nothing.  The mute lamp is solid red while the microphone
+/// is muted.  None of them blinks.
+pub fn audio_lamps(audio: &Audio, calls: &Calls) -> (LampState, LampState, LampState) {
+    // The path is open for the ringer only: nothing but alerting calls,
+    // and no tone of ours.
+    let ringer_only =
+        audio.ringing && audio.tone.is_none() && calls.calls.iter().all(|c| c.state == CallState::Ringing);
+    let lit = |path: AudioPath| {
+        if audio.path == path && !ringer_only { LampState::solid(LampColor::Green) } else { LampState::OFF }
+    };
+    let mute = if audio.muted { LampState::solid(LampColor::Red) } else { LampState::OFF };
+    (lit(AudioPath::Speaker), lit(AudioPath::Headset), mute)
 }
 
 /// What a line key (beside the screen) is bound to.
@@ -1063,6 +1082,24 @@ pub enum BlfState {
     /// The document is closed: no device is registered.  Stock has no such
     /// state (it shows these contacts as unknown).
     Unavailable,
+}
+
+impl BlfState {
+    /// The lamp of a BLF or rapid-dial key, by stock's default behavior
+    /// table (`phone` 2_9_28, 0x80dc8, key type 2; the same for the
+    /// expansion modules): nothing for an idle, unknown, or unavailable
+    /// contact, fast green while it rings, solid green while it is on the
+    /// phone, slow red while it holds a call, and fast red while it holds
+    /// one call and another rings.
+    pub fn lamp(self) -> LampState {
+        match self {
+            BlfState::Ringing => LampState::blinking(LampColor::Green, Blink::Fast),
+            BlfState::InUse => LampState::solid(LampColor::Green),
+            BlfState::OnHold => LampState::blinking(LampColor::Red, Blink::Slow),
+            BlfState::OnHoldRinging => LampState::blinking(LampColor::Red, Blink::Fast),
+            BlfState::Idle | BlfState::Unknown | BlfState::Unavailable => LampState::OFF,
+        }
+    }
 }
 
 /// User presence (the `digium_presence` element of a presence document,
@@ -1623,4 +1660,69 @@ pub struct Bluetooth {
     pub audio_open: bool,
     /// Why the last operation failed; empty when fine.
     pub error: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn call(id: u32, state: CallState) -> Call {
+        let mut c = Call::new(CallId(id), AccountId(0), Direction::Incoming, Party::default());
+        c.state = state;
+        c
+    }
+
+    /// Stock's rules for the speaker, headset, and mute lamps.
+    #[test]
+    fn audio_lamps_follow_the_path_in_use() {
+        let green = LampState::solid(LampColor::Green);
+        let red = LampState::solid(LampColor::Red);
+        let off = LampState::OFF;
+        let mut audio = Audio::default();
+        let mut calls = Calls::default();
+        // Idle, also with headset mode latched on: nothing.
+        audio.headset_mode = true;
+        assert_eq!(audio_lamps(&audio, &calls), (off, off, off));
+        audio.headset_mode = false;
+
+        // Ringing through the speaker: still nothing.
+        calls.calls.push(call(1, CallState::Ringing));
+        audio.path = AudioPath::Speaker;
+        audio.ringing = true;
+        assert_eq!(audio_lamps(&audio, &calls), (off, off, off));
+
+        // Answered on the speaker; then a second call alerts.
+        calls.calls[0].state = CallState::Active;
+        audio.ringing = false;
+        assert_eq!(audio_lamps(&audio, &calls), (green, off, off));
+        calls.calls.push(call(2, CallState::Ringing));
+        audio.ringing = true;
+        assert_eq!(audio_lamps(&audio, &calls), (green, off, off));
+        calls.calls.pop();
+        audio.ringing = false;
+
+        // Muted, moved to the headset, then to the handset.
+        audio.muted = true;
+        assert_eq!(audio_lamps(&audio, &calls), (green, off, red));
+        audio.path = AudioPath::Headset;
+        assert_eq!(audio_lamps(&audio, &calls), (off, green, red));
+        audio.path = AudioPath::Handset;
+        assert_eq!(audio_lamps(&audio, &calls), (off, off, red));
+
+        // On-hook dialing: dial tone on the speaker, no call yet.
+        let calls = Calls::default();
+        let audio = Audio { path: AudioPath::Speaker, tone: Some(Tone::Dial), ..Audio::default() };
+        assert_eq!(audio_lamps(&audio, &calls), (green, off, off));
+    }
+
+    #[test]
+    fn blf_lamps_are_stocks_defaults() {
+        assert_eq!(BlfState::Idle.lamp(), LampState::OFF);
+        assert_eq!(BlfState::Unknown.lamp(), LampState::OFF);
+        assert_eq!(BlfState::Unavailable.lamp(), LampState::OFF);
+        assert_eq!(BlfState::Ringing.lamp(), LampState::blinking(LampColor::Green, Blink::Fast));
+        assert_eq!(BlfState::InUse.lamp(), LampState::solid(LampColor::Green));
+        assert_eq!(BlfState::OnHold.lamp(), LampState::blinking(LampColor::Red, Blink::Slow));
+        assert_eq!(BlfState::OnHoldRinging.lamp(), LampState::blinking(LampColor::Red, Blink::Fast));
+    }
 }

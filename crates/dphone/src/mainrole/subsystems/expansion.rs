@@ -33,7 +33,7 @@ use std::time::{Duration, Instant};
 use dphone_config::{Config, Nvdata};
 use dphone_hal::expansion::{self as proto, KeyConfig, ModuleSettings, Request};
 use dphone_state::{
-    Accounts, BlfState, Blink, Command, Expansion, ExpansionModule, LampColor, LampState, Presence, Registration, Topic, Ui,
+    Accounts, BlfState, Command, Expansion, ExpansionModule, LampState, Presence, Registration, Topic, Ui,
 };
 use log::{debug, info, warn};
 use tokio::net::UdpSocket;
@@ -105,17 +105,10 @@ fn settings(config: &Config, nv: &Nvdata, supported: bool) -> Settings {
     out
 }
 
-/// The lamp a contact's state shows on a module key.
+/// The lamp a contact's state shows on a module key: the same default
+/// behavior as on the phone's own keys.
 fn lamp(state: BlfState) -> LampState {
-    let (color, blink) = match state {
-        BlfState::Idle => (LampColor::Green, Blink::Solid),
-        BlfState::Ringing => (LampColor::Red, Blink::Fast),
-        BlfState::InUse => (LampColor::Red, Blink::Solid),
-        BlfState::OnHold => (LampColor::Red, Blink::Slow),
-        BlfState::OnHoldRinging => (LampColor::Red, Blink::Fast),
-        BlfState::Unknown | BlfState::Unavailable => (LampColor::Off, Blink::Solid),
-    };
-    LampState { color, blink }
+    state.lamp()
 }
 
 fn socket(bind: SocketAddrV4, device: &str, broadcast: bool) -> std::io::Result<UdpSocket> {

@@ -8,8 +8,8 @@ mod common;
 use common::{base_config, phone_with, wait, Msg, Server};
 use dphone_sip::{AccountConfig, BlfConfig, HostConfig, OutMessage};
 use dphone_state::{
-    AccountId, Accounts, ActiveHost, Blink, BlfState, Command, Keys, LampColor, Mwi, Presence, PresenceStatus,
-    Registration,
+    AccountId, Accounts, ActiveHost, Blink, BlfState, Command, Keys, LampColor, LampState, Mwi, Presence,
+    PresenceStatus, Registration,
 };
 
 /// Presence documents as Asterisk sent them (see `bodies.rs`).
@@ -114,7 +114,8 @@ async fn register_failover_subscribe_message() {
 
     // MWI from the message-summary NOTIFY.
     wait("MWI", || p.store.get::<Mwi>().accounts.first().filter(|m| m.new == 2 && m.old == 8 && m.waiting).map(|_| ())).await;
-    assert_eq!(p.store.get::<Keys>().message_lamp.color, LampColor::Red);
+    // New voicemail: slow red, as stock's base configuration has it.
+    assert_eq!(p.store.get::<Keys>().message_lamp, LampState::blinking(LampColor::Red, Blink::Slow));
     // BLF from the presence NOTIFY: the line rings; the user's status is
     // the Digium element's, not the `on-the-phone` activity.
     wait("BLF", || p.store.get::<Presence>().get("c101").filter(|e| e.state == BlfState::Ringing).map(|_| ())).await;
@@ -124,7 +125,7 @@ async fn register_failover_subscribe_message() {
     let keys = p.store.get::<Keys>();
     // A D60 has no rapid-dial strip: the item is on the free line key.
     assert_eq!(keys.line_keys[1].binding, dphone_state::LineKeyBinding::Blf("c101".into()));
-    assert_eq!(keys.line_keys[1].lamp.blink, Blink::Fast);
+    assert_eq!(keys.line_keys[1].lamp, LampState::blinking(LampColor::Green, Blink::Fast));
     assert!(keys.rapid_dial.is_empty());
     // The contact has one subscription: `presence`, with stock's Accept
     // and expiry.  Nothing subscribes to `dialog`.
@@ -163,7 +164,8 @@ async fn register_failover_subscribe_message() {
     wait("BLF idle", || p.store.get::<Presence>().get("c101").filter(|e| e.state == BlfState::Idle).map(|_| ())).await;
     let entry = p.store.get::<Presence>().get("c101").cloned().unwrap();
     assert_eq!((entry.status, entry.status_text.as_str()), (PresenceStatus::Away, "Back at 1"));
-    assert_eq!(p.store.get::<Keys>().line_keys[1].lamp.color, LampColor::Green);
+    // An idle contact lights nothing (stock's default behavior).
+    assert_eq!(p.store.get::<Keys>().line_keys[1].lamp, LampState::OFF);
 
     // MESSAGE out (as DPMA sends it: from the MAC at the phone's address).
     let code = p

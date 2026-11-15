@@ -895,6 +895,7 @@ pub async fn start(ctx: &Context, hal: Option<SharedHal>) -> AudioService {
     tokio::spawn(events(service.clone(), ev_rx, ctx.sim));
     tokio::spawn(commands(service.clone(), ctx.store.clone()));
     tokio::spawn(hook_watch(service.clone(), ctx.store.clone()));
+    tokio::spawn(lamp_watch(service.clone(), ctx.store.clone()));
     register_diag(ctx, service.clone());
     service
 }
@@ -1055,6 +1056,30 @@ async fn hook_watch(service: AudioService, store: Store) {
                 service.refresh();
             }
         }
+    }
+}
+
+/// Keep the speaker, headset, and mute lamps current, and take the mute
+/// off where stock does: when a call appears, and when a call is put on
+/// hold or taken back (stock's `phone` sends `audio_mute("off")` at call
+/// creation, hold, and resume).
+async fn lamp_watch(service: AudioService, store: Store) {
+    use dphone_state::{Calls, Keys, Topic};
+    let topics: dphone_state::TopicSet = [Topic::Audio, Topic::Calls].into_iter().collect();
+    let sub = store.subscribe(topics);
+    // Each call with whether it is held, as last seen.
+    let mut seen: Vec<(CallId, bool)> = Vec::new();
+    loop {
+        let calls = store.get::<Calls>();
+        let now: Vec<(CallId, bool)> = calls.live().map(|c| (c.id, c.state.is_held())).collect();
+        let changed = now.iter().any(|(id, held)| seen.iter().find(|(s, _)| s == id).is_none_or(|(_, h)| h != held));
+        seen = now;
+        if changed && store.read::<Audio, _>(|a| a.muted) {
+            let _ = service.command(Command::SetMute { on: false });
+        }
+        let lamps = dphone_state::audio_lamps(&store.get::<Audio>(), &calls);
+        store.update::<Keys, _>(|k| (k.speaker_lamp, k.headset_lamp, k.mute_lamp) = lamps);
+        sub.changed().await;
     }
 }
 

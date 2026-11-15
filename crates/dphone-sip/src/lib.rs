@@ -42,7 +42,7 @@ pub mod timer;
 pub mod tls;
 pub mod util;
 
-pub use config::{AccountConfig, BlfConfig, BlfLocation, CodecPref, EventAction, HostConfig, SipConfig, TlsConfig};
+pub use config::{AccountConfig, ActivityLamps, BlfConfig, BlfLocation, CodecPref, EventAction, HostConfig, SipConfig, TlsConfig};
 pub use media::{MediaControl, MediaEvent, NullMedia, RingRequest, StreamParams, StreamSrtp};
 
 use crate::core::{Core, Ev, Timer};
