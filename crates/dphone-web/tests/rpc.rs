@@ -327,6 +327,19 @@ async fn configuration_accounts_and_contacts() {
     let v = rpc_json(p.addr, &s, "ConfigService/ListSettings", r#"{"prefix":"ringer_"}"#).await.json();
     assert_eq!(v["settings"][0]["id"], "ringer_volume");
     assert_eq!(v["settings"][0]["value"], "9");
+    // A value set on the phone is not the server's; a setting only the
+    // server gave is.
+    p.config
+        .lock()
+        .unwrap()
+        .apply_fetched(r#"<config><setting id="ringer_volume" value="3"/><setting id="handset_volume" value="4"/></config>"#)
+        .unwrap();
+    let v = rpc_json(p.addr, &s, "ConfigService/ListSettings", r#"{"prefix":"ringer_"}"#).await.json();
+    assert_eq!(v["settings"][0]["value"], "9");
+    assert_ne!(v["settings"][0]["provisioned"], true);
+    let v = rpc_json(p.addr, &s, "ConfigService/ListSettings", r#"{"prefix":"handset_"}"#).await.json();
+    assert_eq!(v["settings"][0]["value"], "4");
+    assert_eq!(v["settings"][0]["provisioned"], true);
     // Secrets never leave the phone, and the password has its own RPC.
     let v = rpc_json(p.addr, &s, "ConfigService/ListSettings", r#"{"prefix":"login_"}"#).await.json();
     assert_eq!(v["settings"][0]["secret"], true);

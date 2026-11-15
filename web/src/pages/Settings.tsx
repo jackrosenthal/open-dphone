@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useMemo, useState, type ReactNode } from "react";
-import { Button, Card, Input, PageHeader, Select, Toggle } from "../components/ui";
+import { Button, Card, Dpma, Input, PageHeader, Select, Toggle } from "../components/ui";
 import { ConfigService, SettingSource, type IdleSoftkeys as IdleSoftkeysMessage, type Setting } from "../gen/dphone/v1/config_pb";
 import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
@@ -13,24 +13,20 @@ export type Item = { id: string; label: string; hint?: string; grayOnly?: boolea
 const truthy = (v: string) => v === "1" || v.toLowerCase() === "true" || v.toLowerCase() === "yes";
 
 function Control({ item, setting, value, onChange }: { item: Item; setting?: Setting; value: string; onChange: (v: string) => void }) {
-  const frozen = setting?.frozen;
-  const label = (
-    <>
-      {item.label}
-      {frozen && <span className="ml-2 text-xs font-normal text-slate-400">Locked</span>}
-    </>
-  );
+  // Not changeable here: frozen by a lower layer, or set through DPMA.
+  const frozen = setting?.frozen || setting?.provisioned;
   if (item.type === "bool") {
     return (
-      <div>
-        <Toggle label={item.label + (frozen ? " (locked)" : "")} checked={truthy(value)} disabled={frozen} onChange={(v) => onChange(v ? "1" : "0")} />
+      <Dpma on={setting?.provisioned}>
+        <Toggle label={item.label} checked={truthy(value)} disabled={frozen} onChange={(v) => onChange(v ? "1" : "0")} />
         {item.hint && <p className="mt-1 pl-14 text-xs text-slate-500 dark:text-slate-400">{item.hint}</p>}
-      </div>
+      </Dpma>
     );
   }
   return (
+    <Dpma on={setting?.provisioned}>
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
+      <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">{item.label}</span>
       {item.type === "choice" ? (
         <Select value={value} disabled={frozen} onChange={(e) => onChange(e.target.value)}>
           {!item.options.some(([v]) => v === value) && <option value={value}>{value}</option>}
@@ -47,12 +43,14 @@ function Control({ item, setting, value, onChange }: { item: Item; setting?: Set
       )}
       {item.hint && <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">{item.hint}</span>}
     </label>
+    </Dpma>
   );
 }
 
 /// A card of stock settings with its own Save button.  `children` come
-/// before the fields and `actions` before the Save button.
-export function SettingsCard({ title, items, children, actions, className }: { title: string; items: Item[]; children?: ReactNode; actions?: ReactNode; className?: string }) {
+/// before the fields, `after` after them, and `actions` before the Save
+/// button.
+export function SettingsCard({ title, items, children, after, actions, className }: { title: string; items: Item[]; children?: ReactNode; after?: ReactNode; actions?: ReactNode; className?: string }) {
   const list = useQuery(ConfigService.method.listSettings, {});
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [error, setError] = useState<unknown>();
@@ -105,6 +103,7 @@ export function SettingsCard({ title, items, children, actions, className }: { t
               </div>
             ))}
         </div>
+        {after}
       </div>
     </Card>
   );
@@ -151,14 +150,14 @@ function IdleSoftkeys() {
   const keys = saved ?? loaded.data?.idleSoftkeys;
   const names = keys?.softkeys ?? [];
   const label = (name: string) => keys?.choices.find((c) => c.name === name)?.label ?? name;
-  const fixed = !keys || keys.locked || set.isPending;
+  const dpma = viaDpma(keys);
+  const fixed = !keys || dpma || set.isPending;
   const save = (softkeys: string[]) => set.mutate({ softkeys });
   const move = (i: number, by: number) => {
     const next = [...names];
     [next[i], next[i + by]] = [next[i + by], next[i]];
     save(next);
   };
-  const origin = settingOrigin(keys);
   return (
     <Card
       title="Idle Softkeys"
@@ -171,7 +170,7 @@ function IdleSoftkeys() {
         )
       }
     >
-      <div className="space-y-3">
+      <Dpma on={dpma} className="space-y-3">
         <ErrorNote error={error ?? loaded.error} />
         <ol className="divide-y divide-slate-100 dark:divide-slate-800">
           {names.map((name, i) => (
@@ -200,18 +199,15 @@ function IdleSoftkeys() {
               </option>
             ))}
         </Select>
-        {origin && <p className="text-xs text-slate-500 dark:text-slate-400">{origin}</p>}
-      </div>
+      </Dpma>
     </Card>
   );
 }
 
-/// What to say beside one of Open DPhone's own settings about where its
-/// value comes from; nothing when it was set here or is the default.
-export function settingOrigin(s: { locked: boolean; source: SettingSource } | undefined): string {
-  if (s?.locked) return "Locked by provisioning.";
-  if (s?.source === SettingSource.PROVISIONED) return "Provisioned.";
-  return "";
+/// True when the value of one of Open DPhone's own settings is the
+/// provisioning server's: its control is then disabled.
+export function viaDpma(s: { locked: boolean; source: SettingSource } | undefined): boolean {
+  return !!s && (s.locked || s.source === SettingSource.PROVISIONED);
 }
 
 /// What the person at the phone hears and sees.

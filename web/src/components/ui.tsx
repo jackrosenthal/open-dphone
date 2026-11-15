@@ -159,13 +159,25 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
         onClick={() => onChange(!checked)}
         className={cx(
           "relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors",
-          checked ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-600",
+          // Gray when it cannot be operated, darker when on.
+          disabled ? (checked ? "bg-slate-500 dark:bg-slate-400" : "bg-slate-300 dark:bg-slate-600") : checked ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-600",
         )}
       >
         <span className={cx("absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow transition-transform", checked && "translate-x-5")} />
       </button>
       <span className="text-slate-700 dark:text-slate-300">{label}</span>
     </label>
+  );
+}
+
+/// Wraps a control whose value the provisioning server set.  The control
+/// itself is disabled by the caller; a disabled control gets no hover, so
+/// the tooltip is on this element and the pointer passes through to it.
+export function Dpma({ on, children, className }: { on: boolean | undefined; children: ReactNode; className?: string }) {
+  return (
+    <div title={on ? "Configured via DPMA" : undefined} className={cx(className, on && "[&_*]:pointer-events-none")}>
+      {children}
+    </div>
   );
 }
 

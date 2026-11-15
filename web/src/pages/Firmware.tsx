@@ -1,13 +1,13 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useRef, useState, type ReactNode } from "react";
-import { Alert, Badge, Button, Card, ConfirmButton, KeyValue, Spinner, Toggle } from "../components/ui";
+import { Alert, Badge, Button, Card, ConfirmButton, Dpma, KeyValue, Spinner, Toggle } from "../components/ui";
 import { FirmwareService, UpdatePhase } from "../gen/dphone/v1/firmware_pb";
 import { bytes } from "../lib/format";
 import { label, updatePhaseNames } from "../lib/labels";
 import { useStatus } from "../lib/status";
 import { upload } from "../lib/upload";
 import { ErrorNote } from "./common";
-import { settingOrigin } from "./Settings";
+import { viaDpma } from "./Settings";
 
 function Bar({ fraction, label }: { fraction: number; label: ReactNode }) {
   return (
@@ -37,12 +37,11 @@ function ProvisionedFirmware({ onError }: { onError: (e: unknown) => void }) {
   const policy = useQuery(FirmwareService.method.getProvisionedFirmwarePolicy, {});
   const set = useMutation(FirmwareService.method.setProvisionedFirmwarePolicy, { onError, onSuccess: () => (onError(undefined), policy.refetch()) });
   const ignore = policy.data?.ignore;
-  const origin = settingOrigin(ignore);
+  const dpma = viaDpma(ignore);
   return (
-    <div className="space-y-1 border-t border-slate-100 pt-4 dark:border-slate-800">
-      <Toggle label="Ignore DPMA firmware updates" checked={ignore?.value ?? false} disabled={!ignore || ignore.locked || set.isPending} onChange={(v) => set.mutate({ ignore: v })} />
-      {origin && <p className="text-xs text-slate-500 dark:text-slate-400">{origin}</p>}
-    </div>
+    <Dpma on={dpma} className="border-t border-slate-100 pt-4 dark:border-slate-800">
+      <Toggle label="Ignore DPMA firmware updates" checked={ignore?.value ?? false} disabled={!ignore || dpma || set.isPending} onChange={(v) => set.mutate({ ignore: v })} />
+    </Dpma>
   );
 }
 

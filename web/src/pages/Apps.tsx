@@ -1,12 +1,12 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useRef, useState } from "react";
-import { Badge, Button, Card, ConfirmButton, Empty, PageHeader, Spinner, Toggle } from "../components/ui";
+import { Badge, Button, Card, ConfirmButton, Dpma, Empty, PageHeader, Spinner, Toggle } from "../components/ui";
 import { AppsService } from "../gen/dphone/v1/apps_pb";
 import { useStreamState } from "../lib/stream";
 import { client } from "../lib/transport";
 import { upload } from "../lib/upload";
 import { ErrorNote } from "./common";
-import { settingOrigin } from "./Settings";
+import { viaDpma } from "./Settings";
 
 export function Apps() {
   const [msg] = useStreamState((signal) => client(AppsService).watchApps({}, { signal }));
@@ -19,8 +19,8 @@ export function Apps() {
   const remove = useMutation(AppsService.method.removeApp, opts);
   const disabled = useQuery(AppsService.method.getDisabledApps, {});
   const enable = useMutation(AppsService.method.setAppEnabled, { onError: setError, onSuccess: () => (setError(undefined), disabled.refetch()) });
-  const origin = settingOrigin(disabled.data?.disabledApps);
-  const locked = !disabled.data || disabled.data.disabledApps?.locked || enable.isPending;
+  const dpma = viaDpma(disabled.data?.disabledApps);
+  const locked = !disabled.data || dpma || enable.isPending;
 
   async function install(f: File) {
     setBusy(true);
@@ -52,7 +52,6 @@ export function Apps() {
       <div className="space-y-5">
         <ErrorNote error={error ?? disabled.error} />
         <Card>
-          {origin && <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">Built-in apps: {origin}</p>}
           {!snap ? (
             <Spinner />
           ) : snap.apps.length === 0 ? (
@@ -81,7 +80,11 @@ export function Apps() {
                         Open
                       </Button>
                     )}
-                    {a.builtin && <Toggle label="Enabled" checked={!a.disabled} disabled={locked} onChange={(v) => enable.mutate({ name: a.name, enabled: v })} />}
+                    {a.builtin && (
+                      <Dpma on={dpma}>
+                        <Toggle label="Enabled" checked={!a.disabled} disabled={locked} onChange={(v) => enable.mutate({ name: a.name, enabled: v })} />
+                      </Dpma>
+                    )}
                     {!a.builtin && <ConfirmButton size="sm" variant="secondary" label="Remove" title={`Remove ${a.displayName}?`} confirmLabel="Remove" onConfirm={() => remove.mutateAsync({ name: a.name })} />}
                   </div>
                 </li>

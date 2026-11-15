@@ -1,23 +1,26 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useRef, useState, type FormEvent } from "react";
-import { Badge, Button, Card, ConfirmButton, Empty, Modal, Select, Toggle, td, th } from "../components/ui";
+import { Badge, Button, Card, ConfirmButton, Dpma, Empty, Modal, Select, Toggle, td, th } from "../components/ui";
 import { ConfigService } from "../gen/dphone/v1/config_pb";
 import { SshService, type SshStatus } from "../gen/dphone/v1/ssh_pb";
 import { SystemService } from "../gen/dphone/v1/system_pb";
 import { ErrorNote } from "./common";
-import { settingOrigin } from "./Settings";
+import { viaDpma } from "./Settings";
 
 /// The switch for the unauthenticated `/metrics` endpoint.
-function MetricsSwitch({ onError }: { onError: (e: unknown) => void }) {
+export function MetricsSwitch() {
+  const [error, setError] = useState<unknown>();
   const loaded = useQuery(SystemService.method.getMetricsEnabled, {});
-  const set = useMutation(SystemService.method.setMetricsEnabled, { onError, onSuccess: () => (onError(undefined), loaded.refetch()) });
+  const set = useMutation(SystemService.method.setMetricsEnabled, { onError: setError, onSuccess: () => (setError(undefined), loaded.refetch()) });
   const setting = loaded.data?.metricsEnabled;
-  const origin = settingOrigin(setting);
+  const dpma = viaDpma(setting);
   return (
-    <>
-      <Toggle label="Prometheus metrics" checked={setting?.value ?? false} disabled={!setting || setting.locked || set.isPending} onChange={(v) => set.mutate({ metricsEnabled: v })} />
-      {origin && <span className="text-xs text-slate-500 dark:text-slate-400">{origin}</span>}
-    </>
+    <div className="space-y-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+      <ErrorNote error={error ?? loaded.error} />
+      <Dpma on={dpma}>
+        <Toggle label="Prometheus metrics" checked={setting?.value ?? false} disabled={!setting || dpma || set.isPending} onChange={(v) => set.mutate({ metricsEnabled: v })} />
+      </Dpma>
+    </div>
   );
 }
 
@@ -32,7 +35,9 @@ function WebSwitch({ onError }: { onError: (e: unknown) => void }) {
   const save = (v: boolean) => set.mutate({ changes: [{ id: "web_ui_enabled", value: v ? "1" : "0" }] });
   return (
     <>
-      <Toggle label="Web interface" checked={on} disabled={!setting || setting.frozen || set.isPending} onChange={(v) => (v ? save(true) : setAsking(true))} />
+      <Dpma on={setting?.provisioned}>
+        <Toggle label="Web interface" checked={on} disabled={!setting || setting.frozen || setting.provisioned || set.isPending} onChange={(v) => (v ? save(true) : setAsking(true))} />
+      </Dpma>
       {asking && (
         <Modal
           title="Disable the web interface?"
@@ -129,18 +134,17 @@ export function EhsPortCard() {
   const setting = loaded.data?.serialConsole;
   // The choice as made, before the phone has confirmed it.
   const serial = set.isPending ? !!set.variables?.serialConsole : !!setting?.value;
-  const origin = settingOrigin(setting);
+  const dpma = viaDpma(setting);
   return (
     <Card title="EHS Port">
       <div className="space-y-4">
         <ErrorNote error={error ?? loaded.error} />
-        <div>
-          <Select aria-label="EHS port" value={serial ? "console" : "ehs"} disabled={!setting || setting.locked || set.isPending} onChange={(e) => set.mutate({ serialConsole: e.target.value === "console" })}>
+        <Dpma on={dpma}>
+          <Select aria-label="EHS port" value={serial ? "console" : "ehs"} disabled={!setting || dpma || set.isPending} onChange={(e) => set.mutate({ serialConsole: e.target.value === "console" })}>
             <option value="ehs">Headset</option>
             <option value="console">Serial Console (115200 8N1)</option>
           </Select>
-          {origin && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{origin}</p>}
-        </div>
+        </Dpma>
         {serial && <EhsPinout />}
       </div>
     </Card>
@@ -164,7 +168,7 @@ export function AccessCard() {
 
   const ssh = status ?? loaded.data?.status;
   const enabled = ssh?.enabled;
-  const origin = settingOrigin(enabled);
+  const dpma = viaDpma(enabled);
   const keys = ssh?.keys ?? [];
   // The listener's real state, when it disagrees with the switch.
   const stopped = enabled?.value && ssh?.listening === false;
@@ -184,10 +188,10 @@ export function AccessCard() {
         <ErrorNote error={error ?? loaded.error} />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <WebSwitch onError={setError} />
-          <Toggle label="SSH" checked={enabled?.value ?? false} disabled={!ssh || enabled?.locked || enable.isPending} onChange={(v) => enable.mutate({ enabled: v })} />
-          {origin && <span className="text-xs text-slate-500 dark:text-slate-400">{origin}</span>}
+          <Dpma on={dpma}>
+            <Toggle label="SSH" checked={enabled?.value ?? false} disabled={!ssh || dpma || enable.isPending} onChange={(v) => enable.mutate({ enabled: v })} />
+          </Dpma>
           {stopped && <Badge tone="red">SSH not running</Badge>}
-          <MetricsSwitch onError={setError} />
         </div>
 
         <div className="border-t border-slate-100 pt-4 dark:border-slate-800">
@@ -218,7 +222,11 @@ export function AccessCard() {
                       <td className={`${td} break-all`}>{k.comment}</td>
                       <td className={`${td} text-right`}>
                         {k.provisioned ? (
-                          <Badge>Provisioned</Badge>
+                          <Dpma on className="inline-block">
+                            <Button size="sm" disabled>
+                              Remove
+                            </Button>
+                          </Dpma>
                         ) : (
                           <ConfirmButton size="sm" variant="secondary" label="Remove" title={`Remove ${k.comment || k.type}?`} confirmLabel="Remove" onConfirm={() => remove.mutateAsync({ fingerprint: k.fingerprint })} />
                         )}

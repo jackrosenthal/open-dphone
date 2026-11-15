@@ -44,9 +44,23 @@ fn valid_setting_id(id: &str) -> bool {
         && id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
 }
 
+/// The IDs of the settings a layer holds.
+fn layer_ids(c: &ConfigStore, layer: Layer) -> std::collections::HashSet<String> {
+    let mut ids = std::collections::HashSet::new();
+    if let Ok(Some(root)) = c.layer(layer) {
+        ids.extend(root.children_named("setting").filter_map(|e| e.attr("id").map(str::to_owned)));
+    }
+    ids
+}
+
 pub async fn list_settings(ctx: Ctx, req: pb::ListSettingsRequest) -> Result<pb::ListSettingsResponse, ConnectError> {
     with_config(&ctx.app, false, move |c| {
         let cfg = c.config();
+        // The provisioning server's settings, and those set on the phone,
+        // which replace them unless the server froze its value.
+        let mut served = layer_ids(c, Layer::Configurator);
+        served.extend(layer_ids(c, Layer::Fetched));
+        let local = layer_ids(c, Layer::Ui);
         let mut settings: Vec<pb::Setting> = cfg
             .settings()
             .filter(|(id, _)| id.starts_with(&req.prefix))
@@ -57,6 +71,7 @@ pub async fn list_settings(ctx: Ctx, req: pb::ListSettingsRequest) -> Result<pb:
                     value: if secret { String::new() } else { value.to_owned() },
                     frozen: cfg.setting_frozen(id),
                     secret,
+                    provisioned: served.contains(id) && (cfg.setting_frozen(id) || !local.contains(id)),
                 }
             })
             .collect();

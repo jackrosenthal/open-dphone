@@ -20,6 +20,9 @@ message Setting {
   bool frozen = 3;
   reserved 4;
   bool secret = 5;
+  // The value in effect is the provisioning server's: no value set on the
+  // phone replaces it.
+  bool provisioned = 6;
 }
 
 message ListSettingsRequest {
