@@ -1,0 +1,140 @@
+# Builds the firmware image of every model with Nix and runs the flake's
+# checks, the same commands as locally:
+#
+#   nix build .#all
+#   nix flake check
+#
+# The images are uploaded as the workflow artifact `firmware`.  A pushed tag
+# vX.Y.Z (the workspace version in Cargo.toml) also publishes them as a
+# GitHub Release, with SHA256SUMS.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a branch or pull request replaces the run in progress; a
+# tag's run (a release) is never canceled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    name: Images and checks
+    runs-on: ubuntu-24.04
+    # With an empty cache the job compiles the cross toolchain, the kernel,
+    # and the workspace.
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v7
+
+      # A multi-user installation with the sandbox on, and /dev/kvm opened
+      # for the jffs2-mount check, which runs in a virtual machine.
+      # keep-outputs makes what a build needed (the toolchain, the stock
+      # images) live for as long as its result is, so that the garbage
+      # collection before a cache is saved leaves it in the store.
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            keep-outputs = true
+            keep-derivations = true
+
+      # The Nix store, in the GitHub Actions cache.  The key covers what
+      # decides the slow derivations (the toolchains, the dependencies, and
+      # the kernel); a change elsewhere rebuilds only the workspace's own
+      # crates and what follows from them.  On a miss, the store of an
+      # unfinished run with the same key is restored, or else the newest
+      # store of any key.
+      - name: Restore the Nix store
+        id: store
+        uses: nix-community/cache-nix-action/restore@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock', 'nix/**', 'kernel/**', 'Cargo.lock', 'apps/Cargo.lock', 'web/pnpm-lock.yaml') }}
+          restore-prefixes-first-match: |
+            nix-${{ runner.os }}-${{ hashFiles('flake.lock', 'nix/**', 'kernel/**', 'Cargo.lock', 'apps/Cargo.lock', 'web/pnpm-lock.yaml') }}-partial-
+            nix-${{ runner.os }}-
+
+      # Before the long build, and against the version the build itself uses
+      # (the name of the `all` output is open-dphone-X.Y.Z).
+      - name: The tag names the workspace version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "$GITHUB_REF_NAME" = "v$(nix eval --raw .#all.name | sed 's/^open-dphone-//')"
+
+      - name: Build the images of all models
+        run: nix build .#all --print-build-logs --out-link result
+
+      - name: SHA256SUMS
+        run: |
+          mkdir dist
+          cp --dereference result/*.eff dist/
+          cd dist && sha256sum -- *.eff > SHA256SUMS && cat SHA256SUMS
+
+      - name: Upload the images
+        uses: actions/upload-artifact@v7
+        with:
+          name: firmware
+          path: dist
+          if-no-files-found: error
+
+      - name: Run the checks
+        run: nix flake check --print-build-logs
+
+      # `nix flake check` leaves no garbage-collector roots; this builds
+      # nothing more, and makes the checks' results (and so what they
+      # needed) live, like the images under `result`.
+      - name: Keep the checks in the store
+        run: |
+          # shellcheck disable=SC2016 # the ${n} is Nix's
+          checks="$(nix eval --raw .#checks.x86_64-linux --apply 'c: builtins.concatStringsSep " " (map (n: ".#checks.x86_64-linux.${n}") (builtins.attrNames c))')"
+          # shellcheck disable=SC2086 # one argument per check
+          nix build --out-link result-check $checks
+
+      # Saved once per key by the first run that succeeds.  Until then, a
+      # failed run saves what it built under a key of its own, so that the
+      # next run does not start from nothing.  Garbage is collected only
+      # down to the given size, which is about what one build's closure
+      # takes, so a store restored from an older key does not grow without
+      # bound.
+      - name: Save the Nix store
+        if: ${{ !cancelled() && steps.store.outputs.hit-primary-key != 'true' }}
+        uses: nix-community/cache-nix-action/save@v7
+        with:
+          primary-key: ${{ steps.store.outputs.primary-key }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
+          gc-max-store-size-linux: 12G
+
+  release:
+    name: GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: firmware
+          path: dist
+
+      # The images are named <X_Y_Z>_<MODEL>_firmware.eff after the version
+      # they were built with: exactly the seven of the tag's version, and
+      # the sums the build made of them.
+      - name: The tag names the version of every image
+        working-directory: dist
+        run: |
+          version="$(echo "${GITHUB_REF_NAME#v}" | tr . _)"
+          expected="$(printf '%s\n' "$version"_D{40,45,50,60,62,65,70}_firmware.eff)"
+          test "$(printf '%s\n' *.eff | LC_ALL=C sort)" = "$expected"
+          sha256sum --check --strict SHA256SUMS
+          test "$(wc -l < SHA256SUMS)" -eq 7
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.eff dist/SHA256SUMS --verify-tag --generate-notes
