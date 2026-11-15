@@ -45,6 +45,7 @@ dphone-apps = { path = ".", features = ["build-tool", "test-util", "ui"] }
 # The games' tests draw them with the phone UI on the simulator's display.
 dphone-hal = { path = "../dphone-hal" }
 dphone-ui = { path = "../dphone-ui" }
-# The Light Up test makes the puzzles the app is expected to make.
-lightup-game = { path = "../lightup-game" }
+# The Light Up test makes the puzzles the app is expected to make, with the
+# app's own game library (in the app's directory) built for this machine.
+lightup-game = { path = "../../apps/lightup/game" }
 png = "0.18"

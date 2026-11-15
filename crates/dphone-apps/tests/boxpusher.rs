@@ -5,7 +5,7 @@
 //! The pictures are written as PNG files under `box-pusher/` in cargo's
 //! test scratch directory (`CARGO_TARGET_TMPDIR`), or in the directory
 //! `BOX_PUSHER_PREVIEWS` names.  The rules, the levels, and the solver
-//! that proves them are tested in the crate `boxpusher-game`.
+//! that proves them are tested in the crate `boxpusher-game` (`apps/boxpusher/game`).
 
 mod common;
 
@@ -430,7 +430,7 @@ impl Phone {
     }
 }
 
-/// Level 14's solution, from `crates/boxpusher-game/tests/levels.rs`.
+/// Level 14's solution, from `apps/boxpusher/game/tests/levels.rs`.
 const LEVEL_14: &str = "drurrdrulllluurdldrrrdrrulllluurrrdullldddlurrrdrruluurd";
 
 /// A first level, a level in the middle, that level nearly solved, its

@@ -1,5 +1,5 @@
-//! Times the generator: `cargo run --release -p lightup-game --example
-//! lightup-timing [SEEDS]`.  For each size and difficulty, over a batch of
+//! Times the generator: in `apps/`, `cargo run --release --target
+//! host-tuple -p lightup-game --example lightup-timing [SEEDS]`.  For each size and difficulty, over a batch of
 //! seeds: the time, the grids tried, and the steps taken (median and
 //! worst).
 

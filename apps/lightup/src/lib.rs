@@ -1,8 +1,9 @@
 //! Light Up: put lights on the white cells of a grid until every cell is
 //! lit, no light shines on another, and every numbered black cell has its
 //! number of lights beside it.  The puzzle itself (rules, solver,
-//! generator, pictures) is the crate `lightup-game`; this is the app
-//! around it: the screens, the keys, and the puzzle kept on the phone.
+//! generator, pictures) is the crate `lightup-game`, in `game/` beside
+//! this one; this is the app around it: the screens, the keys, and the
+//! puzzle kept on the phone.
 //!
 //! The arrow keys, or 4, 2, 6, and 8, move the cursor.  5 or Select puts a
 //! light on the cell, 3 marks it with a square (no light here), and 1

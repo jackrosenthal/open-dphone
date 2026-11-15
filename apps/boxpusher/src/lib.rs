@@ -1,6 +1,7 @@
 //! Box Pusher: push every box onto a target.  The game itself (rules,
-//! levels, pictures) is the crate `boxpusher-game`; this is the app around
-//! it: the screens, the keys, and the progress kept on the phone.
+//! levels, pictures) is the crate `boxpusher-game`, in `game/` beside this
+//! one; this is the app around it: the screens, the keys, and the progress
+//! kept on the phone.
 //!
 //! The arrow keys, or 2, 4, 6, and 8, move the figure.  A level's floor,
 //! walls, and targets are drawn once on one canvas; the boxes and the
@@ -106,7 +107,7 @@ fn draw(w: Widget, ops: Vec<Op>) {
 
 fn load(level: usize) -> Game {
     // The levels are checked when the firmware is built (the tests of
-    // `boxpusher-game`).
+    // `boxpusher-game`, which the `tests` check runs).
     Game::new(Level::parse(LEVELS[level].text).expect("a level"))
 }
 

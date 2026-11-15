@@ -10,4 +10,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 app-sdk.workspace = true
-lightup-game = { path = "../../crates/lightup-game" }
+lightup-game = { path = "game" }

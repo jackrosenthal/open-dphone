@@ -6,7 +6,7 @@
 //! The pictures are written as PNG files under `light-up/` in cargo's
 //! test scratch directory (`CARGO_TARGET_TMPDIR`), or in the directory
 //! `LIGHT_UP_PREVIEWS` names.  The rules, the solver, the generator, and
-//! the pictures themselves are tested in the crate `lightup-game`.
+//! the pictures themselves are tested in the crate `lightup-game` (`apps/lightup/game`).
 //!
 //! `cargo test --release -p dphone-apps --test lightup -- --ignored
 //! --nocapture generation_times` prints how long the app takes to make

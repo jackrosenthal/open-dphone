@@ -18,6 +18,8 @@
   asterisk, # Asterisk with res_dpma_rs (asterisk.nix)
   webDist ? null, # built frontend, embedded by dphone-web (DPHONE_WEB_DIST)
   appsStaged ? null, # apps compiled for the build machine (DPHONE_APPS_STAGED)
+  appsUnitTests ? null, # the apps' own tests, passed (apps.nix)
+  appsClippy ? null, # the apps' own lints, passed (apps.nix)
 }:
 let
   root = ../.;
@@ -29,6 +31,11 @@ let
       (root + "/.cargo")
       (root + "/crates")
       (root + "/xtask")
+      # The Light Up app's game library, which the host's test of that app
+      # (crates/dphone-apps/tests/lightup.rs) links, and the manifest of
+      # the apps' workspace, from which it inherits its package fields.
+      (root + "/apps/Cargo.toml")
+      (root + "/apps/lightup/game")
       # Service definitions, read by the build scripts of dphone-config and
       # dphone-web.
       (root + "/proto")
@@ -147,6 +154,12 @@ in
       DPHONE_TEST_ASTERISK = "${asterisk.server}";
       DPHONE_TEST_ASTERISK_MODULES = "${asterisk.modules}";
     }
+    // lib.optionalAttrs (appsUnitTests != null) {
+      # `apps/` is a cargo workspace of its own, which `cargo test` here
+      # does not reach: its tests run in a derivation of their own, and
+      # this check does not pass unless that one did.
+      inherit appsUnitTests;
+    }
     // lib.optionalAttrs (appsStaged != null) {
       # A writable copy, as the tests' own build of the apps would leave:
       # they copy files out of it and then edit the copies, and a copy of a
@@ -164,6 +177,10 @@ in
     // {
       cargoArtifacts = checksStage.deps;
       cargoClippyExtraArgs = "--all-targets -- -D warnings";
+    }
+    // lib.optionalAttrs (appsClippy != null) {
+      # Likewise the apps' workspace, linted in a derivation of its own.
+      inherit appsClippy;
     }
   );
 

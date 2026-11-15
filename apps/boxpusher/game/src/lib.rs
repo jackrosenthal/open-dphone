@@ -3,10 +3,11 @@
 //! box gives way.
 //!
 //! This crate is the game without the phone: the rules ([`Game`]), the
-//! levels ([`LEVELS`]), and the pictures ([`draw`]).  The app in
-//! `apps/boxpusher` puts them on the screen.  The levels are this
-//! project's own; `tests/levels.rs` holds the tool that made them and the
-//! solver that proves each one solvable in the recorded number of pushes.
+//! levels ([`LEVELS`]), and the pictures ([`draw`]).  The app whose
+//! directory this crate lies in (`apps/boxpusher`) puts them on the
+//! screen.  The levels are this project's own; `tests/levels.rs` holds the
+//! tool that made them and the solver that proves each one solvable in
+//! the recorded number of pushes.
 
 pub mod draw;
 mod levels;

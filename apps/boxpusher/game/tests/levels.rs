@@ -12,10 +12,13 @@
 //! pushes; levels 1 to 4 were laid out by hand.  Nothing is taken from
 //! any other game or level collection.
 //!
+//! In `apps/` (`host-test` is `test` for the build machine, an alias in
+//! `apps/.cargo/config.toml`):
+//!
 //! ```text
 //! BOXES=3 WIDTH=9 HEIGHT=7 DENSITY=7 ROOMS=8000 SEED=5 \
-//!   cargo test --release -p boxpusher-game --test levels -- --ignored --nocapture make_levels
-//! cargo test --release -p boxpusher-game --test levels -- --ignored --nocapture print_solutions
+//!   cargo host-test --release -p boxpusher-game --test levels -- --ignored --nocapture make_levels
+//! cargo host-test --release -p boxpusher-game --test levels -- --ignored --nocapture print_solutions
 //! ```
 
 use boxpusher_game::{Dir, Game, LEVELS, Level, MAX_HEIGHT, MAX_WIDTH};

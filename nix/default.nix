@@ -64,6 +64,8 @@ let
     asterisk = pkgs.callPackage ./asterisk.nix { inherit rustPlatform; };
     webDist = web;
     appsStaged = if apps != null then apps.testFixture else null;
+    appsUnitTests = if apps != null then apps.unitTests else null;
+    appsClippy = if apps != null then apps.clippy else null;
   };
   apps =
     if has "apps/Cargo.lock" then

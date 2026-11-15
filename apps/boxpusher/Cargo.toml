@@ -10,4 +10,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 app-sdk.workspace = true
-boxpusher-game = { path = "../../crates/boxpusher-game" }
+boxpusher-game = { path = "game" }

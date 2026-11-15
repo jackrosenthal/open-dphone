@@ -18,44 +18,79 @@
 let
   root = ../.;
   wasmTarget = "wasm32-unknown-unknown";
-  # Build one cargo workspace of apps (`dir`, relative to the repository
-  # root) to WebAssembly modules, flat, under $out/.
+  # One cargo workspace of apps (`dir`, relative to the repository root):
+  # its source, and its dependencies as its own Cargo.lock pins them.
+  workspaceOf = dir: {
+    version = "3.0.0";
+    src = lib.fileset.toSource {
+      inherit root;
+      fileset = lib.fileset.unions [
+        (root + "/${dir}")
+        # app-sdk inherits its package fields from the firmware workspace.
+        (root + "/Cargo.toml")
+        (root + "/crates/app-sdk")
+        (root + "/crates/dphone-apps/wit")
+      ];
+    };
+    cargoRoot = dir;
+    cargoDeps = rustPlatform.importCargoLock { lockFile = root + "/${dir}/Cargo.lock"; };
+  };
+  # Build one cargo workspace of apps to WebAssembly modules, flat, under
+  # $out/.
   wasmModules =
     { pname, dir }:
-    rust.buildCargo {
-      inherit pname;
-      version = "3.0.0";
-      src = lib.fileset.toSource {
-        inherit root;
-        fileset = lib.fileset.unions [
-          (root + "/${dir}")
-          # app-sdk inherits its package fields from the firmware workspace.
-          (root + "/Cargo.toml")
-          (root + "/crates/app-sdk")
-          # The Box Pusher puzzle itself, which the app `boxpusher` is built on.
-          (root + "/crates/boxpusher-game")
-          # Likewise the Light Up puzzle, for the app `lightup`.
-          (root + "/crates/lightup-game")
-          (root + "/crates/dphone-apps/wit")
+    rust.buildCargo (
+      workspaceOf dir
+      // {
+        inherit pname;
+        env.CARGO_BUILD_TARGET = wasmTarget;
+        target = wasmTarget;
+        commands = [
+          [
+            "build"
+            "--release"
+            "--workspace"
+          ]
         ];
-      };
-      cargoRoot = dir;
-      cargoDeps = rustPlatform.importCargoLock { lockFile = root + "/${dir}/Cargo.lock"; };
-      env.CARGO_BUILD_TARGET = wasmTarget;
-      target = wasmTarget;
-      commands = [
-        [
-          "build"
-          "--release"
-          "--workspace"
-        ]
-      ];
-      artifacts = [ "*.wasm" ];
-    };
+        artifacts = [ "*.wasm" ];
+      }
+    );
   modules = wasmModules {
     pname = "dphone-apps-wasm";
     dir = "apps";
   };
+
+  # The apps' own tests (each app crate's unit tests, and those of the
+  # games' libraries: the rules, levels, solver, and generator), run on
+  # the build machine with the same command as locally (`cargo host-test`
+  # in `apps/`, an alias in `apps/.cargo/config.toml`).  The firmware
+  # workspace's `cargo test` does not reach them, because `apps/` is a
+  # workspace of its own; the `tests` check requires this derivation.
+  unitTests = rust.buildCargo (
+    workspaceOf "apps"
+    // {
+      pname = "dphone-apps-unit-tests";
+      commands = [ [ "host-test" ] ];
+    }
+  );
+  # The lints, likewise: the check `clippy` requires this derivation.
+  clippy = rust.buildCargo (
+    workspaceOf "apps"
+    // {
+      pname = "dphone-apps-clippy";
+      commands = [
+        [
+          "clippy"
+          "--target"
+          "host-tuple"
+          "--all-targets"
+          "--"
+          "-D"
+          "warnings"
+        ]
+      ];
+    }
+  );
 
   # What the host tests of `crates/dphone-apps` run: the built-in apps and
   # the test-only guests, compiled for the build machine's interpreter.  The
@@ -86,7 +121,14 @@ in
 runCommand "dphone-apps-3.0.0"
   {
     nativeBuildInputs = [ dphone-apps-build ];
-    passthru = { inherit modules testFixture; };
+    passthru = {
+      inherit
+        modules
+        testFixture
+        unitTests
+        clippy
+        ;
+    };
   }
   ''
     dphone-apps-build stage \

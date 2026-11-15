@@ -34,6 +34,8 @@ Installed packages hold a component (`.wasm`), never compiled code, so installin
 
 `cargo test -p dphone-apps` builds the apps and a misbehaving test guest, stages them for the 64-bit interpreter, and runs them under the real manager with a fake screen and a scripted PBX.  Set `DPHONE_APPS_STAGED` to a directory staged with `--target pulley64` (apps and `tests/guests`) to skip the build step.
 
+The apps' own tests (the unit tests of each app crate, and the tests of a game's library, which lies in the app's directory, e.g., `apps/lightup/game`) are in the `apps/` workspace, which `cargo test` in the firmware workspace does not reach.  Run them with `cargo host-test` in `apps/`: an alias for `cargo test --target host-tuple`, because that workspace otherwise builds for WebAssembly.  The Nix check `tests` runs both.
+
 ## Spike S1 (measured 2026-11-13)
 
 Wasmtime 50 with only the `runtime`, `component-model`, and `std` features builds for `arm-unknown-linux-musleabi` with no C: its build script compiles `helpers.c` only on hosts that have a native Cranelift back end.
