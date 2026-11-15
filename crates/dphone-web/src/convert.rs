@@ -400,11 +400,15 @@ pub fn health(h: &st::Health) -> Vec<pb::SubsystemHealth> {
 }
 
 pub fn apps(a: &st::Apps) -> pb::AppsSnapshot {
+    // One list by name, so that an app keeps its place when it is switched
+    // on or off.
+    let mut all: Vec<(&st::AppInfo, bool)> =
+        a.installed.iter().map(|i| (i, false)).chain(a.disabled.iter().map(|i| (i, true))).collect();
+    all.sort_by(|x, y| x.0.name.cmp(&y.0.name));
     pb::AppsSnapshot {
-        apps: a
-            .installed
-            .iter()
-            .map(|i| pb::App {
+        apps: all
+            .into_iter()
+            .map(|(i, disabled)| pb::App {
                 name: i.name.clone(),
                 id: i.id.clone(),
                 display_name: if i.display_name.is_empty() { i.name.clone() } else { i.display_name.clone() },
@@ -415,6 +419,7 @@ pub fn apps(a: &st::Apps) -> pb::AppsSnapshot {
                 builtin: i.builtin,
                 running: i.running,
                 foreground: a.foreground.as_deref() == Some(i.name.as_str()),
+                disabled,
             })
             .collect(),
         foreground: a.foreground.clone().unwrap_or_default(),

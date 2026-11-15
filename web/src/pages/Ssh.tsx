@@ -8,7 +8,7 @@ import { ErrorNote } from "./common";
 
 /// What to say beside one of Open DPhone's own settings about where its
 /// value comes from; nothing when it was set here or is the default.
-export function settingOrigin(s: BoolSetting | undefined): string {
+export function settingOrigin(s: Pick<BoolSetting, "locked" | "source"> | undefined): string {
   if (s?.locked) return "Set by the provisioning server.";
   if (s?.source === SettingSource.PROVISIONED) return "Provisioned.";
   return "";

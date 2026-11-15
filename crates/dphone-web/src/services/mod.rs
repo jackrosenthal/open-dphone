@@ -143,6 +143,8 @@ service!(AppsService {
     unary close_app(CloseAppRequest) -> CloseAppResponse = system::close_app;
     unary install_app(InstallAppRequest) -> InstallAppResponse = system::install_app;
     unary remove_app(RemoveAppRequest) -> RemoveAppResponse = system::remove_app;
+    unary get_disabled_apps(GetDisabledAppsRequest) -> GetDisabledAppsResponse = system::get_disabled_apps;
+    unary set_app_enabled(SetAppEnabledRequest) -> SetAppEnabledResponse = system::set_app_enabled;
 });
 
 service!(FirmwareService {

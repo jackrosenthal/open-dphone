@@ -101,6 +101,10 @@ pub trait ConfigSource: Send + Sync {
     fn clock_24h(&self) -> bool {
         false
     }
+    /// Seconds since the Unix epoch, for `timers.wall-time`.
+    fn wall_time(&self) -> u64 {
+        dphone_state::clock::unix_secs()
+    }
 }
 
 /// Phone settings apps may read through `config.setting`.

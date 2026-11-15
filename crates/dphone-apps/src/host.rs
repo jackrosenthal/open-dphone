@@ -467,6 +467,9 @@ impl api::ui::Host for AppCtx {
     fn set_wrap(&mut self, w: u32, wrap: bool) {
         self.on_widget(w, |win, id| win.set_wrap(id, wrap));
     }
+    fn set_highlight(&mut self, w: u32, on: bool) {
+        self.on_widget(w, |win, id| win.set_highlight(id, on));
+    }
     fn set_items(&mut self, w: u32, items: Vec<ListItem>) {
         for item in items.iter().filter(|i| !i.icon.is_empty()) {
             self.load_image(w, &item.icon);
@@ -540,7 +543,7 @@ impl api::timers::Host for AppCtx {
         dphone_state::clock::mono_ms()
     }
     fn wall_time(&mut self) -> u64 {
-        dphone_state::clock::unix_secs()
+        self.services.config.wall_time()
     }
 }
 
@@ -995,6 +998,9 @@ impl api::l10n::Host for AppCtx {
         let c = &self.services.config;
         format_time(unix, c.utc_offset_secs(), c.clock_24h(), style)
     }
+    fn utc_offset(&mut self) -> i32 {
+        self.services.config.utc_offset_secs()
+    }
 }
 
 impl api::hotdesk::Host for AppCtx {
@@ -1018,6 +1024,50 @@ impl api::hotdesk::Host for AppCtx {
             .get::<dphone_state::Provisioning>()
             .assigned_user
             .clone()
+    }
+}
+
+impl api::diagnostics::Host for AppCtx {
+    fn show_test(&mut self, test: api::diagnostics::HardwareTest) {
+        use api::diagnostics::HardwareTest;
+        let name = match test {
+            HardwareTest::Display => "display_test",
+            HardwareTest::Keys => "key_test",
+            HardwareTest::Lamps => "lamp_test",
+        };
+        self.store.post(Command::ShowScreen { name: name.into() });
+    }
+    fn play_test_tone(&mut self) {
+        self.store.post(Command::PlayTone {
+            tone: dphone_state::Tone::Dial,
+            duration_ms: 2000,
+        });
+    }
+    fn health(&mut self) -> Vec<(String, String)> {
+        use dphone_state::HealthStatus;
+        let health = self.store.get::<dphone_state::Health>();
+        dphone_state::Subsystem::ALL
+            .iter()
+            .map(|s| {
+                let status = match health.status(*s) {
+                    HealthStatus::Stopped => "stopped".to_string(),
+                    HealthStatus::Starting => "starting".to_string(),
+                    HealthStatus::Ok => "ok".to_string(),
+                    HealthStatus::Degraded(e) => format!("degraded: {e}"),
+                    HealthStatus::Failed(e) => format!("failed: {e}"),
+                };
+                (s.label().to_string(), status)
+            })
+            .collect()
+    }
+    fn log_tail(&mut self, max: u32) -> Vec<String> {
+        self.store
+            .log()
+            .tail(max.min(100) as usize)
+            .into_iter()
+            .rev()
+            .map(|e| format!("{} {}", e.target, e.message))
+            .collect()
     }
 }
 
@@ -1046,6 +1096,7 @@ pub(crate) fn link(
             Capability::Audio => api::audio::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::L10n => api::l10n::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Hotdesk => api::hotdesk::add_to_linker::<_, H>(linker, |c| c)?,
+            Capability::Diagnostics => api::diagnostics::add_to_linker::<_, H>(linker, |c| c)?,
         }
     }
     Ok(())

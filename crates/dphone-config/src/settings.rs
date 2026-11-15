@@ -34,7 +34,7 @@ pub const SETTINGS_FILE_BAD: &str = "dphone_settings.txtpb.bad";
 /// Field names of [`DphoneSettings`]; anything else in the file is carried
 /// through as text.  A test checks this list against the generated code.
 const KNOWN_FIELDS: &[&str] =
-    &["ssh_enabled", "ignore_provisioned_firmware", "serial_console", "metrics_enabled", "idle_softkeys"];
+    &["ssh_enabled", "ignore_provisioned_firmware", "serial_console", "metrics_enabled", "idle_softkeys", "disabled_apps"];
 
 const HEADER: &str = "# Open DPhone settings (dphone.settings.v1.DphoneSettings, protobuf text format).\n\
                       # A field that is absent takes its default.\n";
@@ -62,7 +62,7 @@ pub struct Resolved<T> {
 /// Combine the sources the way stock layers a local UI setting over a
 /// provisioned one: a frozen provisioned value wins, then the local value,
 /// then an ordinary provisioned value, then the default.
-pub(crate) fn resolve<T: Copy>(local: Option<T>, provisioned: Option<T>, frozen: bool, default: T) -> Resolved<T> {
+pub(crate) fn resolve<T>(local: Option<T>, provisioned: Option<T>, frozen: bool, default: T) -> Resolved<T> {
     match (provisioned, local) {
         (Some(p), _) if frozen => Resolved { value: p, source: SettingSource::Provisioned, locked: true },
         (_, Some(l)) => Resolved { value: l, source: SettingSource::Local, locked: false },
@@ -77,6 +77,19 @@ pub const PROVISIONED_IGNORE_FIRMWARE: &str = "dphone_ignore_provisioned_firmwar
 pub const PROVISIONED_SERIAL_CONSOLE: &str = "dphone_serial_console";
 pub const PROVISIONED_METRICS_ENABLED: &str = "dphone_metrics_enabled";
 pub const PROVISIONED_IDLE_SOFTKEYS: &str = "dphone_idle_softkeys";
+pub const PROVISIONED_DISABLED_APPS: &str = "dphone_disabled_apps";
+
+/// Parse a list of app names (`calendar,parking`).  Blank items are
+/// skipped, and a name is kept once.
+pub fn parse_app_list(list: &str) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for name in list.split(',').map(str::trim).filter(|n| !n.is_empty()) {
+        if !names.iter().any(|n| n == name) {
+            names.push(name.to_owned());
+        }
+    }
+    names
+}
 
 /// The names an idle softkey list may hold, besides `app:<name>`.
 pub const IDLE_SOFTKEY_NAMES: &[&str] =
@@ -251,6 +264,7 @@ mod tests {
             serial_console: Some(true),
             metrics_enabled: Some(true),
             idle_softkeys: Some("menu".into()),
+            disabled_apps: Some("calendar".into()),
         };
         let text = encode_to_string_pretty(&all);
         let names: Vec<&str> = text.lines().map(|l| l.split(':').next().unwrap()).collect();
@@ -310,6 +324,12 @@ mod tests {
         assert_eq!(key("show_application", None), None);
         assert_eq!(key("none", None), None);
         assert_eq!(key("end_call", None), None);
+    }
+
+    #[test]
+    fn app_lists() {
+        assert_eq!(parse_app_list(" calendar,,parking , calendar"), ["calendar", "parking"]);
+        assert!(parse_app_list(" , ").is_empty());
     }
 
     #[test]

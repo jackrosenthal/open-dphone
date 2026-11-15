@@ -452,8 +452,16 @@ fn all_screens(model: Model) {
     r.tap(Key::Digit(5));
     r.tap(Key::Digit(4));
     r.shot("29-confirm");
-    r.show("diagnostics");
-    r.shot("30-diagnostics");
+    r.show("key_test");
+    r.tap(Key::Digit(5));
+    r.tap(Key::Hold);
+    r.shot("30-key-test");
+    assert_eq!(r.store.get::<dphone_state::Ui>().screen, "key_test");
+    r.tap(Key::Cancel);
+    r.tap(Key::Cancel);
+    r.show("lamp_test");
+    r.shot("30-lamp-test");
+    r.tap(Key::Select);
     r.show("idle");
 
     // Notices and update.

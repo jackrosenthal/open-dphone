@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package dphone.v1;
 
+import "dphone/v1/config.proto";
+
 // Phone apps (WebAssembly packages).  A package is uploaded with a plain
 // authenticated HTTP POST to /upload/app, which answers with JSON carrying
 // the upload_id used by InstallApp.
@@ -12,6 +14,9 @@ service AppsService {
   rpc CloseApp(CloseAppRequest) returns (CloseAppResponse);
   rpc InstallApp(InstallAppRequest) returns (InstallAppResponse);
   rpc RemoveApp(RemoveAppRequest) returns (RemoveAppResponse);
+  rpc GetDisabledApps(GetDisabledAppsRequest) returns (GetDisabledAppsResponse);
+  // Switches a built-in app on or off.
+  rpc SetAppEnabled(SetAppEnabledRequest) returns (SetAppEnabledResponse);
 }
 
 message App {
@@ -25,6 +30,18 @@ message App {
   bool builtin = 8;
   bool running = 9;
   bool foreground = 10;
+  // A built-in app that is switched off: the phone does not list it and
+  // cannot open it.
+  bool disabled = 11;
+}
+
+// The built-in apps that are switched off (one of Open DPhone's own
+// settings).
+message DisabledApps {
+  repeated string names = 1;
+  SettingSource source = 2;
+  // The provisioning server fixed the list; it cannot be changed here.
+  bool locked = 3;
 }
 
 message AppsSnapshot {
@@ -68,3 +85,19 @@ message RemoveAppRequest {
 }
 
 message RemoveAppResponse {}
+
+message GetDisabledAppsRequest {}
+
+message GetDisabledAppsResponse {
+  DisabledApps disabled_apps = 1;
+}
+
+message SetAppEnabledRequest {
+  // A built-in app.
+  string name = 1;
+  bool enabled = 2;
+}
+
+message SetAppEnabledResponse {
+  DisabledApps disabled_apps = 1;
+}

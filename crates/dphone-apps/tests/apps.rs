@@ -1,4 +1,4 @@
-//! The six built-in apps under the real runtime, with a fake screen and a
+//! The built-in apps under the real runtime, with a fake screen and a
 //! scripted PBX.
 
 mod common;
@@ -509,4 +509,230 @@ fn apps_fit_every_skin() {
             r.mgr.close(app);
         }
     }
+}
+
+/// 2026-11-14 01:00:00 UTC, which is the evening of November 13 seven
+/// hours west.
+const NOV_14_0100_UTC: u64 = 1_794_618_000;
+
+fn calendar_rig(wall_time: u64) -> (Rig, std::sync::Arc<std::sync::atomic::AtomicU64>) {
+    let clock = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(wall_time));
+    let config = FakeConfig {
+        utc_offset: -7 * 3600,
+        wall_time: Some(clock.clone()),
+        ..Default::default()
+    };
+    (Rig::new(config), clock)
+}
+
+/// The calendar's title, and its 42 day cells (after the title and the
+/// seven weekday names).
+fn calendar_month(r: &Rig) -> (String, Vec<String>) {
+    let texts = r.ui.texts("calendar");
+    assert_eq!(texts.len(), 50, "{texts:?}");
+    assert_eq!(texts[1..8], ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+    (texts[0].clone(), texts[8..].to_vec())
+}
+
+/// The day cells of a month that starts on weekday `first` (0 is Sunday).
+fn month_cells(first: usize, days: u32) -> Vec<String> {
+    let mut cells = vec![String::new(); 42];
+    for d in 1..=days {
+        cells[first + d as usize - 1] = d.to_string();
+    }
+    cells
+}
+
+#[test]
+fn calendar_shows_the_month_and_marks_today() {
+    let (mut r, clock) = calendar_rig(NOV_14_0100_UTC);
+    r.launch("calendar");
+    assert_eq!(r.ui.softkeys("calendar"), ["Prev", "Today", "Next", "Exit"]);
+    // Local time decides the date: it is still the 13th.
+    assert_eq!(
+        calendar_month(&r),
+        ("November 2026".to_string(), month_cells(0, 30))
+    );
+    assert_eq!(r.ui.highlighted("calendar"), ["13"]);
+
+    // Another month has no mark.
+    r.key("calendar", Key::Right);
+    assert_eq!(
+        calendar_month(&r),
+        ("December 2026".to_string(), month_cells(2, 31))
+    );
+    assert!(r.ui.highlighted("calendar").is_empty());
+    r.key("calendar", Key::Down);
+    assert_eq!(calendar_month(&r).0, "January 2027");
+    r.softkey("calendar", "Today");
+    assert_eq!(calendar_month(&r).0, "November 2026");
+    assert_eq!(r.ui.highlighted("calendar"), ["13"]);
+
+    // February, in a common year and in a leap year.
+    for _ in 0..9 {
+        r.key("calendar", Key::Left);
+    }
+    assert_eq!(
+        calendar_month(&r),
+        ("February 2026".to_string(), month_cells(0, 28))
+    );
+    r.key("calendar", Key::Up);
+    assert_eq!(calendar_month(&r).0, "January 2026");
+    r.softkey("calendar", "Prev");
+    assert_eq!(calendar_month(&r).0, "December 2025");
+    for _ in 0..26 {
+        r.softkey("calendar", "Next");
+    }
+    assert_eq!(
+        calendar_month(&r),
+        ("February 2028".to_string(), month_cells(2, 29))
+    );
+
+    // Midnight passes while the current month is shown: the mark moves.
+    r.softkey("calendar", "Today");
+    clock.store(
+        NOV_14_0100_UTC + 6 * 3600,
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    let wait = r.mgr.pump().expect("the date check is pending");
+    std::thread::sleep(wait + std::time::Duration::from_millis(20));
+    r.settle();
+    assert_eq!(r.ui.highlighted("calendar"), ["14"]);
+
+    r.key("calendar", Key::Cancel);
+    assert_eq!(r.ui.top(), None);
+}
+
+#[test]
+fn calendar_without_a_set_clock() {
+    // The phones have no clock chip: a fresh one starts near 1970.
+    let (mut r, clock) = calendar_rig(600);
+    r.launch("calendar");
+    assert!(r.ui.shows("calendar", "The date is not set."));
+    assert_eq!(r.ui.softkeys("calendar"), ["Exit"]);
+    r.key("calendar", Key::Right);
+    assert!(r.ui.shows("calendar", "The date is not set."));
+
+    // The clock is set while the app is on screen.
+    clock.store(NOV_14_0100_UTC, std::sync::atomic::Ordering::Relaxed);
+    let wait = r.mgr.pump().expect("the date check is pending");
+    std::thread::sleep(wait + std::time::Duration::from_millis(20));
+    r.settle();
+    assert_eq!(calendar_month(&r).0, "November 2026");
+    assert_eq!(r.ui.highlighted("calendar"), ["13"]);
+    r.softkey("calendar", "Exit");
+    assert_eq!(r.ui.top(), None);
+}
+
+#[test]
+fn diagnostics_menu_tests_and_status_pages() {
+    use dphone_state::{Domain, HealthStatus, Level, Reply, Subsystem, Tone};
+    let mut r = rig();
+    for domain in [Domain::Ui, Domain::Audio] {
+        common::answer_commands(&r.store, domain, r.commands.clone(), |_| Ok(Reply::Done));
+    }
+    // Commands are answered on another thread: wait for the `n`th.
+    let shown = |r: &Rig, n: usize| -> Vec<String> {
+        let names = |r: &Rig| -> Vec<String> { show_screen_names(r) };
+        for _ in 0..200 {
+            if names(r).len() >= n {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        names(r)
+    };
+    fn show_screen_names(r: &Rig) -> Vec<String> {
+        r.commands()
+            .into_iter()
+            .filter_map(|c| match c {
+                Command::ShowScreen { name } => Some(name),
+                _ => None,
+            })
+            .collect()
+    }
+    r.launch("diagnostics");
+    let items: Vec<String> = r.ui.items("diagnostics").into_iter().map(|i| i.0).collect();
+    assert_eq!(
+        items,
+        ["Display test", "Key test", "Lamp test", "Tone test", "Subsystems", "Log"]
+    );
+    assert_eq!(r.ui.softkeys("diagnostics"), ["Select", "", "", "Back"]);
+
+    // A hardware test is the phone's own screen over the app, which stays
+    // and is at the same row afterwards.
+    r.key("diagnostics", Key::Down);
+    r.key("diagnostics", Key::Select);
+    assert_eq!(shown(&r, 1), ["key_test"]);
+    r.ui.cover("diagnostics", true);
+    r.settle();
+    assert!(r.mgr.is_running("diagnostics"));
+    r.ui.cover("diagnostics", false);
+    r.settle();
+    assert_eq!(r.ui.softkeys("diagnostics"), ["Select", "", "", "Back"]);
+    r.softkey("diagnostics", "Select");
+    assert_eq!(shown(&r, 2), ["key_test", "key_test"]);
+    r.ui.cover("diagnostics", true);
+    r.ui.cover("diagnostics", false);
+    r.settle();
+    // Right and the row's number select, as in the phone's menus.
+    r.key("diagnostics", Key::Up);
+    r.key("diagnostics", Key::Right);
+    r.key("diagnostics", Key::Digit(3));
+    assert_eq!(shown(&r, 4)[2..], ["display_test", "lamp_test"]);
+    r.ui.cover("diagnostics", true);
+    r.ui.cover("diagnostics", false);
+    r.settle();
+
+    r.key("diagnostics", Key::Digit(4));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert!(r.commands().iter().any(|c| matches!(
+        c,
+        Command::PlayTone {
+            tone: Tone::Dial,
+            duration_ms: 2000
+        }
+    )));
+
+    // The subsystems page follows the phone's state while it shows.
+    r.store.set_health(Subsystem::Net, HealthStatus::Ok);
+    r.store
+        .set_health(Subsystem::Media, HealthStatus::Degraded("no handset".into()));
+    r.key("diagnostics", Key::Digit(5));
+    let texts = r.ui.texts("diagnostics");
+    assert_eq!(texts[0], "Subsystems");
+    assert_eq!(texts.len(), 1 + 2 * Subsystem::ALL.len());
+    let pair = |texts: &[String], label: &str| -> String {
+        let at = texts.iter().position(|t| t == label).expect(label);
+        texts[at + 1].clone()
+    };
+    assert_eq!(pair(&texts, Subsystem::Net.label()), "ok");
+    assert_eq!(pair(&texts, Subsystem::Media.label()), "degraded: no handset");
+    assert_eq!(r.ui.softkeys("diagnostics"), ["", "", "", "Back"]);
+    r.store
+        .set_health(Subsystem::Net, HealthStatus::Failed("cable".into()));
+    let wait = r.mgr.pump().expect("the refresh is pending");
+    std::thread::sleep(wait + std::time::Duration::from_millis(20));
+    r.settle();
+    assert_eq!(
+        pair(&r.ui.texts("diagnostics"), Subsystem::Net.label()),
+        "failed: cable"
+    );
+    r.key("diagnostics", Key::Left);
+    assert_eq!(r.ui.softkeys("diagnostics"), ["Select", "", "", "Back"]);
+
+    // The log, newest first.
+    r.store.log().push(Level::Info, "test::first", "one".into());
+    r.store.log().push(Level::Warn, "test::second", "two".into());
+    r.key("diagnostics", Key::Digit(6));
+    let texts = r.ui.texts("diagnostics");
+    assert_eq!(texts[0], "Log");
+    assert_eq!(texts[1..3], ["test::second two", "test::first one"]);
+    r.softkey("diagnostics", "Back");
+    assert_eq!(r.ui.softkeys("diagnostics"), ["Select", "", "", "Back"]);
+
+    // Back from the menu leaves the app, which then stops.
+    r.softkey("diagnostics", "Back");
+    assert_eq!(r.ui.top(), None);
+    assert!(!r.mgr.is_running("diagnostics"));
 }

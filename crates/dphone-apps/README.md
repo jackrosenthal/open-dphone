@@ -2,8 +2,8 @@
 
 The app runtime of Open DPhone: WebAssembly components run by Wasmtime's Pulley interpreter, the host side of the app interface, app packages, and the `AppManager` the main role runs.
 
-- `wit/app.wit` is the interface, defined once.  `crates/app-sdk` is the guest crate generated from it; the six built-in apps are in `apps/`.
-- An app gets only the host interfaces its manifest lists under `capabilities`.  `hotdesk` is reserved for built-in apps.
+- `wit/app.wit` is the interface, defined once.  `crates/app-sdk` is the guest crate generated from it; the built-in apps are in `apps/`.
+- An app gets only the host interfaces its manifest lists under `capabilities`.  `hotdesk` and `diagnostics` are reserved for built-in apps.
 - Each app has a memory cap (4 MiB by default, 16 MiB at most via `memoryKiB`) and a time budget per event (2 s); going over either stops the app.
 
 ## Building apps

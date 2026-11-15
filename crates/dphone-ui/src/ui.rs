@@ -923,6 +923,15 @@ impl Ui {
                     Err(e) => Err(CommandError::Failed(e.to_string())),
                 }
             }
+            // A hardware test goes over whatever shows (the Diagnostics
+            // app), which is there again when the test is left.
+            Command::ShowScreen { name } if crate::screens::diag::test_screen(&name).is_some() => {
+                self.activity();
+                if let Some(test) = crate::screens::diag::test_screen(&name) {
+                    self.with_cx(|nav, cx| nav.push(cx, test));
+                }
+                Ok(Reply::Done)
+            }
             Command::ShowScreen { name } => {
                 let screen: Option<Option<Box<dyn Screen>>> = match name.as_str() {
                     "idle" | "home" => Some(None),
@@ -935,7 +944,6 @@ impl Ui {
                     "settings" => Some(Some(menus::settings())),
                     "network" => Some(Some(menus::network_menu())),
                     "status" | "about" => Some(Some(menus::about())),
-                    "diagnostics" => Some(Some(crate::screens::diag::menu())),
                     "dialer" => Some(Some(Box::new(Dialer::new(Purpose::Call, None)))),
                     _ => None,
                 };

@@ -931,3 +931,36 @@ fn an_app_can_keep_the_backlight_on() {
     ui.pump();
     assert_eq!(sim.brightness(Screen::Main), Some(32), "and woken");
 }
+
+/// A hardware test goes over the app that asked for it (the Diagnostics
+/// app) and gives the screen back to it; the menu has no diagnostics entry.
+#[test]
+fn hardware_tests_go_over_an_app() {
+    let mut r = Rig::new(Model::D60);
+    let (view, events) = AppView::new("diagnostics", Model::D60);
+    r.ui.handle().open_app(view.clone());
+    r.ui.pump();
+    assert_eq!(r.screen(), "app:diagnostics");
+    assert_eq!(events.try_recv(), Some(AppEvent::Foreground));
+    for (name, leave) in [("key_test", vec![Key::Cancel, Key::Cancel]), ("lamp_test", vec![Key::Select]), ("display_test", vec![Key::Cancel])] {
+        let p = r.store.send(Command::ShowScreen { name: name.into() });
+        r.ui.pump();
+        assert_eq!(p.wait(), Ok(Reply::Done));
+        assert_eq!(r.screen(), name);
+        assert_eq!(events.try_recv(), Some(AppEvent::Background));
+        // The key test takes every key, Line 1 included.
+        if name == "key_test" {
+            r.tap(Key::Line(1));
+            assert_eq!(r.screen(), name);
+        }
+        for key in leave {
+            r.tap(key);
+        }
+        assert_eq!(r.screen(), "app:diagnostics", "{name}");
+        assert_eq!(events.try_recv(), Some(AppEvent::Foreground));
+    }
+    // The old menu is gone.
+    let p = r.store.send(Command::ShowScreen { name: "diagnostics".into() });
+    r.ui.pump();
+    assert!(p.wait().is_err());
+}

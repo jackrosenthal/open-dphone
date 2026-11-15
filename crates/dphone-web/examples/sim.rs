@@ -286,6 +286,7 @@ fn fabricate(store: &Store, model: Model) {
             app("parking", "Parking", "Parked calls"),
             app("queues", "Queues", "Call queue membership"),
             app("hotdesking", "Hot Desking", "Log in to this phone"),
+            app("calendar", "Calendar", "Month calendar"),
         ];
     });
     store.update::<st::Ui, _>(|u| {
@@ -494,7 +495,15 @@ fn spawn_handlers(store: &Store, hal: Hal, config: Arc<Mutex<ConfigStore>>) {
 
     handle(store, Domain::Config, move |store, c| match c {
         Command::ReloadConfig => {
-            let generation = config.lock().unwrap().config().generation();
+            let merged = config.lock().unwrap().config();
+            let generation = merged.generation();
+            // Built-in apps follow `disabled_apps`, as the app runtime does.
+            let off = merged.disabled_apps().value;
+            store.update::<st::Apps, _>(|a| {
+                let mut all: Vec<st::AppInfo> = a.installed.drain(..).chain(a.disabled.drain(..)).collect();
+                all.sort_by(|x, y| x.name.cmp(&y.name));
+                (a.disabled, a.installed) = all.into_iter().partition(|i| i.builtin && off.contains(&i.name));
+            });
             store.update::<st::ConfigInfo, _>(|i| {
                 i.generation = generation;
                 i.last_merge_unix = st::clock::unix_secs();

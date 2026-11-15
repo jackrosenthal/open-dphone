@@ -514,6 +514,18 @@ impl Config {
         }
     }
 
+    /// The built-in apps that are switched off (default: none): such an
+    /// app is not in the phone's app list and cannot be opened.  The
+    /// sources combine as for the other Open DPhone settings; a local list
+    /// may be empty, which switches every app on.
+    pub fn disabled_apps(&self) -> Resolved<Vec<String>> {
+        let id = settings::PROVISIONED_DISABLED_APPS;
+        let provisioned = self.setting(id).filter(|v| !v.trim().is_empty()).map(settings::parse_app_list);
+        let frozen = provisioned.is_some() && self.setting_frozen(id);
+        let local = self.settings.disabled_apps.as_deref().map(settings::parse_app_list);
+        settings::resolve(local, provisioned, frozen, Vec::new())
+    }
+
     /// The static IPv4 arrangement in effect, or `None` for DHCP.
     ///
     /// The sources combine as for the other Open DPhone settings: a frozen

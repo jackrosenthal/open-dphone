@@ -4,13 +4,15 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { SettingSource } from "./config_pb";
+import { file_dphone_v1_config } from "./config_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file dphone/v1/apps.proto.
  */
 export const file_dphone_v1_apps: GenFile = /*@__PURE__*/
-  fileDesc("ChRkcGhvbmUvdjEvYXBwcy5wcm90bxIJZHBob25lLnYxIrABCgNBcHASDAoEbmFtZRgBIAEoCRIKCgJpZBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSEwoLZGVzY3JpcHRpb24YBCABKAkSDAoEa2luZBgFIAEoCRIQCghoYXNfaWRsZRgGIAEoCBIOCgZoaWRkZW4YByABKAgSDwoHYnVpbHRpbhgIIAEoCBIPCgdydW5uaW5nGAkgASgIEhIKCmZvcmVncm91bmQYCiABKAgiUgoMQXBwc1NuYXBzaG90EhwKBGFwcHMYASADKAsyDi5kcGhvbmUudjEuQXBwEhIKCmZvcmVncm91bmQYAiABKAkSEAoIaWRsZV9hcHAYAyABKAkiEQoPTGlzdEFwcHNSZXF1ZXN0Ij0KEExpc3RBcHBzUmVzcG9uc2USKQoIc25hcHNob3QYASABKAsyFy5kcGhvbmUudjEuQXBwc1NuYXBzaG90IhIKEFdhdGNoQXBwc1JlcXVlc3QiPgoRV2F0Y2hBcHBzUmVzcG9uc2USKQoIc25hcHNob3QYASABKAsyFy5kcGhvbmUudjEuQXBwc1NuYXBzaG90IiAKEExhdW5jaEFwcFJlcXVlc3QSDAoEbmFtZRgBIAEoCSITChFMYXVuY2hBcHBSZXNwb25zZSIfCg9DbG9zZUFwcFJlcXVlc3QSDAoEbmFtZRgBIAEoCSISChBDbG9zZUFwcFJlc3BvbnNlIiYKEUluc3RhbGxBcHBSZXF1ZXN0EhEKCXVwbG9hZF9pZBgBIAEoCSIUChJJbnN0YWxsQXBwUmVzcG9uc2UiIAoQUmVtb3ZlQXBwUmVxdWVzdBIMCgRuYW1lGAEgASgJIhMKEVJlbW92ZUFwcFJlc3BvbnNlMrwDCgtBcHBzU2VydmljZRJDCghMaXN0QXBwcxIaLmRwaG9uZS52MS5MaXN0QXBwc1JlcXVlc3QaGy5kcGhvbmUudjEuTGlzdEFwcHNSZXNwb25zZRJICglXYXRjaEFwcHMSGy5kcGhvbmUudjEuV2F0Y2hBcHBzUmVxdWVzdBocLmRwaG9uZS52MS5XYXRjaEFwcHNSZXNwb25zZTABEkYKCUxhdW5jaEFwcBIbLmRwaG9uZS52MS5MYXVuY2hBcHBSZXF1ZXN0GhwuZHBob25lLnYxLkxhdW5jaEFwcFJlc3BvbnNlEkMKCENsb3NlQXBwEhouZHBob25lLnYxLkNsb3NlQXBwUmVxdWVzdBobLmRwaG9uZS52MS5DbG9zZUFwcFJlc3BvbnNlEkkKCkluc3RhbGxBcHASHC5kcGhvbmUudjEuSW5zdGFsbEFwcFJlcXVlc3QaHS5kcGhvbmUudjEuSW5zdGFsbEFwcFJlc3BvbnNlEkYKCVJlbW92ZUFwcBIbLmRwaG9uZS52MS5SZW1vdmVBcHBSZXF1ZXN0GhwuZHBob25lLnYxLlJlbW92ZUFwcFJlc3BvbnNlYgZwcm90bzM");
+  fileDesc("ChRkcGhvbmUvdjEvYXBwcy5wcm90bxIJZHBob25lLnYxIsIBCgNBcHASDAoEbmFtZRgBIAEoCRIKCgJpZBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSEwoLZGVzY3JpcHRpb24YBCABKAkSDAoEa2luZBgFIAEoCRIQCghoYXNfaWRsZRgGIAEoCBIOCgZoaWRkZW4YByABKAgSDwoHYnVpbHRpbhgIIAEoCBIPCgdydW5uaW5nGAkgASgIEhIKCmZvcmVncm91bmQYCiABKAgSEAoIZGlzYWJsZWQYCyABKAgiVwoMRGlzYWJsZWRBcHBzEg0KBW5hbWVzGAEgAygJEigKBnNvdXJjZRgCIAEoDjIYLmRwaG9uZS52MS5TZXR0aW5nU291cmNlEg4KBmxvY2tlZBgDIAEoCCJSCgxBcHBzU25hcHNob3QSHAoEYXBwcxgBIAMoCzIOLmRwaG9uZS52MS5BcHASEgoKZm9yZWdyb3VuZBgCIAEoCRIQCghpZGxlX2FwcBgDIAEoCSIRCg9MaXN0QXBwc1JlcXVlc3QiPQoQTGlzdEFwcHNSZXNwb25zZRIpCghzbmFwc2hvdBgBIAEoCzIXLmRwaG9uZS52MS5BcHBzU25hcHNob3QiEgoQV2F0Y2hBcHBzUmVxdWVzdCI+ChFXYXRjaEFwcHNSZXNwb25zZRIpCghzbmFwc2hvdBgBIAEoCzIXLmRwaG9uZS52MS5BcHBzU25hcHNob3QiIAoQTGF1bmNoQXBwUmVxdWVzdBIMCgRuYW1lGAEgASgJIhMKEUxhdW5jaEFwcFJlc3BvbnNlIh8KD0Nsb3NlQXBwUmVxdWVzdBIMCgRuYW1lGAEgASgJIhIKEENsb3NlQXBwUmVzcG9uc2UiJgoRSW5zdGFsbEFwcFJlcXVlc3QSEQoJdXBsb2FkX2lkGAEgASgJIhQKEkluc3RhbGxBcHBSZXNwb25zZSIgChBSZW1vdmVBcHBSZXF1ZXN0EgwKBG5hbWUYASABKAkiEwoRUmVtb3ZlQXBwUmVzcG9uc2UiGAoWR2V0RGlzYWJsZWRBcHBzUmVxdWVzdCJJChdHZXREaXNhYmxlZEFwcHNSZXNwb25zZRIuCg1kaXNhYmxlZF9hcHBzGAEgASgLMhcuZHBob25lLnYxLkRpc2FibGVkQXBwcyI1ChRTZXRBcHBFbmFibGVkUmVxdWVzdBIMCgRuYW1lGAEgASgJEg8KB2VuYWJsZWQYAiABKAgiRwoVU2V0QXBwRW5hYmxlZFJlc3BvbnNlEi4KDWRpc2FibGVkX2FwcHMYASABKAsyFy5kcGhvbmUudjEuRGlzYWJsZWRBcHBzMuoECgtBcHBzU2VydmljZRJDCghMaXN0QXBwcxIaLmRwaG9uZS52MS5MaXN0QXBwc1JlcXVlc3QaGy5kcGhvbmUudjEuTGlzdEFwcHNSZXNwb25zZRJICglXYXRjaEFwcHMSGy5kcGhvbmUudjEuV2F0Y2hBcHBzUmVxdWVzdBocLmRwaG9uZS52MS5XYXRjaEFwcHNSZXNwb25zZTABEkYKCUxhdW5jaEFwcBIbLmRwaG9uZS52MS5MYXVuY2hBcHBSZXF1ZXN0GhwuZHBob25lLnYxLkxhdW5jaEFwcFJlc3BvbnNlEkMKCENsb3NlQXBwEhouZHBob25lLnYxLkNsb3NlQXBwUmVxdWVzdBobLmRwaG9uZS52MS5DbG9zZUFwcFJlc3BvbnNlEkkKCkluc3RhbGxBcHASHC5kcGhvbmUudjEuSW5zdGFsbEFwcFJlcXVlc3QaHS5kcGhvbmUudjEuSW5zdGFsbEFwcFJlc3BvbnNlEkYKCVJlbW92ZUFwcBIbLmRwaG9uZS52MS5SZW1vdmVBcHBSZXF1ZXN0GhwuZHBob25lLnYxLlJlbW92ZUFwcFJlc3BvbnNlElgKD0dldERpc2FibGVkQXBwcxIhLmRwaG9uZS52MS5HZXREaXNhYmxlZEFwcHNSZXF1ZXN0GiIuZHBob25lLnYxLkdldERpc2FibGVkQXBwc1Jlc3BvbnNlElIKDVNldEFwcEVuYWJsZWQSHy5kcGhvbmUudjEuU2V0QXBwRW5hYmxlZFJlcXVlc3QaIC5kcGhvbmUudjEuU2V0QXBwRW5hYmxlZFJlc3BvbnNlYgZwcm90bzM", [file_dphone_v1_config]);
 
 /**
  * @generated from message dphone.v1.App
@@ -65,6 +67,14 @@ export type App = Message<"dphone.v1.App"> & {
    * @generated from field: bool foreground = 10;
    */
   foreground: boolean;
+
+  /**
+   * A built-in app that is switched off: the phone does not list it and
+   * cannot open it.
+   *
+   * @generated from field: bool disabled = 11;
+   */
+  disabled: boolean;
 };
 
 /**
@@ -73,6 +83,38 @@ export type App = Message<"dphone.v1.App"> & {
  */
 export const AppSchema: GenMessage<App> = /*@__PURE__*/
   messageDesc(file_dphone_v1_apps, 0);
+
+/**
+ * The built-in apps that are switched off (one of Open DPhone's own
+ * settings).
+ *
+ * @generated from message dphone.v1.DisabledApps
+ */
+export type DisabledApps = Message<"dphone.v1.DisabledApps"> & {
+  /**
+   * @generated from field: repeated string names = 1;
+   */
+  names: string[];
+
+  /**
+   * @generated from field: dphone.v1.SettingSource source = 2;
+   */
+  source: SettingSource;
+
+  /**
+   * The provisioning server fixed the list; it cannot be changed here.
+   *
+   * @generated from field: bool locked = 3;
+   */
+  locked: boolean;
+};
+
+/**
+ * Describes the message dphone.v1.DisabledApps.
+ * Use `create(DisabledAppsSchema)` to create a new message.
+ */
+export const DisabledAppsSchema: GenMessage<DisabledApps> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_apps, 1);
 
 /**
  * @generated from message dphone.v1.AppsSnapshot
@@ -99,7 +141,7 @@ export type AppsSnapshot = Message<"dphone.v1.AppsSnapshot"> & {
  * Use `create(AppsSnapshotSchema)` to create a new message.
  */
 export const AppsSnapshotSchema: GenMessage<AppsSnapshot> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_apps, 1);
+  messageDesc(file_dphone_v1_apps, 2);
 
 /**
  * @generated from message dphone.v1.ListAppsRequest
@@ -112,7 +154,7 @@ export type ListAppsRequest = Message<"dphone.v1.ListAppsRequest"> & {
  * Use `create(ListAppsRequestSchema)` to create a new message.
  */
 export const ListAppsRequestSchema: GenMessage<ListAppsRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_apps, 2);
+  messageDesc(file_dphone_v1_apps, 3);
 
 /**
  * @generated from message dphone.v1.ListAppsResponse
@@ -129,7 +171,7 @@ export type ListAppsResponse = Message<"dphone.v1.ListAppsResponse"> & {
  * Use `create(ListAppsResponseSchema)` to create a new message.
  */
 export const ListAppsResponseSchema: GenMessage<ListAppsResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_apps, 3);
+  messageDesc(file_dphone_v1_apps, 4);
 
 /**
  * @generated from message dphone.v1.WatchAppsRequest
@@ -142,7 +184,7 @@ export type WatchAppsRequest = Message<"dphone.v1.WatchAppsRequest"> & {
  * Use `create(WatchAppsRequestSchema)` to create a new message.
  */
 export const WatchAppsRequestSchema: GenMessage<WatchAppsRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_apps, 4);
+  messageDesc(file_dphone_v1_apps, 5);
 
 /**
  * @generated from message dphone.v1.WatchAppsResponse
@@ -159,7 +201,7 @@ export type WatchAppsResponse = Message<"dphone.v1.WatchAppsResponse"> & {
  * Use `create(WatchAppsResponseSchema)` to create a new message.
  */
 export const WatchAppsResponseSchema: GenMessage<WatchAppsResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_apps, 5);
+  messageDesc(file_dphone_v1_apps, 6);
 
 /**
  * @generated from message dphone.v1.LaunchAppRequest
@@ -176,7 +218,7 @@ export type LaunchAppRequest = Message<"dphone.v1.LaunchAppRequest"> & {
  * Use `create(LaunchAppRequestSchema)` to create a new message.
  */
 export const LaunchAppRequestSchema: GenMessage<LaunchAppRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_apps, 6);
+  messageDesc(file_dphone_v1_apps, 7);
 
 /**
  * @generated from message dphone.v1.LaunchAppResponse
@@ -189,7 +231,7 @@ export type LaunchAppResponse = Message<"dphone.v1.LaunchAppResponse"> & {
  * Use `create(LaunchAppResponseSchema)` to create a new message.
  */
 export const LaunchAppResponseSchema: GenMessage<LaunchAppResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_apps, 7);
+  messageDesc(file_dphone_v1_apps, 8);
 
 /**
  * @generated from message dphone.v1.CloseAppRequest
@@ -206,7 +248,7 @@ export type CloseAppRequest = Message<"dphone.v1.CloseAppRequest"> & {
  * Use `create(CloseAppRequestSchema)` to create a new message.
  */
 export const CloseAppRequestSchema: GenMessage<CloseAppRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_apps, 8);
+  messageDesc(file_dphone_v1_apps, 9);
 
 /**
  * @generated from message dphone.v1.CloseAppResponse
@@ -219,7 +261,7 @@ export type CloseAppResponse = Message<"dphone.v1.CloseAppResponse"> & {
  * Use `create(CloseAppResponseSchema)` to create a new message.
  */
 export const CloseAppResponseSchema: GenMessage<CloseAppResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_apps, 9);
+  messageDesc(file_dphone_v1_apps, 10);
 
 /**
  * @generated from message dphone.v1.InstallAppRequest
@@ -236,7 +278,7 @@ export type InstallAppRequest = Message<"dphone.v1.InstallAppRequest"> & {
  * Use `create(InstallAppRequestSchema)` to create a new message.
  */
 export const InstallAppRequestSchema: GenMessage<InstallAppRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_apps, 10);
+  messageDesc(file_dphone_v1_apps, 11);
 
 /**
  * @generated from message dphone.v1.InstallAppResponse
@@ -249,7 +291,7 @@ export type InstallAppResponse = Message<"dphone.v1.InstallAppResponse"> & {
  * Use `create(InstallAppResponseSchema)` to create a new message.
  */
 export const InstallAppResponseSchema: GenMessage<InstallAppResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_apps, 11);
+  messageDesc(file_dphone_v1_apps, 12);
 
 /**
  * @generated from message dphone.v1.RemoveAppRequest
@@ -266,7 +308,7 @@ export type RemoveAppRequest = Message<"dphone.v1.RemoveAppRequest"> & {
  * Use `create(RemoveAppRequestSchema)` to create a new message.
  */
 export const RemoveAppRequestSchema: GenMessage<RemoveAppRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_apps, 12);
+  messageDesc(file_dphone_v1_apps, 13);
 
 /**
  * @generated from message dphone.v1.RemoveAppResponse
@@ -279,7 +321,78 @@ export type RemoveAppResponse = Message<"dphone.v1.RemoveAppResponse"> & {
  * Use `create(RemoveAppResponseSchema)` to create a new message.
  */
 export const RemoveAppResponseSchema: GenMessage<RemoveAppResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_apps, 13);
+  messageDesc(file_dphone_v1_apps, 14);
+
+/**
+ * @generated from message dphone.v1.GetDisabledAppsRequest
+ */
+export type GetDisabledAppsRequest = Message<"dphone.v1.GetDisabledAppsRequest"> & {
+};
+
+/**
+ * Describes the message dphone.v1.GetDisabledAppsRequest.
+ * Use `create(GetDisabledAppsRequestSchema)` to create a new message.
+ */
+export const GetDisabledAppsRequestSchema: GenMessage<GetDisabledAppsRequest> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_apps, 15);
+
+/**
+ * @generated from message dphone.v1.GetDisabledAppsResponse
+ */
+export type GetDisabledAppsResponse = Message<"dphone.v1.GetDisabledAppsResponse"> & {
+  /**
+   * @generated from field: dphone.v1.DisabledApps disabled_apps = 1;
+   */
+  disabledApps?: DisabledApps | undefined;
+};
+
+/**
+ * Describes the message dphone.v1.GetDisabledAppsResponse.
+ * Use `create(GetDisabledAppsResponseSchema)` to create a new message.
+ */
+export const GetDisabledAppsResponseSchema: GenMessage<GetDisabledAppsResponse> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_apps, 16);
+
+/**
+ * @generated from message dphone.v1.SetAppEnabledRequest
+ */
+export type SetAppEnabledRequest = Message<"dphone.v1.SetAppEnabledRequest"> & {
+  /**
+   * A built-in app.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: bool enabled = 2;
+   */
+  enabled: boolean;
+};
+
+/**
+ * Describes the message dphone.v1.SetAppEnabledRequest.
+ * Use `create(SetAppEnabledRequestSchema)` to create a new message.
+ */
+export const SetAppEnabledRequestSchema: GenMessage<SetAppEnabledRequest> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_apps, 17);
+
+/**
+ * @generated from message dphone.v1.SetAppEnabledResponse
+ */
+export type SetAppEnabledResponse = Message<"dphone.v1.SetAppEnabledResponse"> & {
+  /**
+   * @generated from field: dphone.v1.DisabledApps disabled_apps = 1;
+   */
+  disabledApps?: DisabledApps | undefined;
+};
+
+/**
+ * Describes the message dphone.v1.SetAppEnabledResponse.
+ * Use `create(SetAppEnabledResponseSchema)` to create a new message.
+ */
+export const SetAppEnabledResponseSchema: GenMessage<SetAppEnabledResponse> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_apps, 18);
 
 /**
  * Phone apps (WebAssembly packages).  A package is uploaded with a plain
@@ -336,6 +449,24 @@ export const AppsService: GenService<{
     methodKind: "unary";
     input: typeof RemoveAppRequestSchema;
     output: typeof RemoveAppResponseSchema;
+  },
+  /**
+   * @generated from rpc dphone.v1.AppsService.GetDisabledApps
+   */
+  getDisabledApps: {
+    methodKind: "unary";
+    input: typeof GetDisabledAppsRequestSchema;
+    output: typeof GetDisabledAppsResponseSchema;
+  },
+  /**
+   * Switches a built-in app on or off.
+   *
+   * @generated from rpc dphone.v1.AppsService.SetAppEnabled
+   */
+  setAppEnabled: {
+    methodKind: "unary";
+    input: typeof SetAppEnabledRequestSchema;
+    output: typeof SetAppEnabledResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_dphone_v1_apps, 0);

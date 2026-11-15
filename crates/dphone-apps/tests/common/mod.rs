@@ -1,4 +1,4 @@
-//! Shared fixture: the six built-in apps and the test guest, built to
+//! Shared fixture: the built-in apps and the test guest, built to
 //! WebAssembly and compiled for the host interpreter once per test run.
 //!
 //! Set `DPHONE_APPS_STAGED` to a directory staged with

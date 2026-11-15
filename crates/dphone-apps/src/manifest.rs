@@ -26,10 +26,12 @@ pub enum Capability {
     L10n,
     /// Built-in apps only.
     Hotdesk,
+    /// Built-in apps only.
+    Diagnostics,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 12] = [
+    pub const ALL: [Capability; 13] = [
         Capability::Ui,
         Capability::Timers,
         Capability::Storage,
@@ -42,6 +44,7 @@ impl Capability {
         Capability::Audio,
         Capability::L10n,
         Capability::Hotdesk,
+        Capability::Diagnostics,
     ];
 
     pub fn name(self) -> &'static str {
@@ -58,6 +61,7 @@ impl Capability {
             Capability::Audio => "audio",
             Capability::L10n => "l10n",
             Capability::Hotdesk => "hotdesk",
+            Capability::Diagnostics => "diagnostics",
         }
     }
 
@@ -67,7 +71,7 @@ impl Capability {
 
     /// Capabilities an installed (downloaded) app can never have.
     pub fn builtin_only(self) -> bool {
-        matches!(self, Capability::Hotdesk)
+        matches!(self, Capability::Hotdesk | Capability::Diagnostics)
     }
 }
 

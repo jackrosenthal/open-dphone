@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/settings/v1/settings.proto.
  */
 export const file_dphone_settings_v1_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSKUAgoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBARIbCg5zZXJpYWxfY29uc29sZRgDIAEoCEgCiAEBEhwKD21ldHJpY3NfZW5hYmxlZBgEIAEoCEgDiAEBEhoKDWlkbGVfc29mdGtleXMYBSABKAlIBIgBAUIOCgxfc3NoX2VuYWJsZWRCHgocX2lnbm9yZV9wcm92aXNpb25lZF9maXJtd2FyZUIRCg9fc2VyaWFsX2NvbnNvbGVCEgoQX21ldHJpY3NfZW5hYmxlZEIQCg5faWRsZV9zb2Z0a2V5c2IGcHJvdG8z");
+  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSLCAgoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBARIbCg5zZXJpYWxfY29uc29sZRgDIAEoCEgCiAEBEhwKD21ldHJpY3NfZW5hYmxlZBgEIAEoCEgDiAEBEhoKDWlkbGVfc29mdGtleXMYBSABKAlIBIgBARIaCg1kaXNhYmxlZF9hcHBzGAYgASgJSAWIAQFCDgoMX3NzaF9lbmFibGVkQh4KHF9pZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmVCEQoPX3NlcmlhbF9jb25zb2xlQhIKEF9tZXRyaWNzX2VuYWJsZWRCEAoOX2lkbGVfc29mdGtleXNCEAoOX2Rpc2FibGVkX2FwcHNiBnByb3RvMw");
 
 /**
  * Settings that only Open DPhone has.  Stored on the phone in protobuf text
@@ -78,6 +78,17 @@ export type DphoneSettings = Message<"dphone.settings.v1.DphoneSettings"> & {
    * @generated from field: optional string idle_softkeys = 5;
    */
   idleSoftkeys?: string | undefined;
+
+  /**
+   * The built-in apps that are switched off, as a comma-separated list of
+   * app names (e.g., "calendar,parking").  Such an app is not in the
+   * phone's app list and cannot be opened.  Default: none.  The provisioned
+   * form carries the same list:
+   * <setting id="dphone_disabled_apps" value="calendar,parking"/>.
+   *
+   * @generated from field: optional string disabled_apps = 6;
+   */
+  disabledApps?: string | undefined;
 };
 
 /**

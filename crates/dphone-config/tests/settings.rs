@@ -411,6 +411,38 @@ fn idle_softkeys_sources() {
 }
 
 #[test]
+fn disabled_apps_sources() {
+    use SettingSource::*;
+    let (_d, nv, mut s) = store();
+    let apps = |a: &[&str]| a.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+    assert_eq!(s.config().disabled_apps(), Resolved { value: apps(&[]), source: Default, locked: false });
+
+    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_disabled_apps" value="calendar, parking"/>"#)).unwrap();
+    assert_eq!(c.disabled_apps(), Resolved { value: apps(&["calendar", "parking"]), source: Provisioned, locked: false });
+    // A local list comes before a provisioned one, an empty list too.
+    let c = s.update_dphone_settings(|d| d.disabled_apps = Some("status".into())).unwrap();
+    assert_eq!(c.disabled_apps(), Resolved { value: apps(&["status"]), source: Local, locked: false });
+    assert!(nv.read_string(FILE).unwrap().unwrap().contains("disabled_apps: \"status\""));
+    let c = s.update_dphone_settings(|d| d.disabled_apps = Some(String::new())).unwrap();
+    assert_eq!(c.disabled_apps(), Resolved { value: apps(&[]), source: Local, locked: false });
+
+    // Frozen by the server: the local list has no effect.
+    let c = s
+        .apply_fetched(&provisioned(r#"<setting id="dphone_disabled_apps" value="queues" conflict="freeze"/>"#))
+        .unwrap();
+    assert_eq!(c.disabled_apps(), Resolved { value: apps(&["queues"]), source: Provisioned, locked: true });
+    // A provisioned empty value is nothing set.
+    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_disabled_apps" value=""/>"#)).unwrap();
+    assert_eq!(c.disabled_apps().source, Local);
+    let c = s.update_dphone_settings(|d| d.disabled_apps = None).unwrap();
+    assert_eq!(c.disabled_apps(), Resolved { value: apps(&[]), source: Default, locked: false });
+    assert!(s.set("dphone_disabled_apps", "calendar").is_err());
+}
+
+/// Stock's `allow_app_dev` has no meaning here (apps are uploaded through
+/// the web interface whatever it says); a configuration that carries it is
+/// merged like any other.
+#[test]
 fn a_provisioned_allow_app_dev_is_carried_and_unused() {
     let (_d, _nv, mut s) = store();
     assert_eq!(s.config().setting("allow_app_dev"), None);

@@ -121,6 +121,17 @@ impl AppWindow for UiWindow {
     fn set_wrap(&mut self, w: u32, wrap: bool) {
         self.view.set_wrap(id(w), wrap);
     }
+    fn set_highlight(&mut self, w: u32, on: bool) {
+        let (fg, bg) = if on {
+            (
+                tk::Color::Theme(tk::ThemeColor::SelectForeground),
+                tk::Color::Theme(tk::ThemeColor::SelectBackground),
+            )
+        } else {
+            (tk::Color::Default, tk::Color::Default)
+        };
+        self.view.set_colors(id(w), fg, bg);
+    }
     fn set_items(&mut self, w: u32, items: &[ListItem]) {
         let icons = items.iter().any(|i| !i.icon.is_empty());
         let details = items.iter().any(|i| !i.detail.is_empty());

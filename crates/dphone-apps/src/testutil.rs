@@ -22,6 +22,7 @@ pub struct Node {
     pub text: String,
     pub font: Font,
     pub wrap: bool,
+    pub highlight: bool,
     pub items: Vec<ListItem>,
     pub selected: u32,
     pub value: String,
@@ -171,6 +172,17 @@ impl FakeUi {
         })
     }
 
+    /// Texts of the visible text widgets drawn highlighted.
+    pub fn highlighted(&self, app: &str) -> Vec<String> {
+        self.with(app, |w| {
+            w.nodes
+                .values()
+                .filter(|n| n.kind == WidgetKind::Text && n.visible && n.highlight)
+                .map(|n| n.text.clone())
+                .collect()
+        })
+    }
+
     /// Texts of the app's idle-screen window.
     pub fn idle_texts(&self, app: &str) -> Vec<String> {
         let s = self.state.lock().unwrap();
@@ -187,6 +199,18 @@ impl FakeUi {
         if let Some(w) = s.windows.get_mut(&(app.to_string(), WindowKind::Idle)) {
             w.push(if shown { WindowEvent::Foreground } else { WindowEvent::Background });
         }
+    }
+
+    /// One of the phone's own screens went over the app's window
+    /// (`true`), or left it on top again.
+    pub fn cover(&self, app: &str, covered: bool) {
+        self.with(app, |w| {
+            w.push(if covered {
+                WindowEvent::Background
+            } else {
+                WindowEvent::Foreground
+            })
+        })
     }
 
     /// Package pictures the app's window was handed: (name, file size).
@@ -379,6 +403,7 @@ impl AppWindow for FakeWindow {
                     text: String::new(),
                     font: Font::Normal,
                     wrap: false,
+                    highlight: false,
                     items: Vec::new(),
                     selected: 0,
                     value: String::new(),
@@ -439,6 +464,9 @@ impl AppWindow for FakeWindow {
     }
     fn set_wrap(&mut self, w: u32, wrap: bool) {
         self.node(w, |n| n.wrap = wrap)
+    }
+    fn set_highlight(&mut self, w: u32, on: bool) {
+        self.node(w, |n| n.highlight = on)
     }
     fn set_items(&mut self, w: u32, items: &[ListItem]) {
         self.node(w, |n| {
@@ -666,7 +694,14 @@ pub struct FakeConfig {
     pub account: Option<AppAccount>,
     pub app_settings: HashMap<String, String>,
     pub contact_lists: Vec<(String, String)>,
-    pub disabled: Vec<String>,
+    /// Built-in apps the configuration switches off.  A test may change
+    /// the list while apps run.
+    pub disabled: Arc<Mutex<Vec<String>>>,
+    /// Local time's offset from UTC, in seconds.
+    pub utc_offset: i32,
+    /// The wall clock apps see, in seconds since the Unix epoch (`None`:
+    /// the real one).  A test may change it while apps run.
+    pub wall_time: Option<Arc<std::sync::atomic::AtomicU64>>,
 }
 
 impl FakeConfig {
@@ -696,7 +731,16 @@ impl ConfigSource for FakeConfig {
         self.app_settings.get(name).cloned()
     }
     fn app_enabled(&self, app: &str) -> bool {
-        !self.disabled.iter().any(|d| d == app)
+        !self.disabled.lock().unwrap().iter().any(|d| d == app)
+    }
+    fn utc_offset_secs(&self) -> i32 {
+        self.utc_offset
+    }
+    fn wall_time(&self) -> u64 {
+        match &self.wall_time {
+            Some(t) => t.load(std::sync::atomic::Ordering::Relaxed),
+            None => dphone_state::clock::unix_secs(),
+        }
     }
     fn setting(&self, _id: &str) -> Option<String> {
         None

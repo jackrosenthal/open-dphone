@@ -6,7 +6,7 @@ mod common;
 use common::{Rig, staged, temp_dir};
 use dphone_apps::testutil::FakeConfig;
 use dphone_apps::{InstallError, package};
-use dphone_state::{Command, Reply};
+use dphone_state::{Command, Event, Reply};
 use std::path::{Path, PathBuf};
 
 fn rig() -> Rig {
@@ -40,7 +40,9 @@ fn publishes_the_app_list() {
     assert_eq!(
         names,
         [
+            "calendar",
             "contacts",
+            "diagnostics",
             "faulty",
             "hotdesking",
             "parking",
@@ -63,17 +65,42 @@ fn publishes_the_app_list() {
 
 #[test]
 fn disabled_builtins_are_not_listed_or_launchable() {
-    let mut cfg = FakeConfig::dasp();
-    cfg.disabled.push("parking".into());
+    let cfg = FakeConfig::dasp();
+    let disabled = cfg.disabled.clone();
+    disabled.lock().unwrap().push("parking".into());
     let mut r = Rig::new(cfg);
-    assert!(
-        !r.store
-            .get::<dphone_state::Apps>()
-            .installed
-            .iter()
-            .any(|a| a.name == "parking")
-    );
+    let listed = |r: &Rig| {
+        let apps = r.store.get::<dphone_state::Apps>();
+        let names = |l: &[dphone_state::AppInfo]| -> Vec<String> {
+            l.iter().map(|a| a.name.clone()).collect()
+        };
+        (names(&apps.installed), names(&apps.disabled))
+    };
+    let (on, off) = listed(&r);
+    assert!(!on.contains(&"parking".to_string()));
+    assert_eq!(off, ["parking"]);
     assert!(r.mgr.launch("parking").is_err());
+    // An app key reaches the manager as this command.
+    let pending = r.store.send(Command::LaunchApp {
+        name: "parking".into(),
+    });
+    r.settle();
+    assert!(pending.wait().is_err());
+    assert_eq!(r.ui.top(), None);
+
+    // Switched off while it is on screen: it stops and leaves the list.
+    r.launch("calendar");
+    assert_eq!(r.ui.top().as_deref(), Some("calendar"));
+    *disabled.lock().unwrap() = vec!["calendar".into()];
+    r.store.emit(Event::ConfigApplied { generation: 2 });
+    r.settle();
+    assert!(!r.mgr.is_running("calendar"));
+    assert_eq!(r.ui.top(), None);
+    let (on, off) = listed(&r);
+    assert!(on.contains(&"parking".to_string()) && !on.contains(&"calendar".to_string()));
+    assert_eq!(off, ["calendar"]);
+    r.launch("parking");
+    assert_eq!(r.ui.top().as_deref(), Some("parking"));
 }
 
 #[test]

@@ -1,0 +1,10 @@
+{
+  "name": "diagnostics",
+  "id": "org.opendphone.diagnostics",
+  "displayName": { "fallback": "Diagnostics" },
+  "description": { "fallback": "Hardware tests, subsystems, and the log" },
+  "type": "foreground",
+  "iconFile": "diagnostics",
+  "wasm": "diagnostics.wasm",
+  "capabilities": ["ui", "timers", "diagnostics"]
+}

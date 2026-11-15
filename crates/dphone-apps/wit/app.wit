@@ -254,6 +254,9 @@ interface ui {
   set-font: func(w: widget, font: font);
   /// Wrap long text onto several lines (text widgets).
   set-wrap: func(w: widget, wrap: bool);
+  /// Draw the widget in the skin's selection colors, as a list draws its
+  /// selected row (e.g., one cell of a grid of texts).
+  set-highlight: func(w: widget, on: bool);
 
   set-items: func(w: widget, items: list<list-item>);
   set-selected: func(w: widget, index: u32);
@@ -395,6 +398,8 @@ interface l10n {
   /// Local date and time text for a Unix time: style 0 time, 1 date,
   /// 2 date and time.
   format-time: func(unix: u64, style: u8) -> string;
+  /// Offset of local time from UTC now, in seconds (east is positive).
+  utc-offset: func() -> s32;
 }
 
 /// Capability `hotdesk`: change which user this phone is provisioned
@@ -407,6 +412,31 @@ interface hotdesk {
   logout: func() -> result<_, error>;
   /// The user the phone is assigned to ("" if none).
   current-user: func() -> string;
+}
+
+/// Capability `diagnostics`: the phone's hardware tests and its own
+/// state.  Built-in apps only; a package declaring it is refused.
+interface diagnostics {
+  enum hardware-test {
+    /// Full-screen patterns; any key shows the next one.
+    display,
+    /// The name of every key and hook change, as it happens.
+    keys,
+    /// Every lamp cycles through its colors.
+    lamps,
+  }
+  /// Put one of the phone's hardware test screens over the app.  A test
+  /// has the whole screen and every key, which an app's window never
+  /// has.  The app is in the background until the user leaves the test.
+  show-test: func(test: hardware-test);
+  /// Play the dial tone for two seconds.
+  play-test-tone: func();
+  /// Every subsystem of the phone and its state: `ok`, `starting`,
+  /// `stopped`, `degraded: <why>`, or `failed: <why>`.
+  health: func() -> list<tuple<string, string>>;
+  /// The newest log entries, newest first, at most `max` of them (and at
+  /// most 100): `<source> <message>`.
+  log-tail: func(max: u32) -> list<string>;
 }
 
 interface guest {
@@ -430,5 +460,6 @@ world app {
   import audio;
   import l10n;
   import hotdesk;
+  import diagnostics;
   export guest;
 }

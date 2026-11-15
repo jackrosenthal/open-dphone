@@ -40,4 +40,10 @@ message DphoneSettings {
   // carries the same list:
   // <setting id="dphone_idle_softkeys" value="call_log,contacts,menu"/>.
   optional string idle_softkeys = 5;
+  // The built-in apps that are switched off, as a comma-separated list of
+  // app names (e.g., "calendar,parking").  Such an app is not in the
+  // phone's app list and cannot be opened.  Default: none.  The provisioned
+  // form carries the same list:
+  // <setting id="dphone_disabled_apps" value="calendar,parking"/>.
+  optional string disabled_apps = 6;
 }

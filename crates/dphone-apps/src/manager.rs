@@ -261,10 +261,9 @@ impl AppManager {
     }
 
     fn publish(&mut self) {
-        let installed = self
+        let (installed, disabled) = self
             .known
             .values()
-            .filter(|k| !k.builtin || self.services.config.app_enabled(&k.manifest.name))
             .map(|k| AppInfo {
                 name: k.manifest.name.clone(),
                 id: k.manifest.id.clone(),
@@ -278,9 +277,10 @@ impl AppManager {
                 icon_path: icon_file(&k.dir, &k.manifest.icon, self.store.model().name()),
                 running: self.running.contains_key(&k.manifest.name),
             })
-            .collect();
+            .partition(|a| !a.builtin || self.services.config.app_enabled(&a.name));
         let apps = Apps {
             installed,
+            disabled,
             foreground: self.foreground.clone(),
             idle_app: self.idle_shown.iter().min().cloned(),
         };
@@ -638,6 +638,35 @@ impl AppManager {
         }
     }
 
+    /// Follows the configuration's choice of built-in apps: stops the ones
+    /// it switches off, and starts the ones it switches back on that run
+    /// without being opened.
+    fn follow_enabled(&mut self) {
+        for name in self.running_names() {
+            if self.known.get(&name).is_some_and(|k| k.builtin)
+                && !self.services.config.app_enabled(&name)
+            {
+                log::info!("app {name}: switched off by the configuration");
+                self.close(&name);
+            }
+        }
+        let back_on: Vec<String> = self
+            .store
+            .get::<Apps>()
+            .disabled
+            .iter()
+            .filter(|a| a.kind == AppType::Background.name() || a.has_idle)
+            .filter(|a| self.services.config.app_enabled(&a.name))
+            .map(|a| a.name.clone())
+            .collect();
+        for name in back_on {
+            if let Err(e) = self.start(&name) {
+                log::warn!("app {name}: could not start: {e}");
+            }
+        }
+        self.publish();
+    }
+
     fn running_names(&self) -> Vec<String> {
         let mut v: Vec<String> = self.running.keys().cloned().collect();
         v.sort();
@@ -741,7 +770,7 @@ impl AppManager {
                     }
                 }
                 Event::ConfigApplied { .. } => {
-                    self.publish();
+                    self.follow_enabled();
                     for name in self.apps_where(|c| c.has(Capability::Config)) {
                         self.deliver(&name, wit::Event::NewConfig);
                     }

@@ -1,22 +1,20 @@
-//! Diagnostics: display, key, lamp, and tone tests; subsystem health; log.
+//! The hardware test screens (display, keys, lamps) and the subsystem
+//! health page.  The Diagnostics app (`apps/diagnostics`) is the menu that
+//! leads to the tests: they need the whole display and every key, which an
+//! app's window does not have.
 
 use super::*;
-use dphone_state::{HealthStatus, Subsystem, Tone};
+use dphone_state::{HealthStatus, Subsystem};
 
-pub(crate) fn menu() -> Box<dyn Screen> {
-    Menu::boxed("diagnostics", tr::DIAGNOSTICS, |_| {
-        vec![
-            Item::new(tr::TEST_DISPLAY, |_| Nav::Push(Box::new(DisplayTest { step: 0 }))),
-            Item::new(tr::TEST_KEYS, |_| Nav::Push(Box::new(KeyTest { keys: Vec::new(), cancels: 0 }))),
-            Item::new(tr::TEST_LAMPS, |_| Nav::Push(Box::new(LampTest))),
-            Item::new(tr::TEST_TONE, |cx| {
-                cx.post(Command::PlayTone { tone: Tone::Dial, duration_ms: 2000 });
-                Nav::Stay
-            }),
-            Item::new(tr::HEALTH, |_| Nav::Push(health())),
-            Item::new(tr::LOGS, |_| Nav::Push(log())),
-        ]
-    })
+/// The hardware test screen of that name (`display_test`, `key_test`,
+/// `lamp_test`).
+pub(crate) fn test_screen(name: &str) -> Option<Box<dyn Screen>> {
+    match name {
+        "display_test" => Some(Box::new(DisplayTest { step: 0 })),
+        "key_test" => Some(Box::new(KeyTest { keys: Vec::new(), cancels: 0 })),
+        "lamp_test" => Some(Box::new(LampTest)),
+        _ => None,
+    }
 }
 
 pub(crate) fn health() -> Box<dyn Screen> {
@@ -34,12 +32,6 @@ pub(crate) fn health() -> Box<dyn Screen> {
                 (s.label().to_string(), status)
             })
             .collect()
-    })
-}
-
-fn log() -> Box<dyn Screen> {
-    Info::boxed("log", tr::LOGS, |cx| {
-        cx.store.log().tail(40).into_iter().rev().map(|e| (String::new(), format!("{} {}", e.target, e.message))).collect()
     })
 }
 

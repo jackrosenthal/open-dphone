@@ -1405,7 +1405,12 @@ pub struct AppInfo {
 /// Installed and running apps.  Owner: `dphone-apps`.
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Apps {
+    /// The apps the phone offers.
     pub installed: Vec<AppInfo>,
+    /// Built-in apps the configuration switches off.  They are not in
+    /// `installed` and cannot be opened.
+    #[serde(default)]
+    pub disabled: Vec<AppInfo>,
     /// App on screen now (`None`: a native screen).
     pub foreground: Option<String>,
     /// App providing the idle screen, if one does.

@@ -376,3 +376,63 @@ async fn erase_nvdata_is_a_guarded_command() {
     assert_eq!(r.status, 200, "{}", r.text());
     assert!(matches!(got.lock().unwrap().as_slice(), [Command::EraseNvdata]));
 }
+
+/// Built-in apps are switched on and off one at a time; the list is one of
+/// Open DPhone's own settings.
+#[tokio::test]
+async fn built_in_apps_are_switched_off_and_on() {
+    use dphone_state::{AppInfo, Apps};
+    let p = phone(|_| {}).await;
+    let app = |name: &str, builtin| AppInfo { name: name.into(), builtin, ..Default::default() };
+    p.store.update::<Apps, _>(|a| {
+        a.installed = vec![app("calendar", true), app("extra", false)];
+        a.disabled = vec![app("parking", true)];
+    });
+    let s = assert_open(p.addr).await;
+    let set = |name: &'static str, enabled: bool| {
+        let (addr, s) = (p.addr, &s);
+        async move { post(addr, Some(s), "/dphone.v1.AppsService/SetAppEnabled", json!({ "name": name, "enabled": enabled })).await }
+    };
+    let file = || std::fs::read_to_string(p.dir.join("nvdata/dphone_settings.txtpb")).unwrap_or_default();
+
+    // The list of apps carries the ones that are off, in one order.
+    let r = post(p.addr, Some(&s), "/dphone.v1.AppsService/ListApps", json!({})).await;
+    let apps: Vec<(String, bool)> = r.json()["snapshot"]["apps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| (a["name"].as_str().unwrap().to_owned(), a["disabled"].as_bool().unwrap_or(false)))
+        .collect();
+    assert_eq!(apps, [("calendar".into(), false), ("extra".into(), false), ("parking".into(), true)]);
+
+    let r = post(p.addr, Some(&s), "/dphone.v1.AppsService/GetDisabledApps", json!({})).await;
+    assert_eq!(r.json()["disabledApps"], json!({ "source": "SETTING_SOURCE_DEFAULT" }));
+    let r = set("calendar", false).await;
+    assert_eq!(r.json()["disabledApps"], json!({ "names": ["calendar"], "source": "SETTING_SOURCE_LOCAL" }));
+    let r = set("parking", false).await;
+    assert_eq!(r.json()["disabledApps"], json!({ "names": ["calendar", "parking"], "source": "SETTING_SOURCE_LOCAL" }));
+    assert!(file().contains("disabled_apps: \"calendar,parking\""));
+    // Only built-in apps.
+    assert_eq!(set("extra", false).await.status, 404);
+    assert_eq!(set("nope", false).await.status, 404);
+    // Everything back on: the setting returns to its default.
+    set("calendar", true).await;
+    let r = set("parking", true).await;
+    assert_eq!(r.json()["disabledApps"], json!({ "source": "SETTING_SOURCE_DEFAULT" }));
+    assert!(!file().contains("disabled_apps"));
+
+    // Over a provisioned list, switching the app on is a local, empty list.
+    p.provision(r#"<setting id="dphone_disabled_apps" value="calendar"/>"#);
+    let r = post(p.addr, Some(&s), "/dphone.v1.AppsService/GetDisabledApps", json!({})).await;
+    assert_eq!(r.json()["disabledApps"], json!({ "names": ["calendar"], "source": "SETTING_SOURCE_PROVISIONED" }));
+    let r = set("calendar", true).await;
+    assert_eq!(r.json()["disabledApps"], json!({ "source": "SETTING_SOURCE_LOCAL" }));
+    assert!(file().contains("disabled_apps: \"\""));
+
+    // Frozen by the server: it cannot be changed here.
+    p.provision(r#"<setting id="dphone_disabled_apps" value="parking" conflict="freeze"/>"#);
+    let r = set("parking", true).await;
+    assert_eq!((r.status, r.json()["code"].as_str().map(str::to_owned)), (400, Some("failed_precondition".into())));
+    let r = post(p.addr, Some(&s), "/dphone.v1.AppsService/GetDisabledApps", json!({})).await;
+    assert_eq!(r.json()["disabledApps"], json!({ "names": ["parking"], "source": "SETTING_SOURCE_PROVISIONED", "locked": true }));
+}

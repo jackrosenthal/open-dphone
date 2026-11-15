@@ -128,6 +128,10 @@ impl ConfigSource for AppConfig {
             .or_else(|| application.child_with_id("setting", name).and_then(|s| s.attr("value")).map(str::to_string))
     }
 
+    fn app_enabled(&self, app: &str) -> bool {
+        self.merged().is_none_or(|c| !c.disabled_apps().value.iter().any(|d| d == app))
+    }
+
     fn setting(&self, id: &str) -> Option<String> {
         let cfg = self.merged()?;
         // The app interface's names for two stock settings differ.

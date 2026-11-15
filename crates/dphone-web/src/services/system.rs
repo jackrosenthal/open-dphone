@@ -1,7 +1,8 @@
 //! `AppsService`, `FirmwareService`, `LogsService`, `ScreenService`, and
 //! `SystemService`.
 
-use super::{command, watch};
+use super::ssh::{locked, setting_source};
+use super::{command, config_error, watch, with_config};
 use crate::rpc::{Code, ConnectError, Sink};
 use crate::http::Ctx;
 use crate::{convert, pb, App, MirrorScreen};
@@ -56,6 +57,50 @@ pub async fn install_app(ctx: Ctx, req: pb::InstallAppRequest) -> Result<pb::Ins
 pub async fn remove_app(ctx: Ctx, req: pb::RemoveAppRequest) -> Result<pb::RemoveAppResponse, ConnectError> {
     command(&ctx.app.store, Command::RemoveApp { name: req.name }).await?;
     Ok(pb::RemoveAppResponse {})
+}
+
+fn disabled_apps(r: dphone_config::Resolved<Vec<String>>) -> pb::DisabledApps {
+    pb::DisabledApps { names: r.value, source: setting_source(r.source).into(), locked: r.locked }
+}
+
+pub async fn get_disabled_apps(
+    ctx: Ctx,
+    _req: pb::GetDisabledAppsRequest,
+) -> Result<pb::GetDisabledAppsResponse, ConnectError> {
+    let setting = with_config(&ctx.app, false, |c| Ok(disabled_apps(c.config().disabled_apps()))).await?;
+    Ok(pb::GetDisabledAppsResponse { disabled_apps: Some(setting).into() })
+}
+
+pub async fn set_app_enabled(
+    ctx: Ctx,
+    req: pb::SetAppEnabledRequest,
+) -> Result<pb::SetAppEnabledResponse, ConnectError> {
+    let apps = ctx.app.store.get::<st::Apps>();
+    if !apps.installed.iter().chain(&apps.disabled).any(|a| a.builtin && a.name == req.name) {
+        return Err(ConnectError::not_found("no built-in app of that name"));
+    }
+    let (name, enabled) = (req.name.clone(), req.enabled);
+    let setting = with_config(&ctx.app, true, move |c| {
+        let now = c.config().disabled_apps();
+        if now.locked {
+            return Err(locked());
+        }
+        let mut names = now.value;
+        names.retain(|n| *n != name);
+        if !enabled {
+            names.push(name);
+        }
+        // With nothing switched off and nothing provisioned, the setting
+        // goes back to its default; an empty list overrides a provisioned
+        // one.
+        let provisioned = c.config().setting(dphone_config::settings::PROVISIONED_DISABLED_APPS).is_some();
+        let list = (!names.is_empty() || provisioned).then(|| names.join(","));
+        let config = c.update_dphone_settings(|s| s.disabled_apps = list).map_err(config_error)?;
+        Ok(disabled_apps(config.disabled_apps()))
+    })
+    .await?;
+    log::info!("app {} switched {} from the web UI ({})", req.name, if enabled { "on" } else { "off" }, ctx.peer);
+    Ok(pb::SetAppEnabledResponse { disabled_apps: Some(setting).into() })
 }
 
 // -------------------------------------------------------------- firmware

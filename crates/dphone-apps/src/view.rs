@@ -64,6 +64,8 @@ pub trait AppWindow: Send {
     fn set_align(&mut self, w: u32, align: Align);
     fn set_font(&mut self, w: u32, font: Font);
     fn set_wrap(&mut self, w: u32, wrap: bool);
+    /// Draws the widget in the skin's selection colors.
+    fn set_highlight(&mut self, w: u32, on: bool);
     fn set_items(&mut self, w: u32, items: &[ListItem]);
     fn set_selected(&mut self, w: u32, index: u32);
     fn selected(&self, w: u32) -> u32;
