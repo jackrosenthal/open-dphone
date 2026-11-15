@@ -20,7 +20,10 @@ fn idle(model: Model, accounts: u8) -> Ui {
         s.phase = Phase::Running;
         s.time_synced = true;
     });
-    store.update::<Network, _>(|n| n.phase = NetPhase::Up);
+    store.update::<Network, _>(|n| {
+        n.phase = NetPhase::Up;
+        n.lan.up = true;
+    });
     store.update::<Accounts, _>(|a| {
         for i in 0..accounts {
             let mut acct = Account::new(AccountId(i));

@@ -560,3 +560,45 @@ fn idle_app_view() {
         r.ui.pump();
     }
 }
+
+/// The idle screen's two "cannot take calls" icons: registered (neither),
+/// link up with no account registered (the crossed handset), and no link
+/// (network down, alone).
+#[test]
+fn idle_service_icons() {
+    for model in [Model::D40, Model::D50, Model::D60, Model::D65, Model::D70] {
+        let mut r = Rig::new(model);
+        r.running();
+        r.store.update::<CallLog, _>(|l| l.missed_unseen = 0);
+        r.store.update::<Accounts, _>(|a| {
+            a.accounts[0].registration = Registration::Registered { host: ActiveHost::Primary, expires_mono_ms: MONO + 60_000 }
+        });
+        r.shot("60-idle-registered");
+        let registered = r.sim.frame(Screen::Main).unwrap().pixels;
+
+        // The address is being replaced (the link stays up) and the
+        // registrations are gone.
+        r.store.update::<Network, _>(|n| {
+            n.phase = NetPhase::Configuring;
+            n.ipv4 = Ipv4State::default();
+        });
+        r.store.update::<Accounts, _>(|a| {
+            for acct in &mut a.accounts {
+                acct.registration = Registration::Unregistered;
+            }
+        });
+        r.shot("61-idle-unregistered");
+        let unregistered = r.sim.frame(Screen::Main).unwrap().pixels;
+
+        r.store.update::<Network, _>(|n| {
+            n.phase = NetPhase::Down;
+            n.lan = PortLink::default();
+        });
+        r.shot("62-idle-link-down");
+        let link_down = r.sim.frame(Screen::Main).unwrap().pixels;
+
+        assert!(registered != unregistered, "{model:?}: no icon for no registration");
+        assert!(unregistered != link_down, "{model:?}: the two icons are the same");
+        assert!(registered != link_down, "{model:?}: no icon for no link");
+    }
+}

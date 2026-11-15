@@ -3,7 +3,7 @@
 use super::*;
 use crate::gfx::Rgb;
 use crate::IdleSoftkey;
-use dphone_state::{AccountId, BlfState, LineKeyBinding, Registration};
+use dphone_state::{AccountId, Accounts, BlfState, LineKeyBinding, Network, Registration};
 
 pub(crate) struct Idle;
 
@@ -75,8 +75,8 @@ pub(crate) fn status_icons(cx: &Cx) -> Vec<(&'static str, u32)> {
     if st.mwi.any_waiting() {
         v.push(("voicemail", st.mwi.total_new()));
     }
-    if !st.network.is_up() {
-        v.push(("net-down", 0));
+    if let Some(icon) = service_icon(&st.network, &st.accounts) {
+        v.push((icon, 0));
     }
     if st.features.dnd {
         v.push(("dnd", 0));
@@ -91,6 +91,30 @@ pub(crate) fn status_icons(cx: &Cx) -> Vec<(&'static str, u32)> {
         v.push(("mute", 0));
     }
     v
+}
+
+/// The status icon for why the phone cannot take calls, if it cannot.
+///
+/// `net-down` means the Ethernet link itself is down: no carrier on the
+/// LAN jack.  `phone-unregistered` (a handset with a cross through it)
+/// means the link is up, the phone has accounts, and none of them is
+/// registered, whatever the reason (no address yet, the server does not
+/// answer, the registration was refused).  With the link down only
+/// `net-down` shows, since nothing can register without it.
+///
+/// A phone with no accounts (one used without a server), or with every
+/// account switched off, shows neither with the link up: it has nothing
+/// to register, so "not registered" would report a fault that is not one.
+/// The line-key tabs show each account's own registration.
+pub(crate) fn service_icon(network: &Network, accounts: &Accounts) -> Option<&'static str> {
+    if !network.lan.up {
+        return Some("net-down");
+    }
+    let mut enabled = accounts.accounts.iter().filter(|a| a.registration != Registration::Disabled).peekable();
+    if enabled.peek().is_some() && !enabled.any(|a| a.registration.is_registered()) {
+        return Some("phone-unregistered");
+    }
+    None
 }
 
 /// Draws the status icons in the header band `r`, from its left edge.
@@ -357,5 +381,76 @@ impl Screen for Idle {
         // Repaint at the next minute boundary.
         let into = cx.unix % 60;
         Some(cx.now_ms + (60 - into) * 1000 + 50)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dphone_state::{Account, ActiveHost, NetPhase, PortLink};
+
+    fn network(link: bool, phase: NetPhase) -> Network {
+        Network { phase, lan: PortLink { up: link, speed: if link { 100 } else { 0 }, full_duplex: link }, ..Default::default() }
+    }
+
+    fn accounts(regs: &[Registration]) -> Accounts {
+        let mut a = Accounts::default();
+        for (i, reg) in regs.iter().enumerate() {
+            let mut acct = Account::new(AccountId(i as u8));
+            acct.registration = reg.clone();
+            a.accounts.push(acct);
+        }
+        a
+    }
+
+    fn registered() -> Registration {
+        Registration::Registered { host: ActiveHost::Primary, expires_mono_ms: u64::MAX }
+    }
+
+    fn failed() -> Registration {
+        Registration::Failed { code: 403, reason: "Forbidden".into(), retry_mono_ms: 0 }
+    }
+
+    #[test]
+    fn link_down_shows_only_network_down() {
+        for regs in [vec![], vec![Registration::Unregistered], vec![failed()], vec![registered()], vec![Registration::Disabled]] {
+            for phase in [NetPhase::Down, NetPhase::Configuring, NetPhase::Up, NetPhase::Failed] {
+                assert_eq!(service_icon(&network(false, phase), &accounts(&regs)), Some("net-down"), "{regs:?} {phase:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn link_up_and_no_account_registered_shows_the_crossed_handset() {
+        // No address yet (the link is up; DHCP or discovery is running), an
+        // address that failed, and an address with the registration not
+        // (yet) made or refused.
+        for phase in [NetPhase::Down, NetPhase::Configuring, NetPhase::Failed, NetPhase::Up] {
+            for regs in [
+                vec![Registration::Unregistered],
+                vec![Registration::Registering],
+                vec![failed()],
+                vec![failed(), Registration::Unregistered],
+                vec![Registration::Disabled, Registration::Registering],
+            ] {
+                assert_eq!(service_icon(&network(true, phase), &accounts(&regs)), Some("phone-unregistered"), "{regs:?} {phase:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn one_registered_account_shows_neither() {
+        let up = network(true, NetPhase::Up);
+        assert_eq!(service_icon(&up, &accounts(&[registered()])), None);
+        assert_eq!(service_icon(&up, &accounts(&[failed(), registered()])), None);
+        assert_eq!(service_icon(&up, &accounts(&[Registration::Disabled, registered()])), None);
+    }
+
+    #[test]
+    fn nothing_to_register_shows_neither_with_the_link_up() {
+        for phase in [NetPhase::Configuring, NetPhase::Up] {
+            assert_eq!(service_icon(&network(true, phase), &accounts(&[])), None);
+            assert_eq!(service_icon(&network(true, phase), &accounts(&[Registration::Disabled])), None);
+        }
     }
 }

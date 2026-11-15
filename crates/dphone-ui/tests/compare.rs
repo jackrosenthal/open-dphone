@@ -107,7 +107,10 @@ impl Rig {
             s.phase = Phase::Running;
             s.time_synced = true;
         });
-        store.update::<Network, _>(|n| n.phase = NetPhase::Up);
+        store.update::<Network, _>(|n| {
+            n.phase = NetPhase::Up;
+            n.lan.up = true;
+        });
         let mut ui = Ui::from_hal(&mut hal, store.clone(), UiConfig::default());
         ui.set_fixed_time(Some((MONO, unix)));
         Rig { model, store, ui, sim, stock: stock.to_path_buf(), out: out.to_path_buf() }
