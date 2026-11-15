@@ -24,7 +24,7 @@ use dphone_state::{
     AccountId, Call, CallState, Calls, Direction, Key, Model, Party, Phase, Store, System,
 };
 use dphone_ui::{Ui, UiConfig};
-use lightup_game::draw::{Layout, Op, Painter, Palette, Rgb};
+use lightup_game::draw::{FontSize, Fonts, Layout, Op, Painter, Palette, Rgb, TextFont};
 use lightup_game::generate::{Difficulty, Generator, Params, Progress, SIZES, generate};
 use lightup_game::solver::{Outcome, Solve, Techniques};
 use lightup_game::{Act, Game, Grid};
@@ -184,10 +184,54 @@ fn drawn(r: &Rig) -> Vec<Vec<Op>> {
                         bits: b.bits.into(),
                         color: Rgb(b.color.r, b.color.g, b.color.b),
                     },
+                    DrawOp::Text(t) => Op::Text {
+                        x: t.box_.x,
+                        y: t.box_.y,
+                        width: t.box_.width,
+                        height: t.box_.height,
+                        font: match t.font {
+                            dphone_apps::Font::Small => TextFont::Small,
+                            dphone_apps::Font::Normal => TextFont::Normal,
+                            dphone_apps::Font::Bold => TextFont::Bold,
+                            dphone_apps::Font::Title => TextFont::Title,
+                            dphone_apps::Font::Large => TextFont::Large,
+                        },
+                        text: {
+                            assert_eq!(t.text.chars().count(), 1, "a digit");
+                            t.text.chars().next().unwrap()
+                        },
+                        color: Rgb(t.color.r, t.color.g, t.color.b),
+                    },
                 })
                 .collect()
         })
         .collect()
+}
+
+/// The palette of the app on a model's display under the fake screen:
+/// its foreground color is (32, 32, 32), its background (16, 16, 16),
+/// and a digit is 7 by 9 pixels in its bold font, 8 by 10 in the title
+/// font, 12 by 16 in the large one, 6 by 8 in the normal one, and 5 by 6
+/// in the small one.
+fn palette(model: Model) -> Palette {
+    let mut palette = if model.is_color() {
+        Palette::color()
+    } else {
+        Palette::gray(Rgb(32, 32, 32), Rgb(16, 16, 16))
+    };
+    let font = |font, width, height| FontSize {
+        font,
+        width,
+        height,
+    };
+    palette.fonts = Fonts::new(&[
+        font(TextFont::Bold, 7, 9),
+        font(TextFont::Title, 8, 10),
+        font(TextFont::Large, 12, 16),
+        font(TextFont::Normal, 6, 8),
+        font(TextFont::Small, 5, 6),
+    ]);
+    palette
 }
 
 /// What the app should have drawn for a game on a model's display: a
@@ -196,11 +240,7 @@ fn drawn(r: &Rig) -> Vec<Vec<Op>> {
 fn expected(model: Model, game: &Game) -> Vec<Vec<Op>> {
     let area = model.app_content_area();
     let side = game.grid().width();
-    let palette = if model.is_color() {
-        Palette::color()
-    } else {
-        Palette::gray(Rgb(32, 32, 32), Rgb(16, 16, 16))
-    };
+    let palette = palette(model);
     let painter = Painter::new(
         side,
         Layout::new(area.width, area.height, side).pitch,
@@ -489,7 +529,9 @@ fn errors_are_drawn_as_errors_in_color_and_in_black_and_white() {
         let colors = |ops: &[Op]| -> Vec<Rgb> {
             ops.iter()
                 .map(|op| match op {
-                    Op::Fill { color, .. } | Op::Bitmap { color, .. } => *color,
+                    Op::Fill { color, .. } | Op::Bitmap { color, .. } | Op::Text { color, .. } => {
+                        *color
+                    }
                 })
                 .collect()
         };
@@ -786,11 +828,7 @@ fn help_shows_how_to_play_and_leaves_the_puzzle_as_it_was() {
         r.softkey(APP, "Help");
         assert_eq!(r.ui.softkeys(APP), ["Next", "Back"]);
         let area = model.app_content_area();
-        let palette = if model.is_color() {
-            Palette::color()
-        } else {
-            Palette::gray(Rgb(32, 32, 32), Rgb(16, 16, 16))
-        };
+        let palette = palette(model);
         let page = |r: &Rig, n: usize| {
             assert_eq!(
                 r.ui.texts(APP),
@@ -1490,7 +1528,7 @@ fn drawn_on_a_color_phone() {
     assert!(fresh.count(unlit) > 100 * 16 * 16 && fresh.count(blue) > 4 * 17);
     assert!(play.count(yellow) > 30 * 16 * 16 && play.count(unlit) > 16 * 16);
     assert!(
-        play.count(red) > 16 * 16 + 2 * 50,
+        play.count(red) > 16 * 16 + 50,
         "a number and two lights: {}",
         play.count(red)
     );

@@ -89,7 +89,7 @@ Each interface of the phone except `runtime` is a capability, and each is a modu
 | Capability | What it is for |
 | --- | --- |
 | `ui` | Widgets, softkeys, keys, and the window. |
-| `canvas` | A widget the app draws itself, from filled rectangles and one-color bitmaps. |
+| `canvas` | A widget the app draws itself, from filled rectangles, one-color bitmaps, and texts in the skin's fonts. |
 | `timers` | One-shot and repeating timers, and the time. |
 | `storage` | Files, kept or temporary, of the app's own or shared between apps. |
 | `config` | The app's provisioned configuration, the accounts, and settings of the phone that apps may read. |

@@ -462,7 +462,7 @@ interface diagnostics {
 /// no faster clock here: an app animates with a repeating timer, which
 /// fires at most 20 times a second.
 interface canvas {
-  use types.{widget, rect};
+  use types.{widget, rect, size, font};
 
   /// The colors of the phone's skin.
   enum role {
@@ -496,21 +496,39 @@ interface canvas {
     bits: list<u8>,
   }
 
+  /// One line of text in a font of the skin (the fonts of `ui.set-font`:
+  /// smoothed on the color models, bitmap fonts on the gray ones), in
+  /// one color.  The text is placed so that what its glyphs paint is in
+  /// the middle of the box, both ways (not the line: a digit sits in the
+  /// middle of a square), and nothing is drawn outside the box.
+  /// `text-size` tells what a text needs, to choose a font that fits.
+  record text {
+    box: rect,
+    font: font,
+    color: color,
+    /// At most 64 bytes.
+    text: string,
+  }
+
   variant op {
     /// A filled rectangle.
     fill(tuple<rect, color>),
     bitmap(bitmap),
+    text(text),
   }
 
   /// A color of the skin, so that a drawing can match it.
   theme-color: func(role: role) -> color;
+  /// The width and height of what a text paints in a font of the skin
+  /// (the pixels of its glyphs, without the space around a line).
+  text-size: func(font: font, text: string) -> size;
   /// Creates a canvas widget (parent 0 is the window).  Coordinates of
   /// its operations are relative to its top-left corner, and nothing is
   /// drawn outside it.
   create: func(parent: widget, bounds: rect) -> widget;
-  /// Replaces what the canvas shows.  At most 512 operations and 64 KiB
-  /// of bitmap data; a list over either limit is refused and the canvas
-  /// keeps what it showed.
+  /// Replaces what the canvas shows.  At most 512 operations, 64 KiB of
+  /// bitmap data, and 64 bytes in a text; a list over a limit is refused
+  /// and the canvas keeps what it showed.
   draw: func(w: widget, ops: list<op>) -> result<_, string>;
 }
 

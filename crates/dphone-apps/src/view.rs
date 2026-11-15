@@ -92,6 +92,10 @@ pub trait AppWindow: Send {
     fn theme_color(&self, _role: ColorRole) -> Color {
         Color { r: 0, g: 0, b: 0 }
     }
+    /// The width and height of what a text paints in a font of the skin.
+    fn text_size(&self, _font: Font, _text: &str) -> (u16, u16) {
+        (0, 0)
+    }
     /// Creates a canvas widget.
     fn create_canvas(&mut self, _parent: Option<u32>, _bounds: Rect) -> u32 {
         0

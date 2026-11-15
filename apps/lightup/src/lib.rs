@@ -23,7 +23,9 @@
 
 use dphone_app_sdk::prelude::*;
 use dphone_app_sdk::{Align, Font, canvas, read_string};
-use lightup_game::draw::{self, Layout, Look, Op, Painter, Palette, Rgb};
+use lightup_game::draw::{
+    self, FontSize, Fonts, Layout, Look, Op, Painter, Palette, Rgb, TextFont,
+};
 use lightup_game::generate::{Difficulty, Generator, Params, Progress, SIZES};
 use lightup_game::help::PAGES;
 use lightup_game::{Act, Game, Grid};
@@ -146,14 +148,33 @@ fn color(c: Rgb) -> canvas::Color {
 }
 
 /// The colors of the pictures on this display.
+/// The display's fonts, the bold ones first, as the pictures name them
+/// and as the phone does.
+const FONTS: [(TextFont, Font); 5] = [
+    (TextFont::Bold, Font::Bold),
+    (TextFont::Title, Font::Title),
+    (TextFont::Large, Font::Large),
+    (TextFont::Normal, Font::Normal),
+    (TextFont::Small, Font::Small),
+];
+
+/// The colors of the pictures on this display, and its fonts with the
+/// size of their digits: the numbers are drawn in the largest that fits.
 fn palette() -> Palette {
-    if ui::get_metrics().color {
+    let mut palette = if ui::get_metrics().color {
         Palette::color()
     } else {
         let fg = canvas::theme_color(canvas::Role::Foreground);
         let bg = canvas::theme_color(canvas::Role::Background);
         Palette::gray(Rgb(fg.r, fg.g, fg.b), Rgb(bg.r, bg.g, bg.b))
-    }
+    };
+    palette.fonts = Fonts::new(&FONTS.map(|(font, ui_font)| FontSize {
+        font,
+        // The widest of the digits, and the tallest.
+        width: canvas::text_size(ui_font, "8").width,
+        height: canvas::text_size(ui_font, "0123456789").height,
+    }));
+    palette
 }
 
 fn paint(w: Widget, ops: Vec<Op>) {
@@ -183,6 +204,23 @@ fn paint(w: Widget, ops: Vec<Op>) {
                 scale,
                 color: color(c),
                 bits: bits.to_vec(),
+            }),
+            Op::Text {
+                x,
+                y,
+                width,
+                height,
+                font,
+                text,
+                color: c,
+            } => canvas::Op::Text(canvas::Text {
+                box_: Rect::new(x, y, width, height),
+                font: FONTS
+                    .iter()
+                    .find(|f| f.0 == font)
+                    .map_or(Font::Normal, |f| f.1),
+                color: color(c),
+                text: text.to_string(),
             }),
         })
         .collect();

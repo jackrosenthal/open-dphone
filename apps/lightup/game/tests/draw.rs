@@ -2,7 +2,7 @@
 //! that everything a cell can show looks different from everything else,
 //! in color and in black and white.
 
-use lightup_game::draw::{Layout, Look, Op, Painter, Palette, Rgb};
+use lightup_game::draw::{FontSize, Fonts, Layout, Look, Op, Painter, Palette, Rgb, TextFont};
 use lightup_game::{Game, Grid};
 use std::collections::BTreeSet;
 
@@ -18,6 +18,42 @@ fn palette(color: bool) -> Palette {
     } else {
         Palette::gray(BLACK, WHITE)
     }
+}
+
+/// Fonts like a display's, for these tests: the size of a digit in each.
+const FONTS: [FontSize; 5] = [
+    FontSize {
+        font: TextFont::Bold,
+        width: 7,
+        height: 9,
+    },
+    FontSize {
+        font: TextFont::Title,
+        width: 8,
+        height: 10,
+    },
+    FontSize {
+        font: TextFont::Large,
+        width: 12,
+        height: 16,
+    },
+    FontSize {
+        font: TextFont::Normal,
+        width: 6,
+        height: 8,
+    },
+    FontSize {
+        font: TextFont::Small,
+        width: 5,
+        height: 6,
+    },
+];
+
+/// The palette of a display with those fonts.
+fn with_fonts(color: bool) -> Palette {
+    let mut p = palette(color);
+    p.fonts = Fonts::new(&FONTS);
+    p
 }
 
 /// The pixels a list of operations paints on a `width` by `height`
@@ -75,6 +111,37 @@ fn paint(ops: &[Op], width: usize, height: usize, ground: Rgb) -> Vec<Rgb> {
                     }
                 }
             }
+            // A character of a display's font: here a block of the
+            // font's size in the middle of the box, with three pixels
+            // missing for every unit of the digit, so that digits differ.
+            Op::Text {
+                x,
+                y,
+                width,
+                height,
+                font,
+                text,
+                color,
+            } => {
+                let f = FONTS.iter().find(|f| f.font == *font).expect("a font");
+                assert!(
+                    f.width <= *width && f.height <= *height,
+                    "{font:?} in {width}x{height}"
+                );
+                let (left, top) = ((*width - f.width) / 2, (*height - f.height) / 2);
+                let missing = 3 * (*text as usize - '0' as usize);
+                for yy in 0..f.height {
+                    for xx in 0..f.width {
+                        if (yy * f.width + xx) as usize >= missing {
+                            set(
+                                *x as i32 + (left + xx) as i32,
+                                *y as i32 + (top + yy) as i32,
+                                *color,
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
     px
@@ -112,11 +179,17 @@ fn sampler(side: usize) -> Grid {
 
 #[test]
 fn every_look_is_its_own_picture() {
-    for (w, h, color) in WINDOWS {
+    // With this module's own digits, and with a display's fonts.
+    for ((w, h, color), fonts) in WINDOWS.into_iter().flat_map(|w| [(w, false), (w, true)]) {
         for side in [7, 10, 14] {
-            let what = format!("{w}x{h} {side}");
+            let what = format!("{w}x{h} {side} fonts {fonts}");
             let l = Layout::new(w, h, side);
-            let painter = Painter::new(side, l.pitch, palette(color));
+            let pal = if fonts {
+                with_fonts(color)
+            } else {
+                palette(color)
+            };
+            let painter = Painter::new(side, l.pitch, pal);
             let g = sampler(side);
             let pitch = l.pitch as usize;
             let mut seen: Vec<(Look, Vec<Rgb>)> = Vec::new();
@@ -404,5 +477,89 @@ fn the_help_pictures_show_what_their_pages_say() {
             let first = paint(&board.row(&g, 0), w as usize, pitch as usize, Rgb(1, 2, 3));
             assert_eq!(px[..first.len()], first[..]);
         }
+    }
+}
+
+#[test]
+fn numbers_are_in_the_tallest_font_of_the_display_that_fits() {
+    use lightup_game::draw::keymap;
+    let g = Grid::parse("#01234\n......\n......\n......\n......\n......").unwrap();
+    // The font of the numbers in a cell of a size, with the fonts of these
+    // tests (digits 6, 8, 9, 10, and 16 pixels tall).
+    let font = |pitch: u16, pal: Palette| -> Option<TextFont> {
+        let ops = Painter::new(6, pitch, pal).row(&g, 0);
+        let fonts: Vec<TextFont> = ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::Text {
+                    font,
+                    text,
+                    x,
+                    y,
+                    width,
+                    height,
+                    ..
+                } => {
+                    // The box is the inside of the number's cell.
+                    assert!(('0'..='4').contains(text));
+                    assert_eq!((*y, *width, *height), (1, pitch - 1, pitch - 1));
+                    assert_eq!((*x - 1) % pitch as i16, 0);
+                    Some(*font)
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(fonts.is_empty() || fonts.len() == 5);
+        assert!(fonts.windows(2).all(|w| w[0] == w[1]));
+        fonts.first().copied()
+    };
+    use TextFont::*;
+    // Small gray: 14, 10, and 7 pixels from cell to cell.
+    assert_eq!(
+        [14, 10, 7].map(|p| font(p, with_fonts(false))),
+        [Some(Bold), Some(Bold), Some(Small)]
+    );
+    // Large gray: 19, 13, and 9.
+    assert_eq!(
+        [19, 13, 9].map(|p| font(p, with_fonts(false))),
+        [Some(Title), Some(Normal), Some(Normal)]
+    );
+    // Color: 34, 24, and 17.
+    assert_eq!(
+        [34, 24, 17].map(|p| font(p, with_fonts(true))),
+        [Some(Large), Some(Large), Some(Title)]
+    );
+    // No font small enough, or none at all: this module's own digits.
+    assert_eq!(font(6, with_fonts(false)), None);
+    assert_eq!(font(14, palette(false)), None);
+    assert_eq!(font(34, palette(true)), None);
+
+    // The keys' digits likewise, each in the middle of its key's height.
+    for ((w, h, color), line) in WINDOWS.into_iter().zip([15u16, 17, 25]) {
+        let l = Layout::new(w, h, 14);
+        let map = keymap(
+            l.panel_width - 2 * (line / 2),
+            h - 4,
+            with_fonts(color),
+            BLACK,
+        );
+        let digits: Vec<(char, u16)> = map
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::Text { text, height, .. } => Some((*text, *height)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            digits.iter().map(|d| d.0).collect::<String>(),
+            "1234568",
+            "{w}x{h}"
+        );
+        assert!(digits.iter().all(|d| d.1 == map.key.1));
+        assert!(map.width <= l.panel_width - 2 * (line / 2) && map.key.1 >= 24);
+        // Painted, the keys are as the other test wants them (it paints
+        // the picture without fonts).
+        paint(&map.ops, map.width as usize, map.height as usize, WHITE);
     }
 }

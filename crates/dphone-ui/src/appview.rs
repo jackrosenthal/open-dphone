@@ -326,6 +326,10 @@ pub enum DrawOp {
     /// set bit is drawn as a `scale` x `scale` square; clear bits are not
     /// drawn.  A picture with too few `bits` for its size draws nothing.
     Bitmap { x: i16, y: i16, width: u16, height: u16, scale: u8, color: Color, bits: Arc<[u8]> },
+    /// One line of text in a font of the skin.  What its glyphs paint is
+    /// centered in `rect`, both ways (not the line: a digit sits in the
+    /// middle of a square), and clipped to it.
+    Text { rect: Rect, font: Font, color: Color, text: String },
 }
 
 /// Text entry modes.
@@ -949,6 +953,13 @@ impl AppView {
         fn set_softkeys(&self, owner: Option<WidgetId>, keys: Vec<Softkey>);
         fn set_key_claims(&self, id: WidgetId, claims: KeyClaims);
         fn set_window_key_claims(&self, claims: KeyClaims);
+    }
+
+    /// The width and height of what `text` paints in a font of this skin:
+    /// the pixels of its glyphs, as [`DrawOp::Text`] centers them.
+    pub fn text_ink(&self, font: Font, text: &str) -> (u16, u16) {
+        let (_, _, w, h) = crate::skin::Theme::for_model(self.inner.model).font(font).ink(text);
+        (w.clamp(0, u16::MAX as i32) as u16, h.clamp(0, u16::MAX as i32) as u16)
     }
 
     /// Pixel width of `text` in a font of this skin, for layout.

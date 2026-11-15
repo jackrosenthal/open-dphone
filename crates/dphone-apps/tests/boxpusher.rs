@@ -241,6 +241,7 @@ fn it_plays_on_the_gray_screens_in_black_and_white() {
                 let (color, size) = match op {
                     DrawOp::Fill((rect, color)) => (*color, (rect.width, rect.height)),
                     DrawOp::Bitmap(b) => (b.color, (b.width, b.height)),
+                    DrawOp::Text(t) => panic!("no text in this game: {t:?}"),
                 };
                 assert!(
                     (color.r, color.g, color.b) == (fg.r, fg.g, fg.b) || (color.r, color.g, color.b) == (bg.r, bg.g, bg.b),

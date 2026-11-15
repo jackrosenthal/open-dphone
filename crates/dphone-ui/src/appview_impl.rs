@@ -220,6 +220,18 @@ fn draw_node(tree: &mut Tree, c: &mut Canvas, th: &Theme, id: WidgetId, ox: i32,
                             c.bitmap(r.x + *x as i32, r.y + *y as i32, *width as i32, *height as i32, *scale as i32, bits, col);
                         }
                     }
+                    DrawOp::Text { rect, font, color, text } => {
+                        if let Some(col) = th.resolve(*color, None) {
+                            // The box around the glyphs' pixels goes in
+                            // the middle of the rectangle.
+                            let font = th.font(*font);
+                            let (left, top, w, h) = font.ink(text);
+                            let b = IRect::new(r.x + rect.x as i32, r.y + rect.y as i32, rect.w as i32, rect.h as i32);
+                            let old = c.push_clip(b);
+                            c.text(font, b.x + (b.w - w) / 2 - left, b.y + (b.h - h) / 2 - top, text, col);
+                            c.restore_clip(old);
+                        }
+                    }
                 }
             }
         }

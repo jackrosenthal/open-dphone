@@ -8,6 +8,10 @@
 //! ([`Painter::row_state`] tells), and the cursor is a list of its own
 //! ([`Painter::cursor`]), drawn over the rows.
 //!
+//! The numbers (the clues, and the digits of the picture of the keys) are
+//! in the display's own font, the tallest that fits ([`Fonts`]); where
+//! none is given or none fits, they are this module's bitmaps.
+//!
 //! On the color display a lit cell is yellow and what is wrong is red.
 //! The gray displays get black and white only, so nothing depends on
 //! telling two grays apart: a cell no light shines on is dotted, a lit
@@ -48,6 +52,68 @@ pub enum Op {
         bits: Rc<[u8]>,
         color: Rgb,
     },
+    /// A character in a font of the display, in the middle of a box.
+    Text {
+        x: i16,
+        y: i16,
+        width: u16,
+        height: u16,
+        font: TextFont,
+        text: char,
+        color: Rgb,
+    },
+}
+
+/// The fonts of a display.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextFont {
+    Small,
+    Normal,
+    Bold,
+    Title,
+    Large,
+}
+
+/// A font of the display, and the width and height of a digit in it (of
+/// the digit's own pixels).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FontSize {
+    pub font: TextFont,
+    pub width: u16,
+    pub height: u16,
+}
+
+/// The fonts a picture may use for its digits; none, and digits are
+/// this module's own bitmaps.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct Fonts {
+    fonts: [Option<FontSize>; 5],
+}
+
+impl Fonts {
+    /// The fonts, the preferred one first where two are equally tall.
+    pub fn new(fonts: &[FontSize]) -> Fonts {
+        let mut out = Fonts::default();
+        for (slot, font) in out.fonts.iter_mut().zip(fonts) {
+            *slot = Some(*font);
+        }
+        out
+    }
+
+    /// The tallest font whose digits are no larger than this.
+    fn fitting(&self, width: u16, height: u16) -> Option<FontSize> {
+        let mut best: Option<FontSize> = None;
+        for f in self.fonts.iter().flatten() {
+            if f.width > 0
+                && f.width <= width
+                && f.height <= height
+                && best.is_none_or(|b| f.height > b.height)
+            {
+                best = Some(*f);
+            }
+        }
+        best
+    }
 }
 
 /// Where things go in an app window: the board on the left, as large as
@@ -89,6 +155,8 @@ pub struct Palette {
     /// Black and white only, with patterns where the color display has
     /// colors.
     pub two_tone: bool,
+    /// The display's fonts, for the digits.
+    pub fonts: Fonts,
     pub line: Rgb,
     pub black: Rgb,
     pub number: Rgb,
@@ -105,6 +173,7 @@ impl Palette {
     pub fn color() -> Palette {
         Palette {
             two_tone: false,
+            fonts: Fonts::default(),
             line: Rgb(0x6E, 0x6E, 0x6E),
             black: Rgb(0x1E, 0x1E, 0x1E),
             number: Rgb(0xFF, 0xFF, 0xFF),
@@ -123,6 +192,7 @@ impl Palette {
     pub fn gray(fg: Rgb, bg: Rgb) -> Palette {
         Palette {
             two_tone: true,
+            fonts: Fonts::default(),
             line: bg,
             black: fg,
             number: bg,
@@ -283,6 +353,8 @@ pub struct Painter {
     digits: Vec<Picture>,
     digit_scale: u8,
     digit_at: (i16, i16),
+    /// The display's font for the digits, if one fits the cells.
+    digit_font: Option<TextFont>,
     light: Picture,
     light_inner: Picture,
     light_at: i16,
@@ -325,6 +397,19 @@ impl Painter {
             (inside / 12).max(1)
         };
         let period = if inside < 12 { 3 } else { 4 };
+        // A font of the display for the numbers, the tallest that fits:
+        // inside the frame of a wrong number in black and white, and
+        // with a pixel to spare above and below where the cell has
+        // them.  (A black cell there covers the lines around it, so a
+        // digit as tall as a small cell still has black around it.)
+        let room = if !palette.two_tone {
+            inside - 2
+        } else if inside >= 12 {
+            inside - 2 * (inside / 12) - 2
+        } else {
+            inside
+        };
+        let digit_font = palette.fonts.fitting(room, room).map(|f| f.font);
         Painter {
             cells,
             pitch,
@@ -335,6 +420,7 @@ impl Painter {
                 1 + ((inside - dw.min(inside)) / 2) as i16,
                 1 + ((inside - dh.min(inside)).div_ceil(2)) as i16,
             ),
+            digit_font,
             light: disk(d),
             light_inner: disk(d - 2 * ring),
             light_at: 1 + margin as i16,
@@ -435,22 +521,39 @@ impl Painter {
                     }
                 }
                 Look::Clue { number, error } => {
-                    let digit = &self.digits[(number as usize).min(4)];
-                    let at = (left - 1 + self.digit_at.0, self.digit_at.1);
+                    // In the display's font where one fits the cell; else
+                    // this module's own digits.
+                    let digit = |color| match self.digit_font {
+                        Some(font) => Op::Text {
+                            x: left,
+                            y: 1,
+                            width: inside,
+                            height: inside,
+                            font,
+                            text: (b'0' + number.min(9)) as char,
+                            color,
+                        },
+                        None => self.digits[(number as usize).min(4)].op(
+                            left - 1 + self.digit_at.0,
+                            self.digit_at.1,
+                            self.digit_scale,
+                            color,
+                        ),
+                    };
                     if !error {
                         if !p.two_tone {
                             ops.push(fill(p.black));
                         }
-                        ops.push(digit.op(at.0, at.1, self.digit_scale, p.number));
+                        ops.push(digit(p.number));
                     } else if p.two_tone {
                         // Inverted: black on white, in a black frame
                         // where there is room for one.
                         let frame = if inside >= 12 { inside / 12 } else { 0 };
                         ops.push(square(inside - 2 * frame, p.number));
-                        ops.push(digit.op(at.0, at.1, self.digit_scale, p.black));
+                        ops.push(digit(p.black));
                     } else {
                         ops.push(fill(p.error));
-                        ops.push(digit.op(at.0, at.1, self.digit_scale, p.number));
+                        ops.push(digit(p.number));
                     }
                 }
                 Look::Unlit { marked } => {
@@ -568,6 +671,23 @@ pub fn shifted(ops: Vec<Op>, dx: i16, dy: i16) -> Vec<Op> {
                 height,
                 scale,
                 bits,
+                color,
+            },
+            Op::Text {
+                x,
+                y,
+                width,
+                height,
+                font,
+                text,
+                color,
+            } => Op::Text {
+                x: x + dx,
+                y: y + dy,
+                width,
+                height,
+                font,
+                text,
                 color,
             },
         })
@@ -691,19 +811,35 @@ fn arrow(t: u16, dir: KeyUse) -> Picture {
 /// and, beside it, what it does: an arrow, or the cell as the board would
 /// show it (with a light, with the no-light square, or empty).  `ink` is
 /// the color of frames, digits, and arrows.  The keys are as large as the
-/// space allows, up to a size that suits the largest display.
+/// space allows, up to a size that suits the largest display.  The digits
+/// are in the display's font where the palette names one that fits.
 pub fn keymap(width: u16, height: u16, palette: Palette, ink: Rgb) -> Keymap {
-    let fits = |key_height: u16| -> Option<(u16, u16, u8, u16, u16)> {
+    /// For a height of the keys: the width of a key, the cell beside the
+    /// digit, the digit's font (or the scale of this module's digits) and
+    /// its width, the space around things, and between keys.
+    type Sizes = (u16, u16, Option<TextFont>, u16, u16, u16, u16);
+    let fits = |key_height: u16| -> Option<Sizes> {
         let scale: u16 = if key_height >= 36 { 2 } else { 1 };
         let pad = 2 + scale;
         // The cell beside the digit, with its grid lines.
         let cell = key_height.checked_sub(2 * pad + 2)?;
-        let key_width = 5 * scale + cell + 3 * pad + 2;
+        // The digit in the display's font, about as tall as the cell.
+        let font = palette.fonts.fitting(cell, cell.saturating_sub(2));
+        let digit_width = font.map_or(5 * scale, |f| f.width);
+        let key_width = digit_width + cell + 3 * pad + 2;
         let gap = 1 + scale;
         (cell >= 7 && 3 * key_width + 2 * gap <= width && 3 * key_height + 2 * gap <= height)
-            .then_some((key_width, cell, scale as u8, pad, gap))
+            .then_some((
+                key_width,
+                cell,
+                font.map(|f| f.font),
+                digit_width,
+                scale,
+                pad,
+                gap,
+            ))
     };
-    let Some((key_height, (key_width, cell, scale, pad, gap))) =
+    let Some((key_height, (key_width, cell, font, digit_width, scale, pad, gap))) =
         (13..=46).rev().find_map(|h| Some((h, fits(h)?)))
     else {
         return Keymap {
@@ -716,7 +852,7 @@ pub fn keymap(width: u16, height: u16, palette: Palette, ink: Rgb) -> Keymap {
     };
     let painter = Painter::new(1, cell - 1, palette);
     let digits: Vec<Picture> = DIGITS.iter().map(|d| Picture::rows(d)).collect();
-    let line = scale as u16;
+    let line = scale;
     let mut ops = Vec::new();
     for (digit, column, row, what) in KEYS {
         let x = (column as u16 * (key_width + gap)) as i16;
@@ -735,10 +871,23 @@ pub fn keymap(width: u16, height: u16, palette: Palette, ink: Rgb) -> Keymap {
         bar(x, y, line, key_height);
         bar(x + (key_width - line) as i16, y, line, key_height);
         let inside = (line + pad) as i16;
-        let digit_y = y + ((key_height - 7 * scale as u16) / 2) as i16;
-        ops.push(digits[digit as usize].op(x + inside, digit_y, scale, ink));
+        ops.push(match font {
+            Some(font) => Op::Text {
+                x: x + inside,
+                y,
+                width: digit_width,
+                height: key_height,
+                font,
+                text: (b'0' + digit) as char,
+                color: ink,
+            },
+            None => {
+                let digit_y = y + ((key_height - 7 * scale) / 2) as i16;
+                digits[digit as usize].op(x + inside, digit_y, scale as u8, ink)
+            }
+        });
         let (cx, cy) = (
-            x + inside + (5 * scale as u16 + pad) as i16,
+            x + inside + (digit_width + pad) as i16,
             y + ((key_height - cell) / 2) as i16,
         );
         let shown = match what {

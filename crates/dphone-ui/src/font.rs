@@ -62,6 +62,29 @@ impl FontData {
         s.chars().filter_map(|c| self.glyph_or_fallback(c)).map(|(_, g)| g.adv as i32).sum()
     }
 
+    /// What a string paints when drawn with the pen at 0 and the baseline
+    /// at 0: the left edge, the top edge (negative: above the baseline),
+    /// the width, and the height of the box around its glyphs' pixels.
+    /// All zero for a string that paints nothing.
+    pub fn ink(&self, s: &str) -> (i32, i32, i32, i32) {
+        let (mut pen, mut found) = (0, false);
+        let (mut left, mut top, mut right, mut bottom) = (0, 0, 0, 0);
+        for c in s.chars() {
+            let Some((_, g)) = self.glyph_or_fallback(c) else { continue };
+            if g.w > 0 && g.h > 0 {
+                let (l, t) = (pen + g.xoff as i32, -(g.top as i32));
+                let (r, b) = (l + g.w as i32, t + g.h as i32);
+                if found {
+                    (left, top, right, bottom) = (left.min(l), top.min(t), right.max(r), bottom.max(b));
+                } else {
+                    (left, top, right, bottom, found) = (l, t, r, b, true);
+                }
+            }
+            pen += g.adv as i32;
+        }
+        (left, top, right - left, bottom - top)
+    }
+
     /// Ascent plus descent.
     pub fn height(&self) -> i32 {
         self.ascent as i32 + self.descent as i32

@@ -446,6 +446,7 @@ fn it_plays_on_the_gray_screens_in_gray() {
                         assert_eq!(b.scale, if b.height == 7 { 2 } else { 1 });
                         (&b.color, b.x, b.y)
                     }
+                    DrawOp::Text(t) => panic!("no text in this game: {t:?}"),
                 };
                 assert!(c.r == c.g && c.g == c.b, "a color on a gray screen: {c:?}");
                 assert!(bottom <= area.height as i16, "{op:?}");

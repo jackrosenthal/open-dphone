@@ -1090,6 +1090,8 @@ impl api::diagnostics::Host for AppCtx {
 const CANVAS_OPS_MAX: usize = 512;
 /// The most bitmap data one `canvas.draw` may carry.
 const CANVAS_BITS_MAX: usize = 64 * 1024;
+/// The longest text of one drawing operation, in bytes.
+const CANVAS_TEXT_MAX: usize = 64;
 
 /// Whether a drawing is within the limits of the interface.
 fn check_drawing(ops: &[api::canvas::Op]) -> Result<(), String> {
@@ -1099,6 +1101,11 @@ fn check_drawing(ops: &[api::canvas::Op]) -> Result<(), String> {
     }
     let mut bits = 0usize;
     for op in ops {
+        if let Op::Text(t) = op
+            && t.text.len() > CANVAS_TEXT_MAX
+        {
+            return Err(format!("a text of more than {CANVAS_TEXT_MAX} bytes"));
+        }
         let Op::Bitmap(b) = op else { continue };
         if b.width == 0 || b.height == 0 || b.width > 256 || b.height > 256 {
             return Err("a bitmap must be 1 to 256 pixels each way".into());
@@ -1120,6 +1127,14 @@ fn check_drawing(ops: &[api::canvas::Op]) -> Result<(), String> {
 impl api::canvas::Host for AppCtx {
     fn theme_color(&mut self, role: api::canvas::Role) -> api::canvas::Color {
         self.window.theme_color(role)
+    }
+    fn text_size(&mut self, font: Font, text: String) -> Size {
+        let mut end = text.len().min(CANVAS_TEXT_MAX);
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        let (width, height) = self.window.text_size(font, &text[..end]);
+        Size { width, height }
     }
     fn create(&mut self, parent: u32, bounds: Rect) -> u32 {
         let idle = parent & IDLE_BIT;

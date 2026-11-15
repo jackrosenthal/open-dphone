@@ -465,6 +465,19 @@ impl AppWindow for FakeWindow {
         let v = (role as u8 + 1) * 16;
         Color { r: v, g: v, b: v }
     }
+    /// A size for every font, the same for any one character: small 5
+    /// by 6, normal 6 by 8, bold 7 by 9, title 8 by 10, and large 12 by
+    /// 16 pixels.
+    fn text_size(&self, font: Font, text: &str) -> (u16, u16) {
+        let (w, h) = match font {
+            Font::Small => (5, 6),
+            Font::Normal => (6, 8),
+            Font::Bold => (7, 9),
+            Font::Title => (8, 10),
+            Font::Large => (12, 16),
+        };
+        (w * text.chars().count() as u16, h)
+    }
     fn create_canvas(&mut self, parent: Option<u32>, bounds: Rect) -> u32 {
         self.add(WidgetKind::Group, parent, bounds, true)
     }

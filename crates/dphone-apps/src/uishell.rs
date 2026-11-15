@@ -44,6 +44,16 @@ fn rect(r: Rect) -> tk::Rect {
     tk::Rect::new(r.x, r.y, r.width, r.height)
 }
 
+fn tk_font(font: Font) -> tk::Font {
+    match font {
+        Font::Small => tk::Font::Small,
+        Font::Normal => tk::Font::Normal,
+        Font::Large => tk::Font::Large,
+        Font::Bold => tk::Font::Bold,
+        Font::Title => tk::Font::Title,
+    }
+}
+
 impl AppWindow for UiWindow {
     fn metrics(&self) -> Metrics {
         let m = self.view.metrics();
@@ -109,13 +119,7 @@ impl AppWindow for UiWindow {
         self.view.set_align(id(w), a, tk::VAlign::Middle);
     }
     fn set_font(&mut self, w: u32, font: Font) {
-        let f = match font {
-            Font::Small => tk::Font::Small,
-            Font::Normal => tk::Font::Normal,
-            Font::Large => tk::Font::Large,
-            Font::Bold => tk::Font::Bold,
-            Font::Title => tk::Font::Title,
-        };
+        let f = tk_font(font);
         self.view.set_font(id(w), f);
     }
     fn set_wrap(&mut self, w: u32, wrap: bool) {
@@ -239,6 +243,9 @@ impl AppWindow for UiWindow {
         });
         Color { r, g, b }
     }
+    fn text_size(&self, font: Font, text: &str) -> (u16, u16) {
+        self.view.text_ink(tk_font(font), text)
+    }
     fn create_canvas(&mut self, parent: Option<u32>, bounds: Rect) -> u32 {
         self.view
             .create(tk::WidgetKind::Canvas, parent.map(id), rect(bounds))
@@ -261,6 +268,12 @@ impl AppWindow for UiWindow {
                     scale: b.scale,
                     color: color(b.color),
                     bits: b.bits.into(),
+                },
+                DrawOp::Text(t) => tk::DrawOp::Text {
+                    rect: rect(t.box_),
+                    font: tk_font(t.font),
+                    color: color(t.color),
+                    text: t.text,
                 },
             })
             .collect();
