@@ -159,7 +159,7 @@ async fn route(app: Arc<App>, peer: IpAddr, secure: bool, req: Request<Incoming>
         // Web configuration disabled: the frontend may ask for the state
         // (and is told only that); nothing else is answered.
         Method::POST if !app.switch.enabled() && path != "/dphone.v1.AuthService/GetSession" => {
-            rpc::error_response(ConnectError::permission_denied("web configuration is disabled"), req.headers())
+            rpc::error_response(ConnectError::permission_denied("The web interface is disabled."), req.headers())
         }
         Method::POST => {
             if !same_origin(&req) {
@@ -351,7 +351,7 @@ async fn upload(ctx: Ctx, firmware: bool, req: Request<Incoming>) -> Response<Bo
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<u64>().ok());
     if declared.is_some_and(|n| n > max) {
-        return rpc::plain_error(ConnectError::new(Code::ResourceExhausted, "upload too large"));
+        return rpc::plain_error(ConnectError::new(Code::ResourceExhausted, "File too large."));
     }
     let io_err = |e: io::Error| rpc::plain_error(ConnectError::internal(format!("storing upload: {e}")));
 
@@ -391,7 +391,7 @@ async fn upload(ctx: Ctx, firmware: bool, req: Request<Incoming>) -> Response<Bo
         size += chunk.len() as u64;
         if size > max {
             abandon(target);
-            return rpc::plain_error(ConnectError::new(Code::ResourceExhausted, "upload too large"));
+            return rpc::plain_error(ConnectError::new(Code::ResourceExhausted, "File too large."));
         }
         // Off the reactor thread: a sink may write to flash.
         let written = tokio::task::spawn_blocking(move || {
@@ -414,7 +414,7 @@ async fn upload(ctx: Ctx, firmware: bool, req: Request<Incoming>) -> Response<Bo
     }
     if size == 0 {
         abandon(target);
-        return rpc::plain_error(ConnectError::invalid_argument("empty upload"));
+        return rpc::plain_error(ConnectError::invalid_argument("Empty file."));
     }
 
     let id = auth::random_token();
@@ -424,7 +424,7 @@ async fn upload(ctx: Ctx, firmware: bool, req: Request<Incoming>) -> Response<Bo
             let (path, info) = match finished {
                 Ok(Ok(x)) => x,
                 Ok(Err(e)) => {
-                    return rpc::plain_error(ConnectError::invalid_argument(format!("not a firmware image: {e}")));
+                    return rpc::plain_error(ConnectError::invalid_argument(format!("Invalid firmware file: {e}")));
                 }
                 Err(e) => return io_err(io::Error::other(e)),
             };

@@ -8,7 +8,7 @@ import { errorMessage } from "../lib/transport";
 export function RegistrationBadge({ a }: { a: AccountStatus }) {
   switch (a.state) {
     case RegistrationState.REGISTERED:
-      return <Badge tone="green">Registered{a.onAlternateHost ? " (alternate)" : ""}</Badge>;
+      return <Badge tone="green">Registered{a.onAlternateHost ? " (backup)" : ""}</Badge>;
     case RegistrationState.REGISTERING:
       return <Badge tone="blue">Registering</Badge>;
     case RegistrationState.FAILED:
@@ -16,7 +16,7 @@ export function RegistrationBadge({ a }: { a: AccountStatus }) {
     case RegistrationState.DISABLED:
       return <Badge>Disabled</Badge>;
     default:
-      return <Badge tone="amber">Not registered</Badge>;
+      return <Badge tone="amber">Unregistered</Badge>;
   }
 }
 
@@ -29,7 +29,7 @@ export function callStateLabel(s: CallState): string {
       [CallState.RINGBACK]: "Ringing",
       [CallState.RINGING]: "Incoming",
       [CallState.ACTIVE]: "Connected",
-      [CallState.HELD]: "On hold",
+      [CallState.HELD]: "On Hold",
       [CallState.TRANSFERRING]: "Transferring",
       [CallState.ENDED]: "Ended",
     } as Record<number, string>

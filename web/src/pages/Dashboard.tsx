@@ -43,21 +43,21 @@ export function Dashboard() {
         actions={sys.phase !== SystemPhase.RUNNING && <Badge tone="amber">{label(systemPhaseNames, sys.phase, SystemPhase[sys.phase])}</Badge>}
       />
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card title="Lines" actions={<Link to="/accounts" className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">Manage</Link>}>
+        <Card title="Accounts" actions={<Link to="/accounts" className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">Manage</Link>}>
           {status.accounts.length === 0 ? (
-            <Empty>None</Empty>
+            <Empty>No accounts</Empty>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {status.accounts.map((a) => (
                 <li key={a.index} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">
-                      {a.label} {a.isDefault && <span className="text-xs font-normal text-slate-400">default</span>}
+                      {a.label} {a.isDefault && <span className="text-xs font-normal text-slate-400">Default</span>}
                     </p>
                     <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                       {a.user}@{a.server}
                       {a.reason ? ` · ${a.reason}` : ""}
-                      {a.retryInSecs ? ` · retry in ${a.retryInSecs} s` : ""}
+                      {a.retryInSecs ? ` · retrying in ${a.retryInSecs} s` : ""}
                     </p>
                   </div>
                   <RegistrationBadge a={a} />
@@ -67,9 +67,9 @@ export function Dashboard() {
           )}
         </Card>
 
-        <Card title="Calls" actions={<Link to="/calls" className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">Open</Link>}>
+        <Card title="Calls" actions={<Link to="/calls" className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">View</Link>}>
           {calls.calls.length === 0 ? (
-            <Empty>None</Empty>
+            <Empty>No active calls</Empty>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {calls.calls.map((c) => (
@@ -88,10 +88,10 @@ export function Dashboard() {
             </ul>
           )}
           <div className="mt-4 flex flex-wrap gap-2 text-xs">
-            {calls.features?.dnd && <Badge tone="red">Do not disturb</Badge>}
+            {calls.features?.dnd && <Badge tone="red">Do Not Disturb</Badge>}
             {calls.features?.forwardAlways && <Badge tone="amber">Forwarding to {calls.features.forwardAlways}</Badge>}
-            {newMessages > 0 && <Badge tone="blue">{newMessages} new voicemail</Badge>}
-            {calls.missedUnseen > 0 && <Badge tone="amber">{calls.missedUnseen} missed</Badge>}
+            {newMessages > 0 && <Badge tone="blue">{newMessages} {newMessages === 1 ? "voicemail" : "voicemails"}</Badge>}
+            {calls.missedUnseen > 0 && <Badge tone="amber">{calls.missedUnseen} missed {calls.missedUnseen === 1 ? "call" : "calls"}</Badge>}
           </div>
         </Card>
 
@@ -101,11 +101,11 @@ export function Dashboard() {
               ["Address", net.ipv4Address && <>{net.ipv4Address}/{net.ipv4PrefixLen}{net.ipv4Source && <> ({label(addressSourceNames, net.ipv4Source)})</>}</>],
               ["Gateway", net.ipv4Gateway],
               ["DNS", net.dns.join(", ")],
-              ["LAN port", net.lan?.up ? `${net.lan.speed} Mb/s ${net.lan.fullDuplex ? "full" : "half"} duplex` : "No link"],
-              ["PC port", !net.pcPortEnabled ? "Disabled" : net.pc?.up ? `${net.pc.speed} Mb/s` : "No link"],
-              ["Voice VLAN", net.voiceVlan !== undefined ? <>{net.voiceVlan}{net.vlanSource && <> ({label(vlanSourceNames, net.vlanSource)})</>}</> : "Untagged"],
+              ["LAN port", net.lan?.up ? `${net.lan.speed} Mbps, ${net.lan.fullDuplex ? "full" : "half"} duplex` : "No link"],
+              ["PC port", !net.pcPortEnabled ? "Disabled" : net.pc?.up ? `${net.pc.speed} Mbps` : "No link"],
+              ["Voice VLAN", net.voiceVlan !== undefined ? <>{net.voiceVlan}{net.vlanSource && <> ({label(vlanSourceNames, net.vlanSource)})</>}</> : "None"],
               ["Switch", net.lldpPresent ? `${net.lldpSystemName} ${net.lldpPortId}` : ""],
-              ["MAC", net.mac],
+              ["MAC address", net.mac],
             ]}
           />
         </Card>
@@ -114,11 +114,11 @@ export function Dashboard() {
           <KeyValue
             rows={[
               ["Server", prov.server && <>{prov.server.name} ({label(discoverySourceNames, prov.server.source)})</>],
-              ["Server software", prov.serverUserAgent],
-              ["Assigned to", prov.assignedUser],
-              ["Session", prov.attached ? "Attached" : "Not attached"],
-              ["Last success", dateTime(prov.lastSuccessUnix)],
-              ["Failure", prov.failureReason],
+              ["Software", prov.serverUserAgent],
+              ["User", prov.assignedUser],
+              ["Session", prov.attached ? "Connected" : "Disconnected"],
+              ["Last provisioned", dateTime(prov.lastSuccessUnix)],
+              ["Error", prov.failureReason],
             ]}
           />
         </Card>
@@ -126,13 +126,13 @@ export function Dashboard() {
         <Card title="System">
           <KeyValue
             rows={[
-              ["Host name", sys.hostname],
+              ["Hostname", sys.hostname],
               ["Uptime", duration(Number(sys.uptimeSecs) + elapsed)],
-              ["Phone time", `${dateTime(Number(sys.unixTime) + elapsed)}${sys.timeSynced ? "" : " (not synchronized)"}`],
+              ["Time", `${dateTime(Number(sys.unixTime) + elapsed)}${sys.timeSynced ? "" : " (not synced)"}`],
               ["Time zone", sys.timezone],
-              ["Memory", `${Math.round(sys.memTotalKib / 1024)} MiB usable`],
+              ["Memory", `${Math.round(sys.memTotalKib / 1024)} MB`],
               ["Last reboot", sys.lastRebootReason],
-              ["Firmware bank", status.firmware?.runningBank],
+              ["Firmware", status.firmware ? `${status.firmware.runningVersion} (bank ${status.firmware.runningBank})` : ""],
               ["User agent", sys.userAgent],
             ]}
           />
@@ -140,7 +140,7 @@ export function Dashboard() {
 
         {sys.hasExpansion && <ExpansionCard />}
 
-        <Card title="Subsystems" actions={!status.healthy && <Badge tone="amber">Not yet healthy</Badge>}>
+        <Card title="Services" actions={!status.healthy && <Badge tone="amber">Warning</Badge>}>
           <ul className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
             {status.health.map((h) => (
               <li key={h.subsystem} className="flex items-center gap-2" title={h.detail}>

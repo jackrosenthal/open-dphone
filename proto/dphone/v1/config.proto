@@ -2,12 +2,11 @@ syntax = "proto3";
 
 package dphone.v1;
 
-// Generic access to the merged configuration by stock setting ID.
+// Access to the merged configuration by stock setting ID, for the web
+// interface's settings forms.
 service ConfigService {
   rpc ListSettings(ListSettingsRequest) returns (ListSettingsResponse);
   rpc SetSettings(SetSettingsRequest) returns (SetSettingsResponse);
-  // Drops local overrides so that provisioned or default values show again.
-  rpc UnsetSettings(UnsetSettingsRequest) returns (UnsetSettingsResponse);
   // The softkeys of the phone's idle screen, in order.
   rpc GetIdleSoftkeys(GetIdleSoftkeysRequest) returns (GetIdleSoftkeysResponse);
   rpc SetIdleSoftkeys(SetIdleSoftkeysRequest) returns (SetIdleSoftkeysResponse);
@@ -19,8 +18,7 @@ message Setting {
   string value = 2;
   // Fixed by the base or factory layer; cannot be changed.
   bool frozen = 3;
-  // Overridden locally (phone menu, web UI).
-  bool local = 4;
+  reserved 4;
   bool secret = 5;
 }
 
@@ -44,14 +42,6 @@ message SetSettingsRequest {
 }
 
 message SetSettingsResponse {
-  uint64 generation = 1;
-}
-
-message UnsetSettingsRequest {
-  repeated string ids = 1;
-}
-
-message UnsetSettingsResponse {
   uint64 generation = 1;
 }
 

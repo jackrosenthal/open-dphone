@@ -54,19 +54,19 @@ pub enum KeyError {
 impl std::fmt::Display for KeyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            KeyError::Empty => "No key was given.",
+            KeyError::Empty => "Enter a public key.",
             KeyError::PrivateKey => {
-                "That is a private key, and it was not stored.  Use the public key (the .pub file)."
+                "This is a private key.  Use the public key (.pub) instead."
             }
             KeyError::SeveralKeys => "Add one key at a time.",
-            KeyError::TooLong => "That is too long to be a public key.",
+            KeyError::TooLong => "Too long to be a public key.",
             KeyError::HasOptions => "The line must start with the key type, e.g., ssh-ed25519.",
             KeyError::UnsupportedType => {
                 "Unsupported key type.  Accepted: ssh-ed25519, ssh-rsa, and ecdsa-sha2-nistp256/384/521."
             }
-            KeyError::Malformed => "That is not a valid public key.",
-            KeyError::TypeMismatch => "The key data is of a different type than the line says.",
-            KeyError::WeakRsa => "RSA keys shorter than 1024 bits are not accepted.",
+            KeyError::Malformed => "Invalid public key.",
+            KeyError::TypeMismatch => "The key data does not match the key type.",
+            KeyError::WeakRsa => "RSA keys must be at least 1024 bits.",
         })
     }
 }

@@ -6,7 +6,7 @@ import { useStreamState } from "../lib/stream";
 import { client } from "../lib/transport";
 import { upload } from "../lib/upload";
 import { ErrorNote } from "./common";
-import { settingOrigin } from "./Ssh";
+import { settingOrigin } from "./Settings";
 
 export function Apps() {
   const [msg] = useStreamState((signal) => client(AppsService).watchApps({}, { signal }));
@@ -44,7 +44,7 @@ export function Apps() {
           <>
             <input ref={file} type="file" className="hidden" onChange={(e) => e.target.files?.[0] && install(e.target.files[0]).then(() => (e.target.value = ""))} />
             <Button variant="primary" busy={busy} onClick={() => file.current?.click()}>
-              Install a package
+              Install App
             </Button>
           </>
         }
@@ -56,7 +56,7 @@ export function Apps() {
           {!snap ? (
             <Spinner />
           ) : snap.apps.length === 0 ? (
-            <Empty>None</Empty>
+            <Empty>No apps</Empty>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {snap.apps.map((a) => (
@@ -68,17 +68,17 @@ export function Apps() {
                     <p className="text-sm text-slate-500 dark:text-slate-400">{a.description}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    {a.builtin && <Badge>Built in</Badge>}
+                    {a.builtin && <Badge>Built-in</Badge>}
                     {a.hidden && <Badge>Hidden</Badge>}
-                    {snap.idleApp === a.name && <Badge tone="blue">Idle screen</Badge>}
-                    {a.foreground ? <Badge tone="green">On screen</Badge> : a.running && <Badge tone="blue">Running</Badge>}
+                    {snap.idleApp === a.name && <Badge tone="blue">Idle Screen</Badge>}
+                    {a.foreground ? <Badge tone="green">Active</Badge> : a.running && <Badge tone="blue">Running</Badge>}
                     {a.disabled ? null : a.running ? (
                       <Button size="sm" onClick={() => close.mutate({ name: a.name })}>
                         Close
                       </Button>
                     ) : (
                       <Button size="sm" onClick={() => launch.mutate({ name: a.name })}>
-                        Open on phone
+                        Open
                       </Button>
                     )}
                     {a.builtin && <Toggle label="Enabled" checked={!a.disabled} disabled={locked} onChange={(v) => enable.mutate({ name: a.name, enabled: v })} />}

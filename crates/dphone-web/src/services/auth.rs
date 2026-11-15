@@ -33,7 +33,7 @@ pub async fn login(ctx: Ctx, req: pb::LoginRequest) -> Result<pb::LoginResponse,
     if let Some(wait) = ctx.app.sessions.locked_for(ctx.peer) {
         return Err(ConnectError::new(
             Code::ResourceExhausted,
-            format!("too many failed logins; try again in {} s", wait.as_secs().max(1)),
+            format!("Too many failed attempts. Try again in {} seconds.", wait.as_secs().max(1)),
         ));
     }
     let user = if req.user.is_empty() { WEB_USER.to_owned() } else { req.user.clone() };
@@ -46,8 +46,8 @@ pub async fn login(ctx: Ctx, req: pb::LoginRequest) -> Result<pb::LoginResponse,
         return Err(ConnectError::new(
             Code::Unauthenticated,
             match lock {
-                Some(l) => format!("wrong user name or password; wait {} s before trying again", l.as_secs()),
-                None => "wrong user name or password".to_owned(),
+                Some(l) => format!("Incorrect password. Try again in {} seconds.", l.as_secs()),
+                None => "Incorrect password.".to_owned(),
             },
         ));
     }
@@ -89,16 +89,16 @@ pub async fn change_password(
 ) -> Result<pb::ChangePasswordResponse, ConnectError> {
     let session = ctx.session.clone().ok_or_else(|| ConnectError::new(Code::Unauthenticated, "log in first"))?;
     if req.new_password.len() < 4 || req.new_password.len() > 128 {
-        return Err(ConnectError::invalid_argument("the new password must be 4 to 128 characters"));
+        return Err(ConnectError::invalid_argument("The new password must be 4 to 128 characters."));
     }
     // The stock digest file is `user:realm:hash` lines, so these cannot be
     // stored; refuse rather than write a file stock would misread.
     if req.new_password.chars().any(|c| c.is_control()) {
-        return Err(ConnectError::invalid_argument("the new password contains a control character"));
+        return Err(ConnectError::invalid_argument("The new password contains an invalid character."));
     }
     if !check_password(&ctx, session.user.clone(), req.current_password.clone()).await? {
         tokio::time::sleep(Duration::from_millis(400)).await;
-        return Err(ConnectError::new(Code::PermissionDenied, "the current password is wrong"));
+        return Err(ConnectError::new(Code::PermissionDenied, "Incorrect current password."));
     }
     let new = req.new_password.clone();
     super::with_config(&ctx.app, true, move |c| {

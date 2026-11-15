@@ -463,7 +463,7 @@ async fn ssh_keys() {
     // the file is unchanged.
     let refused = [
         (ED.to_owned(), "already_exists", "already"),
-        ("ssh-ed25519 AAAAC3Nz".to_owned(), "invalid_argument", "not a valid public key"),
+        ("ssh-ed25519 AAAAC3Nz".to_owned(), "invalid_argument", "Invalid public key"),
         ("ssh-dss AAAAB3NzaC1kc3M= old".to_owned(), "invalid_argument", "Unsupported key type"),
         ("hello there".to_owned(), "invalid_argument", "must start with the key type"),
         (

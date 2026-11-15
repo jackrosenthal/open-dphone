@@ -18,7 +18,7 @@ fn bluetooth_model(ctx: &Ctx) -> Result<(), ConnectError> {
     if ctx.app.store.model().bluetooth() {
         Ok(())
     } else {
-        Err(ConnectError::new(Code::Unimplemented, "this model has no Bluetooth"))
+        Err(ConnectError::new(Code::Unimplemented, "Bluetooth is not supported on this model."))
     }
 }
 
@@ -86,7 +86,7 @@ pub async fn answer_bluetooth_pairing(
     // Legacy PINs are 1 to 16 bytes.
     let pin = req.pin.filter(|p| !p.is_empty());
     if pin.as_ref().is_some_and(|p| p.len() > 16) {
-        return Err(ConnectError::invalid_argument("a PIN is at most 16 characters"));
+        return Err(ConnectError::invalid_argument("PIN must be 16 characters or fewer."));
     }
     command(&ctx.app.store, Command::BluetoothAnswerPairing { addr, accept: req.accept, pin }).await?;
     Ok(pb::AnswerBluetoothPairingResponse {})

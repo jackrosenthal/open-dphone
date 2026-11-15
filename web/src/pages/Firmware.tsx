@@ -1,13 +1,13 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useRef, useState, type ReactNode } from "react";
-import { Alert, Badge, Button, Card, ConfirmButton, KeyValue, PageHeader, Spinner, Toggle } from "../components/ui";
+import { Alert, Badge, Button, Card, ConfirmButton, KeyValue, Spinner, Toggle } from "../components/ui";
 import { FirmwareService, UpdatePhase } from "../gen/dphone/v1/firmware_pb";
 import { bytes } from "../lib/format";
 import { label, updatePhaseNames } from "../lib/labels";
 import { useStatus } from "../lib/status";
 import { upload } from "../lib/upload";
 import { ErrorNote } from "./common";
-import { settingOrigin } from "./Ssh";
+import { settingOrigin } from "./Settings";
 
 function Bar({ fraction, label }: { fraction: number; label: ReactNode }) {
   return (
@@ -33,30 +33,23 @@ const span: Partial<Record<UpdatePhase, [number, number]>> = {
   [UpdatePhase.COMMITTING]: [0.98, 1],
 };
 
-function ProvisionedFirmware() {
-  const [error, setError] = useState<unknown>();
+function ProvisionedFirmware({ onError }: { onError: (e: unknown) => void }) {
   const policy = useQuery(FirmwareService.method.getProvisionedFirmwarePolicy, {});
-  const set = useMutation(FirmwareService.method.setProvisionedFirmwarePolicy, {
-    onError: setError,
-    onSuccess: () => {
-      setError(undefined);
-      policy.refetch();
-    },
-  });
+  const set = useMutation(FirmwareService.method.setProvisionedFirmwarePolicy, { onError, onSuccess: () => (onError(undefined), policy.refetch()) });
   const ignore = policy.data?.ignore;
   const origin = settingOrigin(ignore);
   return (
-    <Card title="Provisioned firmware">
-      <div className="space-y-2">
-        <ErrorNote error={error ?? policy.error} />
-        <Toggle label="Ignore firmware provisioned from DPMA" checked={ignore?.value ?? false} disabled={!ignore || ignore.locked || set.isPending} onChange={(v) => set.mutate({ ignore: v })} />
-        {origin && <p className="text-xs text-slate-500 dark:text-slate-400">{origin}</p>}
-      </div>
-    </Card>
+    <div className="space-y-1 border-t border-slate-100 pt-4 dark:border-slate-800">
+      <Toggle label="Ignore DPMA firmware updates" checked={ignore?.value ?? false} disabled={!ignore || ignore.locked || set.isPending} onChange={(v) => set.mutate({ ignore: v })} />
+      {origin && <p className="text-xs text-slate-500 dark:text-slate-400">{origin}</p>}
+    </div>
   );
 }
 
-export function Firmware() {
+const version = (v: string) => v.replace(/_/g, ".");
+
+/// The running firmware and the upload that replaces it, on the System page.
+export function FirmwareCard() {
   const { status } = useStatus();
   const fw = status?.firmware;
   const file = useRef<HTMLInputElement>(null);
@@ -77,7 +70,13 @@ export function Firmware() {
   const confirm = useMutation(FirmwareService.method.confirmTrial, opts);
   const rollback = useMutation(FirmwareService.method.rollback, opts);
 
-  if (!fw) return <Spinner />;
+  if (!fw) {
+    return (
+      <Card title="Firmware">
+        <Spinner />
+      </Card>
+    );
+  }
   const up = pending.data?.status?.uploaded;
   const working = fw.phase !== UpdatePhase.IDLE && fw.phase !== UpdatePhase.COMPLETE && fw.phase !== UpdatePhase.FAILED;
   const [from, to] = span[fw.phase] ?? [0, 0];
@@ -97,79 +96,64 @@ export function Firmware() {
   }
 
   return (
-    <>
-      <PageHeader title="Firmware" />
-      <div className="space-y-5">
+    <Card title="Firmware" actions={working && <Badge tone="blue">Updating</Badge>}>
+      <div className="space-y-4">
         <ErrorNote error={error} />
         {fw.trial === "pending" && (
-          <Alert tone="blue" title={`This firmware is on trial. Starts left: ${fw.trialBootsLeft}.`}>
+          <Alert tone="blue" title={`Firmware trial: ${fw.trialBootsLeft} ${fw.trialBootsLeft === 1 ? "boot" : "boots"} left.`}>
             <div className="mt-2 flex gap-2">
               <Button size="sm" onClick={() => confirm.mutate({})}>
-                Keep this firmware
+                Keep
               </Button>
-              <ConfirmButton size="sm" variant="secondary" label="Return to the previous firmware" title="Return to the previous firmware" confirmLabel="Return" onConfirm={() => rollback.mutateAsync({})} />
+              <ConfirmButton size="sm" variant="secondary" label="Roll Back" title="Roll back to the previous firmware?" confirmLabel="Roll Back" onConfirm={() => rollback.mutateAsync({})} />
             </div>
           </Alert>
         )}
-        {fw.trial === "rolled_back" && <Alert tone="red" title="The last update failed its trial and was rolled back.">{fw.rollbackReason}</Alert>}
-
-        <div className="grid gap-5 lg:grid-cols-2">
-          <Card title="Installed">
+        {fw.trial === "rolled_back" && <Alert tone="red" title="The last firmware update was rolled back.">{fw.rollbackReason}</Alert>}
+        <KeyValue
+          rows={[
+            ["Version", `Open DPhone ${fw.runningVersion}`],
+            ["Active bank", fw.runningBank],
+          ]}
+        />
+        {working ? (
+          <Bar fraction={overall} label={<>{label(updatePhaseNames, fw.phase, UpdatePhase[fw.phase])}{fw.incomingVersion && ` · ${version(fw.incomingVersion)}`}</>} />
+        ) : fw.phase === UpdatePhase.COMPLETE ? (
+          <Alert tone="green" title={`Firmware ${version(fw.incomingVersion)} installed. Reboot to activate.`} />
+        ) : sending !== undefined ? (
+          <Bar fraction={sending} label="Uploading" />
+        ) : up ? (
+          <div className="space-y-4 border-t border-slate-100 pt-4 dark:border-slate-800">
             <KeyValue
               rows={[
-                ["Version", `Open DPhone ${fw.runningVersion}`],
-                ["Model", status?.system?.model],
-                ["Running bank", fw.runningBank ? `${fw.runningBank} (${fw.runningBank === "A" ? "k0 + root0" : "k1 + root1"})` : ""],
-                ["State", <Badge tone={fw.phase === UpdatePhase.FAILED ? "red" : working ? "blue" : "gray"}>{label(updatePhaseNames, fw.phase, UpdatePhase[fw.phase])}</Badge>],
+                ["Upload", `${up.isStock ? "Digium" : "Open DPhone"} ${version(up.version)}`],
+                ["Model", up.model],
+                ["Size", bytes(up.size)],
               ]}
             />
-          </Card>
-
-          <Card title="Install firmware">
-            {working ? (
-              <div className="space-y-3">
-                <Bar fraction={overall} label={<>{label(updatePhaseNames, fw.phase, UpdatePhase[fw.phase])}{fw.incomingVersion && ` · ${fw.incomingVersion.replace(/_/g, ".")}`}</>} />
-              </div>
-            ) : fw.phase === UpdatePhase.COMPLETE ? (
-              <Alert tone="green" title={`Firmware ${fw.incomingVersion.replace(/_/g, ".")} is installed and starts at the next reboot.`} />
-            ) : sending !== undefined ? (
-              <Bar fraction={sending} label="Uploading" />
-            ) : up ? (
-              <div className="space-y-4">
-                <KeyValue
-                  rows={[
-                    ["Image", up.isStock ? "Stock Digium firmware" : "Open DPhone firmware"],
-                    ["Version", up.version.replace(/_/g, ".")],
-                    ["For model", up.model],
-                    ["Size", bytes(up.size)],
-                  ]}
-                />
-                {!up.modelMatches && <Alert tone="red" title={`This image is for the ${up.model}, not this phone.`} />}
-                <div className="flex gap-2">
-                  {up.isStock ? (
-                    <ConfirmButton label="Install" title="Install stock firmware?" confirmLabel="Install" onConfirm={() => install.mutateAsync({ uploadId: up.uploadId, allowStock: true })} />
-                  ) : (
-                    <Button variant="primary" disabled={!up.modelMatches} busy={install.isPending} onClick={() => install.mutate({ uploadId: up.uploadId, allowStock: false })}>
-                      Install
-                    </Button>
-                  )}
-                  <Button onClick={() => discard.mutate({ uploadId: up.uploadId })}>Discard</Button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {fw.phase === UpdatePhase.FAILED && <Alert tone="red" title="The last install failed.">{fw.error}</Alert>}
-                <input ref={file} type="file" accept=".eff" className="hidden" onChange={(e) => e.target.files?.[0] && send(e.target.files[0]).then(() => (e.target.value = ""))} />
-                <Button variant="primary" onClick={() => file.current?.click()}>
-                  Choose image
+            {!up.modelMatches && <Alert tone="red" title={`This firmware is for the ${up.model}.`} />}
+            <div className="flex gap-2">
+              {up.isStock ? (
+                <ConfirmButton label="Install" title="Install stock Digium firmware?" confirmLabel="Install" onConfirm={() => install.mutateAsync({ uploadId: up.uploadId, allowStock: true })} />
+              ) : (
+                <Button variant="primary" disabled={!up.modelMatches} busy={install.isPending} onClick={() => install.mutate({ uploadId: up.uploadId, allowStock: false })}>
+                  Install
                 </Button>
-              </div>
-            )}
-          </Card>
-
-          <ProvisionedFirmware />
-        </div>
+              )}
+              <Button onClick={() => discard.mutate({ uploadId: up.uploadId })}>Discard</Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {fw.phase === UpdatePhase.FAILED && <Alert tone="red" title="Firmware update failed.">{fw.error}</Alert>}
+            <input ref={file} type="file" accept=".eff" className="hidden" onChange={(e) => e.target.files?.[0] && send(e.target.files[0]).then(() => (e.target.value = ""))} />
+            <Button variant="primary" onClick={() => file.current?.click()}>
+              Upload Firmware
+            </Button>
+          </>
+        )}
+        <ProvisionedFirmware onError={setError} />
       </div>
-    </>
+    </Card>
   );
 }

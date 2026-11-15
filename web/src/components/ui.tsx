@@ -40,7 +40,7 @@ export function Button({ variant = "secondary", size = "md", busy, className, ch
 
 export function Spinner({ className = "size-5" }: { className?: string }) {
   return (
-    <svg className={cx("animate-spin", className)} viewBox="0 0 24 24" fill="none" aria-label="Working">
+    <svg className={cx("animate-spin", className)} viewBox="0 0 24 24" fill="none" aria-label="Loading">
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.25" />
       <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
     </svg>
@@ -104,7 +104,7 @@ export function Dot({ tone }: { tone: Tone }) {
   return <span className={cx("inline-block size-2 rounded-full", styles[tone])} />;
 }
 
-export function Alert({ tone = "amber", title, children }: { tone?: "amber" | "red" | "blue" | "green"; title?: string; children?: ReactNode }) {
+export function Alert({ tone = "amber", title, children, action }: { tone?: "amber" | "red" | "blue" | "green"; title?: string; children?: ReactNode; action?: ReactNode }) {
   const styles = {
     amber: "bg-amber-50 text-amber-900 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900",
     red: "bg-red-50 text-red-900 ring-red-200 dark:bg-red-950/40 dark:text-red-200 dark:ring-red-900",
@@ -112,12 +112,13 @@ export function Alert({ tone = "amber", title, children }: { tone?: "amber" | "r
     green: "bg-emerald-50 text-emerald-900 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-900",
   }[tone];
   return (
-    <div role="alert" className={cx("flex gap-3 rounded-lg px-4 py-3 text-sm ring-1 ring-inset", styles)}>
-      {tone !== "green" && tone !== "blue" && <Icons.warn className="mt-0.5 size-4 shrink-0" />}
-      <div>
+    <div role="alert" className={cx("flex items-center gap-3 rounded-lg px-4 py-3 text-sm ring-1 ring-inset", styles)}>
+      {tone !== "green" && tone !== "blue" && <Icons.warn className="size-4 shrink-0 self-start mt-0.5" />}
+      <div className="min-w-0 flex-1">
         {title && <p className="font-semibold">{title}</p>}
         {children && <div className={title ? "mt-0.5" : ""}>{children}</div>}
       </div>
+      {action}
     </div>
   );
 }

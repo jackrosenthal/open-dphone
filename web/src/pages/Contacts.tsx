@@ -13,7 +13,7 @@ function ContactEditor({ contact, onSave, onClose }: { contact: Contact; onSave:
   const setNumber = (i: number, patch: Partial<Contact["numbers"][number]>) => setC({ ...c, numbers: c.numbers.map((n, j) => (j === i ? { ...n, ...patch } : patch.primary ? { ...n, primary: false } : n)) });
   return (
     <Modal
-      title={contact.id ? "Edit contact" : "New contact"}
+      title={contact.id ? "Edit Contact" : "New Contact"}
       onClose={onClose}
       footer={
         <>
@@ -57,7 +57,7 @@ function ContactEditor({ contact, onSave, onClose }: { contact: Contact; onSave:
             ))}
           </div>
           <Button size="sm" className="mt-2" onClick={() => setC({ ...c, numbers: [...c.numbers, create(ContactNumberSchema, { primary: c.numbers.length === 0 })] })}>
-            Add number
+            Add Number
           </Button>
         </div>
       </div>
@@ -93,16 +93,16 @@ function ListEditor({ name }: { name: string }) {
     <div className="space-y-4">
       <ErrorNote error={error} />
       <div className="flex flex-wrap items-center gap-2">
-        <Input className="max-w-xs" placeholder="Search contacts" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Search contacts" />
+        <Input className="max-w-xs" placeholder="Search" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Search" />
         <div className="flex-1" />
         {dirty && <Badge tone="amber">Unsaved changes</Badge>}
         {dirty && <Button onClick={() => setGroups(undefined)}>Discard</Button>}
         <Button variant="primary" disabled={!dirty} busy={put.isPending} onClick={() => put.mutate({ name, groups: current })}>
-          Save list
+          Save
         </Button>
       </div>
       {current.length === 0 && (
-        <Button onClick={() => setGroups([create(ContactGroupSchema, { id: "local", name: "Contacts" })])}>Add a group</Button>
+        <Button onClick={() => setGroups([create(ContactGroupSchema, { id: "local", name: "Contacts" })])}>Add Group</Button>
       )}
       {current.map((g, gi) => {
         const rows = g.contacts.map((c, index) => ({ c, index })).filter(({ c }) => !q || `${c.firstName} ${c.lastName} ${c.organization} ${c.numbers.map((n) => n.dial).join(" ")}`.toLowerCase().includes(q));
@@ -113,11 +113,11 @@ function ListEditor({ name }: { name: string }) {
                 {g.name || g.id || "Group"} <span className="font-normal text-slate-400">{g.contacts.length}</span>
               </h3>
               <Button size="sm" onClick={() => setEditing({ group: gi, index: -1, contact: create(ContactSchema, { contactType: "sip", numbers: [create(ContactNumberSchema, { primary: true })] }) })}>
-                Add contact
+                Add Contact
               </Button>
             </div>
             {rows.length === 0 ? (
-              <Empty>{q ? "No matches" : "None"}</Empty>
+              <Empty>{q ? "No results" : "No contacts"}</Empty>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -228,12 +228,12 @@ export function Contacts() {
         actions={
           <>
             <input ref={file} type="file" accept=".xml,application/xml,text/xml" className="hidden" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0]).then(() => (e.target.value = ""))} />
-            <Button onClick={() => file.current?.click()}>Import XML</Button>
+            <Button onClick={() => file.current?.click()}>Import</Button>
             <Button onClick={exportList} disabled={!name}>
-              Export XML
+              Export
             </Button>
             <Button variant="primary" onClick={newList}>
-              New list
+              New List
             </Button>
           </>
         }
@@ -242,7 +242,7 @@ export function Contacts() {
         {error && <ErrorNote error={error} />}
         {names.length === 0 ? (
           <Card>
-            <Empty>None</Empty>
+            <Empty>No contact lists</Empty>
           </Card>
         ) : (
           <Card
@@ -251,13 +251,13 @@ export function Contacts() {
                 <Select value={name} onChange={(e) => setSelected(e.target.value)} aria-label="Contact list" className="!w-auto">
                   {names.map((l) => (
                     <option key={l.name} value={l.name}>
-                      {l.name} ({l.error ? "unreadable" : `${l.contacts} contacts`})
+                      {l.name} ({l.error ? "error" : l.contacts})
                     </option>
                   ))}
                 </Select>
               </span>
             }
-            actions={name && <ConfirmButton size="sm" variant="secondary" label="Delete list" title={`Delete ${name}?`} confirmLabel="Delete" onConfirm={() => remove.mutateAsync({ name })} />}
+            actions={name && <ConfirmButton size="sm" variant="secondary" label="Delete List" title={`Delete ${name}?`} confirmLabel="Delete" onConfirm={() => remove.mutateAsync({ name })} />}
           >
             {name && <ListEditor key={name} name={name} />}
           </Card>

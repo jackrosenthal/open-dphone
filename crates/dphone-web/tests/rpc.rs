@@ -327,7 +327,6 @@ async fn configuration_accounts_and_contacts() {
     let v = rpc_json(p.addr, &s, "ConfigService/ListSettings", r#"{"prefix":"ringer_"}"#).await.json();
     assert_eq!(v["settings"][0]["id"], "ringer_volume");
     assert_eq!(v["settings"][0]["value"], "9");
-    assert_eq!(v["settings"][0]["local"], true);
     // Secrets never leave the phone, and the password has its own RPC.
     let v = rpc_json(p.addr, &s, "ConfigService/ListSettings", r#"{"prefix":"login_"}"#).await.json();
     assert_eq!(v["settings"][0]["secret"], true);
@@ -336,8 +335,6 @@ async fn configuration_accounts_and_contacts() {
     assert_eq!(r.status, 400);
     let r = rpc_json(p.addr, &s, "ConfigService/SetSettings", r#"{"changes":[{"id":"bad id","value":"x"}]}"#).await;
     assert_eq!(r.status, 400);
-    assert_eq!(rpc_json(p.addr, &s, "ConfigService/UnsetSettings", r#"{"ids":["ringer_volume"]}"#).await.status, 200);
-    assert_eq!(p.config.lock().unwrap().get("ringer_volume").as_deref(), Some("5"));
 
     // Accounts: written in the stock shape; the password stays put.
     let body = r#"{"accounts":[{"index":0,"enabled":true,"register":true,"username":"100","password":"pw1","server":"pbx.test","transport":"SIP_TRANSPORT_TLS","srtp":true,"lineLabel":"Desk"}]}"#;

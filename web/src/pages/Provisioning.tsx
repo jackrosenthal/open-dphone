@@ -29,9 +29,9 @@ export function Provisioning() {
         actions={
           <>
             <Button onClick={() => again.mutate({})} busy={again.isPending} disabled={!p.server}>
-              Fetch configuration again
+              Reprovision
             </Button>
-            <ConfirmButton variant="secondary" label="Forget server" title="Forget the provisioning server?" confirmLabel="Forget server" onConfirm={() => forget.mutateAsync({})} />
+            <ConfirmButton variant="secondary" label="Forget Server" title="Forget the provisioning server?" confirmLabel="Forget Server" onConfirm={() => forget.mutateAsync({})} />
           </>
         }
       />
@@ -43,19 +43,19 @@ export function Provisioning() {
             {p.failureCode !== undefined ? ` (code ${p.failureCode})` : ""}
           </Alert>
         )}
-        {p.offeredFirmware && <Alert tone="blue" title={`The server offers firmware ${p.offeredFirmware}.`} />}
+        {p.offeredFirmware && <Alert tone="blue" title={`Firmware ${p.offeredFirmware} is available from the server.`} />}
         <div className="grid gap-5 lg:grid-cols-2">
           <Card title="Status" actions={<Badge tone={tone}>{label(provisionPhaseNames, p.phase, ProvisionPhase[p.phase])}</Badge>}>
             <KeyValue
               rows={[
                 ["Server", p.server ? `${p.server.name}` : ""],
                 ["Address", p.server?.address],
-                ["Found by", label(discoverySourceNames, p.server?.source)],
-                ["Server software", p.serverUserAgent],
-                ["Assigned to", p.assignedUser],
-                ["Session", p.attached ? "Attached" : "Not attached"],
-                ["Configuration MD5", p.configMd5 && <code className="text-xs">{p.configMd5}</code>],
-                ["Last success", dateTime(p.lastSuccessUnix)],
+                ["Discovery", label(discoverySourceNames, p.server?.source)],
+                ["Software", p.serverUserAgent],
+                ["User", p.assignedUser],
+                ["Session", p.attached ? "Connected" : "Disconnected"],
+                ["Config MD5", p.configMd5 && <code className="text-xs">{p.configMd5}</code>],
+                ["Last provisioned", dateTime(p.lastSuccessUnix)],
               ]}
             />
           </Card>
@@ -68,16 +68,16 @@ export function Provisioning() {
                 start.mutate({ server: server.trim() });
               }}
             >
-              <Field label="Server address" className="flex-1">
+              <Field label="Address" className="flex-1">
                 <Input value={server} onChange={(e) => setServer(e.target.value)} placeholder="host:port" />
               </Field>
               <Button type="submit" variant="primary" busy={start.isPending} >
-                {server.trim() ? "Use" : "Discover"}
+                {server.trim() ? "Connect" : "Discover"}
               </Button>
             </form>
             <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Discovered</p>
             {p.discovered.length === 0 ? (
-              <Empty>None</Empty>
+              <Empty>No servers found</Empty>
             ) : (
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {p.discovered.map((d) => (
@@ -89,20 +89,20 @@ export function Provisioning() {
                       </p>
                     </div>
                     <Button size="sm" onClick={() => start.mutate({ server: d.address })}>
-                      Use
+                      Connect
                     </Button>
                   </li>
                 ))}
               </ul>
             )}
             <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
-              <Button onClick={() => skip.mutate({})}>Run without a provisioning server</Button>
+              <Button onClick={() => skip.mutate({})}>Skip Provisioning</Button>
             </div>
           </Card>
         </div>
 
         {p.phase === ProvisionPhase.AWAITING_USER && (
-          <Card title="Choose who uses this phone">
+          <Card title="Select User">
             <div className="mb-4 max-w-xs">
               <Field label="PIN">
                 <Input type="password" value={pin} onChange={(e) => setPin(e.target.value)} autoComplete="off" />

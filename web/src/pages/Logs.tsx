@@ -76,15 +76,15 @@ export function Logs() {
       )}
       <Card>
         <div className="mb-3 flex flex-wrap items-center gap-3">
-          <Select className="!w-auto" value={level} onChange={(e) => setLevel(Number(e.target.value))} aria-label="Least severe level shown">
-            <option value={LogLevel.ERROR}>Errors</option>
-            <option value={LogLevel.WARN}>Warnings and up</option>
-            <option value={LogLevel.INFO}>Information and up</option>
-            <option value={LogLevel.DEBUG}>Debug and up</option>
-            <option value={LogLevel.TRACE}>Everything</option>
+          <Select className="!w-auto" value={level} onChange={(e) => setLevel(Number(e.target.value))} aria-label="Log level">
+            <option value={LogLevel.ERROR}>Error</option>
+            <option value={LogLevel.WARN}>Warning</option>
+            <option value={LogLevel.INFO}>Info</option>
+            <option value={LogLevel.DEBUG}>Debug</option>
+            <option value={LogLevel.TRACE}>Trace</option>
           </Select>
           <Input className="max-w-xs" placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter" />
-          <Toggle label="Follow" checked={follow} onChange={setFollow} />
+          <Toggle label="Auto-scroll" checked={follow} onChange={setFollow} />
           <div className="flex-1" />
           <span className="text-xs tabular-nums text-slate-500">{shown.length} lines</span>
           <Button size="sm" onClick={() => setPaused(!paused)}>
@@ -99,7 +99,7 @@ export function Logs() {
         </div>
         <div ref={box} className="h-[60vh] overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-xs leading-5 ring-1 ring-inset ring-slate-200 dark:bg-slate-950 dark:ring-slate-800" onWheel={() => box.current && setFollow(box.current.scrollTop + box.current.clientHeight >= box.current.scrollHeight - 24)}>
           {shown.length === 0 ? (
-            <p className="text-slate-400">{q ? "No matches" : "None"}</p>
+            <p className="text-slate-400">{q ? "No results" : "No log entries"}</p>
           ) : (
             shown.map((e) => (
               <div key={String(e.seq)} className="whitespace-pre-wrap break-words">

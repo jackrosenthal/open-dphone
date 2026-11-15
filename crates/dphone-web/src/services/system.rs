@@ -46,7 +46,7 @@ pub async fn install_app(ctx: Ctx, req: pb::InstallAppRequest) -> Result<pb::Ins
             _ => None,
         }
     }
-    .ok_or_else(|| ConnectError::not_found("no such upload; upload the package again"))?;
+    .ok_or_else(|| ConnectError::not_found("Upload expired.  Upload the file again."))?;
     let path = upload.path.to_string_lossy().into_owned();
     let result = command(&ctx.app.store, Command::InstallApp { path }).await;
     let _ = std::fs::remove_file(&upload.path);
@@ -130,7 +130,7 @@ pub async fn install_firmware(
         let u = uploads
             .get(&req.upload_id)
             .filter(|u| u.firmware.is_some())
-            .ok_or_else(|| ConnectError::not_found("no such upload; upload the image again"))?;
+            .ok_or_else(|| ConnectError::not_found("Upload expired.  Upload the file again."))?;
         let info = u.firmware.as_ref().expect("filtered");
         if !info.model.is_empty() && !info.model.eq_ignore_ascii_case(model.name()) {
             return Err(ConnectError::failed_precondition(format!(
@@ -472,7 +472,7 @@ pub async fn erase_nvdata(ctx: Ctx, req: pb::EraseNvdataRequest) -> Result<pb::E
 pub async fn set_time(ctx: Ctx, req: pb::SetTimeRequest) -> Result<pb::SetTimeResponse, ConnectError> {
     // 2020-01-01 to 2100-01-01: anything else is a mistake.
     if !(1_577_836_800..4_102_444_800).contains(&req.unix_secs) {
-        return Err(ConnectError::invalid_argument("implausible time"));
+        return Err(ConnectError::invalid_argument("Invalid time."));
     }
     command(&ctx.app.store, Command::SetTime { unix_secs: req.unix_secs }).await?;
     Ok(pb::SetTimeResponse {})
@@ -495,7 +495,7 @@ pub async fn create_backup(ctx: Ctx, _req: pb::CreateBackupRequest) -> Result<pb
         app.backup.export()
     })
     .await?
-    .map_err(|e| ConnectError::internal(format!("making the backup: {e}")))?;
+    .map_err(|e| ConnectError::internal(format!("Backup failed: {e}")))?;
     let sys = ctx.app.store.get::<st::System>();
     let mac: String = sys.mac_string().replace(':', "");
     let filename = format!(
@@ -509,7 +509,7 @@ pub async fn create_backup(ctx: Ctx, _req: pb::CreateBackupRequest) -> Result<pb
 
 pub async fn restore_backup(ctx: Ctx, req: pb::RestoreBackupRequest) -> Result<pb::RestoreBackupResponse, ConnectError> {
     if req.archive.is_empty() {
-        return Err(ConnectError::invalid_argument("no archive"));
+        return Err(ConnectError::invalid_argument("No backup file."));
     }
     let archive = req.archive;
     let files = blocking(&ctx.app, move |app| {
@@ -520,7 +520,7 @@ pub async fn restore_backup(ctx: Ctx, req: pb::RestoreBackupRequest) -> Result<p
         Ok(n)
     })
     .await?
-    .map_err(|e| ConnectError::invalid_argument(format!("restoring the backup: {e}")))?;
+    .map_err(|e| ConnectError::invalid_argument(format!("Restore failed: {e}")))?;
     log::warn!("configuration restored from a backup ({files} files) by {}", ctx.peer);
     ctx.app.store.post(Command::ReloadConfig);
     ctx.app.store.post(Command::ReloadContacts);

@@ -22,10 +22,10 @@ fn flag(b: bool) -> &'static str {
 
 fn clean(what: &str, s: &str, max: usize) -> Result<(), ConnectError> {
     if s.len() > max {
-        return Err(ConnectError::invalid_argument(format!("{what} is too long")));
+        return Err(ConnectError::invalid_argument(format!("{what} is too long.")));
     }
     if s.chars().any(char::is_control) {
-        return Err(ConnectError::invalid_argument(format!("{what} contains a control character")));
+        return Err(ConnectError::invalid_argument(format!("{what} contains an invalid character.")));
     }
     Ok(())
 }
@@ -44,18 +44,9 @@ fn valid_setting_id(id: &str) -> bool {
         && id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
 }
 
-fn local_ids(c: &ConfigStore) -> std::collections::HashSet<String> {
-    let mut ids = std::collections::HashSet::new();
-    if let Ok(Some(root)) = c.layer(Layer::Ui) {
-        ids.extend(root.children_named("setting").filter_map(|e| e.attr("id").map(str::to_owned)));
-    }
-    ids
-}
-
 pub async fn list_settings(ctx: Ctx, req: pb::ListSettingsRequest) -> Result<pb::ListSettingsResponse, ConnectError> {
     with_config(&ctx.app, false, move |c| {
         let cfg = c.config();
-        let local = local_ids(c);
         let mut settings: Vec<pb::Setting> = cfg
             .settings()
             .filter(|(id, _)| id.starts_with(&req.prefix))
@@ -65,7 +56,6 @@ pub async fn list_settings(ctx: Ctx, req: pb::ListSettingsRequest) -> Result<pb:
                     id: id.to_owned(),
                     value: if secret { String::new() } else { value.to_owned() },
                     frozen: cfg.setting_frozen(id),
-                    local: local.contains(id),
                     secret,
                 }
             })
@@ -93,26 +83,6 @@ pub async fn set_settings(ctx: Ctx, req: pb::SetSettingsRequest) -> Result<pb::S
         let changes: Vec<(&str, &str)> = req.changes.iter().map(|ch| (ch.id.as_str(), ch.value.as_str())).collect();
         let cfg = c.set_many(&changes).map_err(crate::services::config_error)?;
         Ok(pb::SetSettingsResponse { generation: cfg.generation() })
-    })
-    .await
-}
-
-pub async fn unset_settings(
-    ctx: Ctx,
-    req: pb::UnsetSettingsRequest,
-) -> Result<pb::UnsetSettingsResponse, ConnectError> {
-    if req.ids.is_empty() {
-        return Err(ConnectError::invalid_argument("no settings named"));
-    }
-    if let Some(bad) = req.ids.iter().find(|id| !valid_setting_id(id) || *id == "login_password") {
-        return Err(ConnectError::invalid_argument(format!("cannot unset {bad:?}")));
-    }
-    with_config(&ctx.app, true, move |c| {
-        let mut generation = c.config().generation();
-        for id in &req.ids {
-            generation = c.unset(id).map_err(crate::services::config_error)?.generation();
-        }
-        Ok(pb::UnsetSettingsResponse { generation })
     })
     .await
 }
@@ -230,7 +200,7 @@ pub async fn set_network_settings(
         if v.is_empty() || v.parse::<Ipv4Addr>().is_ok() {
             Ok(())
         } else {
-            Err(ConnectError::invalid_argument(format!("{what} is not an IPv4 address")))
+            Err(ConnectError::invalid_argument(format!("{what} is not a valid IPv4 address.")))
         }
     };
     ip("The address", &s.static_ip)?;
@@ -240,31 +210,31 @@ pub async fn set_network_settings(
     ip("The secondary DNS server", &s.secondary_dns)?;
     if !s.dhcp {
         if s.static_ip.is_empty() || s.subnet_mask.is_empty() {
-            return Err(ConnectError::invalid_argument("a static configuration needs an address and a subnet mask"));
+            return Err(ConnectError::invalid_argument("A static IP address and subnet mask are required."));
         }
         let mask = u32::from(s.subnet_mask.parse::<Ipv4Addr>().expect("checked"));
         if mask == 0 || mask.leading_ones() + mask.trailing_zeros() != 32 {
-            return Err(ConnectError::invalid_argument("the subnet mask is not contiguous"));
+            return Err(ConnectError::invalid_argument("Invalid subnet mask."));
         }
     }
     let vlan = |what: &str, v: Option<u32>| match v {
-        Some(id) if !(1..=4094).contains(&id) => Err(ConnectError::invalid_argument(format!("{what} must be 1 to 4094"))),
+        Some(id) if !(1..=4094).contains(&id) => Err(ConnectError::invalid_argument(format!("{what} must be 1 to 4094."))),
         _ => Ok(()),
     };
     vlan("The VLAN ID", s.vlan_id)?;
     vlan("The PC port VLAN ID", s.pc_vlan_id)?;
     if s.sip_dscp > 63 || s.rtp_dscp > 63 {
-        return Err(ConnectError::invalid_argument("DSCP values run 0 to 63"));
+        return Err(ConnectError::invalid_argument("DSCP must be 0 to 63."));
     }
     if s.sip_qos > 7 || s.rtp_qos > 7 || s.pc_qos > 7 {
-        return Err(ConnectError::invalid_argument("802.1p priorities run 0 to 7"));
+        return Err(ConnectError::invalid_argument("802.1p priority must be 0 to 7."));
     }
     let mode = s.vlan_discovery_mode.to_ascii_uppercase();
     if !matches!(mode.as_str(), "NONE" | "MANUAL" | "LLDP") {
         return Err(ConnectError::invalid_argument("VLAN discovery is NONE, MANUAL, or LLDP"));
     }
     if mode == "MANUAL" && s.vlan_id.is_none() {
-        return Err(ConnectError::invalid_argument("manual VLAN needs a VLAN ID"));
+        return Err(ConnectError::invalid_argument("Enter a voice VLAN ID."));
     }
     for (what, v) in [
         ("The domain", &s.domain),
@@ -395,7 +365,7 @@ fn set_or_remove(e: &mut Element, name: &str, value: &str) {
 }
 
 fn port(what: &str, p: u32) -> Result<u32, ConnectError> {
-    if p > 65535 { Err(ConnectError::invalid_argument(format!("{what} is not a port number"))) } else { Ok(p) }
+    if p > 65535 { Err(ConnectError::invalid_argument(format!("{what} is not a valid port."))) } else { Ok(p) }
 }
 
 /// Builds the stock `<account>` element for an edited account, starting
@@ -416,10 +386,10 @@ fn account_element(a: &pb::AccountConfig, existing: Option<&dphone_config::view:
         clean(what, v, 255)?;
     }
     if a.username.is_empty() {
-        return Err(ConnectError::invalid_argument(format!("account {} needs a user name", a.index + 1)));
+        return Err(ConnectError::invalid_argument(format!("Line {}: a username is required.", a.index + 1)));
     }
     if a.server.is_empty() {
-        return Err(ConnectError::invalid_argument(format!("account {} needs a server", a.index + 1)));
+        return Err(ConnectError::invalid_argument(format!("Line {}: a server is required.", a.index + 1)));
     }
     let mut e = existing.map(|x| x.raw.clone()).unwrap_or_else(|| Element::new("account"));
     e.set_attr("index", &a.index.to_string());
@@ -463,7 +433,7 @@ fn account_element(a: &pb::AccountConfig, existing: Option<&dphone_config::view:
         e.remove_children(|c| c.name == "host_alternate");
     } else {
         let tls = transport_name(a.alternate_transport) == "tls";
-        let p = match port("The alternate server port", a.alternate_port)? {
+        let p = match port("The backup server port", a.alternate_port)? {
             0 if tls => 5061,
             0 => 5060,
             p => p,
@@ -491,7 +461,7 @@ pub async fn set_accounts(ctx: Ctx, req: pb::SetAccountsRequest) -> Result<pb::S
         accounts.sort_by_key(|a| a.index);
         for a in &accounts {
             if a.index >= max {
-                return Err(ConnectError::invalid_argument(format!("this model has {max} accounts")));
+                return Err(ConnectError::invalid_argument(format!("This model supports {max} accounts.")));
             }
             if !seen.insert(a.index) {
                 return Err(ConnectError::invalid_argument(format!("account {} is given twice", a.index + 1)));
@@ -523,7 +493,7 @@ fn list_name(name: &str) -> Result<(), ConnectError> {
         && !name.starts_with('.')
         && !name.ends_with(".tmp")
         && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'));
-    if ok { Ok(()) } else { Err(ConnectError::invalid_argument("list names use letters, digits, '-', '_', and '.'")) }
+    if ok { Ok(()) } else { Err(ConnectError::invalid_argument("List names may contain only letters, digits, '-', '_', and '.'.")) }
 }
 
 fn read_list(c: &ConfigStore, name: &str) -> Result<String, ConnectError> {
@@ -623,7 +593,7 @@ fn contacts_document(groups: &[pb::ContactGroup], old: &[dphone_config::contacts
                 clean(what, v, 255)?;
             }
             if k.first_name.is_empty() && k.last_name.is_empty() && k.organization.is_empty() {
-                return Err(ConnectError::invalid_argument("a contact needs a name or an organization"));
+                return Err(ConnectError::invalid_argument("Enter a name or organization."));
             }
             let old_contact =
                 old_group.and_then(|og| og.contacts.iter().find(|oc| !k.id.is_empty() && oc.id == k.id));
@@ -715,9 +685,9 @@ pub async fn import_contact_list(
     req: pb::ImportContactListRequest,
 ) -> Result<pb::ImportContactListResponse, ConnectError> {
     list_name(&req.name)?;
-    let groups = parse_contacts(&req.xml).map_err(|e| ConnectError::invalid_argument(format!("not a contact list: {e}")))?;
+    let groups = parse_contacts(&req.xml).map_err(|e| ConnectError::invalid_argument(format!("Invalid contact list: {e}")))?;
     if groups.is_empty() {
-        return Err(ConnectError::invalid_argument("the document holds no <contacts> group"));
+        return Err(ConnectError::invalid_argument("No contacts found in the file."));
     }
     let contacts = groups.iter().map(|g| g.contacts.len() as u32).sum();
     let app = ctx.app.clone();

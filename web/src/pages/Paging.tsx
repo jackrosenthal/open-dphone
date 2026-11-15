@@ -45,7 +45,7 @@ export function PagingCard({ onError }: { onError: (e: unknown) => void }) {
     >
       <div className="space-y-3">
         {snap.error && <Alert tone="red">{snap.error}</Alert>}
-        {snap.activity === PageActivity.BLOCKED && <Alert title={`A page from ${name} was not played: a call is in progress.`} />}
+        {snap.activity === PageActivity.BLOCKED && <Alert title={`Page from ${name} blocked by an active call.`} />}
         <ul className="divide-y divide-slate-100 dark:divide-slate-800">
           {snap.broadcasts.map((g) => (
             <li key={`b${g.id}`} className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">

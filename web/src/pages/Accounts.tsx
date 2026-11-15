@@ -5,6 +5,21 @@ import { Alert, Badge, Button, Card, ConfirmButton, Empty, Field, Input, Modal, 
 import { AccountConfigSchema, AccountsService, SipTransport, type AccountConfig } from "../gen/dphone/v1/accounts_pb";
 import { useStatus } from "../lib/status";
 import { ErrorNote, RegistrationBadge } from "./common";
+import { SettingsCard, type Item } from "./Settings";
+
+// SIP settings shared by every account.
+const sip: Item[] = [
+  { id: "transport_udp_port", label: "UDP port", type: "number", min: 1, max: 65535 },
+  { id: "transport_tcp_port", label: "TCP port", type: "number", min: 1, max: 65535 },
+  { id: "transport_tls_port", label: "TLS port", type: "number", min: 1, max: 65535 },
+  { id: "accept_local_calls", label: "Accept calls from", type: "choice", options: [["any", "Anyone"], ["host", "Registered servers"], ["none", "No one"]] },
+  { id: "default_dial_plan", label: "Dial plan", type: "text", wide: true },
+  { id: "transport_udp_enabled", label: "UDP", type: "bool" },
+  { id: "transport_tcp_enabled", label: "TCP", type: "bool" },
+  { id: "transport_tls_allowed", label: "TLS", type: "bool" },
+  { id: "allow_insecure_ssl", label: "Allow untrusted TLS certificates", type: "bool" },
+  { id: "enable_check_sync", label: "Allow check-sync", type: "bool" },
+];
 
 function Editor({ account, onSave, onClose, busy, error }: { account: AccountConfig; onSave: (a: AccountConfig) => void; onClose: () => void; busy: boolean; error: unknown }) {
   const [a, setA] = useState(account);
@@ -45,14 +60,14 @@ function Editor({ account, onSave, onClose, busy, error }: { account: AccountCon
         <div className="flex flex-wrap gap-6">
           <Toggle label="Enabled" checked={a.enabled} onChange={(v) => set("enabled", v)} />
           <Toggle label="Register" checked={a.register} onChange={(v) => set("register", v)} />
-          <Toggle label="Encrypt media (SRTP)" checked={a.srtp} onChange={(v) => set("srtp", v)} />
+          <Toggle label="SRTP" checked={a.srtp} onChange={(v) => set("srtp", v)} />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          {text("username", "User name")}
-          {text("authname", "Authentication name", { placeholder: "Same as user name" })}
+          {text("username", "Username")}
+          {text("authname", "Auth username", { placeholder: "Same as username" })}
           {text("password", "Password", { type: "password", placeholder: a.hasPassword ? "Unchanged" : "", hint: undefined })}
           {text("displayName", "Display name")}
-          {text("lineLabel", "Line key label")}
+          {text("lineLabel", "Line label")}
           {text("voicemail", "Voicemail number")}
         </div>
         <fieldset className="grid gap-4 sm:grid-cols-[1fr_7rem_7rem]">
@@ -62,7 +77,7 @@ function Editor({ account, onSave, onClose, busy, error }: { account: AccountCon
           {transport("transport")}
         </fieldset>
         <fieldset className="grid gap-4 sm:grid-cols-[1fr_7rem_7rem]">
-          <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Alternate server (failover)</legend>
+          <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Backup Server</legend>
           {text("alternateServer", "Host", { placeholder: "None" })}
           {port("alternatePort", "Port")}
           {transport("alternateTransport")}
@@ -107,13 +122,13 @@ export function Accounts() {
         title="Accounts"
         actions={
           <>
-            <Button onClick={() => rereg.mutate({})}>Register again</Button>
+            <Button onClick={() => rereg.mutate({})}>Re-register</Button>
             <Button
               variant="primary"
               disabled={free.length === 0}
               onClick={() => setEditing(create(AccountConfigSchema, { index: free[0], enabled: true, register: true, transport: SipTransport.UDP }))}
             >
-              Add account
+              Add Account
             </Button>
           </>
         }
@@ -121,16 +136,18 @@ export function Accounts() {
       <div className="space-y-5">
         {!editing && <ErrorNote error={error} />}
         {!local && accounts.length > 0 && (
-          <Alert tone="blue" title="Provisioned by the server." />
+          <Alert tone="blue" title="Accounts are provisioned." />
         )}
         {local && (
-          <Alert tone="blue" title="Stored on the phone, replacing any provisioned accounts.">
-            <ConfirmButton size="sm" variant="secondary" label="Use provisioned accounts" title="Use provisioned accounts?" confirmLabel="Use provisioned accounts" onConfirm={() => clear.mutateAsync({})} />
-          </Alert>
+          <Alert
+            tone="blue"
+            title="Local accounts override provisioned accounts."
+            action={<ConfirmButton size="sm" variant="secondary" label="Revert" title="Revert to provisioned accounts?" confirmLabel="Revert" onConfirm={() => clear.mutateAsync({})} />}
+          />
         )}
         <Card>
           {accounts.length === 0 ? (
-            <Empty>None</Empty>
+            <Empty>No accounts</Empty>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {accounts.map((a) => {
@@ -147,7 +164,7 @@ export function Accounts() {
                         {a.username}@{a.server}
                         {a.port ? `:${a.port}` : ""} · {SipTransport[a.transport] ?? "UDP"}
                         {a.srtp ? " · SRTP" : ""}
-                        {a.alternateServer ? ` · alternate ${a.alternateServer}` : ""}
+                        {a.alternateServer ? ` · backup ${a.alternateServer}` : ""}
                         {st?.reason ? ` · ${st.reason}` : ""}
                       </p>
                     </div>
@@ -156,7 +173,7 @@ export function Accounts() {
                       <Button size="sm" onClick={() => setEditing({ ...a, password: "" })}>
                         Edit
                       </Button>
-                      <ConfirmButton size="sm" variant="secondary" label="Remove" title={`Remove line ${a.index + 1}?`} confirmLabel="Remove" onConfirm={() => remove(a.index)} />
+                      <ConfirmButton size="sm" variant="secondary" label="Remove" title={`Remove Line ${a.index + 1}?`} confirmLabel="Remove" onConfirm={() => remove(a.index)} />
                     </div>
                   </li>
                 );
@@ -164,6 +181,7 @@ export function Accounts() {
             </ul>
           )}
         </Card>
+        <SettingsCard title="SIP" items={sip} />
       </div>
       {editing && <Editor account={editing} busy={save.isPending} error={error} onSave={saveOne} onClose={() => { setEditing(undefined); setError(undefined); }} />}
     </>

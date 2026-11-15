@@ -8,23 +8,23 @@ import { setSession, useSession } from "../lib/session";
 import { StatusProvider, useStatus } from "../lib/status";
 import { client } from "../lib/transport";
 import { Icons } from "./icons";
-import { Alert, ConfirmButton, cx } from "./ui";
+import { PasswordForm } from "../pages/System";
+import { Alert, Button, ConfirmButton, Modal, cx } from "./ui";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: Icons.dashboard },
   { to: "/calls", label: "Calls", icon: Icons.phone },
   { to: "/accounts", label: "Accounts", icon: Icons.user },
   { to: "/contacts", label: "Contacts", icon: Icons.users },
-  { to: "/network", label: "Network", icon: Icons.network },
-  { to: "/provisioning", label: "Provisioning", icon: Icons.cloud },
-  { to: "/settings", label: "Phone settings", icon: Icons.sliders },
+  { to: "/preferences", label: "Preferences", icon: Icons.sliders },
   { to: "/bluetooth", label: "Bluetooth", icon: Icons.bluetooth, needs: "bluetooth" },
   { to: "/apps", label: "Apps", icon: Icons.apps },
-  { to: "/firmware", label: "Firmware", icon: Icons.chip },
+  { to: "/network", label: "Network", icon: Icons.network },
+  { to: "/provisioning", label: "Provisioning", icon: Icons.cloud },
+  { to: "/system", label: "System", icon: Icons.chip },
   { to: "/logs", label: "Logs", icon: Icons.logs },
   { to: "/screen", label: "Screen", icon: Icons.screen },
   { to: "/shell", label: "Shell", icon: Icons.terminal },
-  { to: "/system", label: "System", icon: Icons.power },
 ] as const;
 
 function ThemeToggle() {
@@ -32,7 +32,7 @@ function ThemeToggle() {
   return (
     <button
       type="button"
-      aria-label={dark ? "Use the light theme" : "Use the dark theme"}
+      aria-label={dark ? "Light theme" : "Dark theme"}
       className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
       onClick={() => {
         const next = !dark;
@@ -50,6 +50,7 @@ function Shell() {
   const { status, stream } = useStatus();
   const session = useSession();
   const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState(false);
   const sys = status?.system;
   const defaultPassword = session.status === "authenticated" && session.info.defaultPassword;
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -101,7 +102,7 @@ function Shell() {
         <div className="border-t border-slate-200 p-3 dark:border-slate-800">
           <button type="button" onClick={logout} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
             <Icons.logout />
-            Log out
+            Log Out
           </button>
         </div>
       </aside>
@@ -117,7 +118,7 @@ function Shell() {
           <p className="hidden truncate text-sm font-medium lg:block">{sys?.hostname}</p>
           <p className="truncate text-xs text-slate-500 dark:text-slate-400">{status?.network?.ipv4Address || " "}</p>
         </div>
-        <ConfirmButton size="sm" variant="secondary" label="Reboot" title="Reboot" confirmLabel="Reboot" onConfirm={() => reboot.mutateAsync({})} />
+        <ConfirmButton size="sm" variant="secondary" label="Reboot" title="Reboot the phone?" confirmLabel="Reboot" onConfirm={() => reboot.mutateAsync({})} />
         <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
         <ThemeToggle />
       </header>
@@ -129,14 +130,26 @@ function Shell() {
       ) : (
         <main className="mx-auto max-w-6xl px-4 py-6 lg:px-8">
           <div className="mb-4 space-y-3 empty:hidden">
-            {stream === "reconnecting" && <Alert tone="red" title="Connection to the phone lost." />}
+            {stream === "reconnecting" && <Alert tone="red" title="Connection lost." />}
             {defaultPassword && (
-              <Alert title="The administrator password is still the factory default." />
+              <Alert
+                title="The default password has not been changed."
+                action={
+                  <Button size="sm" onClick={() => setPassword(true)}>
+                    Change Password
+                  </Button>
+                }
+              />
             )}
-            {status?.configError && <Alert tone="red" title="The last configuration merge failed.">{status.configError}</Alert>}
-            {status?.restartNeeded && <Alert tone="blue" title="A changed setting takes effect after a reboot." />}
-            {sys?.simulated && <Alert tone="blue" title="This is the workstation simulator, not a phone." />}
+            {status?.configError && <Alert tone="red" title="Configuration error.">{status.configError}</Alert>}
+            {status?.restartNeeded && <Alert tone="blue" title="Reboot to apply changes." />}
+            {sys?.simulated && <Alert tone="blue" title="Simulator." />}
           </div>
+          {password && (
+            <Modal title="Change Password" onClose={() => setPassword(false)}>
+              <PasswordForm onDone={() => setPassword(false)} />
+            </Modal>
+          )}
           <Outlet />
         </main>
       )}

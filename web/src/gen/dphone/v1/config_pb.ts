@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/v1/config.proto.
  */
 export const file_dphone_v1_config: GenFile = /*@__PURE__*/
-  fileDesc("ChZkcGhvbmUvdjEvY29uZmlnLnByb3RvEglkcGhvbmUudjEiUwoHU2V0dGluZxIKCgJpZBgBIAEoCRINCgV2YWx1ZRgCIAEoCRIOCgZmcm96ZW4YAyABKAgSDQoFbG9jYWwYBCABKAgSDgoGc2VjcmV0GAUgASgIIiUKE0xpc3RTZXR0aW5nc1JlcXVlc3QSDgoGcHJlZml4GAEgASgJIlAKFExpc3RTZXR0aW5nc1Jlc3BvbnNlEiQKCHNldHRpbmdzGAEgAygLMhIuZHBob25lLnYxLlNldHRpbmcSEgoKZ2VuZXJhdGlvbhgCIAEoBCIqCg1TZXR0aW5nQ2hhbmdlEgoKAmlkGAEgASgJEg0KBXZhbHVlGAIgASgJIj8KElNldFNldHRpbmdzUmVxdWVzdBIpCgdjaGFuZ2VzGAEgAygLMhguZHBob25lLnYxLlNldHRpbmdDaGFuZ2UiKQoTU2V0U2V0dGluZ3NSZXNwb25zZRISCgpnZW5lcmF0aW9uGAEgASgEIiMKFFVuc2V0U2V0dGluZ3NSZXF1ZXN0EgsKA2lkcxgBIAMoCSIrChVVbnNldFNldHRpbmdzUmVzcG9uc2USEgoKZ2VuZXJhdGlvbhgBIAEoBCIwChFJZGxlU29mdGtleUNob2ljZRIMCgRuYW1lGAEgASgJEg0KBWxhYmVsGAIgASgJIokBCgxJZGxlU29mdGtleXMSEAoIc29mdGtleXMYASADKAkSKAoGc291cmNlGAIgASgOMhguZHBob25lLnYxLlNldHRpbmdTb3VyY2USDgoGbG9ja2VkGAMgASgIEi0KB2Nob2ljZXMYBCADKAsyHC5kcGhvbmUudjEuSWRsZVNvZnRrZXlDaG9pY2UiGAoWR2V0SWRsZVNvZnRrZXlzUmVxdWVzdCJJChdHZXRJZGxlU29mdGtleXNSZXNwb25zZRIuCg1pZGxlX3NvZnRrZXlzGAEgASgLMhcuZHBob25lLnYxLklkbGVTb2Z0a2V5cyIqChZTZXRJZGxlU29mdGtleXNSZXF1ZXN0EhAKCHNvZnRrZXlzGAEgAygJIkkKF1NldElkbGVTb2Z0a2V5c1Jlc3BvbnNlEi4KDWlkbGVfc29mdGtleXMYASABKAsyFy5kcGhvbmUudjEuSWRsZVNvZnRrZXlzIlYKC0Jvb2xTZXR0aW5nEg0KBXZhbHVlGAEgASgIEigKBnNvdXJjZRgCIAEoDjIYLmRwaG9uZS52MS5TZXR0aW5nU291cmNlEg4KBmxvY2tlZBgDIAEoCCqFAQoNU2V0dGluZ1NvdXJjZRIeChpTRVRUSU5HX1NPVVJDRV9VTlNQRUNJRklFRBAAEhoKFlNFVFRJTkdfU09VUkNFX0RFRkFVTFQQARIYChRTRVRUSU5HX1NPVVJDRV9MT0NBTBACEh4KGlNFVFRJTkdfU09VUkNFX1BST1ZJU0lPTkVEEAMytgMKDUNvbmZpZ1NlcnZpY2USTwoMTGlzdFNldHRpbmdzEh4uZHBob25lLnYxLkxpc3RTZXR0aW5nc1JlcXVlc3QaHy5kcGhvbmUudjEuTGlzdFNldHRpbmdzUmVzcG9uc2USTAoLU2V0U2V0dGluZ3MSHS5kcGhvbmUudjEuU2V0U2V0dGluZ3NSZXF1ZXN0Gh4uZHBob25lLnYxLlNldFNldHRpbmdzUmVzcG9uc2USUgoNVW5zZXRTZXR0aW5ncxIfLmRwaG9uZS52MS5VbnNldFNldHRpbmdzUmVxdWVzdBogLmRwaG9uZS52MS5VbnNldFNldHRpbmdzUmVzcG9uc2USWAoPR2V0SWRsZVNvZnRrZXlzEiEuZHBob25lLnYxLkdldElkbGVTb2Z0a2V5c1JlcXVlc3QaIi5kcGhvbmUudjEuR2V0SWRsZVNvZnRrZXlzUmVzcG9uc2USWAoPU2V0SWRsZVNvZnRrZXlzEiEuZHBob25lLnYxLlNldElkbGVTb2Z0a2V5c1JlcXVlc3QaIi5kcGhvbmUudjEuU2V0SWRsZVNvZnRrZXlzUmVzcG9uc2ViBnByb3RvMw");
+  fileDesc("ChZkcGhvbmUvdjEvY29uZmlnLnByb3RvEglkcGhvbmUudjEiSgoHU2V0dGluZxIKCgJpZBgBIAEoCRINCgV2YWx1ZRgCIAEoCRIOCgZmcm96ZW4YAyABKAgSDgoGc2VjcmV0GAUgASgISgQIBBAFIiUKE0xpc3RTZXR0aW5nc1JlcXVlc3QSDgoGcHJlZml4GAEgASgJIlAKFExpc3RTZXR0aW5nc1Jlc3BvbnNlEiQKCHNldHRpbmdzGAEgAygLMhIuZHBob25lLnYxLlNldHRpbmcSEgoKZ2VuZXJhdGlvbhgCIAEoBCIqCg1TZXR0aW5nQ2hhbmdlEgoKAmlkGAEgASgJEg0KBXZhbHVlGAIgASgJIj8KElNldFNldHRpbmdzUmVxdWVzdBIpCgdjaGFuZ2VzGAEgAygLMhguZHBob25lLnYxLlNldHRpbmdDaGFuZ2UiKQoTU2V0U2V0dGluZ3NSZXNwb25zZRISCgpnZW5lcmF0aW9uGAEgASgEIjAKEUlkbGVTb2Z0a2V5Q2hvaWNlEgwKBG5hbWUYASABKAkSDQoFbGFiZWwYAiABKAkiiQEKDElkbGVTb2Z0a2V5cxIQCghzb2Z0a2V5cxgBIAMoCRIoCgZzb3VyY2UYAiABKA4yGC5kcGhvbmUudjEuU2V0dGluZ1NvdXJjZRIOCgZsb2NrZWQYAyABKAgSLQoHY2hvaWNlcxgEIAMoCzIcLmRwaG9uZS52MS5JZGxlU29mdGtleUNob2ljZSIYChZHZXRJZGxlU29mdGtleXNSZXF1ZXN0IkkKF0dldElkbGVTb2Z0a2V5c1Jlc3BvbnNlEi4KDWlkbGVfc29mdGtleXMYASABKAsyFy5kcGhvbmUudjEuSWRsZVNvZnRrZXlzIioKFlNldElkbGVTb2Z0a2V5c1JlcXVlc3QSEAoIc29mdGtleXMYASADKAkiSQoXU2V0SWRsZVNvZnRrZXlzUmVzcG9uc2USLgoNaWRsZV9zb2Z0a2V5cxgBIAEoCzIXLmRwaG9uZS52MS5JZGxlU29mdGtleXMiVgoLQm9vbFNldHRpbmcSDQoFdmFsdWUYASABKAgSKAoGc291cmNlGAIgASgOMhguZHBob25lLnYxLlNldHRpbmdTb3VyY2USDgoGbG9ja2VkGAMgASgIKoUBCg1TZXR0aW5nU291cmNlEh4KGlNFVFRJTkdfU09VUkNFX1VOU1BFQ0lGSUVEEAASGgoWU0VUVElOR19TT1VSQ0VfREVGQVVMVBABEhgKFFNFVFRJTkdfU09VUkNFX0xPQ0FMEAISHgoaU0VUVElOR19TT1VSQ0VfUFJPVklTSU9ORUQQAzLiAgoNQ29uZmlnU2VydmljZRJPCgxMaXN0U2V0dGluZ3MSHi5kcGhvbmUudjEuTGlzdFNldHRpbmdzUmVxdWVzdBofLmRwaG9uZS52MS5MaXN0U2V0dGluZ3NSZXNwb25zZRJMCgtTZXRTZXR0aW5ncxIdLmRwaG9uZS52MS5TZXRTZXR0aW5nc1JlcXVlc3QaHi5kcGhvbmUudjEuU2V0U2V0dGluZ3NSZXNwb25zZRJYCg9HZXRJZGxlU29mdGtleXMSIS5kcGhvbmUudjEuR2V0SWRsZVNvZnRrZXlzUmVxdWVzdBoiLmRwaG9uZS52MS5HZXRJZGxlU29mdGtleXNSZXNwb25zZRJYCg9TZXRJZGxlU29mdGtleXMSIS5kcGhvbmUudjEuU2V0SWRsZVNvZnRrZXlzUmVxdWVzdBoiLmRwaG9uZS52MS5TZXRJZGxlU29mdGtleXNSZXNwb25zZWIGcHJvdG8z");
 
 /**
  * @generated from message dphone.v1.Setting
@@ -34,13 +34,6 @@ export type Setting = Message<"dphone.v1.Setting"> & {
    * @generated from field: bool frozen = 3;
    */
   frozen: boolean;
-
-  /**
-   * Overridden locally (phone menu, web UI).
-   *
-   * @generated from field: bool local = 4;
-   */
-  local: boolean;
 
   /**
    * @generated from field: bool secret = 5;
@@ -153,40 +146,6 @@ export const SetSettingsResponseSchema: GenMessage<SetSettingsResponse> = /*@__P
   messageDesc(file_dphone_v1_config, 5);
 
 /**
- * @generated from message dphone.v1.UnsetSettingsRequest
- */
-export type UnsetSettingsRequest = Message<"dphone.v1.UnsetSettingsRequest"> & {
-  /**
-   * @generated from field: repeated string ids = 1;
-   */
-  ids: string[];
-};
-
-/**
- * Describes the message dphone.v1.UnsetSettingsRequest.
- * Use `create(UnsetSettingsRequestSchema)` to create a new message.
- */
-export const UnsetSettingsRequestSchema: GenMessage<UnsetSettingsRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_config, 6);
-
-/**
- * @generated from message dphone.v1.UnsetSettingsResponse
- */
-export type UnsetSettingsResponse = Message<"dphone.v1.UnsetSettingsResponse"> & {
-  /**
-   * @generated from field: uint64 generation = 1;
-   */
-  generation: bigint;
-};
-
-/**
- * Describes the message dphone.v1.UnsetSettingsResponse.
- * Use `create(UnsetSettingsResponseSchema)` to create a new message.
- */
-export const UnsetSettingsResponseSchema: GenMessage<UnsetSettingsResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_config, 7);
-
-/**
  * A softkey the idle screen can have.
  *
  * @generated from message dphone.v1.IdleSoftkeyChoice
@@ -210,7 +169,7 @@ export type IdleSoftkeyChoice = Message<"dphone.v1.IdleSoftkeyChoice"> & {
  * Use `create(IdleSoftkeyChoiceSchema)` to create a new message.
  */
 export const IdleSoftkeyChoiceSchema: GenMessage<IdleSoftkeyChoice> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_config, 8);
+  messageDesc(file_dphone_v1_config, 6);
 
 /**
  * @generated from message dphone.v1.IdleSoftkeys
@@ -248,7 +207,7 @@ export type IdleSoftkeys = Message<"dphone.v1.IdleSoftkeys"> & {
  * Use `create(IdleSoftkeysSchema)` to create a new message.
  */
 export const IdleSoftkeysSchema: GenMessage<IdleSoftkeys> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_config, 9);
+  messageDesc(file_dphone_v1_config, 7);
 
 /**
  * @generated from message dphone.v1.GetIdleSoftkeysRequest
@@ -261,7 +220,7 @@ export type GetIdleSoftkeysRequest = Message<"dphone.v1.GetIdleSoftkeysRequest">
  * Use `create(GetIdleSoftkeysRequestSchema)` to create a new message.
  */
 export const GetIdleSoftkeysRequestSchema: GenMessage<GetIdleSoftkeysRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_config, 10);
+  messageDesc(file_dphone_v1_config, 8);
 
 /**
  * @generated from message dphone.v1.GetIdleSoftkeysResponse
@@ -278,7 +237,7 @@ export type GetIdleSoftkeysResponse = Message<"dphone.v1.GetIdleSoftkeysResponse
  * Use `create(GetIdleSoftkeysResponseSchema)` to create a new message.
  */
 export const GetIdleSoftkeysResponseSchema: GenMessage<GetIdleSoftkeysResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_config, 11);
+  messageDesc(file_dphone_v1_config, 9);
 
 /**
  * @generated from message dphone.v1.SetIdleSoftkeysRequest
@@ -298,7 +257,7 @@ export type SetIdleSoftkeysRequest = Message<"dphone.v1.SetIdleSoftkeysRequest">
  * Use `create(SetIdleSoftkeysRequestSchema)` to create a new message.
  */
 export const SetIdleSoftkeysRequestSchema: GenMessage<SetIdleSoftkeysRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_config, 12);
+  messageDesc(file_dphone_v1_config, 10);
 
 /**
  * @generated from message dphone.v1.SetIdleSoftkeysResponse
@@ -315,7 +274,7 @@ export type SetIdleSoftkeysResponse = Message<"dphone.v1.SetIdleSoftkeysResponse
  * Use `create(SetIdleSoftkeysResponseSchema)` to create a new message.
  */
 export const SetIdleSoftkeysResponseSchema: GenMessage<SetIdleSoftkeysResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_config, 13);
+  messageDesc(file_dphone_v1_config, 11);
 
 /**
  * The effective value of one of Open DPhone's own on/off settings.
@@ -346,7 +305,7 @@ export type BoolSetting = Message<"dphone.v1.BoolSetting"> & {
  * Use `create(BoolSettingSchema)` to create a new message.
  */
 export const BoolSettingSchema: GenMessage<BoolSetting> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_config, 14);
+  messageDesc(file_dphone_v1_config, 12);
 
 /**
  * Where the value of one of Open DPhone's own settings came from.
@@ -386,7 +345,8 @@ export const SettingSourceSchema: GenEnum<SettingSource> = /*@__PURE__*/
   enumDesc(file_dphone_v1_config, 0);
 
 /**
- * Generic access to the merged configuration by stock setting ID.
+ * Access to the merged configuration by stock setting ID, for the web
+ * interface's settings forms.
  *
  * @generated from service dphone.v1.ConfigService
  */
@@ -406,16 +366,6 @@ export const ConfigService: GenService<{
     methodKind: "unary";
     input: typeof SetSettingsRequestSchema;
     output: typeof SetSettingsResponseSchema;
-  },
-  /**
-   * Drops local overrides so that provisioned or default values show again.
-   *
-   * @generated from rpc dphone.v1.ConfigService.UnsetSettings
-   */
-  unsetSettings: {
-    methodKind: "unary";
-    input: typeof UnsetSettingsRequestSchema;
-    output: typeof UnsetSettingsResponseSchema;
   },
   /**
    * The softkeys of the phone's idle screen, in order.

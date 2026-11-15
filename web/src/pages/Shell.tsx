@@ -43,12 +43,12 @@ const theme: ITheme = {
 };
 
 function ended(e: ShellExited): string {
-  if (e.reason === "idle") return "Closed after 30 minutes without input.";
-  if (e.reason === "logged out") return "Closed: the session was logged out.";
-  if (e.reason === "page gone") return "Closed: the phone lost contact with this page.";
-  if (e.reason) return "Closed.";
-  if (e.signal) return `The shell was ended by signal ${e.signal}.`;
-  return e.exitCode === 0 ? "The shell exited." : `The shell exited with status ${e.exitCode}.`;
+  if (e.reason === "idle") return "Session timed out.";
+  if (e.reason === "logged out") return "Logged out.";
+  if (e.reason === "page gone") return "Connection lost.";
+  if (e.reason) return "Session closed.";
+  if (e.signal) return `Shell terminated by signal ${e.signal}.`;
+  return e.exitCode === 0 ? "Shell exited." : `Shell exited with status ${e.exitCode}.`;
 }
 
 export default function Shell() {
@@ -189,7 +189,7 @@ export default function Shell() {
             finish(ended(msg.event.value));
           }
         }
-        if (!abort.signal.aborted) finish("Connection to the phone lost.");
+        if (!abort.signal.aborted) finish("Connection lost.");
       } catch (e) {
         if (!abort.signal.aborted) finish(errorMessage(e));
       }

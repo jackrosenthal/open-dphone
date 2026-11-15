@@ -28,12 +28,12 @@ export const subsystemNames: Names = {
   apps: "Apps",
   web: "Web",
   ssh: "SSH",
-  update: "Update",
+  update: "Firmware",
 };
 
 export const systemPhaseNames: Names = {
   [SystemPhase.STARTING]: "Starting",
-  [SystemPhase.NETWORK_WAIT]: "Waiting for the network",
+  [SystemPhase.NETWORK_WAIT]: "Waiting for network",
   [SystemPhase.PROVISIONING]: "Provisioning",
   [SystemPhase.RUNNING]: "Running",
   [SystemPhase.RECOVERY]: "Recovery",
@@ -50,10 +50,10 @@ export const netPhaseNames: Names = {
 export const provisionPhaseNames: Names = {
   [ProvisionPhase.IDLE]: "Idle",
   [ProvisionPhase.DISCOVERING]: "Discovering",
-  [ProvisionPhase.AWAITING_SERVER]: "Waiting for a server",
-  [ProvisionPhase.HANDSHAKING]: "Handshaking",
-  [ProvisionPhase.AWAITING_USER]: "Waiting for a user",
-  [ProvisionPhase.FETCHING_CONFIG]: "Fetching configuration",
+  [ProvisionPhase.AWAITING_SERVER]: "Waiting for server",
+  [ProvisionPhase.HANDSHAKING]: "Connecting",
+  [ProvisionPhase.AWAITING_USER]: "Waiting for user",
+  [ProvisionPhase.FETCHING_CONFIG]: "Downloading configuration",
   [ProvisionPhase.APPLYING]: "Applying",
   [ProvisionPhase.PROVISIONED]: "Provisioned",
   [ProvisionPhase.STANDALONE]: "Standalone",
@@ -62,13 +62,13 @@ export const provisionPhaseNames: Names = {
 
 export const updatePhaseNames: Names = {
   [UpdatePhase.IDLE]: "Idle",
-  [UpdatePhase.RECEIVING]: "Receiving",
-  [UpdatePhase.CHECKING]: "Checking",
+  [UpdatePhase.RECEIVING]: "Uploading",
+  [UpdatePhase.CHECKING]: "Validating",
   [UpdatePhase.ERASING]: "Erasing",
-  [UpdatePhase.WRITING_KERNEL]: "Writing the kernel",
-  [UpdatePhase.WRITING_ROOTFS]: "Writing the root file system",
+  [UpdatePhase.WRITING_KERNEL]: "Writing kernel",
+  [UpdatePhase.WRITING_ROOTFS]: "Writing root filesystem",
   [UpdatePhase.VERIFYING]: "Verifying",
-  [UpdatePhase.COMMITTING]: "Committing",
+  [UpdatePhase.COMMITTING]: "Finishing",
   [UpdatePhase.COMPLETE]: "Complete",
   [UpdatePhase.FAILED]: "Failed",
 };
@@ -76,9 +76,9 @@ export const updatePhaseNames: Names = {
 /// Where the IPv4 address came from.
 export const addressSourceNames: Names = { dhcp: "DHCP", static: "Static" };
 /// Where the voice VLAN came from.
-export const vlanSourceNames: Names = { config: "Configured", lldp: "LLDP-MED", dhcp: "DHCP" };
+export const vlanSourceNames: Names = { config: "Manual", lldp: "LLDP-MED", dhcp: "DHCP" };
 /// How a provisioning server was found.
-export const discoverySourceNames: Names = { saved: "Saved", dhcp: "DHCP option 66", mdns: "mDNS", manual: "Entered" };
+export const discoverySourceNames: Names = { saved: "Saved", dhcp: "DHCP option 66", mdns: "mDNS", manual: "Manual" };
 /// Codecs, which the phone reports by their SDP encoding names.
 export const codecNames: Names = {
   PCMU: "G.711 µ-law",

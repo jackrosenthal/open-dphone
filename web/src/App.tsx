@@ -30,7 +30,7 @@ export function App() {
   if (session.status === "disabled") {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
-        <p className="text-center text-slate-700 dark:text-slate-300">Web configuration is disabled.</p>
+        <p className="text-center text-slate-700 dark:text-slate-300">The web interface is disabled.</p>
       </div>
     );
   }
@@ -81,12 +81,12 @@ function Login({ model, hostname }: { model?: string; hostname?: string }) {
           </div>
         </div>
         <form onSubmit={submit} className="space-y-4 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
-          <Field label="Administrator password">
+          <Field label="Password">
             <Input type="password" name="password" autoComplete="current-password" autoFocus required value={password} onChange={(e) => setPassword(e.target.value)} />
           </Field>
           {error && <Alert tone="red">{error}</Alert>}
           <Button type="submit" variant="primary" busy={busy} className="w-full">
-            Log in
+            Log In
           </Button>
         </form>
       </div>

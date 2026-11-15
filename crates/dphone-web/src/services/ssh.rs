@@ -23,7 +23,7 @@ pub(crate) fn bool_setting(r: Resolved<bool>) -> pb::BoolSetting {
 }
 
 pub(crate) fn locked() -> ConnectError {
-    ConnectError::new(Code::FailedPrecondition, "This setting is fixed by the provisioning server.")
+    ConnectError::new(Code::FailedPrecondition, "This setting is locked by provisioning.")
 }
 
 fn key_message(key: sshkeys::PublicKey, provisioned: bool) -> pb::SshKey {
@@ -107,7 +107,7 @@ pub async fn add_ssh_key(ctx: Ctx, req: pb::AddSshKeyRequest) -> Result<pb::AddS
     with_config(&app, false, move |c| {
         let known = described(&c.ssh_authorized_keys().map_err(config_error)?);
         if known.iter().any(|k| k.fingerprint == key.fingerprint) {
-            return Err(ConnectError::new(Code::AlreadyExists, "That key is already authorized."));
+            return Err(ConnectError::new(Code::AlreadyExists, "Key already added."));
         }
         c.nvdata().add_authorized_key(&key.line()).map_err(|e| config_error(e.into()))?;
         Ok(())
@@ -130,7 +130,7 @@ pub async fn remove_ssh_key(
         let Some(key) = local.iter().find(|k| k.fingerprint == wanted) else {
             let provisioned = described(&c.config().provisioned_ssh_keys());
             return Err(if provisioned.iter().any(|k| k.fingerprint == wanted) {
-                ConnectError::new(Code::FailedPrecondition, "That key comes from the provisioning server.")
+                ConnectError::new(Code::FailedPrecondition, "Provisioned keys cannot be removed.")
             } else {
                 ConnectError::not_found("no such key")
             });

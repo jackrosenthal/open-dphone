@@ -27,9 +27,9 @@ function CallRow({ call, onError, elapsed }: { call: Call; onError: (e: unknown)
           <p className="truncate font-medium">{call.remote?.name || call.remote?.number || "Unknown"}</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {call.remote?.name ? `${call.remote.number} · ` : ""}
-            {call.direction === CallDirection.INCOMING ? "Incoming" : "Outgoing"} on line {call.account + 1}
+            {call.direction === CallDirection.INCOMING ? "Incoming" : "Outgoing"} · Line {call.account + 1}
             {call.codec && <> · {label(codecNames, call.codec)}</>}
-            {call.srtp ? " · encrypted" : ""}
+            {call.srtp ? " · SRTP" : ""}
             {call.durationSecs !== undefined && call.state !== CallState.ENDED ? ` · ${duration(Number(call.durationSecs) + elapsed)}` : ""}
             {call.endCause ? ` · ${call.endCause}` : ""}
           </p>
@@ -53,7 +53,7 @@ function CallRow({ call, onError, elapsed }: { call: Call; onError: (e: unknown)
           )}
           {live && (
             <Button size="sm" variant="danger" onClick={() => hangup.mutate({ call: call.id })}>
-              Hang up
+              Hang Up
             </Button>
           )}
         </div>
@@ -127,7 +127,7 @@ export function Calls() {
         <div className="grid gap-5 lg:grid-cols-3">
           <Card title="Dial" className="lg:col-span-2">
             <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
-              <Field label="Number or SIP address" className="min-w-48 flex-1">
+              <Field label="Number or SIP URI" className="min-w-48 flex-1">
                 <Input value={target} onChange={(e) => setTarget(e.target.value)} inputMode="tel" />
               </Field>
               <Field label="Line">
@@ -145,10 +145,10 @@ export function Calls() {
               </Button>
             </form>
           </Card>
-          <Card title="Features">
+          <Card title="Call Settings">
             <div className="space-y-4">
-              <Toggle label="Do not disturb" checked={!!snap?.features?.dnd} onChange={(v) => dnd.mutate({ dnd: v })} />
-              <Toggle label="Mute microphone" checked={!!snap?.audio?.muted} onChange={(v) => mute.mutate({ muted: v })} />
+              <Toggle label="Do Not Disturb" checked={!!snap?.features?.dnd} onChange={(v) => dnd.mutate({ dnd: v })} />
+              <Toggle label="Mute" checked={!!snap?.audio?.muted} onChange={(v) => mute.mutate({ muted: v })} />
               <form
                 className="flex items-end gap-2"
                 onSubmit={(e) => {
@@ -156,10 +156,10 @@ export function Calls() {
                   forward.mutate({ kind: "always", target: forwardValue.trim() }, { onSuccess: () => setFwd(undefined) });
                 }}
               >
-                <Field label="Forward all calls to" className="flex-1">
+                <Field label="Forward calls to" className="flex-1">
                   <Input value={forwardValue} onChange={(e) => setFwd(e.target.value)} placeholder="Off" />
                 </Field>
-                <Button type="submit">Set</Button>
+                <Button type="submit">Save</Button>
               </form>
             </div>
           </Card>
@@ -167,9 +167,9 @@ export function Calls() {
 
         <PagingCard onError={setError} />
 
-        <Card title="In progress">
+        <Card title="Active Calls">
           {!snap || snap.calls.length === 0 ? (
-            <Empty>None</Empty>
+            <Empty>No active calls</Empty>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {snap.calls.map((c) => (
@@ -180,24 +180,24 @@ export function Calls() {
         </Card>
 
         <Card
-          title="Recent calls"
+          title="Call History"
           actions={
             (log.data?.entries.length ?? 0) > 0 && (
-              <ConfirmButton size="sm" variant="secondary" label="Clear" title="Clear the call log?" confirmLabel="Clear" onConfirm={() => clear.mutateAsync({}).then(() => log.refetch())} />
+              <ConfirmButton size="sm" variant="secondary" label="Clear" title="Clear call history?" confirmLabel="Clear" onConfirm={() => clear.mutateAsync({}).then(() => log.refetch())} />
             )
           }
         >
           {!log.data || log.data.entries.length === 0 ? (
-            <Empty>None</Empty>
+            <Empty>No calls</Empty>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr>
                     <th className={th}>Type</th>
-                    <th className={th}>Party</th>
-                    <th className={th}>When</th>
-                    <th className={th}>Length</th>
+                    <th className={th}>Name</th>
+                    <th className={th}>Time</th>
+                    <th className={th}>Duration</th>
                     <th className={th} />
                   </tr>
                 </thead>
@@ -206,7 +206,7 @@ export function Calls() {
                     <tr key={String(e.id)}>
                       <td className={td}>
                         <Badge tone={e.kind === CallLogKind.MISSED ? "red" : e.kind === CallLogKind.PLACED ? "blue" : "green"}>
-                          {e.kind === CallLogKind.MISSED ? "Missed" : e.kind === CallLogKind.PLACED ? "Placed" : "Received"}
+                          {e.kind === CallLogKind.MISSED ? "Missed" : e.kind === CallLogKind.PLACED ? "Outgoing" : "Incoming"}
                         </Badge>
                       </td>
                       <td className={td}>

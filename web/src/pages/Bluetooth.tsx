@@ -30,7 +30,7 @@ function Pairing({ p, onError }: { p: BluetoothPairing; onError: (e: unknown) =>
       <form onSubmit={submit} className="flex flex-wrap items-end gap-x-6 gap-y-4">
         {p.passkey !== undefined && (
           <div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Passkey on both devices</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Confirm passkey on both devices</p>
             <p className="font-mono text-3xl font-bold tracking-widest tabular-nums">{String(p.passkey).padStart(6, "0")}</p>
           </div>
         )}
@@ -69,7 +69,7 @@ export function Bluetooth() {
     return (
       <>
         {header}
-        <Empty>This model has no Bluetooth.</Empty>
+        <Empty>Not supported on this model.</Empty>
       </>
     );
   }
@@ -90,7 +90,7 @@ export function Bluetooth() {
       {header}
       <div className="space-y-5">
         <ErrorNote error={error} />
-        {!snap.present && <Alert tone="red" title="The Bluetooth controller did not answer." />}
+        {!snap.present && <Alert tone="red" title="Bluetooth controller not responding." />}
         {snap.error && <Alert tone="red">{snap.error}</Alert>}
 
         <Card>
@@ -107,9 +107,9 @@ export function Bluetooth() {
 
         {on && (
           <div className="grid gap-5 lg:grid-cols-2">
-            <Card title="Paired">
+            <Card title="Paired Devices">
               {snap.paired.length === 0 ? (
-                <Empty>None</Empty>
+                <Empty>No paired devices</Empty>
               ) : (
                 <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                   {snap.paired.map((d) => {
@@ -118,7 +118,7 @@ export function Bluetooth() {
                       <li key={d.address} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                         <Device d={d} />
                         <div className="flex flex-wrap items-center gap-2">
-                          {connected && <Badge tone="green">{snap.audioOpen ? "In call" : "Connected"}</Badge>}
+                          {connected && <Badge tone="green">{snap.audioOpen ? "In Call" : "Connected"}</Badge>}
                           {connected ? (
                             <Button size="sm" onClick={() => disconnect.mutate({})}>
                               Disconnect
@@ -128,7 +128,7 @@ export function Bluetooth() {
                               Connect
                             </Button>
                           )}
-                          <ConfirmButton size="sm" variant="secondary" label="Remove" title={`Remove ${d.name || d.address}`} confirmLabel="Remove" onConfirm={() => remove.mutateAsync({ address: d.address })} />
+                          <ConfirmButton size="sm" variant="secondary" label="Remove" title={`Remove ${d.name || d.address}?`} confirmLabel="Remove" onConfirm={() => remove.mutateAsync({ address: d.address })} />
                         </div>
                       </li>
                     );
@@ -138,7 +138,7 @@ export function Bluetooth() {
             </Card>
 
             <Card
-              title="Found"
+              title="Available Devices"
               actions={
                 <>
                   {snap.discovering && <Spinner className="size-4" />}
@@ -149,7 +149,7 @@ export function Bluetooth() {
               }
             >
               {found.length === 0 ? (
-                <Empty>None</Empty>
+                <Empty>No devices found</Empty>
               ) : (
                 <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                   {found.map((d) => (

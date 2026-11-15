@@ -10,11 +10,11 @@ export function ExpansionCard() {
   const snap = expansion?.snapshot;
   if (!snap || (!snap.enabled && snap.modules.length === 0 && !snap.error)) return null;
   return (
-    <Card title="Expansion modules">
+    <Card title="Expansion Modules">
       <div className="space-y-3">
         {snap.error && <Alert tone="red">{snap.error}</Alert>}
         {snap.modules.length === 0 ? (
-          <Empty>None</Empty>
+          <Empty>No modules</Empty>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">

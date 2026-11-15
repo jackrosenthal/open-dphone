@@ -12,7 +12,7 @@ const lampFill: Record<string, string> = { red: "#ef4444", green: "#22c55e", amb
 /// Names for keys whose print is an icon or nothing.
 function keyName(id: string): string {
   const n = id.replace(/\D/g, "");
-  if (id.startsWith("sk")) return `Soft key ${n}`;
+  if (id.startsWith("sk")) return `Softkey ${n}`;
   if (id.startsWith("line")) return `Line key ${n}`;
   if (/^blf\d/.test(id)) return `Rapid dial key ${n}`;
   return (
@@ -36,7 +36,7 @@ function keyName(id: string): string {
       hold: "Hold",
       conf: "Conference",
       info: "Info",
-      apps: "Applications",
+      apps: "Apps",
       dir: "Contacts",
       menu: "Menu",
       status: "Status",
@@ -236,14 +236,14 @@ function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: string; 
         {/* Handset, in its cradle; click to lift or replace it. */}
         <g
           role="button"
-          aria-label={meta.offHook ? "Replace the handset" : "Lift the handset"}
+          aria-label={meta.offHook ? "Hang up handset" : "Pick up handset"}
           aria-pressed={meta.offHook}
           className="cursor-pointer outline-none"
           onClick={toggleHook}
           transform={meta.offHook ? `translate(${-(hs.w + 14)} ${-hs.h * 0.02})` : undefined}
           filter={meta.offHook ? "url(#lift)" : undefined}
         >
-          <title>{meta.offHook ? "Replace the handset" : "Lift the handset"}</title>
+          <title>{meta.offHook ? "Hang up handset" : "Pick up handset"}</title>
           {/* Coiled cord from the mouthpiece end. */}
           <path
             d={`M${hs.x + hs.w * 0.5} ${hs.y + hs.h - 6}c0 ${hs.w * 0.3} ${-hs.w * 0.12} ${hs.w * 0.36} ${-hs.w * 0.3} ${hs.w * 0.36}`}
@@ -292,7 +292,7 @@ export function Screen() {
       <PageHeader title="Screen" />
       <div className="space-y-4">
         {error && <Alert tone="red">{error}</Alert>}
-        {!mirrorAvailable && <Alert tone="blue" title="This build has no screen picture. The keys still work." />}
+        {!mirrorAvailable && <Alert tone="blue" title="Screen mirroring is unavailable." />}
         <Card>
           {panel && <Phone panel={panel} model={model} keys={keys} sideSize={side} />}
           {unplaced.length > 0 && (

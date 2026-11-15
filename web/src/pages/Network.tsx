@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useState } from "react";
 import { Alert, Badge, Button, Card, Field, Input, KeyValue, PageHeader, Select, Spinner, Toggle } from "../components/ui";
 import { NetPhase, NetworkService, type NetworkSettings } from "../gen/dphone/v1/network_pb";
+import { duration } from "../lib/format";
 import { addressSourceNames, label, netPhaseNames, vlanSourceNames } from "../lib/labels";
 import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
@@ -22,7 +23,6 @@ export function Network() {
     onError: setError,
   });
   const renew = useMutation(NetworkService.method.renewDhcp, { onError: setError });
-  const sync = useMutation(NetworkService.method.syncTime, { onError: setError });
 
   if (q.error) return <ErrorNote error={q.error} />;
   if (!q.data) return <Spinner />;
@@ -32,7 +32,7 @@ export function Network() {
     setSaved(false);
     setDraft({ ...s, [k]: v });
   };
-  const text = (k: "staticIp" | "subnetMask" | "gateway" | "primaryDns" | "secondaryDns" | "domain" | "ntpServer" | "timeZone", label: string, disabled = false) => (
+  const text = (k: "staticIp" | "subnetMask" | "gateway" | "primaryDns" | "secondaryDns" | "domain", label: string, disabled = false) => (
     <Field label={label}>
       <Input value={s[k]} disabled={disabled} onChange={(e) => set(k, e.target.value)} />
     </Field>
@@ -50,53 +50,52 @@ export function Network() {
 
   return (
     <>
-      <PageHeader
-        title="Network"
-        actions={
-          <>
-            <Button onClick={() => renew.mutate({})} busy={renew.isPending}>
-              Renew DHCP lease
-            </Button>
-            <Button onClick={() => sync.mutate({})} busy={sync.isPending}>
-              Synchronize time
-            </Button>
-          </>
-        }
-      />
+      <PageHeader title="Network" />
       <div className="space-y-5">
         <ErrorNote error={error} />
         {saved && <Alert tone="green" title="Saved." />}
         <div className="grid gap-5 lg:grid-cols-2">
-          <Card title="Status" actions={<Badge tone={net.phase === NetPhase.UP ? "green" : net.phase === NetPhase.FAILED ? "red" : "amber"}>{label(netPhaseNames, net.phase, NetPhase[net.phase])}</Badge>}>
+          <Card
+            title="Status"
+            actions={
+              <>
+                <Badge tone={net.phase === NetPhase.UP ? "green" : net.phase === NetPhase.FAILED ? "red" : "amber"}>{label(netPhaseNames, net.phase, NetPhase[net.phase])}</Badge>
+                {q.data.settings?.dhcp && (
+                  <Button size="sm" onClick={() => renew.mutate({})} busy={renew.isPending}>
+                    Renew DHCP
+                  </Button>
+                )}
+              </>
+            }
+          >
             <KeyValue
               rows={[
-                ["Address", net.ipv4Address ? `${net.ipv4Address}/${net.ipv4PrefixLen}` : ""],
-                ["Source", label(addressSourceNames, net.ipv4Source)],
+                ["IP address", net.ipv4Address && <>{net.ipv4Address}/{net.ipv4PrefixLen}{net.ipv4Source && <> ({label(addressSourceNames, net.ipv4Source)})</>}</>],
                 ["Gateway", net.ipv4Gateway],
                 ["DHCP server", net.dhcpServer],
-                ["Lease", net.leaseSecs ? `${net.leaseSecs} s` : ""],
+                ["Lease time", net.leaseSecs ? duration(net.leaseSecs) : ""],
                 ["IPv6", net.ipv6Addresses.join(", ")],
                 ["DNS", net.dns.join(", ")],
                 ["Domain", net.domain],
-                ["NTP", `${net.ntpServers.join(", ")}${net.ntpSynced ? " (synchronized)" : ""}`],
-                ["Option 66", net.dhcpTftpServer],
+                ["NTP", `${net.ntpServers.join(", ")}${net.ntpSynced ? " (synced)" : ""}`],
+                ["DHCP option 66", net.dhcpTftpServer],
                 ["Profile", net.profile],
-                ["Detail", net.detail],
+                ["Details", net.detail],
               ]}
             />
           </Card>
-          <Card title="Ports and VLAN">
+          <Card title="Ports and VLANs">
             <KeyValue
               rows={[
                 ["MAC address", net.mac],
-                ["LAN port", net.lan?.up ? `${net.lan.speed} Mb/s, ${net.lan.fullDuplex ? "full" : "half"} duplex` : "No link"],
-                ["PC port", !net.pcPortEnabled ? "Disabled" : net.pc?.up ? `${net.pc.speed} Mb/s, ${net.pc.fullDuplex ? "full" : "half"} duplex` : "No link"],
-                ["Voice VLAN", net.voiceVlan !== undefined ? <>{net.voiceVlan}, priority {net.vlanPriority}{net.vlanSource && <> ({label(vlanSourceNames, net.vlanSource)})</>}</> : "Untagged"],
+                ["LAN port", net.lan?.up ? `${net.lan.speed} Mbps, ${net.lan.fullDuplex ? "full" : "half"} duplex` : "No link"],
+                ["PC port", !net.pcPortEnabled ? "Disabled" : net.pc?.up ? `${net.pc.speed} Mbps, ${net.pc.fullDuplex ? "full" : "half"} duplex` : "No link"],
+                ["Voice VLAN", net.voiceVlan !== undefined ? <>{net.voiceVlan}, priority {net.vlanPriority}{net.vlanSource && <> ({label(vlanSourceNames, net.vlanSource)})</>}</> : "None"],
                 ["PC port VLAN", net.pcVlan !== undefined ? String(net.pcVlan) : ""],
                 ["DSCP", String(net.dscp)],
-                ["LLDP neighbor", net.lldpPresent ? net.lldpSystemName : "None seen"],
-                ["Neighbor port", [net.lldpPortId, net.lldpPortDescription].filter(Boolean).join(" · ")],
-                ["Neighbor chassis", net.lldpChassisId],
+                ["Switch", net.lldpPresent ? net.lldpSystemName : ""],
+                ["Switch port", [net.lldpPortId, net.lldpPortDescription].filter(Boolean).join(" · ")],
+                ["Switch chassis ID", net.lldpChassisId],
               ]}
             />
           </Card>
@@ -107,15 +106,15 @@ export function Network() {
           actions={
             <>
               {draft && <Button onClick={() => setDraft(undefined)}>Discard</Button>}
-              <Button variant="primary" disabled={!draft} busy={save.isPending} onClick={() => save.mutate({ settings: s, apply: true })}>
-                Save and apply
+              <Button variant="primary" disabled={!draft} busy={save.isPending} onClick={() => save.mutate({ settings: { ...s, ntpServer: "", timeZone: "" }, apply: true })}>
+                Save
               </Button>
             </>
           }
         >
           <div className="space-y-6">
             <section className="space-y-4">
-              <Toggle label="Get an address automatically (DHCP)" checked={s.dhcp} onChange={(v) => set("dhcp", v)} />
+              <Toggle label="DHCP" checked={s.dhcp} onChange={(v) => set("dhcp", v)} />
               <div className="grid gap-4 sm:grid-cols-3">
                 {text("staticIp", "IP address", s.dhcp)}
                 {text("subnetMask", "Subnet mask", s.dhcp)}
@@ -127,7 +126,7 @@ export function Network() {
               <Toggle label="IPv6" checked={s.ipv6Enabled} onChange={(v) => set("ipv6Enabled", v)} />
             </section>
             <section className="grid gap-4 border-t border-slate-100 pt-5 dark:border-slate-800 sm:grid-cols-3">
-              <Field label="Voice VLAN discovery">
+              <Field label="VLAN discovery">
                 <Select value={s.vlanDiscoveryMode.toUpperCase()} onChange={(e) => set("vlanDiscoveryMode", e.target.value)}>
                   <option value="LLDP">LLDP-MED</option>
                   <option value="MANUAL">Manual</option>
@@ -138,16 +137,12 @@ export function Network() {
               {vlan("pcVlanId", "PC port VLAN ID")}
               {num("sipDscp", "SIP DSCP", 63)}
               {num("rtpDscp", "RTP DSCP", 63)}
-              {num("pcQos", "PC port priority", 7)}
+              {num("pcQos", "PC port 802.1p priority", 7)}
               {num("sipQos", "SIP 802.1p priority", 7)}
               {num("rtpQos", "RTP 802.1p priority", 7)}
               <div className="flex items-end pb-2">
-                <Toggle label="Pass 802.1X from the PC port" checked={s.dot1xPassthrough} onChange={(v) => set("dot1xPassthrough", v)} />
+                <Toggle label="802.1X passthrough" checked={s.dot1xPassthrough} onChange={(v) => set("dot1xPassthrough", v)} />
               </div>
-            </section>
-            <section className="grid gap-4 border-t border-slate-100 pt-5 dark:border-slate-800 sm:grid-cols-3">
-              {text("ntpServer", "NTP server")}
-              {text("timeZone", "Time zone")}
             </section>
           </div>
         </Card>

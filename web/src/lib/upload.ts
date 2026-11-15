@@ -17,7 +17,7 @@ export function upload(path: "/upload/firmware" | "/upload/app", file: Blob, onP
     xhr.setRequestHeader("X-Csrf-Token", csrfToken());
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
-    xhr.onerror = () => reject(new Error("The upload was interrupted."));
+    xhr.onerror = () => reject(new Error("Upload failed."));
     xhr.onload = () => {
       let body: { message?: string } & Partial<Uploaded> = {};
       try {

@@ -105,7 +105,6 @@ service!(AccountsService {
 service!(ConfigService {
     unary list_settings(ListSettingsRequest) -> ListSettingsResponse = config::list_settings;
     unary set_settings(SetSettingsRequest) -> SetSettingsResponse = config::set_settings;
-    unary unset_settings(UnsetSettingsRequest) -> UnsetSettingsResponse = config::unset_settings;
     unary get_idle_softkeys(GetIdleSoftkeysRequest) -> GetIdleSoftkeysResponse = config::get_idle_softkeys;
     unary set_idle_softkeys(SetIdleSoftkeysRequest) -> SetIdleSoftkeysResponse = config::set_idle_softkeys;
 });

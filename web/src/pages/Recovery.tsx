@@ -14,13 +14,13 @@ export function Recovery({ model }: { model: string }) {
       <PageHeader title="Recovery" />
       <div className="max-w-2xl space-y-5">
         <ErrorNote error={error} />
-        <Alert tone="red" title="The nvdata partition could not be mounted.">
-          It has not been changed. The phone is running on default settings, and nothing saved now is kept. A reboot tries the mount again.
+        <Alert tone="red" title="Could not mount the nvdata partition.">
+          The phone is running with default settings, and changes will not be saved. Reboot to try again.
         </Alert>
         <ConfirmButton
           label="Erase nvdata"
-          title="Erase nvdata"
-          message="Every setting, account, contact, key, and app on the phone is deleted, and so is its MAC address."
+          title="Erase nvdata?"
+          message="This deletes all settings, accounts, contacts, keys, and apps, and the MAC address."
           confirmLabel="Erase"
           requireText={model}
           onConfirm={() => erase.mutateAsync({ confirm: model })}

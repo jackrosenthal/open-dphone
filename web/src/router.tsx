@@ -7,12 +7,11 @@ import { Bluetooth } from "./pages/Bluetooth";
 import { Calls } from "./pages/Calls";
 import { Contacts } from "./pages/Contacts";
 import { Dashboard } from "./pages/Dashboard";
-import { Firmware } from "./pages/Firmware";
 import { Logs } from "./pages/Logs";
 import { Network } from "./pages/Network";
 import { Provisioning } from "./pages/Provisioning";
 import { Screen } from "./pages/Screen";
-import { Settings } from "./pages/Settings";
+import { Preferences } from "./pages/Settings";
 import { System } from "./pages/System";
 
 // The terminal emulator is large; it loads only when the Shell page opens.
@@ -35,10 +34,9 @@ const routeTree = root.addChildren([
   page("/contacts", Contacts),
   page("/network", Network),
   page("/provisioning", Provisioning),
-  page("/settings", Settings),
+  page("/preferences", Preferences),
   page("/bluetooth", Bluetooth),
   page("/apps", Apps),
-  page("/firmware", Firmware),
   page("/logs", Logs),
   page("/screen", Screen),
   page("/shell", Shell),

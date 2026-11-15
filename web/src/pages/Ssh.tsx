@@ -1,18 +1,11 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useRef, useState, type FormEvent } from "react";
-import { Badge, Button, Card, ConfirmButton, Empty, Toggle, td, th } from "../components/ui";
-import { SettingSource, type BoolSetting } from "../gen/dphone/v1/config_pb";
+import { Badge, Button, Card, ConfirmButton, Empty, Field, Modal, Select, Toggle, td, th } from "../components/ui";
+import { ConfigService } from "../gen/dphone/v1/config_pb";
 import { SshService, type SshStatus } from "../gen/dphone/v1/ssh_pb";
 import { SystemService } from "../gen/dphone/v1/system_pb";
 import { ErrorNote } from "./common";
-
-/// What to say beside one of Open DPhone's own settings about where its
-/// value comes from; nothing when it was set here or is the default.
-export function settingOrigin(s: Pick<BoolSetting, "locked" | "source"> | undefined): string {
-  if (s?.locked) return "Set by the provisioning server.";
-  if (s?.source === SettingSource.PROVISIONED) return "Provisioned.";
-  return "";
-}
+import { settingOrigin } from "./Settings";
 
 /// The switch for the unauthenticated `/metrics` endpoint.
 function MetricsSwitch({ onError }: { onError: (e: unknown) => void }) {
@@ -22,13 +15,60 @@ function MetricsSwitch({ onError }: { onError: (e: unknown) => void }) {
   const origin = settingOrigin(setting);
   return (
     <>
-      <Toggle label="Metrics" checked={setting?.value ?? false} disabled={!setting || setting.locked || set.isPending} onChange={(v) => set.mutate({ metricsEnabled: v })} />
+      <Toggle label="Prometheus metrics" checked={setting?.value ?? false} disabled={!setting || setting.locked || set.isPending} onChange={(v) => set.mutate({ metricsEnabled: v })} />
       {origin && <span className="text-xs text-slate-500 dark:text-slate-400">{origin}</span>}
     </>
   );
 }
 
-export function SshCard() {
+/// The switch for this interface, which asks before it locks the
+/// administrator out.
+function WebSwitch({ onError }: { onError: (e: unknown) => void }) {
+  const [asking, setAsking] = useState(false);
+  const list = useQuery(ConfigService.method.listSettings, {});
+  const set = useMutation(ConfigService.method.setSettings, { onError, onSuccess: () => (onError(undefined), setAsking(false), list.refetch()) });
+  const setting = list.data?.settings.find((s) => s.id === "web_ui_enabled");
+  const on = setting ? setting.value === "1" || setting.value.toLowerCase() === "true" || setting.value.toLowerCase() === "yes" : true;
+  const save = (v: boolean) => set.mutate({ changes: [{ id: "web_ui_enabled", value: v ? "1" : "0" }] });
+  return (
+    <>
+      <Toggle label="Web interface" checked={on} disabled={!setting || setting.frozen || set.isPending} onChange={(v) => (v ? save(true) : setAsking(true))} />
+      {asking && (
+        <Modal
+          title="Disable the web interface?"
+          onClose={() => setAsking(false)}
+          footer={
+            <>
+              <Button onClick={() => setAsking(false)}>Cancel</Button>
+              <Button variant="danger" busy={set.isPending} onClick={() => save(false)}>
+                Disable
+              </Button>
+            </>
+          }
+        >
+          {null}
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/// UART A is the EHS headset adapter's unless the serial console is chosen.
+function SerialPort({ onError }: { onError: (e: unknown) => void }) {
+  const loaded = useQuery(SystemService.method.getSerialConsole, {});
+  const set = useMutation(SystemService.method.setSerialConsole, { onError, onSuccess: () => (onError(undefined), loaded.refetch()) });
+  const setting = loaded.data?.serialConsole;
+  return (
+    <Field label="Serial port" hint={settingOrigin(setting) || undefined} className="max-w-xs">
+      <Select value={setting?.value ? "console" : "ehs"} disabled={!setting || setting.locked || set.isPending} onChange={(e) => set.mutate({ serialConsole: e.target.value === "console" })}>
+        <option value="ehs">EHS headset</option>
+        <option value="console">Console (115200 8N1)</option>
+      </Select>
+    </Field>
+  );
+}
+
+export function AccessCard() {
   const [status, setStatus] = useState<SshStatus>();
   const [error, setError] = useState<unknown>();
   const [key, setKey] = useState("");
@@ -55,25 +95,27 @@ export function SshCard() {
     // A private key never leaves the browser (the phone refuses one too).
     if (/PRIVATE KEY|PuTTY-User-Key-File/.test(key)) {
       setKey("");
-      setError(new Error("That is a private key, and it was not sent. Use the public key (the .pub file)."));
+      setError(new Error("This is a private key. Use the public key (.pub) instead."));
     } else if (key.trim()) add.mutate({ key });
   }
 
   return (
-    <Card title="SSH" className="lg:col-span-2">
+    <Card title="Access" className="lg:col-span-2">
       <div className="space-y-4">
         <ErrorNote error={error ?? loaded.error} />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <Toggle label="SSH server" checked={enabled?.value ?? false} disabled={!ssh || enabled?.locked || enable.isPending} onChange={(v) => enable.mutate({ enabled: v })} />
+          <WebSwitch onError={setError} />
+          <Toggle label="SSH" checked={enabled?.value ?? false} disabled={!ssh || enabled?.locked || enable.isPending} onChange={(v) => enable.mutate({ enabled: v })} />
           {origin && <span className="text-xs text-slate-500 dark:text-slate-400">{origin}</span>}
-          {stopped && <Badge tone="red">Not listening</Badge>}
+          {stopped && <Badge tone="red">SSH not running</Badge>}
           <MetricsSwitch onError={setError} />
         </div>
+        <SerialPort onError={setError} />
 
         <div className="border-t border-slate-100 pt-4 dark:border-slate-800">
-          <h3 className="mb-2 text-sm font-semibold">Authorized keys</h3>
+          <h3 className="mb-2 text-sm font-semibold">SSH Keys</h3>
           {keys.length === 0 ? (
-            <Empty>None</Empty>
+            <Empty>No keys</Empty>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -123,7 +165,7 @@ export function SshCard() {
           />
           <div className="flex gap-2">
             <Button type="submit" variant="primary" busy={add.isPending} disabled={!key.trim()}>
-              Add key
+              Add Key
             </Button>
             <input
               ref={file}
@@ -135,10 +177,10 @@ export function SshCard() {
                 e.target.value = "";
                 // A public key file is a few hundred bytes; anything large is not one.
                 if (f && f.size <= 16384) f.text().then(setKey);
-                else if (f) setError(new Error("That file is too large to be a public key."));
+                else if (f) setError(new Error("File is too large to be a public key."));
               }}
             />
-            <Button onClick={() => file.current?.click()}>Choose .pub file</Button>
+            <Button onClick={() => file.current?.click()}>Choose File</Button>
           </div>
         </form>
       </div>

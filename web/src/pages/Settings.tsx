@@ -1,86 +1,14 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
-import { useMemo, useState } from "react";
-import { Badge, Button, Card, Field, Input, PageHeader, Select, Spinner, Toggle, td, th } from "../components/ui";
+import { useMemo, useState, type ReactNode } from "react";
+import { Button, Card, Input, PageHeader, Select, Toggle } from "../components/ui";
 import { ConfigService, SettingSource, type IdleSoftkeys as IdleSoftkeysMessage, type Setting } from "../gen/dphone/v1/config_pb";
 import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
 
-type Kind = { type: "bool" } | { type: "number"; min: number; max: number } | { type: "text" } | { type: "choice"; options: [string, string][] };
-/// `grayOnly`: the setting exists only on the gray-display models.
-type Item = { id: string; label: string; hint?: string; grayOnly?: boolean } & Kind;
-
-// Settings with a proper form.  Everything else stays reachable in the
-// table below by its stock setting ID.
-const groups: { title: string; items: Item[] }[] = [
-  {
-    title: "Sound",
-    items: [
-      { id: "ringer_volume", label: "Ringer volume", type: "number", min: 0, max: 10 },
-      { id: "handset_volume", label: "Handset volume", type: "number", min: 0, max: 10 },
-      { id: "headset_volume", label: "Headset volume", type: "number", min: 0, max: 10 },
-      { id: "speaker_volume", label: "Speaker volume", type: "number", min: 0, max: 10 },
-      { id: "default_ringtone", label: "Ringtone", type: "text" },
-      { id: "reset_call_volume", label: "Reset call volume after each call", type: "bool" },
-      { id: "lock_ringing_volume", label: "Lock the ringer volume", type: "bool" },
-      { id: "call_waiting_tone", label: "Call waiting tone", type: "bool" },
-      { id: "ring_headset_only", label: "Ring in the headset only", type: "bool" },
-      { id: "headset_answer", label: "Answer with the headset", type: "bool" },
-      { id: "ehs", label: "Electronic hook switch", type: "choice", options: [["auto", "Automatic"], ["plantronics", "Plantronics"], ["jabra_iq", "Jabra"], ["none", "None"]] },
-    ],
-  },
-  {
-    title: "Display",
-    items: [
-      { id: "brightness", label: "Brightness", type: "number", min: 0, max: 10 },
-      { id: "contrast", label: "Contrast", type: "number", min: 0, max: 10, grayOnly: true },
-      { id: "backlight_timeout", label: "Backlight timeout (seconds)", type: "number", min: 0, max: 86400, hint: "0 keeps it on." },
-      { id: "dim_backlight", label: "Dim the backlight when idle", type: "bool" },
-      { id: "small_clock", label: "Small clock on the idle screen", type: "bool" },
-      { id: "name_format", label: "Name format", type: "choice", options: [["first_last", "First Last"], ["last_first", "Last, First"]] },
-    ],
-  },
-  {
-    title: "Date and time",
-    items: [
-      { id: "time_zone", label: "Time zone", type: "text", hint: "IANA name, e.g., America/Chicago." },
-      { id: "ntp_server", label: "NTP server", type: "text" },
-      { id: "ntp_resync", label: "NTP interval (seconds)", type: "number", min: 60, max: 604800 },
-      { id: "ntp_prefer_option42", label: "Prefer the DHCP-supplied NTP server", type: "bool" },
-      { id: "time_short_format", label: "Time format", type: "text" },
-      { id: "date_short_format", label: "Date format", type: "text" },
-    ],
-  },
-  {
-    title: "SIP",
-    items: [
-      { id: "transport_udp_enabled", label: "UDP", type: "bool" },
-      { id: "transport_udp_port", label: "UDP port", type: "number", min: 1, max: 65535 },
-      { id: "transport_tcp_enabled", label: "TCP", type: "bool" },
-      { id: "transport_tcp_port", label: "TCP port", type: "number", min: 1, max: 65535 },
-      { id: "transport_tls_allowed", label: "TLS", type: "bool" },
-      { id: "transport_tls_port", label: "TLS port", type: "number", min: 1, max: 65535 },
-      { id: "allow_insecure_ssl", label: "Accept unverified TLS certificates", type: "bool" },
-      { id: "accept_local_calls", label: "Accept calls from", type: "choice", options: [["any", "Anyone"], ["host", "Registered servers only"], ["none", "Nobody"]] },
-      { id: "enable_check_sync", label: "Honor check-sync NOTIFY", type: "bool" },
-      { id: "default_dial_plan", label: "Dial plan", type: "text" },
-    ],
-  },
-  {
-    title: "Logging",
-    items: [
-      { id: "log_level", label: "Log level", type: "choice", options: [["error", "Error"], ["warning", "Warning"], ["information", "Information"], ["debug", "Debug"]] },
-      { id: "enable_logging", label: "Send logs to a syslog server", type: "bool" },
-      { id: "log_server", label: "Syslog server", type: "text" },
-      { id: "log_port", label: "Syslog port", type: "number", min: 1, max: 65535 },
-    ],
-  },
-  {
-    title: "Access",
-    items: [
-      { id: "web_ui_enabled", label: "Web interface", type: "bool" },
-    ],
-  },
-];
+type Kind = { type: "bool" } | { type: "number"; min: number; max: number } | { type: "text"; placeholder?: string } | { type: "choice"; options: [string, string][] };
+/// One stock setting in a form.  `grayOnly`: the setting exists only on
+/// the gray-display models.  `wide`: the field spans the card.
+export type Item = { id: string; label: string; hint?: string; grayOnly?: boolean; wide?: boolean } & Kind;
 
 const truthy = (v: string) => v === "1" || v.toLowerCase() === "true" || v.toLowerCase() === "yes";
 
@@ -89,7 +17,7 @@ function Control({ item, setting, value, onChange }: { item: Item; setting?: Set
   const label = (
     <>
       {item.label}
-      {frozen && <span className="ml-2 text-xs font-normal text-slate-400">locked</span>}
+      {frozen && <span className="ml-2 text-xs font-normal text-slate-400">Locked</span>}
     </>
   );
   if (item.type === "bool") {
@@ -105,7 +33,7 @@ function Control({ item, setting, value, onChange }: { item: Item; setting?: Set
       <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
       {item.type === "choice" ? (
         <Select value={value} disabled={frozen} onChange={(e) => onChange(e.target.value)}>
-          {!item.options.some(([v]) => v === value) && <option value={value}>{value || "(not set)"}</option>}
+          {!item.options.some(([v]) => v === value) && <option value={value}>{value}</option>}
           {item.options.map(([v, l]) => (
             <option key={v} value={v}>
               {l}
@@ -115,12 +43,97 @@ function Control({ item, setting, value, onChange }: { item: Item; setting?: Set
       ) : item.type === "number" ? (
         <Input type="number" min={item.min} max={item.max} value={value} disabled={frozen} onChange={(e) => onChange(e.target.value)} />
       ) : (
-        <Input value={value} disabled={frozen} onChange={(e) => onChange(e.target.value)} />
+        <Input value={value} placeholder={item.placeholder} disabled={frozen} onChange={(e) => onChange(e.target.value)} />
       )}
       {item.hint && <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">{item.hint}</span>}
     </label>
   );
 }
+
+/// A card of stock settings with its own Save button.  `children` come
+/// before the fields and `actions` before the Save button.
+export function SettingsCard({ title, items, children, actions, className }: { title: string; items: Item[]; children?: ReactNode; actions?: ReactNode; className?: string }) {
+  const list = useQuery(ConfigService.method.listSettings, {});
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [error, setError] = useState<unknown>();
+  const skin = useStatus().status?.system?.skin;
+  const save = useMutation(ConfigService.method.setSettings, {
+    onError: setError,
+    onSuccess: () => {
+      setError(undefined);
+      list.refetch().then(() => setDraft({}));
+    },
+  });
+  const byId = useMemo(() => new Map((list.data?.settings ?? []).map((s) => [s.id, s])), [list.data]);
+  const value = (id: string) => draft[id] ?? byId.get(id)?.value ?? "";
+  const change = (id: string, v: string) => {
+    const next = { ...draft };
+    if (v === (byId.get(id)?.value ?? "")) delete next[id];
+    else next[id] = v;
+    setDraft(next);
+  };
+  const changes = Object.entries(draft).map(([id, v]) => ({ id, value: v }));
+  const dirty = changes.length > 0;
+
+  return (
+    <Card
+      title={title}
+      className={className}
+      actions={
+        <>
+          {actions}
+          {dirty && (
+            <Button size="sm" onClick={() => setDraft({})}>
+              Discard
+            </Button>
+          )}
+          <Button size="sm" variant="primary" disabled={!dirty} busy={save.isPending} onClick={() => save.mutate({ changes })}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <ErrorNote error={error ?? list.error} />
+        {children}
+        <div className="grid gap-4 sm:grid-cols-2">
+          {items
+            .filter((item) => !item.grayOnly || skin !== "color")
+            .map((item) => (
+              <div key={item.id} className={item.type === "bool" || item.wide ? "sm:col-span-2" : ""}>
+                <Control item={item} setting={byId.get(item.id)} value={value(item.id)} onChange={(v) => change(item.id, v)} />
+              </div>
+            ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+const sound: Item[] = [
+  { id: "ringer_volume", label: "Ringer volume", type: "number", min: 0, max: 10 },
+  { id: "handset_volume", label: "Handset volume", type: "number", min: 0, max: 10 },
+  { id: "headset_volume", label: "Headset volume", type: "number", min: 0, max: 10 },
+  { id: "speaker_volume", label: "Speaker volume", type: "number", min: 0, max: 10 },
+  { id: "default_ringtone", label: "Ringtone", type: "text" },
+  { id: "ehs", label: "EHS headset", type: "choice", options: [["auto", "Auto"], ["plantronics", "Plantronics"], ["jabra_iq", "Jabra"], ["none", "None"]] },
+  { id: "reset_call_volume", label: "Reset call volume after each call", type: "bool" },
+  { id: "lock_ringing_volume", label: "Lock ringer volume", type: "bool" },
+  { id: "call_waiting_tone", label: "Call waiting tone", type: "bool" },
+  { id: "ring_headset_only", label: "Ring headset only", type: "bool" },
+  { id: "headset_answer", label: "Answer with headset", type: "bool" },
+];
+
+const display: Item[] = [
+  { id: "brightness", label: "Brightness", type: "number", min: 0, max: 10 },
+  { id: "contrast", label: "Contrast", type: "number", min: 0, max: 10, grayOnly: true },
+  { id: "backlight_timeout", label: "Backlight timeout (seconds)", type: "number", min: 0, max: 86400, hint: "0 = always on" },
+  { id: "name_format", label: "Name format", type: "choice", options: [["first_last", "First Last"], ["last_first", "Last, First"]] },
+  { id: "time_short_format", label: "Time format", type: "text" },
+  { id: "date_short_format", label: "Date format", type: "text" },
+  { id: "dim_backlight", label: "Dim backlight when idle", type: "bool" },
+  { id: "small_clock", label: "Small clock", type: "bool" },
+];
 
 /// The softkeys of the phone's idle screen, in order.  Each change is
 /// saved as it is made.
@@ -145,15 +158,15 @@ function IdleSoftkeys() {
     [next[i], next[i + by]] = [next[i + by], next[i]];
     save(next);
   };
-  const origin = keys?.locked ? "Set by the provisioning server." : keys?.source === SettingSource.PROVISIONED ? "Provisioned." : "";
+  const origin = settingOrigin(keys);
   return (
     <Card
-      title="Idle screen softkeys"
+      title="Idle Softkeys"
       actions={
         keys?.source === SettingSource.LOCAL &&
         !keys.locked && (
-          <Button size="sm" variant="ghost" disabled={set.isPending} onClick={() => save([])}>
-            Revert
+          <Button size="sm" disabled={set.isPending} onClick={() => save([])}>
+            Reset
           </Button>
         )
       }
@@ -177,8 +190,8 @@ function IdleSoftkeys() {
             </li>
           ))}
         </ol>
-        <Select aria-label="Add a softkey" value="" disabled={fixed} onChange={(e) => e.target.value && save([...names, e.target.value])}>
-          <option value="">Add…</option>
+        <Select aria-label="Add softkey" value="" disabled={fixed} onChange={(e) => e.target.value && save([...names, e.target.value])}>
+          <option value="">Add softkey…</option>
           {(keys?.choices ?? [])
             .filter((c) => !names.includes(c.name))
             .map((c) => (
@@ -193,117 +206,25 @@ function IdleSoftkeys() {
   );
 }
 
-export function Settings() {
-  const list = useQuery(ConfigService.method.listSettings, {});
-  const [draft, setDraft] = useState<Record<string, string>>({});
-  const [filter, setFilter] = useState("");
-  const [showAll, setShowAll] = useState(false);
-  const [error, setError] = useState<unknown>();
-  const skin = useStatus().status?.system?.skin;
-  const done = () => {
-    setDraft({});
-    setError(undefined);
-    list.refetch();
-  };
-  const save = useMutation(ConfigService.method.setSettings, { onSuccess: done, onError: setError });
-  const unset = useMutation(ConfigService.method.unsetSettings, { onSuccess: done, onError: setError });
+/// What to say beside one of Open DPhone's own settings about where its
+/// value comes from; nothing when it was set here or is the default.
+export function settingOrigin(s: { locked: boolean; source: SettingSource } | undefined): string {
+  if (s?.locked) return "Locked by provisioning.";
+  if (s?.source === SettingSource.PROVISIONED) return "Provisioned.";
+  return "";
+}
 
-  const byId = useMemo(() => new Map((list.data?.settings ?? []).map((s) => [s.id, s])), [list.data]);
-  if (list.error) return <ErrorNote error={list.error} />;
-  if (!list.data) return <Spinner />;
-
-  const value = (id: string) => draft[id] ?? byId.get(id)?.value ?? "";
-  const change = (id: string, v: string) => {
-    const next = { ...draft };
-    if (v === (byId.get(id)?.value ?? "")) delete next[id];
-    else next[id] = v;
-    setDraft(next);
-  };
-  const changes = Object.entries(draft).map(([id, v]) => ({ id, value: v }));
-  const q = filter.trim().toLowerCase();
-  const rows = list.data.settings.filter((s) => !q || s.id.toLowerCase().includes(q) || s.value.toLowerCase().includes(q));
-
+/// What the person at the phone hears and sees.
+export function Preferences() {
   return (
     <>
-      <PageHeader
-        title="Phone settings"
-        actions={
-          <>
-            {changes.length > 0 && <Badge tone="amber">{changes.length} unsaved</Badge>}
-            {changes.length > 0 && <Button onClick={() => setDraft({})}>Discard</Button>}
-            <Button variant="primary" disabled={changes.length === 0} busy={save.isPending} onClick={() => save.mutate({ changes })}>
-              Save
-            </Button>
-          </>
-        }
-      />
-      <div className="space-y-5">
-        <ErrorNote error={error} />
-        <div className="grid gap-5 lg:grid-cols-2">
-          {groups.map((g) => (
-            <Card key={g.title} title={g.title}>
-              <div className="grid gap-4 sm:grid-cols-2">
-                {g.items.filter((item) => !item.grayOnly || skin !== "color").map((item) => (
-                  <div key={item.id} className={item.type === "bool" || item.id === "default_dial_plan" ? "sm:col-span-2" : ""}>
-                    <Control item={item} setting={byId.get(item.id)} value={value(item.id)} onChange={(v) => change(item.id, v)} />
-                  </div>
-                ))}
-              </div>
-            </Card>
-          ))}
+      <PageHeader title="Preferences" />
+      <div className="grid items-start gap-5 lg:grid-cols-2">
+        <SettingsCard title="Sound" items={sound} />
+        <div className="space-y-5">
+          <SettingsCard title="Display" items={display} />
           <IdleSoftkeys />
         </div>
-
-        <Card
-          title={`All settings (${list.data.settings.length})`}
-          actions={
-            <Button size="sm" onClick={() => setShowAll(!showAll)}>
-              {showAll ? "Hide" : "Show"}
-            </Button>
-          }
-        >
-          {showAll && (
-            <>
-              <Field label="Filter" className="mb-3 max-w-sm">
-                <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Setting ID or value" />
-              </Field>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr>
-                      <th className={th}>Setting</th>
-                      <th className={th}>Value</th>
-                      <th className={th} />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {rows.map((s) => (
-                      <tr key={s.id}>
-                        <td className={`${td} whitespace-nowrap font-mono text-xs`}>
-                          {s.id} {s.local && <Badge tone="blue">local</Badge>} {s.frozen && <Badge>locked</Badge>}
-                        </td>
-                        <td className={`${td} w-full`}>
-                          {s.secret ? (
-                            <span className="text-xs text-slate-400">hidden</span>
-                          ) : (
-                            <Input className="!py-1 font-mono !text-xs" value={value(s.id)} disabled={s.frozen} onChange={(e) => change(s.id, e.target.value)} aria-label={s.id} />
-                          )}
-                        </td>
-                        <td className={`${td} text-right`}>
-                          {s.local && !s.secret && (
-                            <Button size="sm" variant="ghost" onClick={() => unset.mutate({ ids: [s.id] })}>
-                              Revert
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </Card>
       </div>
     </>
   );
