@@ -117,8 +117,16 @@ pub async fn start(ctx: &Context, opts: &Options) {
         Some(Arc::new(Mutex::new(std::mem::replace(&mut h.mtd, Box::new(dphone_hal::Null("mtd"))))))
     });
 
-    // 5. dphone-vpm / dphone-media: the DSP, then the audio thread.
+    // 5. dphone-ui: the UI thread.  (It takes the display, keys, and lamps
+    //    out of the hardware bundle; `dphone hal` then only reports status.)
+    //    It needs only the hardware and the configuration, and starts
+    //    before everything that takes time, so that its boot screen and
+    //    loading bar are up while the rest starts: the bar follows the
+    //    health each subsystem below reports.
     ringtones::init(&ctx.paths.nvdata);
+    let ui = ui::start(ctx, hal.clone(), config.clone(), &hub).await;
+
+    // 6. dphone-vpm / dphone-media: the DSP, then the audio thread.
     let audio = audio::start(ctx, hal.clone()).await;
     if let Some(cfg) = config.as_ref().map(|c| c.lock().unwrap().config()) {
         audio.apply_config(&cfg);
@@ -138,14 +146,14 @@ pub async fn start(ctx: &Context, opts: &Options) {
         hub.on_change(move |cfg| ehs.apply_config(cfg));
     }
 
-    // 6. The main role's own command domains: Config, Network, Update, System.
+    // 7. The main role's own command domains: Config, Network, Update, System.
     let firmware_mtd = mtd.clone();
     system::start(ctx, system::Parts { config: config.clone(), hub: hub.clone(), net: net.clone(), mtd });
 
     // Provisioned certificates, kept in nvdata for the TLS users below.
     trust::start(ctx, config.clone(), &hub);
 
-    // 7. dphone-sip and dphone-dpma: accounts, provisioning.
+    // 8. dphone-sip and dphone-dpma: accounts, provisioning.
     let telephony = telephony::start(ctx, config.clone(), &hub, net.clone(), audio.clone());
     // Provisioned firmware: downloaded over HTTP(S) and written by the
     // updater.  The DPMA client does not exist yet (it starts once the
@@ -164,10 +172,6 @@ pub async fn start(ctx: &Context, opts: &Options) {
         };
         telephony.when_dpma(move |dpma| dpma.set_firmware_updater(source, Arc::new(installer)));
     }
-
-    // 8. dphone-ui: the UI thread.  (It takes the display, keys, and lamps
-    //    out of the hardware bundle; `dphone hal` then only reports status.)
-    let ui = ui::start(ctx, hal.clone(), config.clone(), &hub).await;
 
     remote::register(ctx, ui.as_ref().map(|u| u.tap.clone()));
 
