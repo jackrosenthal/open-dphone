@@ -657,41 +657,48 @@ fn display_menu() -> Box<dyn Screen> {
     })
 }
 
-/// The wallpaper menu: the wallpapers by name, and a picture of the one
-/// the selection is on.  The menu itself is drawn in that wallpaper's
-/// palette, so its title bar, selection, and softkeys show what every
-/// screen would look like.  Up and Down step through the wallpapers; Left
-/// and Right go to the first of the previous or next family.
+/// The wallpaper selector: the idle screen itself (its clock, status
+/// icons, and line-key tabs, drawn by the idle screen's own code) over the
+/// wallpaper the selection is on, in that wallpaper's palette, with one
+/// small bubble at the bottom that names the wallpaper between a left and
+/// a right arrow.  Left and Right (and Up and Down) step through the
+/// wallpapers, around the ends; Select saves, Back leaves the setting as
+/// it was.
 struct Wallpapers {
-    st: ListState,
+    selected: usize,
 }
 
 fn wallpapers(cx: &Cx) -> Box<dyn Screen> {
     let current = crate::wallpaper::find_or_default(&cx.cfg.wallpaper).id;
     let selected = crate::wallpaper::all().iter().position(|w| w.id == current).unwrap_or(0);
-    Box::new(Wallpapers { st: ListState { selected, ..ListState::default() } })
+    Box::new(Wallpapers { selected })
+}
+
+/// Where the selector's bubble is: centered under the clock and the date,
+/// left of the line-key tabs, just above the softkeys.
+pub(crate) fn wallpaper_bubble(th: &Theme) -> IRect {
+    let (w, h) = (220, 28);
+    IRect::new((th.idle_tab_x - w) / 2, th.soft_y - 6 - h, w, h)
 }
 
 impl Wallpapers {
     fn selected(&self) -> &'static crate::wallpaper::Wallpaper {
         let all = crate::wallpaper::all();
-        &all[self.st.selected.min(all.len() - 1)]
+        &all[self.selected.min(all.len() - 1)]
     }
 
-    /// The first wallpaper of the family before (`by` -1) or after (1) the
-    /// selected one's.
-    fn family_step(&self, by: i32) -> usize {
-        use crate::wallpaper::Family;
-        let n = Family::ALL.len() as i32;
-        let here = Family::ALL.iter().position(|f| *f == self.selected().family).unwrap_or(0) as i32;
-        let family = Family::ALL[(here + by).rem_euclid(n) as usize];
-        crate::wallpaper::all().iter().position(|w| w.family == family).unwrap_or(0)
+    fn step(&mut self, by: usize) {
+        let len = crate::wallpaper::all().len();
+        self.selected = (self.selected + by) % len;
     }
 }
 
 impl Screen for Wallpapers {
     fn name(&self) -> String {
         "wallpaper".into()
+    }
+    fn wallpaper(&self) -> bool {
+        true
     }
     fn look(&self, _cx: &Cx) -> Option<&'static crate::wallpaper::Wallpaper> {
         Some(self.selected())
@@ -714,14 +721,8 @@ impl Screen for Wallpapers {
     fn key(&mut self, cx: &Cx, key: Key) -> Nav {
         let len = crate::wallpaper::all().len();
         match key {
-            Key::Up => {
-                self.st.step(-1, len, true);
-            }
-            Key::Down => {
-                self.st.step(1, len, true);
-            }
-            Key::Left => self.st.selected = self.family_step(-1),
-            Key::Right => self.st.selected = self.family_step(1),
+            Key::Left | Key::Up => self.step(len - 1),
+            Key::Right | Key::Down => self.step(1),
             Key::Select => return self.softkey(cx, 1),
             Key::Cancel => return Nav::Pop,
             _ => return Nav::Ignored,
@@ -729,44 +730,30 @@ impl Screen for Wallpapers {
         Nav::Stay
     }
     fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
-        use crate::wallpaper::{HEIGHT, WIDTH};
         let th = cx.th;
-        c.fill(area, th.bg);
-        let (title, body) = area.split_top(th.title_h);
-        widgets::title_bar(c, th, title, tr::WALLPAPER);
-        // The picture at half size, at the right; the names beside it.
-        let (pw, ph) = (WIDTH / 2, HEIGHT / 2);
-        let (names, pane) = body.split_right(pw + 2 * th.pad);
-        let all = crate::wallpaper::all();
-        let f = th.font(Font::Normal);
-        let in_use = if cx.cfg.wallpaper_picture.is_some() { "" } else { crate::wallpaper::find_or_default(&cx.cfg.wallpaper).id };
-        widgets::list(c, th, widgets::body_rows(th, names), all.len(), &mut self.st, th.row_h, true, |c, r, i, _, fg| {
-            let (mark, rest) = r.split_left(th.icon + 2 * th.pad);
-            if all[i].id == in_use
-                && let Some(icon) = th.icon("ok")
-            {
-                c.icon_in(icon, mark, fg);
-            }
-            c.text_in(f, rest, all[i].name, fg, HAlign::Left);
-        });
-        let w = self.selected();
-        let small = th.font(Font::Small);
-        let (px, py) = (pane.x + th.pad, pane.y + (pane.h - ph - th.line_h) / 2);
-        c.frame(IRect::new(px - 1, py - 1, pw + 2, ph + 2), th.border);
-        w.with_pixels(|src| {
-            let mut rgba = Vec::with_capacity((pw * ph * 4) as usize);
-            for y in 0..ph {
-                for x in 0..pw {
-                    // The mean of each two-by-two block.
-                    let block = [0, 1, WIDTH, WIDTH + 1].map(|d| src[(2 * y * WIDTH + 2 * x + d) as usize]);
-                    let ch = |s: u32| (block.iter().map(|p| (p >> s) & 255).sum::<u32>() / 4) as u8;
-                    rgba.extend_from_slice(&[ch(16), ch(8), ch(0), 255]);
-                }
-            }
-            c.rgba(px, py, pw, ph, &rgba);
-        });
-        let place = format!("{}  {}/{}", w.family.name(), self.st.selected + 1, all.len());
-        c.text_in(small, IRect::new(px, py + ph + 2, pw, th.line_h), &place, th.secondary, HAlign::Left);
+        // The idle screen, by its own code (without an app's idle view,
+        // where the bubble is).
+        idle::Idle.draw(&Cx { idle_view: None, ..*cx }, c, area);
+        // The bubble: a bar with round ends in the softkeys' colors, the
+        // name in the middle, an arrow at each end.
+        let r = wallpaper_bubble(th);
+        c.fill_round_aa(r, r.h / 2, th.sk_edge);
+        c.fill_round_aa(r.inset(1), r.h / 2 - 1, th.sk_bg);
+        let (arrow_w, arrow_h, inset): (i32, i32, i32) = (7, 13, 14);
+        let mid = r.y + r.h / 2;
+        for j in 0..arrow_h {
+            // Each row of an arrow is as long as it is far from the tip.
+            let run = arrow_w - (j - arrow_h / 2).abs() * arrow_w / (arrow_h / 2 + 1);
+            let y = mid - arrow_h / 2 + j;
+            c.span(y, r.x + inset + arrow_w - run, r.x + inset + arrow_w, th.sk_fg);
+            c.span(y, r.right() - inset - arrow_w, r.right() - inset - arrow_w + run, th.sk_fg);
+        }
+        let text = r.inset_xy(inset + arrow_w + th.pad, 0);
+        c.text_in(th.font(Font::Bold), text, self.selected().name, th.sk_fg, HAlign::Center);
+    }
+    fn deadline(&self, cx: &Cx) -> Option<u64> {
+        // The clock goes on, as on the idle screen.
+        idle::Idle.deadline(cx)
     }
 }
 

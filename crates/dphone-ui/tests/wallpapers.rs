@@ -468,11 +468,12 @@ fn a_new_wallpaper_rethemes_at_once() {
     assert_eq!(events.try_recv(), None);
 }
 
-/// The wallpaper menu: in the Display menu on the color models, it lists
-/// the wallpapers by name, is itself drawn in the palette of the one the
-/// selection is on, shows that one's picture, and saves the choice.
+/// The wallpaper selector, in the Display menu on the color models: it
+/// is the idle screen over the wallpaper the selection is on, in that
+/// wallpaper's palette, with a bubble at the bottom that names it between
+/// two arrows; Left and Right step through the wallpapers; Select saves.
 #[test]
-fn the_wallpaper_menu_previews_the_palette_and_saves_the_choice() {
+fn the_wallpaper_selector_is_the_idle_screen_with_a_bubble() {
     let mut r = Rig::named("");
     r.show("settings");
     r.tap(Key::Digit(3)); // Display
@@ -480,52 +481,78 @@ fn the_wallpaper_menu_previews_the_palette_and_saves_the_choice() {
     r.tap(Key::Digit(4)); // Wallpaper
     assert_eq!(r.ui.screen_name(), "wallpaper");
     let all = wallpaper::all();
-    // On the wallpaper in use: the skin's palette, and its picture in the
-    // pane at half size.
     let skin = Theme::for_model(Model::D65);
-    let frame = r.frame();
-    assert_eq!(at(&frame, 470, 5), skin.title_bg);
-    let pane_has = |frame: &[u32], w: &Wallpaper| {
-        // The pane's pixels are means of two-by-two blocks of the picture.
-        let p = w.render();
-        let mean = |x: i32, y: i32| {
-            let block = [at(&p, 2 * x, 2 * y), at(&p, 2 * x + 1, 2 * y), at(&p, 2 * x, 2 * y + 1), at(&p, 2 * x + 1, 2 * y + 1)];
-            let ch = |s: u32| block.iter().map(|c| (c >> s) & 255).sum::<u32>() / 4;
-            (ch(16) << 16) | (ch(8) << 8) | ch(0)
-        };
-        let (x0, y0) = (0..WIDTH)
-            .flat_map(|x| (40..244).map(move |y| (x, y)))
-            .find(|(x, y)| (0..20).all(|i| at(frame, x + i, y + i) == mean(i, i)))
-            .unwrap_or((-1, -1));
-        x0 >= 0 && (0..HEIGHT / 2).step_by(7).all(|y| (0..WIDTH / 2).step_by(11).all(|x| at(frame, x0 + x, y0 + y) == mean(x, y)))
+    // The bubble: centered under the date, left of the tabs, above the
+    // softkeys.
+    let bubble = IRect::new(38, 210, 220, 28);
+    // The frame is the idle screen over wallpaper `w`, pixel for pixel,
+    // but for the bubble and the softkeys' labels (Select and Back here).
+    let is_idle_with_bubble = |frame: &[u32], w: &'static Wallpaper| {
+        let th = Theme::for_wallpaper(w);
+        let idle = idle_frame(w.id);
+        for y in 0..th.soft_y {
+            for x in 0..WIDTH {
+                let inside = x >= bubble.x && x < bubble.right() && y >= bubble.y && y < bubble.bottom();
+                if !inside {
+                    assert_eq!(at(frame, x, y), at(&idle, x, y), "{}: at {x},{y}", w.id);
+                }
+            }
+        }
+        // The softkeys are the idle screen's shapes in the same colors.
+        for i in 0..4 {
+            let key = th.softkey_rect(i);
+            assert_eq!(at(frame, key.x + 1, key.y + 3), th.sk_bg, "{}: softkey {i}", w.id);
+            assert_eq!(at(frame, key.x, key.y + 6), th.sk_edge, "{}: softkey {i}", w.id);
+        }
+        assert_eq!(at(frame, 4, 250), at(&idle, 4, 250), "{}: beside the softkeys", w.id);
+        // The bubble: the softkeys' fill with their outline around it, the
+        // name and the two arrows in their label color, and the wallpaper
+        // at its corners, which are round.
+        let mid = bubble.y + bubble.h / 2;
+        assert_eq!(at(frame, bubble.x + 40, bubble.y + 3), th.sk_bg, "{}: bubble fill", w.id);
+        assert_eq!(at(frame, bubble.x + 60, bubble.y), th.sk_edge, "{}: bubble outline", w.id);
+        assert_eq!(at(frame, bubble.x, bubble.y), at(&idle, bubble.x, bubble.y), "{}: round corner", w.id);
+        assert_eq!(at(frame, bubble.x + 17, mid), th.sk_fg, "{}: left arrow", w.id);
+        assert_eq!(at(frame, bubble.right() - 18, mid), th.sk_fg, "{}: right arrow", w.id);
+        // The arrows point outward: each is one pixel at its tip.
+        assert_eq!(at(frame, bubble.x + 14, mid - 4), th.sk_bg, "{}: left arrow's tip", w.id);
+        assert_eq!(at(frame, bubble.right() - 15, mid - 4), th.sk_bg, "{}: right arrow's tip", w.id);
+        let name = (bubble.y..bubble.bottom()).flat_map(|y| (bubble.x + 30..bubble.right() - 30).map(move |x| (x, y)));
+        assert!(name.filter(|(x, y)| at(frame, *x, *y) == th.sk_fg).count() > 60, "{}: the name", w.id);
     };
-    assert!(pane_has(&frame, &all[0]), "the picture of {}", all[0].id);
-    // Down: the next wallpaper, and the menu is in its palette at once.
-    r.tap(Key::Down);
-    let th = Theme::for_wallpaper(&all[1]);
-    let frame = r.frame();
-    assert_eq!(at(&frame, 470, 5), th.title_bg, "the title bar follows the selection");
-    assert_eq!(at(&frame, 4, 250), th.bg);
-    assert_eq!(at(&frame, th.softkey_rect(0).x + 1, th.soft_y + 3), th.sk_bg);
-    assert!(frame.iter().filter(|p| **p == th.sel_bg).count() > 1000, "the selected row");
-    assert!(pane_has(&frame, &all[1]), "the picture of {}", all[1].id);
-    // Right: the first of the next family.
+    assert_eq!(at(&idle_frame(""), 400, 200), at(&all[0].render(), 400, 200));
+    is_idle_with_bubble(&r.frame(), &all[0]);
+    // Right: the next wallpaper fills the screen, in its palette, at once.
     r.tap(Key::Right);
-    let next = all.iter().find(|w| w.family == Family::ALL[1]).unwrap();
-    assert_eq!(at(&r.frame(), 470, 5), Theme::for_wallpaper(next).title_bg);
+    is_idle_with_bubble(&r.frame(), &all[1]);
+    assert_ne!(Theme::for_wallpaper(&all[1]).sk_bg, skin.sk_bg);
+    // Left twice: back, and around the end to the last one.
+    r.tap(Key::Left);
+    is_idle_with_bubble(&r.frame(), &all[0]);
+    r.tap(Key::Left);
+    is_idle_with_bubble(&r.frame(), all.last().unwrap());
+    r.tap(Key::Right);
+    // Up and Down step too.
+    r.tap(Key::Down);
+    r.tap(Key::Down);
+    is_idle_with_bubble(&r.frame(), &all[2]);
+    r.tap(Key::Up);
+    is_idle_with_bubble(&r.frame(), &all[1]);
     // Nothing is saved by looking; Back leaves the wallpaper as it was.
     assert!(r.commands().is_empty());
     r.tap(Key::Soft(4));
     assert_eq!(r.ui.screen_name(), "display");
     assert_eq!(at(&r.frame(), 470, 5), skin.title_bg);
     assert!(r.commands().is_empty());
-    // Select saves it.
+    // Select saves the one that is showing.
     r.tap(Key::Digit(4));
-    r.tap(Key::Down);
-    r.tap(Key::Down);
+    r.tap(Key::Right);
+    r.tap(Key::Right);
     r.tap(Key::Soft(1));
     assert_eq!(r.commands(), vec![Command::SetWallpaper { name: all[2].id.into() }]);
     assert_eq!(r.ui.screen_name(), "display");
+    // No family is named anywhere on the screen: nothing but the idle
+    // screen and the bubble is drawn (checked above, pixel for pixel).
 }
 
 /// A wallpaper the provisioning server fixed can be looked at, not set.
@@ -536,7 +563,7 @@ fn a_fixed_wallpaper_cannot_be_changed_in_the_menu() {
     r.tap(Key::Digit(3));
     r.tap(Key::Digit(4));
     assert_eq!(r.ui.screen_name(), "wallpaper");
-    r.tap(Key::Down);
+    r.tap(Key::Right);
     r.tap(Key::Soft(1));
     r.tap(Key::Select);
     assert_eq!(r.ui.screen_name(), "wallpaper");
@@ -690,6 +717,22 @@ fn contact_sheets() {
     }
     let c = sheet(&format!("Open DPhone wallpapers ({}): idle screen and menu", all.len()), &all, 3, 2, false);
     write_png(&dir.join("overview.png"), &c);
+    // The wallpaper selector on a few wallpapers, dark and light.
+    let shown = ["harbor", "dusk", "sunrise", "houndstooth", "stone", "tides"];
+    let mut c = Canvas::new((12 + 2 * (WIDTH + 12)) as u16, (12 + 3 * (HEIGHT + 12)) as u16, false);
+    c.clear(0x2B2B2B);
+    for (i, id) in shown.iter().enumerate() {
+        let mut r = Rig::named("");
+        r.show("settings");
+        r.tap(Key::Digit(3));
+        r.tap(Key::Digit(4));
+        for _ in 0..all.iter().position(|w| w.id == *id).unwrap() {
+            r.tap(Key::Right);
+        }
+        let rgba: Vec<u8> = r.frame().iter().flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8, 255]).collect();
+        c.rgba(12 + (i % 2) as i32 * (WIDTH + 12), 12 + (i / 2) as i32 * (HEIGHT + 12), WIDTH, HEIGHT, &rgba);
+    }
+    write_png(&dir.join("wallpaper-menu.png"), &c);
     assert!(dir.join("overview.png").metadata().unwrap().len() > 10_000);
 }
 
