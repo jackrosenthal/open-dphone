@@ -68,8 +68,9 @@ async fn first_boot_user_token_config_and_pushes() {
     r.dpma.network(true, None, Vec::new());
     until(&r.store, "awaiting a server", ProvisionPhase::AwaitingServer).await;
 
-    // DHCP option 66 in its sip: form names the server.
+    // DHCP option 66 in its sip: form names a server; the user picks it.
     r.dpma.network(true, Some("sip:proxy@pbx.test:5060".into()), Vec::new());
+    r.store.send(Command::StartProvisioning { server: Some("sip:proxy@pbx.test:5060".into()) }).await.unwrap();
     until(&r.store, "awaiting a user", ProvisionPhase::AwaitingUser).await;
     let p = r.store.get::<Provisioning>();
     assert_eq!(p.server.as_ref().unwrap().source, DiscoverySource::DhcpOption66);
@@ -169,7 +170,8 @@ async fn first_boot_user_token_config_and_pushes() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn later_boot_md5_cache() {
-    // First boot, MAC-keyed assignment: no user interaction at all.
+    // First boot, MAC-keyed assignment: the user picks the server, and
+    // nothing else is asked.
     let mut s = FakeServer::new();
     s.config = CONFIG.as_bytes().to_vec();
     s.token_reqs = "mac".into();
@@ -184,7 +186,9 @@ async fn later_boot_md5_cache() {
     }];
     let r = rig_with(server.clone(), storage.clone(), sink.clone());
     r.dpma.network(true, None, mdns.clone());
+    r.store.send(Command::StartProvisioning { server: Some("sip:proxy@10.0.0.5:5060".into()) }).await.unwrap();
     until(&r.store, "provisioned by MAC", ProvisionPhase::Provisioned).await;
+    assert_eq!(r.store.get::<Provisioning>().server.as_ref().unwrap().source, DiscoverySource::Mdns, "a pick from the list keeps its source");
     // The server's digest is stored verbatim.
     assert_eq!(sink.md5.lock().unwrap().as_deref(), Some("0123456789abcdef0123456789abcdef"));
     assert_eq!(server.lock().unwrap().count("ConfigRequest"), 1);
@@ -281,6 +285,7 @@ async fn provisioned_firmware_is_checked_unless_ignored() {
     // By default the provisioned firmware is respected: the entry is kept
     // and the check runs after the configuration is applied.
     r.dpma.network(true, Some("sip:proxy@pbx.test".into()), Vec::new());
+    r.store.send(Command::StartProvisioning { server: Some("sip:proxy@pbx.test".into()) }).await.unwrap();
     until(&r.store, "provisioned", ProvisionPhase::Provisioned).await;
     wait("the firmware check", || (checks() == 1).then_some(())).await;
     assert!(String::from_utf8_lossy(&r.sink.applied.lock().unwrap()[0]).contains("<firmware model=\"D60\""));
@@ -391,6 +396,7 @@ async fn handshake_sends_the_chain_and_falls_back_to_the_single_certificate() {
     // A server that reads the chain form.
     let r = rig_with(Arc::new(Mutex::new(server())), Arc::new(MemStorage::default()), Arc::new(MemSink::default()));
     r.dpma.network(true, Some("sip:proxy@pbx.test".into()), Vec::new());
+    r.store.send(Command::StartProvisioning { server: Some("sip:proxy@pbx.test".into()) }).await.unwrap();
     until(&r.store, "provisioned with the chain form", ProvisionPhase::Provisioned).await;
     assert_eq!(r.server.lock().unwrap().handshake_certificates, vec![3]);
     drop(r);
@@ -400,6 +406,7 @@ async fn handshake_sends_the_chain_and_falls_back_to_the_single_certificate() {
     s.refuse_chain = true;
     let r = rig_with(Arc::new(Mutex::new(s)), Arc::new(MemStorage::default()), Arc::new(MemSink::default()));
     r.dpma.network(true, Some("sip:proxy@pbx.test".into()), Vec::new());
+    r.store.send(Command::StartProvisioning { server: Some("sip:proxy@pbx.test".into()) }).await.unwrap();
     until(&r.store, "provisioned with the single certificate", ProvisionPhase::Provisioned).await;
     assert_eq!(r.server.lock().unwrap().handshake_certificates, vec![3, 1]);
     assert_eq!(r.sink.applied.lock().unwrap().len(), 1);
@@ -417,6 +424,7 @@ async fn handshake_sends_the_chain_and_falls_back_to_the_single_certificate() {
 async fn requirements_are_kept_for_a_token_request_without_a_handshake() {
     let r = rig();
     r.dpma.network(true, Some("sip:proxy@pbx.test".into()), Vec::new());
+    r.store.send(Command::StartProvisioning { server: Some("sip:proxy@pbx.test".into()) }).await.unwrap();
     until(&r.store, "awaiting a user", ProvisionPhase::AwaitingUser).await;
     r.store.send(Command::SelectUser { id: "100".into(), pin: "1234".into() }).await.unwrap();
     until(&r.store, "provisioned", ProvisionPhase::Provisioned).await;
@@ -458,6 +466,7 @@ async fn ignore_setting_in_the_fetched_configuration_covers_its_own_firmware() {
     let checks = || installer.0.load(std::sync::atomic::Ordering::SeqCst);
 
     r.dpma.network(true, Some("sip:proxy@pbx.test".into()), Vec::new());
+    r.store.send(Command::StartProvisioning { server: Some("sip:proxy@pbx.test".into()) }).await.unwrap();
     until(&r.store, "provisioned", ProvisionPhase::Provisioned).await;
     let applied = String::from_utf8(r.sink.applied.lock().unwrap()[0].clone()).unwrap();
     assert!(applied.contains("dphone_ignore_provisioned_firmware"));
@@ -522,6 +531,7 @@ async fn ignore_setting_changed_on_the_phone_is_followed() {
     let checks = || installer.0.load(std::sync::atomic::Ordering::SeqCst);
 
     dpma.network(true, Some("sip:proxy@pbx.test".into()), Vec::new());
+    store.send(Command::StartProvisioning { server: Some("sip:proxy@pbx.test".into()) }).await.unwrap();
     until(&store, "provisioned", ProvisionPhase::Provisioned).await;
     wait("the first check", || (checks() == 1).then_some(())).await;
 
@@ -624,6 +634,7 @@ async fn provisioned_files_are_fetched_checked_and_pruned() {
     let changes = || sink.resource_changes.load(std::sync::atomic::Ordering::SeqCst);
 
     r.dpma.network(true, Some("sip:proxy@pbx.test".into()), Vec::new());
+    r.store.send(Command::StartProvisioning { server: Some("sip:proxy@pbx.test".into()) }).await.unwrap();
     until(&r.store, "provisioned", ProvisionPhase::Provisioned).await;
     wait("the files", || (changes() == 1).then_some(())).await;
 
@@ -685,34 +696,47 @@ async fn provisioned_files_are_fetched_checked_and_pruned() {
     assert_eq!(files.get("md5s/0"), Some(md5_hex(b"<contacts group_name=\"Team\"/>").into_bytes()));
 }
 
-/// Discovery inputs that are reported again unchanged do not disturb a
-/// phone that waits for its user; a change does start over.
+/// A phone with no saved server lists what discovery finds and waits for
+/// its user, whether that is one server or several (the state after a
+/// factory reset, which removes `configurator.xml`).  Discovery inputs that
+/// are reported again unchanged do not disturb a phone that waits.
 #[tokio::test(flavor = "current_thread")]
 async fn discovery_inputs_are_followed() {
     let r = rig();
     let mdns = |addr: &str| vec![DiscoveredServer { source: DiscoverySource::Mdns, name: "Digium Phone Config Server".into(), address: addr.into() }];
+    let listed = |r: &Rig| r.store.get::<Provisioning>().discovered.iter().map(|d| (d.source, d.address.clone())).collect::<Vec<_>>();
     r.dpma.network(true, None, Vec::new());
     until(&r.store, "awaiting a server", ProvisionPhase::AwaitingServer).await;
 
-    // A server appears over mDNS while the phone waits.
+    // One server appears over mDNS while the phone waits: it is listed,
+    // and the phone goes on waiting.
     r.dpma.network(true, None, mdns("10.0.0.5:5060"));
+    wait("the announced server is listed", || (listed(&r) == [(DiscoverySource::Mdns, "10.0.0.5:5060".to_string())]).then_some(())).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(phase(&r.store), ProvisionPhase::AwaitingServer);
+    assert_eq!(r.server.lock().unwrap().count("Handshake"), 0, "nothing is sent to a server nobody picked");
+    assert_eq!(r.store.get::<Provisioning>().server, None);
+
+    // DHCP option 66 arrives while the address stays: listed first, and
+    // still nothing is picked.
+    r.dpma.network(true, Some("sip:proxy@pbx.test:5060".into()), mdns("10.0.0.5:5060"));
+    wait("option 66 is listed", || (listed(&r).first().map(|d| d.0) == Some(DiscoverySource::DhcpOption66)).then_some(())).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(phase(&r.store), ProvisionPhase::AwaitingServer);
+    assert_eq!(r.server.lock().unwrap().count("Handshake"), 0);
+
+    // The user picks the announced server.
+    r.store.send(Command::StartProvisioning { server: Some("10.0.0.5:5060".into()) }).await.unwrap();
     until(&r.store, "awaiting a user", ProvisionPhase::AwaitingUser).await;
     assert_eq!(r.store.get::<Provisioning>().server.as_ref().unwrap().source, DiscoverySource::Mdns);
     assert_eq!(r.server.lock().unwrap().count("Handshake"), 1);
 
     // The same inputs again: nothing happens.
-    r.dpma.network(true, None, mdns("10.0.0.5:5060"));
+    r.dpma.network(true, Some("sip:proxy@pbx.test:5060".into()), mdns("10.0.0.5:5060"));
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(r.server.lock().unwrap().count("Handshake"), 1);
     assert_eq!(phase(&r.store), ProvisionPhase::AwaitingUser);
 
-    // DHCP option 66 arrives while the address stays: it outranks mDNS.
-    r.dpma.network(true, Some("sip:proxy@pbx.test:5060".into()), mdns("10.0.0.5:5060"));
-    wait("a handshake with the option 66 server", || {
-        (r.store.get::<Provisioning>().server.as_ref().map(|s| s.source) == Some(DiscoverySource::DhcpOption66)).then_some(())
-    })
-    .await;
-    until(&r.store, "awaiting a user again", ProvisionPhase::AwaitingUser).await;
     r.store.send(Command::SelectUser { id: "100".into(), pin: "1234".into() }).await.unwrap();
     until(&r.store, "provisioned", ProvisionPhase::Provisioned).await;
 
@@ -744,6 +768,7 @@ async fn document_digest_on_verify_skips_the_download() {
 
     let r = boot();
     r.dpma.network(true, Some("sip:proxy@pbx.test".into()), Vec::new());
+    r.store.send(Command::StartProvisioning { server: Some("sip:proxy@pbx.test".into()) }).await.unwrap();
     until(&r.store, "provisioned", ProvisionPhase::Provisioned).await;
     assert_eq!(sink.md5.lock().unwrap().as_deref(), Some(md5_hex(CONFIG.as_bytes()).as_str()), "the server's digest is the cache");
     drop(r);

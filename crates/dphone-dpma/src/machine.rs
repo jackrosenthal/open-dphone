@@ -368,8 +368,17 @@ impl Machine {
         }
     }
 
-    /// Manual entry, then the saved server, then DHCP option 66 in its
-    /// `sip:` form, then a single mDNS answer.
+    /// The server to use, and what discovery offers: DHCP option 66 in its
+    /// `sip:` form, then the mDNS answers.
+    ///
+    /// Only a server the user named in this session (picked from the list
+    /// or typed) or the saved one (`config_server_url`, written once a
+    /// server has provisioned the phone) is used without asking.  A phone
+    /// with neither, as after a factory reset, lists what discovery found
+    /// and waits for the user, whether that is one server or several.
+    /// (Stock's `choosePbx.js` shows the same list; with exactly one entry
+    /// it selects that entry by itself after six seconds without a key
+    /// press.)
     fn pick_server(&self) -> (Option<DiscoveredServer>, Vec<DiscoveredServer>) {
         let mut found = Vec::new();
         if let Some(o) = self.option66.as_deref().map(str::trim).filter(|o| o.starts_with("sip:") || o.starts_with("sips:")) {
@@ -377,7 +386,10 @@ impl Machine {
         }
         found.extend(self.mdns.iter().cloned());
         if let Some(m) = &self.manual {
-            return (Some(DiscoveredServer { source: DiscoverySource::Manual, name: m.clone(), address: m.clone() }), found);
+            // A pick from the list stays what discovery said it was.
+            let picked = found.iter().find(|f| f.address == *m).cloned();
+            let server = picked.unwrap_or_else(|| DiscoveredServer { source: DiscoverySource::Manual, name: m.clone(), address: m.clone() });
+            return (Some(server), found);
         }
         let saved = self.configurator();
         if let Some(url) = saved.get("config_server_url") {
@@ -386,13 +398,6 @@ impl Machine {
             if matches!(saved.get("config_server_type"), Some("digium") | Some("boot66") | None) {
                 return (Some(DiscoveredServer { source: DiscoverySource::Saved, name: url.to_string(), address: url.to_string() }), found);
             }
-        }
-        if let Some(o) = found.iter().find(|f| f.source == DiscoverySource::DhcpOption66) {
-            return (Some(o.clone()), found);
-        }
-        let mdns: Vec<_> = found.iter().filter(|f| f.source == DiscoverySource::Mdns).collect();
-        if mdns.len() == 1 {
-            return (Some(mdns[0].clone()), found);
         }
         (None, found)
     }

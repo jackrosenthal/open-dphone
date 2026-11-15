@@ -431,8 +431,8 @@ pub enum ProvisionPhase {
     #[default]
     Idle,
     Discovering,
-    /// Several servers found, or none: waiting for the user to pick or
-    /// enter one (`Command::StartProvisioning`).
+    /// No server saved or named yet: waiting for the user to pick one of
+    /// the servers found or to enter one (`Command::StartProvisioning`).
     AwaitingServer,
     Handshaking,
     /// Waiting for `Command::SelectUser`.

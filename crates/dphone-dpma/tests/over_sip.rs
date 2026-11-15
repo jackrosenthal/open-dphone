@@ -73,7 +73,10 @@ async fn provision_over_sip_messages() {
         Arc::new(MemStorage::default()),
         sink.clone(),
     );
-    dpma.network(true, Some(format!("sip:proxy@127.0.0.1:{}", server_sip.local_port())), Vec::new());
+    // DHCP option 66 names the server, and the user picks it.
+    let server_uri = format!("sip:proxy@127.0.0.1:{}", server_sip.local_port());
+    dpma.network(true, Some(server_uri.clone()), Vec::new());
+    store.send(dphone_state::Command::StartProvisioning { server: Some(server_uri) }).await.unwrap();
     wait("provisioned over SIP", || (store.get::<Provisioning>().phase == ProvisionPhase::Provisioned).then_some(())).await;
     assert_eq!(sink.applied.lock().unwrap()[0], config.into_bytes());
     assert_eq!(fake.lock().unwrap().log, ["Handshake", "TokenRequest", "ConfigRequest"]);
