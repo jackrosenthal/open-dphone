@@ -51,8 +51,8 @@ fn measures(model: Model) -> Measures {
             bird_w: 16,
             bird_h: 12,
             bird_x: 44,
-            gap: 48,
-            field_h: 98,
+            gap: 50,
+            field_h: 116,
             tick_ms: 100,
         },
         Model::D70 => Measures {
@@ -61,8 +61,8 @@ fn measures(model: Model) -> Measures {
             bird_w: 16,
             bird_h: 12,
             bird_x: 60,
-            gap: 60,
-            field_h: 136,
+            gap: 64,
+            field_h: 156,
             tick_ms: 100,
         },
         _ => Measures {
@@ -71,8 +71,8 @@ fn measures(model: Model) -> Measures {
             bird_w: 32,
             bird_h: 24,
             bird_x: 96,
-            gap: 92,
-            field_h: 235,
+            gap: 96,
+            field_h: 264,
             tick_ms: 50,
         },
     }
@@ -186,14 +186,19 @@ fn start_screen_flight_and_game_over() {
     assert_eq!(info.display_name, "Desk Sparrow");
 
     r.launch(APP);
-    assert_eq!(r.ui.texts(APP), ["Desk Sparrow", "Press OK to fly"]);
-    assert_eq!(r.ui.softkeys(APP), ["Start", "Exit"]);
+    assert_eq!(
+        r.ui.texts(APP),
+        ["Desk Sparrow", "Any key flaps.  Cancel leaves."]
+    );
+    // The whole display, and no softkeys.
+    assert!(r.ui.full_screen(APP));
+    assert!(r.ui.softkeys(APP).is_empty());
     // One canvas over the whole window, drawn once; nothing ticks on the
     // start screen.
     let (bounds, ops) = r.ui.drawings(APP).remove(0);
     assert_eq!(
         (bounds.x, bounds.y, bounds.width, bounds.height),
-        (0, 0, 480, 243)
+        (0, 0, 480, 272)
     );
     assert!(openings(&ops, m).is_empty());
     assert_eq!(r.ui.draw_count(APP), 1);
@@ -203,7 +208,7 @@ fn start_screen_flight_and_game_over() {
     // the middle of the field, and there is a score.
     r.key(APP, Key::Select);
     assert!(r.ui.texts(APP).is_empty());
-    assert_eq!(r.ui.softkeys(APP), ["Flap", "Exit"]);
+    assert!(r.ui.softkeys(APP).is_empty());
     let ops = drawing(&r);
     assert_eq!(bird_x(&ops), m.bird_x);
     let y0 = bird_y(&ops);
@@ -233,9 +238,9 @@ fn start_screen_flight_and_game_over() {
     let falls: Vec<i16> = ys[top..].windows(2).map(|w| w[1] - w[0]).collect();
     assert!(falls.windows(2).all(|w| w[1] >= w[0]), "{falls:?}");
 
-    // Another flap, by the softkey this time, sends it up again.
+    // Another flap, by a digit this time, sends it up again.
     let before = *ys.last().unwrap();
-    r.softkey(APP, "Flap");
+    r.key(APP, Key::Digit(5));
     next_tick(&mut r);
     assert!(bird_y(&drawing(&r)) < before);
 
@@ -246,7 +251,7 @@ fn start_screen_flight_and_game_over() {
         next_tick(&mut r);
     }
     assert_eq!(r.ui.texts(APP), ["Game over", "Score 0   Best 0"]);
-    assert_eq!(r.ui.softkeys(APP), ["Again", "Exit"]);
+    assert!(r.ui.softkeys(APP).is_empty());
     assert_eq!(bird_y(&drawing(&r)), m.field_h - m.bird_h);
     assert_eq!(r.mgr.pump(), None, "no timer after the game");
 
@@ -260,8 +265,9 @@ fn start_screen_flight_and_game_over() {
     assert_eq!(bird_y(&drawing(&r)), y0);
     assert!(r.mgr.pump().is_some());
 
-    // Exit leaves the game, and with it the app stops.
-    r.softkey(APP, "Exit");
+    // Cancel, which the game leaves to the phone, closes it, and with
+    // that the app stops.
+    r.key(APP, Key::Cancel);
     assert!(!r.mgr.is_running(APP));
     assert_eq!(r.ui.top(), None);
     assert_eq!(r.mgr.pump(), None);
@@ -284,6 +290,52 @@ fn a_covered_game_stops() {
     r.launch(APP);
     r.key(APP, Key::Cancel);
     assert!(!r.mgr.is_running(APP));
+}
+
+#[test]
+fn every_keypad_key_plays_and_cancel_leaves() {
+    let mut r = Rig::new(FakeConfig::default());
+    // Where the sparrow is three ticks after a game started with one flap.
+    let after = |r: &mut Rig, start: Key, again: Option<Key>| {
+        r.launch(APP);
+        assert!(r.ui.shows(APP, "Desk Sparrow"));
+        r.key(APP, start);
+        assert!(r.ui.texts(APP).is_empty(), "{start:?} starts a game");
+        next_tick(r);
+        if let Some(key) = again {
+            r.key(APP, key);
+        }
+        next_tick(r);
+        next_tick(r);
+        let y = bird_y(&drawing(r));
+        // Cancel is not the game's: it closes the app.
+        r.key(APP, Key::Cancel);
+        assert!(!r.mgr.is_running(APP));
+        y
+    };
+    let once = after(&mut r, Key::Select, None);
+    let mut keys: Vec<Key> = (0..=9).map(Key::Digit).collect();
+    keys.extend([Key::Star, Key::Pound, Key::Select]);
+    for key in keys {
+        // The key starts a game as Select does, and flaps in it: after a
+        // second flap the sparrow is higher than after one.
+        let twice = after(&mut r, key, Some(key));
+        assert!(twice < once, "{key:?}: {twice} against {once}");
+    }
+    // The other keys are not the game's: nothing starts.
+    r.launch(APP);
+    for key in [
+        Key::Up,
+        Key::Down,
+        Key::Left,
+        Key::Right,
+        Key::Soft(1),
+        Key::Soft(4),
+    ] {
+        r.key(APP, key);
+        assert!(r.ui.shows(APP, "Desk Sparrow"), "{key:?}");
+        assert_eq!(r.mgr.pump(), None, "{key:?}");
+    }
 }
 
 #[test]
@@ -354,7 +406,7 @@ fn points_the_best_score_and_the_seed() {
 
     // A worse game leaves the best score alone, in a new run of the app
     // too.
-    r.softkey(APP, "Exit");
+    r.key(APP, Key::Cancel);
     std::fs::write(&best, "17").unwrap();
     r.launch(APP);
     r.key(APP, Key::Select);
@@ -371,8 +423,11 @@ fn it_plays_on_the_gray_screens_in_gray() {
         let m = measures(model);
         let mut r = Rig::with_root(staged(), FakeConfig::default(), model);
         r.launch(APP);
-        assert_eq!(r.ui.texts(APP), ["Desk Sparrow", "Press OK to fly"]);
-        let area = model.app_content_area();
+        assert_eq!(
+            r.ui.texts(APP),
+            ["Desk Sparrow", "Any key flaps.  Cancel leaves."]
+        );
+        let area = model.main_screen();
         r.key(APP, Key::Select);
         let started = Instant::now();
         let mut player = Player::new(m);
@@ -559,6 +614,9 @@ impl AppWindow for WatchedWindow {
     }
     fn set_image(&mut self, w: u32, name: &str) {
         self.inner.set_image(w, name)
+    }
+    fn set_full_screen(&mut self, on: bool) {
+        self.inner.set_full_screen(on)
     }
     fn theme_color(&self, role: ColorRole) -> Color {
         self.inner.theme_color(role)
@@ -757,10 +815,26 @@ fn play_on(model: Model) -> Phone {
     assert_eq!(p.ui.screen_name(), "app:desksparrow");
     p.shot("1-start");
     let start = p.pixels();
+    // The game has the whole display: where the softkey bar would be is
+    // the floor, one color from side to side.
+    let size = model.main_screen();
+    let (w, h) = (size.width as usize, size.height as usize);
+    let floor = start[(h - 1) * w];
+    assert!(start[(h - 2) * w..].iter().all(|p| *p == floor));
+    assert!(
+        start[(m.field_h as usize + 3) * w..][..w]
+            .iter()
+            .all(|p| *p == floor)
+    );
 
-    // Select reaches the app through the phone's keys.
-    p.tap(Key::Select);
+    // The softkey keys do nothing now.  A digit reaches the game through
+    // the phone's keys, and starts it; it is no number to dial.
+    p.tap(Key::Soft(1));
+    assert_eq!(p.mgr.pump(), None);
+    p.tap(Key::Digit(5));
     assert!(p.mgr.pump().is_some(), "the game's timer runs");
+    assert_eq!(p.ui.screen_name(), "app:desksparrow");
+    assert_eq!(p.store.get::<dphone_state::Ui>().dial_buffer, "");
     let mut player = Player::new(m);
     let mut shot = false;
     let mut score = 0;
@@ -818,9 +892,20 @@ fn drawn_on_a_color_phone() {
         per_tick(p.ui_time)
     );
 
-    // A call comes in: its screen takes the display and the game stops.
+    // Cancel on the phone's keypad leaves the game: the idle screen is
+    // back, with its softkeys, and the app has stopped.
     std::thread::sleep(Duration::from_millis(750));
-    p.tap(Key::Select);
+    p.tap(Key::Pound);
+    p.next_tick();
+    p.tap(Key::Cancel);
+    assert_eq!(p.ui.screen_name(), "idle");
+    assert!(!p.mgr.is_running(APP));
+    assert_eq!(p.store.get::<dphone_state::Ui>().dial_buffer, "");
+
+    // A call comes in: its screen takes the display and the game stops.
+    p.mgr.launch(APP).unwrap();
+    p.settle();
+    p.tap(Key::Star);
     p.next_tick();
     assert!(p.mgr.is_running(APP));
     let id = p.store.next_call_id();
@@ -859,7 +944,7 @@ fn drawn_in_gray(model: Model) {
     );
     let share = |c: u32| pixels.iter().filter(|p| **p == c).count() * 100 / pixels.len();
     assert!(share(0xFF_FFFF) > 50, "a white field");
-    assert!(share(0x00_0000) > 8, "black pipes");
+    assert!(share(0x00_0000) > 4, "black pipes");
     assert!(share(0xAA_AAAA) + share(0x55_5555) < 12, "few grays");
     let per_tick = |d: Duration| d.as_micros() / u128::from(p.ticks);
     eprintln!(

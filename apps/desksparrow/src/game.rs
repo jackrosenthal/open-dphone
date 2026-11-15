@@ -42,11 +42,11 @@ pub struct Rules {
 }
 
 impl Rules {
-    /// 480x243: twenty ticks a second, which is as fast as an app's timer
+    /// 480x272: twenty ticks a second, which is as fast as an app's timer
     /// goes.
     pub const COLOR: Rules = Rules {
         width: 480,
-        height: 235,
+        height: 264,
         bird_w: 32,
         bird_h: 24,
         bird_x: 96,
@@ -56,18 +56,18 @@ impl Rules {
         max_fall: 176,
         speed: 4,
         pipe_w: 44,
-        gap: 92,
+        gap: 96,
         spacing: 176,
-        margin: 22,
-        max_shift: 90,
+        margin: 24,
+        max_shift: 100,
         tick_ms: 50,
     };
-    /// 320x140, gray.  The gray panels are slow to change and each repaint
+    /// 320x160, gray.  The gray panels are slow to change and each repaint
     /// costs the processor the whole transfer, so the game runs at ten
     /// ticks a second there, with bigger steps.
     pub const LARGE_GRAY: Rules = Rules {
         width: 320,
-        height: 136,
+        height: 156,
         bird_w: 16,
         bird_h: 12,
         bird_x: 60,
@@ -77,16 +77,16 @@ impl Rules {
         max_fall: 104,
         speed: 4,
         pipe_w: 24,
-        gap: 60,
+        gap: 64,
         spacing: 124,
-        margin: 10,
-        max_shift: 44,
+        margin: 12,
+        max_shift: 50,
         tick_ms: 100,
     };
-    /// 240x102, gray.
+    /// 240x120, gray.
     pub const SMALL_GRAY: Rules = Rules {
         width: 240,
-        height: 98,
+        height: 116,
         bird_w: 16,
         bird_h: 12,
         bird_x: 44,
@@ -96,10 +96,10 @@ impl Rules {
         max_fall: 88,
         speed: 3,
         pipe_w: 20,
-        gap: 48,
+        gap: 50,
         spacing: 96,
-        margin: 8,
-        max_shift: 30,
+        margin: 10,
+        max_shift: 36,
         tick_ms: 100,
     };
 

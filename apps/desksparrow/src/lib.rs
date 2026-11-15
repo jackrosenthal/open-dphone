@@ -1,7 +1,11 @@
 //! Desk Sparrow: a sparrow that has to be kept in the air with one key and
-//! flown through the openings between pipes.  Select (or the first
-//! softkey) starts a game and flaps; each opening is a point; a pipe or
-//! the floor ends the game.  The best score is kept in the app's storage.
+//! flown through the openings between pipes.  Select, or any key of the
+//! keypad (the digits, star, and pound), starts a game and flaps; each
+//! opening is a point; a pipe or the floor ends the game.  The best score
+//! is kept in the app's storage.
+//!
+//! The game has the whole display: there are no softkeys.  Cancel, which
+//! the app leaves to the phone, closes it, as does line key 1.
 //!
 //! The game is drawn on a canvas, once for every tick of a repeating timer
 //! and in one call, so the phone repaints once a tick.  Between games
@@ -17,14 +21,19 @@ use app_sdk::prelude::*;
 use app_sdk::{Align, Font};
 use game::{Game, Pipe, Rules};
 
-const SK_PLAY: u32 = 1;
-const SK_EXIT: u32 = 2;
+/// The keys that start a game and flap: Select and the keypad.  Claimed,
+/// so that a digit does not start a number to dial behind the game.
+const PLAY_KEYS: [&str; 13] = [
+    "select", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "#",
+];
 
 /// The file of the best score: a decimal number.
 const BEST_FILE: &str = "best";
 /// A file an administrator or a test may put beside it: a decimal seed
 /// that makes every game the same game.
 const SEED_FILE: &str = "seed";
+/// How to play and how to leave, said once, on the start screen.
+const START_HINT: &str = "Any key flaps.  Cancel leaves.";
 /// A key just after the end of a game is the last flap of that game, not
 /// the start of the next one.
 const RESTART_AFTER_MS: u64 = 700;
@@ -345,7 +354,7 @@ impl Screen {
         let look = Look::new();
         let m = ui::get_metrics();
         ui::clear(ROOT);
-        ui::claim_keys(ROOT, &["select".to_string()]);
+        ui::claim_keys(ROOT, &PLAY_KEYS.map(String::from));
         let canvas = canvas::create(ROOT, Rect::new(0, 0, m.width, m.height));
 
         let (title_h, pad) = if m.color {
@@ -496,23 +505,11 @@ impl Sparrow {
         }
     }
 
-    fn softkeys(&self) {
-        let play = match self.state {
-            State::Ready => "Start",
-            State::Flying => "Flap",
-            State::Over(_) => "Again",
-        };
-        ui::set_softkeys(
-            ROOT,
-            &[Softkey::new(SK_PLAY, play), Softkey::new(SK_EXIT, "Exit")],
-        );
-    }
-
-    /// Shows the state: the texts, the softkeys, and the picture.
+    /// Shows the state: the texts and the picture.
     fn show(&mut self) {
         let screen = self.screen.get_or_insert_with(Screen::build);
         match self.state {
-            State::Ready => screen.texts(Some(("Desk Sparrow", "Press OK to fly"))),
+            State::Ready => screen.texts(Some(("Desk Sparrow", START_HINT))),
             State::Flying => screen.texts(None),
             State::Over(_) => {
                 let line = format!("Score {}   Best {}", self.game.score, self.best);
@@ -520,7 +517,6 @@ impl Sparrow {
             }
         }
         screen.draw(self.state, &self.game);
-        self.softkeys();
     }
 
     fn seed(&self) -> u32 {
@@ -542,7 +538,7 @@ impl Sparrow {
         }
     }
 
-    /// Select or the first softkey.
+    /// One of the keys that play.
     fn play(&mut self) {
         let Some(rules) = self.screen.as_ref().map(|s| s.look.rules) else {
             return;
@@ -578,7 +574,7 @@ impl Sparrow {
         }
     }
 
-    /// The game leaves the screen (a call, another screen, or Exit): a
+    /// The game leaves the screen (a call, another screen, or Cancel): a
     /// game being played is over as it stands.
     fn leave(&mut self) {
         self.stop_timer();
@@ -591,6 +587,8 @@ impl Sparrow {
 
 impl App for Sparrow {
     fn start(&mut self) {
+        // The whole display, from the first frame.
+        ui::set_full_screen(true);
         self.best = app_sdk::read_string(Location::Nv, BEST_FILE)
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or(0);
@@ -601,9 +599,7 @@ impl App for Sparrow {
             Event::Foreground => self.show(),
             Event::Background | Event::Exit => self.leave(),
             Event::Timer(id) if self.timer == Some(id) => self.tick(),
-            Event::Softkey(SK_PLAY) => self.play(),
-            Event::Softkey(SK_EXIT) => runtime::background(),
-            Event::Key(k) if k == "select" => self.play(),
+            Event::Key(k) if PLAY_KEYS.contains(&k.as_str()) => self.play(),
             _ => {}
         }
     }
