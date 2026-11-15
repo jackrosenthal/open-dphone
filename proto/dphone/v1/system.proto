@@ -14,8 +14,8 @@ service SystemService {
   // A backup of the local configuration, as a gzip-compressed tar archive.
   rpc CreateBackup(CreateBackupRequest) returns (CreateBackupResponse);
   rpc RestoreBackup(RestoreBackupRequest) returns (RestoreBackupResponse);
-  // Who has UART A: the serial console, or the electronic hook switch
-  // (EHS) headset adapter.  The two cannot share the port.
+  // Who has UART A: the electronic hook switch (EHS) headset adapter (the
+  // default), or the serial console.  The two cannot share the port.
   rpc GetSerialConsole(GetSerialConsoleRequest) returns (GetSerialConsoleResponse);
   rpc SetSerialConsole(SetSerialConsoleRequest) returns (SetSerialConsoleResponse);
   // Whether GET /metrics (the Prometheus scrape endpoint, no login) is

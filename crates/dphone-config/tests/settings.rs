@@ -28,7 +28,8 @@ fn defaults_with_no_file() {
     let off = Resolved { value: false, source: SettingSource::Default, locked: false };
     let on = Resolved { value: true, ..off };
     assert_eq!((c.ssh_enabled(), c.ignore_provisioned_firmware()), (off, off));
-    assert_eq!((c.serial_console(), c.metrics_enabled()), (on, on));
+    // UART A is the EHS headset adapter's unless the console is asked for.
+    assert_eq!((c.serial_console(), c.metrics_enabled()), (off, on));
     let a = c.access();
     // SSH off; web configuration on; the server's firmware is followed, as
     // on stock.

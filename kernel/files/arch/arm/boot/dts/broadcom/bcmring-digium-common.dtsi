@@ -31,6 +31,10 @@
 		/*
 		 * boot2 appends its own command line (console, mtdparts=, root=).
 		 * panic=10: a panic, including the death of PID 1, reboots.
+		 * The console UART is also the EHS headset adapter's port, so
+		 * the PL011 driver writes no kernel messages to it until user
+		 * space asks (amba_pl011.console_output); add
+		 * amba_pl011.console_output=1 here to see them from the start.
 		 */
 		bootargs = "console=ttyAMA0,115200n8 earlycon=pl011,0x80012000 panic=10";
 	};

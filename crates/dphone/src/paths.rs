@@ -62,10 +62,11 @@ impl Paths {
         self.nvdata.join("reboot_reason")
     }
 
-    /// Present while EHS owns the UART; the init role then keeps the serial
-    /// console shell off `/dev/ttyAMA0`.
-    pub fn console_claimed(&self) -> PathBuf {
-        self.run.join("console-claimed")
+    /// Present while the serial console has UART A; only then does the
+    /// init role run a shell on `/dev/ttyAMA0`.  Absent, the UART is the EHS
+    /// headset adapter's (the default), and nothing is written to it.
+    pub fn serial_console(&self) -> PathBuf {
+        self.run.join("serial-console")
     }
 
     /// Written by the init role when nvdata could not be mounted.

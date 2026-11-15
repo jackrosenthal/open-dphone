@@ -30,7 +30,7 @@ export const file_dphone_settings_v1_settings: GenFile = /*@__PURE__*/
  */
 export type DphoneSettings = Message<"dphone.settings.v1.DphoneSettings"> & {
   /**
-   * Run the SSH server.  Default: true.
+   * Run the SSH server.  Default: false.
    *
    * @generated from field: optional bool ssh_enabled = 1;
    */
@@ -46,11 +46,12 @@ export type DphoneSettings = Message<"dphone.settings.v1.DphoneSettings"> & {
   ignoreProvisionedFirmware?: boolean | undefined;
 
   /**
-   * Keep the serial console on UART A.  Default: true.  The console and an
+   * Give UART A to the serial console.  Default: false.  The console and an
    * electronic hook switch (EHS) headset adapter use the same UART and
-   * cannot share it: while this is true the adapter is not driven; set it
-   * to false to run EHS (the stock "ehs" setting then picks the adapter
-   * type) and give up the console.
+   * cannot share it.  While this is false the adapter has it (the stock
+   * "ehs" setting picks the adapter type), the kernel and the firmware
+   * write nothing to it, and there is no serial console; set it to true to
+   * have the console and give up EHS.
    *
    * @generated from field: optional bool serial_console = 3;
    */

@@ -324,25 +324,26 @@ async fn serial_console_switch() {
     let p = phone(Model::D60).await;
     let l = login(p.addr).await;
     let settings = p.dir.join("nvdata/dphone_settings.txtpb");
+    // The EHS headset adapter has the port unless the console is asked for.
     let (_, v) = call(&p, &l, "SystemService/GetSerialConsole", json!({})).await;
-    assert_eq!(v["serialConsole"], json!({ "value": true, "source": "SETTING_SOURCE_DEFAULT" }));
+    assert_eq!(v["serialConsole"], json!({ "source": "SETTING_SOURCE_DEFAULT" }));
 
-    let (status, v) = call(&p, &l, "SystemService/SetSerialConsole", json!({})).await;
+    let (status, v) = call(&p, &l, "SystemService/SetSerialConsole", json!({ "serialConsole": true })).await;
     assert_eq!(status, 200, "{v}");
-    assert_eq!(v["serialConsole"], json!({ "source": "SETTING_SOURCE_LOCAL" }));
-    assert!(std::fs::read_to_string(&settings).unwrap().contains("serial_console: false"));
-    assert!(!p.config.lock().unwrap().config().serial_console().value);
-    let (_, v) = call(&p, &l, "SystemService/SetSerialConsole", json!({ "serialConsole": true })).await;
     assert_eq!(v["serialConsole"], json!({ "value": true, "source": "SETTING_SOURCE_LOCAL" }));
+    assert!(std::fs::read_to_string(&settings).unwrap().contains("serial_console: true"));
+    assert!(p.config.lock().unwrap().config().serial_console().value);
+    let (_, v) = call(&p, &l, "SystemService/SetSerialConsole", json!({})).await;
+    assert_eq!(v["serialConsole"], json!({ "source": "SETTING_SOURCE_LOCAL" }));
 
     // A value the provisioning server froze cannot be changed here.
     p.config
         .lock()
         .unwrap()
-        .apply_fetched(r#"<config><setting id="dphone_serial_console" value="0" conflict="freeze"/></config>"#)
+        .apply_fetched(r#"<config><setting id="dphone_serial_console" value="1" conflict="freeze"/></config>"#)
         .unwrap();
     let (_, v) = call(&p, &l, "SystemService/GetSerialConsole", json!({})).await;
-    assert_eq!(v["serialConsole"], json!({ "source": "SETTING_SOURCE_PROVISIONED", "locked": true }));
-    let (status, v) = call(&p, &l, "SystemService/SetSerialConsole", json!({ "serialConsole": true })).await;
+    assert_eq!(v["serialConsole"], json!({ "value": true, "source": "SETTING_SOURCE_PROVISIONED", "locked": true }));
+    let (status, v) = call(&p, &l, "SystemService/SetSerialConsole", json!({})).await;
     assert_eq!((status, v["code"].as_str()), (400, Some("failed_precondition")));
 }

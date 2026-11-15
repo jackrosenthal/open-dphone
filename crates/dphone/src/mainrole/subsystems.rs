@@ -136,12 +136,13 @@ pub async fn start(ctx: &Context, opts: &Options) {
         hub.on_change(move |cfg| audio.apply_config(cfg));
     }
 
-    // The EHS headset adapter on UART A, when the configuration gives it the
-    // UART (`serial_console` off); otherwise the serial console keeps it.
+    // UART A: the EHS headset adapter's by default; the serial console's
+    // when `serial_console` is on.
     {
         let ehs = ehs::start(ctx, hal.clone());
-        if let Some(cfg) = config.as_ref().map(|c| c.lock().unwrap().config()) {
-            ehs.apply_config(&cfg);
+        match config.as_ref().map(|c| c.lock().unwrap().config()) {
+            Some(cfg) => ehs.apply_config(&cfg),
+            None => ehs.no_config(),
         }
         hub.on_change(move |cfg| ehs.apply_config(cfg));
     }

@@ -52,7 +52,7 @@ function Password() {
   );
 }
 
-/// UART A goes to the serial console or to the EHS headset adapter.
+/// UART A is the EHS headset adapter's unless the serial console is chosen.
 function SerialPort() {
   const [error, setError] = useState<unknown>();
   const loaded = useQuery(SystemService.method.getSerialConsole, {});
@@ -64,15 +64,16 @@ function SerialPort() {
     },
   });
   const setting = loaded.data?.serialConsole;
-  const origin = settingOrigin(setting);
+  // The console's line settings, which nothing else on the page gives.
+  const hint = [settingOrigin(setting), setting?.value ? "115200 8N1" : ""].filter(Boolean).join(" ");
   return (
     <Card title="Serial port">
       <div className="space-y-2">
         <ErrorNote error={error ?? loaded.error} />
-        <Field label="Used by" hint={origin || undefined}>
-          <Select value={setting?.value === false ? "ehs" : "console"} disabled={!setting || setting.locked || set.isPending} onChange={(e) => set.mutate({ serialConsole: e.target.value === "console" })}>
-            <option value="console">Serial console</option>
+        <Field label="Used by" hint={hint || undefined}>
+          <Select value={setting?.value ? "console" : "ehs"} disabled={!setting || setting.locked || set.isPending} onChange={(e) => set.mutate({ serialConsole: e.target.value === "console" })}>
             <option value="ehs">EHS headset adapter</option>
+            <option value="console">Serial console</option>
           </Select>
         </Field>
       </div>

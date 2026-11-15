@@ -21,11 +21,12 @@ message DphoneSettings {
   // which follows the server as the stock firmware does.  Meant for
   // development against a server that provisions stock firmware.
   optional bool ignore_provisioned_firmware = 2;
-  // Keep the serial console on UART A.  Default: true.  The console and an
+  // Give UART A to the serial console.  Default: false.  The console and an
   // electronic hook switch (EHS) headset adapter use the same UART and
-  // cannot share it: while this is true the adapter is not driven; set it
-  // to false to run EHS (the stock "ehs" setting then picks the adapter
-  // type) and give up the console.
+  // cannot share it.  While this is false the adapter has it (the stock
+  // "ehs" setting picks the adapter type), the kernel and the firmware
+  // write nothing to it, and there is no serial console; set it to true to
+  // have the console and give up EHS.
   optional bool serial_console = 3;
   // Serve the Prometheus scrape endpoint, GET /metrics, which needs no
   // login.  Default: true.  Independent of the stock web_ui_enabled

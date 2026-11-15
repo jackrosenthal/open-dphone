@@ -423,9 +423,6 @@ impl Supervisor {
         if proc_.safe_up && !was.1 {
             self.note_safe_up();
         }
-        // The main role may have claimed the UART for EHS; with it gone the
-        // serial console is the way in, so the claim goes too.
-        let _ = std::fs::remove_file(self.paths.console_claimed());
         let ran = now.saturating_sub(proc_.started);
         let clean = libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0;
         if libc::WIFSIGNALED(status) {
@@ -447,6 +444,10 @@ impl Supervisor {
             self.next_start = now;
             return;
         }
+        // A main role that failed may not come back, and the serial console
+        // is then the way in: it gets the UART, whatever the settings say,
+        // until a main role that works decides again.
+        self.grant_console();
         if proc_.healthy && ran > 300 {
             self.crashes = 0;
         }
@@ -592,6 +593,14 @@ impl Supervisor {
             cmd.env(SAFE_ENV, "1");
         }
         cmd.stdin(std::process::Stdio::null());
+        // Our own standard output and error are the console UART.  The main
+        // role inherits them only while the serial console has the UART;
+        // otherwise its log copies would reach an EHS adapter.  It moves
+        // them itself when the setting says so (`sys::stdio_to_console`).
+        if self.real && !self.paths.serial_console().exists() {
+            cmd.stdout(std::process::Stdio::null());
+            cmd.stderr(std::process::Stdio::null());
+        }
         // SAFETY: the closure runs between fork and exec and makes only
         // async-signal-safe calls.
         unsafe {
@@ -632,19 +641,37 @@ impl Supervisor {
         }
     }
 
-    /// Serial console shell on the UART, unless EHS has claimed it.
+    /// Give UART A to the serial console: kernel messages go to it, and
+    /// [`Self::check_console`] starts the shell.
+    fn grant_console(&mut self) {
+        if self.paths.serial_console().exists() {
+            return;
+        }
+        info!("the serial console gets the UART");
+        if let Err(e) = std::fs::write(self.paths.serial_console(), b"init\n") {
+            warn!("{}: {e}", self.paths.serial_console().display());
+        }
+        if self.real {
+            sys::serial_console_output(true);
+        }
+    }
+
+    /// Serial console shell on the UART, while the console has it.  By
+    /// default it does not: the UART is the EHS headset adapter's, and
+    /// nothing may be written to it.  The main role says otherwise through
+    /// [`Paths::serial_console`] (the `serial_console` setting).
     fn check_console(&mut self, now: u64) {
         if !self.real {
             return;
         }
-        let claimed = self.paths.console_claimed().exists();
+        let granted = self.paths.serial_console().exists();
         match self.console {
-            Some(pid) if claimed => {
+            Some(pid) if !granted => {
                 info!("serial console released to EHS");
                 let _ = sys::kill(pid, libc::SIGHUP);
                 let _ = sys::kill(pid, libc::SIGKILL);
             }
-            None if !claimed && now >= self.console_next => {
+            None if granted && now >= self.console_next => {
                 self.console_next = now + 10;
                 let Some(shell) = SHELLS.iter().find(|s| Path::new(s).exists()) else { return };
                 if !Path::new(SERIAL_CONSOLE).exists() {

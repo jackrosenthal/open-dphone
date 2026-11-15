@@ -396,8 +396,8 @@ export const SystemService: GenService<{
     output: typeof RestoreBackupResponseSchema;
   },
   /**
-   * Who has UART A: the serial console, or the electronic hook switch
-   * (EHS) headset adapter.  The two cannot share the port.
+   * Who has UART A: the electronic hook switch (EHS) headset adapter (the
+   * default), or the serial console.  The two cannot share the port.
    *
    * @generated from rpc dphone.v1.SystemService.GetSerialConsole
    */

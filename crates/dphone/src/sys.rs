@@ -201,16 +201,37 @@ pub fn parse_mount_options(opts: &str) -> (libc::c_ulong, String) {
     (flags, data.join(","))
 }
 
-/// Turn kernel messages on the console on or off (`klogctl` console-on and
-/// console-off).  Off leaves only emergencies.  Used while the EHS adapter
-/// has the UART the console is on.
-pub fn kernel_console(on: bool) {
-    const SYSLOG_ACTION_CONSOLE_OFF: libc::c_int = 6;
-    const SYSLOG_ACTION_CONSOLE_ON: libc::c_int = 7;
-    let action = if on { SYSLOG_ACTION_CONSOLE_ON } else { SYSLOG_ACTION_CONSOLE_OFF };
-    // SAFETY: these actions take no buffer.
-    if unsafe { libc::klogctl(action, std::ptr::null_mut(), 0) } < 0 {
-        log::warn!("klogctl console {}: {}", if on { "on" } else { "off" }, std::io::Error::last_os_error());
+/// Where the kernel takes whether to write its messages to the console
+/// UART (the `console_output` switch of the PL011 driver, kernel patch
+/// 0019).  The kernel starts with it off.
+const CONSOLE_OUTPUT: &str = "/sys/module/amba_pl011/parameters/console_output";
+
+/// Turn kernel messages on the console UART on or off.  Off while the EHS
+/// headset adapter has the UART.  The other kernel consoles (the pstore
+/// crash log) are not affected.
+pub fn serial_console_output(on: bool) {
+    if let Err(e) = std::fs::write(CONSOLE_OUTPUT, if on { "1" } else { "0" }) {
+        log::warn!("{CONSOLE_OUTPUT}: {e}");
+    }
+}
+
+/// Point this process's standard output and error at the console UART
+/// (`on`), or at nothing.  The main role starts with nothing, so that its
+/// log copies and a panic message never reach an EHS adapter.
+pub fn stdio_to_console(on: bool) {
+    let path = if on { c"/dev/console" } else { c"/dev/null" };
+    // SAFETY: plain descriptor calls on a path literal.
+    unsafe {
+        let fd = libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_NOCTTY | libc::O_CLOEXEC);
+        if fd < 0 {
+            log::warn!("{}: {}", path.to_string_lossy(), std::io::Error::last_os_error());
+            return;
+        }
+        libc::dup2(fd, 1);
+        libc::dup2(fd, 2);
+        if fd > 2 {
+            libc::close(fd);
+        }
     }
 }
 

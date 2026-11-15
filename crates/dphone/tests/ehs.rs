@@ -59,22 +59,35 @@ fn start(dir: &Path, settings: Option<&str>) -> (KillOnDrop, std::path::PathBuf)
 }
 
 #[test]
-fn console_keeps_the_uart_by_default() {
+fn ehs_has_the_uart_by_default() {
     let dir = temp();
     let (_main, run) = start(dir.path(), None);
-    let (_, text) = diag(&run.join("diag.sock"), &["ehs"]);
-    assert!(text.starts_with("off:"), "{text}");
-    assert!(!run.join("console-claimed").exists());
-}
-
-#[test]
-fn ehs_claims_the_uart_when_the_console_is_switched_off() {
-    let dir = temp();
-    let (_main, run) = start(dir.path(), Some("serial_console: false\n"));
     let socket = run.join("diag.sock");
-    wait_for("the claim", || run.join("console-claimed").exists());
     wait_for("the adapter search", || diag(&socket, &["ehs"]).1.contains("uart: claimed"));
     let (_, text) = diag(&socket, &["ehs"]);
     // The stock default for the "ehs" setting is auto-detection.
     assert!(text.contains("mode: Auto") && text.contains("adapter: none detected"), "{text}");
+    // Nothing tells the init role to run a console shell.
+    assert!(!run.join("serial-console").exists());
+}
+
+#[test]
+fn the_console_gets_the_uart_when_switched_on() {
+    let dir = temp();
+    let (_main, run) = start(dir.path(), Some("serial_console: true\n"));
+    let socket = run.join("diag.sock");
+    wait_for("the hand-over", || run.join("serial-console").exists());
+    let (_, text) = diag(&socket, &["ehs"]);
+    assert!(text.starts_with("off:"), "{text}");
+}
+
+#[test]
+fn ehs_takes_the_uart_back_from_a_console_the_init_role_granted() {
+    let dir = temp();
+    // What the init role leaves after a main role failed.
+    std::fs::create_dir_all(dir.path().join("run")).unwrap();
+    std::fs::write(dir.path().join("run/serial-console"), "init\n").unwrap();
+    let (_main, run) = start(dir.path(), Some("serial_console: false\n"));
+    wait_for("the file to go", || !run.join("serial-console").exists());
+    wait_for("the adapter search", || diag(&run.join("diag.sock"), &["ehs"]).1.contains("uart: claimed"));
 }
