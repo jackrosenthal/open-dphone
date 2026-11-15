@@ -26,8 +26,10 @@ export function MetricsSwitch() {
 
 /// The switch for this interface, which asks before it locks the
 /// administrator out.
-function WebSwitch({ onError }: { onError: (e: unknown) => void }) {
+export function WebSwitch() {
   const [asking, setAsking] = useState(false);
+  const [error, setError] = useState<unknown>();
+  const onError = setError;
   const list = useQuery(ConfigService.method.listSettings, {});
   const set = useMutation(ConfigService.method.setSettings, { onError, onSuccess: () => (onError(undefined), setAsking(false), list.refetch()) });
   const setting = list.data?.settings.find((s) => s.id === "web_ui_enabled");
@@ -35,12 +37,13 @@ function WebSwitch({ onError }: { onError: (e: unknown) => void }) {
   const save = (v: boolean) => set.mutate({ changes: [{ id: "web_ui_enabled", value: v ? "1" : "0" }] });
   return (
     <>
+      <ErrorNote error={error ?? list.error} />
       <Dpma on={setting?.provisioned}>
-        <Toggle label="Web interface" checked={on} disabled={!setting || setting.frozen || setting.provisioned || set.isPending} onChange={(v) => (v ? save(true) : setAsking(true))} />
+        <Toggle label="Enabled" checked={on} disabled={!setting || setting.frozen || setting.provisioned || set.isPending} onChange={(v) => (v ? save(true) : setAsking(true))} />
       </Dpma>
       {asking && (
         <Modal
-          title="Disable the web interface?"
+          title="Disable the web UI?"
           onClose={() => setAsking(false)}
           footer={
             <>
@@ -151,7 +154,7 @@ export function EhsPortCard() {
   );
 }
 
-export function AccessCard() {
+export function SshCard() {
   const [status, setStatus] = useState<SshStatus>();
   const [error, setError] = useState<unknown>();
   const [key, setKey] = useState("");
@@ -183,19 +186,18 @@ export function AccessCard() {
   }
 
   return (
-    <Card title="Access" className="lg:col-span-2">
+    <Card title="SSH" className="lg:col-span-2">
       <div className="space-y-4">
         <ErrorNote error={error ?? loaded.error} />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <WebSwitch onError={setError} />
           <Dpma on={dpma}>
-            <Toggle label="SSH" checked={enabled?.value ?? false} disabled={!ssh || dpma || enable.isPending} onChange={(v) => enable.mutate({ enabled: v })} />
+            <Toggle label="Enabled" checked={enabled?.value ?? false} disabled={!ssh || dpma || enable.isPending} onChange={(v) => enable.mutate({ enabled: v })} />
           </Dpma>
-          {stopped && <Badge tone="red">SSH not running</Badge>}
+          {stopped && <Badge tone="red">Not running</Badge>}
         </div>
 
         <div className="border-t border-slate-100 pt-4 dark:border-slate-800">
-          <h3 className="mb-2 text-sm font-semibold">SSH Keys</h3>
+          <h3 className="mb-2 text-sm font-semibold">Keys</h3>
           {keys.length === 0 ? (
             <Empty>No keys</Empty>
           ) : (

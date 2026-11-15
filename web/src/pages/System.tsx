@@ -7,14 +7,13 @@ import { SystemService } from "../gen/dphone/v1/system_pb";
 import { dateTime } from "../lib/format";
 import { getSession, setSession } from "../lib/session";
 import { useStatus } from "../lib/status";
-import { AccessCard, EhsPortCard, MetricsSwitch } from "./Ssh";
+import { EhsPortCard, MetricsSwitch, SshCard, WebSwitch } from "./Ssh";
 import { ErrorNote } from "./common";
 import { FirmwareCard } from "./Firmware";
 import { SettingsCard, type Item } from "./Settings";
 
-/// The form that changes the web password: in a card here, and in the
-/// dialog the default-password notice opens.
-export function PasswordForm({ onDone }: { onDone?: () => void }) {
+/// The form that changes the web password.
+function PasswordForm() {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [again, setAgain] = useState("");
@@ -27,7 +26,6 @@ export function PasswordForm({ onDone }: { onDone?: () => void }) {
       setDone(true);
       const s = getSession();
       if (s.status === "authenticated") setSession({ status: "authenticated", info: { ...s.info, defaultPassword: false } });
-      onDone?.();
     },
   });
   const mismatch = again !== "" && next !== again;
@@ -151,16 +149,26 @@ export function System() {
     <>
       <PageHeader title="System" />
       <div className="grid items-start gap-5 lg:grid-cols-2">
-        <FirmwareCard />
-        <DateTime />
-        <Card title="Password">
-          <PasswordForm />
-        </Card>
         <div className="space-y-5">
-          <SettingsCard title="Logging" items={logging} after={<MetricsSwitch />} />
+          <FirmwareCard />
+          {/* The default-password notice links here. */}
+          <div id="web-ui" className="scroll-mt-20">
+            <Card title="Web UI">
+              <div className="space-y-4">
+                <WebSwitch />
+                <div className="border-t border-slate-100 pt-4 dark:border-slate-800">
+                  <PasswordForm />
+                </div>
+              </div>
+            </Card>
+          </div>
           <EhsPortCard />
         </div>
-        <AccessCard />
+        <div className="space-y-5">
+          <DateTime />
+          <SettingsCard title="Logging" items={logging} after={<MetricsSwitch />} />
+        </div>
+        <SshCard />
         <Backup />
       </div>
     </>

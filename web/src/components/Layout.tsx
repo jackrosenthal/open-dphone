@@ -1,5 +1,5 @@
 import { useMutation } from "@connectrpc/connect-query";
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
 import { Logo } from "../App";
 import { AuthService } from "../gen/dphone/v1/auth_pb";
@@ -8,8 +8,7 @@ import { setSession, useSession } from "../lib/session";
 import { StatusProvider, useStatus } from "../lib/status";
 import { client } from "../lib/transport";
 import { Icons } from "./icons";
-import { PasswordForm } from "../pages/System";
-import { Alert, Button, ConfirmButton, Modal, cx } from "./ui";
+import { Alert, Button, ConfirmButton, cx } from "./ui";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: Icons.dashboard },
@@ -50,7 +49,6 @@ function Shell() {
   const { status, stream } = useStatus();
   const session = useSession();
   const [open, setOpen] = useState(false);
-  const [password, setPassword] = useState(false);
   const sys = status?.system;
   const defaultPassword = session.status === "authenticated" && session.info.defaultPassword;
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -58,6 +56,13 @@ function Shell() {
   // The terminal takes the whole content area: no padding and no notices.
   const fill = path.startsWith("/shell");
   const reboot = useMutation(SystemService.method.reboot);
+
+  const navigate = useNavigate();
+  // The password form is in the Web UI card of the System page.
+  async function changePassword() {
+    await navigate({ to: "/system", hash: "web-ui" });
+    requestAnimationFrame(() => document.getElementById("web-ui")?.scrollIntoView({ behavior: "smooth" }));
+  }
 
   async function logout() {
     try {
@@ -135,7 +140,7 @@ function Shell() {
               <Alert
                 title="The default password has not been changed."
                 action={
-                  <Button size="sm" onClick={() => setPassword(true)}>
+                  <Button size="sm" onClick={changePassword}>
                     Change Password
                   </Button>
                 }
@@ -145,11 +150,6 @@ function Shell() {
             {status?.restartNeeded && <Alert tone="blue" title="Reboot to apply changes." />}
             {sys?.simulated && <Alert tone="blue" title="Simulator." />}
           </div>
-          {password && (
-            <Modal title="Change Password" onClose={() => setPassword(false)}>
-              <PasswordForm onDone={() => setPassword(false)} />
-            </Modal>
-          )}
           <Outlet />
         </main>
       )}
