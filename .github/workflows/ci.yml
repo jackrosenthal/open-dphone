@@ -12,7 +12,7 @@
 # Each image is uploaded as a workflow artifact, `firmware-<model>`.  A
 # pushed tag vX.Y.Z (the workspace version in Cargo.toml) also publishes the
 # seven images as a GitHub Release, with SHA256SUMS, and then publishes
-# dphone-app-sdk to crates.io (trusted publishing).
+# dphone-app-sdk and cargo-dphone-app to crates.io (trusted publishing).
 name: CI
 
 on:
@@ -277,8 +277,8 @@ jobs:
       contents: read
       id-token: write
     env:
-      # In dependency order.
-      CRATES: dphone-app-sdk
+      # In dependency order: the packaging tool's tests use the SDK.
+      CRATES: dphone-app-sdk cargo-dphone-app
     steps:
       - uses: actions/checkout@v7
 
