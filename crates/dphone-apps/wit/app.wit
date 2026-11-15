@@ -439,6 +439,67 @@ interface diagnostics {
   log-tail: func(max: u32) -> list<string>;
 }
 
+/// Capability `canvas`: free drawing, for what the widgets cannot show
+/// (a game, a chart).  A canvas is a widget (`ui` places, hides, and
+/// destroys it) that shows a list of drawing operations; `draw` replaces
+/// the whole list in one call, so the phone never paints half a picture.
+/// The phone repaints from the list whenever it needs to and sends its
+/// panel only the part of the screen that changed.  There is no sound and
+/// no faster clock here: an app animates with a repeating timer, which
+/// fires at most 20 times a second.
+interface canvas {
+  use types.{widget, rect};
+
+  /// The colors of the phone's skin.
+  enum role {
+    background,
+    foreground,
+    /// The selection colors (a list's selected row).
+    highlight,
+    highlight-text,
+    title-background,
+    title-text,
+    secondary,
+    border,
+  }
+
+  /// Red, green, and blue.  The gray skins show the nearest of their four
+  /// levels (black, dark gray, light gray, white) by brightness.
+  record color { r: u8, g: u8, b: u8 }
+
+  /// A picture of one color: one bit per pixel, rows from the top, each
+  /// row padded to whole bytes, the leftmost pixel in the highest bit.
+  /// Set bits are painted; clear bits leave what is underneath.
+  record bitmap {
+    x: s16,
+    y: s16,
+    /// In pixels of the picture, each at most 256.
+    width: u16,
+    height: u16,
+    /// Each pixel is drawn as a square with this side (1 to 8).
+    scale: u8,
+    color: color,
+    bits: list<u8>,
+  }
+
+  variant op {
+    /// A filled rectangle.
+    fill(tuple<rect, color>),
+    bitmap(bitmap),
+  }
+
+  /// A color of the skin, so that a drawing can match it.
+  theme-color: func(role: role) -> color;
+  /// Creates a canvas widget (parent 0 is the window).  Coordinates of
+  /// its operations are relative to its top-left corner, and nothing is
+  /// drawn outside it.
+  create: func(parent: widget, bounds: rect) -> widget;
+  /// Replaces what the canvas shows.  At most 512 operations and 64 KiB
+  /// of bitmap data; a list over either limit is refused and the canvas
+  /// keeps what it showed.
+  draw: func(w: widget, ops: list<op>) -> result<_, string>;
+}
+
 interface guest {
   use types.{event};
   /// Called once after instantiation.
@@ -461,5 +522,6 @@ world app {
   import l10n;
   import hotdesk;
   import diagnostics;
+  import canvas;
   export guest;
 }

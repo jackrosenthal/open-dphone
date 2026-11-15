@@ -420,6 +420,39 @@ impl Canvas {
         }
     }
 
+    /// Draws a one-bit picture (an app canvas): `bits` holds rows from the
+    /// top, each padded to whole bytes, the leftmost pixel in the highest
+    /// bit.  Each set bit becomes a `scale` x `scale` square of color `c`.
+    pub fn bitmap(&mut self, x: i32, y: i32, w: i32, h: i32, scale: i32, bits: &[u8], c: Rgb) {
+        let stride = (w.max(0) as usize).div_ceil(8);
+        if w <= 0 || h <= 0 || scale <= 0 || bits.len() < stride * h as usize {
+            return;
+        }
+        // Rows and columns outside the clip are not visited.
+        let clip = self.clip.intersect(&IRect::new(x, y, w * scale, h * scale));
+        if clip.is_empty() {
+            return;
+        }
+        let (row0, row1) = ((clip.y - y) / scale, (clip.bottom() - y - 1) / scale);
+        let (col0, col1) = ((clip.x - x) / scale, (clip.right() - x - 1) / scale);
+        for row in row0..=row1 {
+            let line = &bits[row as usize * stride..][..stride];
+            let mut col = col0;
+            while col <= col1 {
+                if line[col as usize / 8] & (0x80 >> (col % 8)) == 0 {
+                    col += 1;
+                    continue;
+                }
+                // A run of set bits is one rectangle.
+                let start = col;
+                while col <= col1 && line[col as usize / 8] & (0x80 >> (col % 8)) != 0 {
+                    col += 1;
+                }
+                self.fill(IRect::new(x + start * scale, y + row * scale, (col - start) * scale, scale), c);
+            }
+        }
+    }
+
     /// The bounding box of the pixels that differ from what was last
     /// presented.
     pub fn damage(&self) -> Option<IRect> {

@@ -40,4 +40,8 @@ name = "dphone-apps-s1"
 required-features = ["test-util"]
 
 [dev-dependencies]
-dphone-apps = { path = ".", features = ["build-tool", "test-util"] }
+dphone-apps = { path = ".", features = ["build-tool", "test-util", "ui"] }
+# The games' tests draw them with the phone UI on the simulator's display.
+dphone-hal = { path = "../dphone-hal" }
+dphone-ui = { path = "../dphone-ui" }
+png = "0.18"

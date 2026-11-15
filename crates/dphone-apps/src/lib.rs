@@ -45,6 +45,6 @@ pub use services::{
     PbxRequests, Services,
 };
 pub use view::{
-    Align, AppWindow, Font, InputMode, ListItem, Metrics, Rect, Shell, Skin, Softkey, WidgetKind,
-    WindowEvent, WindowKind,
+    Align, AppWindow, Bitmap, Color, ColorRole, DrawOp, Font, InputMode, ListItem, Metrics, Rect,
+    Shell, Skin, Softkey, WidgetKind, WindowEvent, WindowKind,
 };

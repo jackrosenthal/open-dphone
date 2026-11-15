@@ -1071,6 +1071,55 @@ impl api::diagnostics::Host for AppCtx {
     }
 }
 
+/// The most operations one `canvas.draw` may carry.
+const CANVAS_OPS_MAX: usize = 512;
+/// The most bitmap data one `canvas.draw` may carry.
+const CANVAS_BITS_MAX: usize = 64 * 1024;
+
+/// Whether a drawing is within the limits of the interface.
+fn check_drawing(ops: &[api::canvas::Op]) -> Result<(), String> {
+    use api::canvas::Op;
+    if ops.len() > CANVAS_OPS_MAX {
+        return Err(format!("more than {CANVAS_OPS_MAX} operations"));
+    }
+    let mut bits = 0usize;
+    for op in ops {
+        let Op::Bitmap(b) = op else { continue };
+        if b.width == 0 || b.height == 0 || b.width > 256 || b.height > 256 {
+            return Err("a bitmap must be 1 to 256 pixels each way".into());
+        }
+        if !(1..=8).contains(&b.scale) {
+            return Err("a bitmap's scale must be 1 to 8".into());
+        }
+        if b.bits.len() != (b.width as usize).div_ceil(8) * b.height as usize {
+            return Err("a bitmap's data does not match its size".into());
+        }
+        bits += b.bits.len();
+    }
+    if bits > CANVAS_BITS_MAX {
+        return Err(format!("more than {CANVAS_BITS_MAX} bytes of bitmap data"));
+    }
+    Ok(())
+}
+
+impl api::canvas::Host for AppCtx {
+    fn theme_color(&mut self, role: api::canvas::Role) -> api::canvas::Color {
+        self.window.theme_color(role)
+    }
+    fn create(&mut self, parent: u32, bounds: Rect) -> u32 {
+        let idle = parent & IDLE_BIT;
+        match self.win(parent) {
+            Some((win, p)) => win.create_canvas(p, bounds) | idle,
+            None => 0,
+        }
+    }
+    fn draw(&mut self, w: u32, ops: Vec<api::canvas::Op>) -> Result<(), String> {
+        check_drawing(&ops)?;
+        self.on_widget(w, |win, id| win.draw(id, ops));
+        Ok(())
+    }
+}
+
 /// Adds the interfaces the manifest grants to a linker.  `runtime` is
 /// always there; an app importing anything else it did not declare fails
 /// to instantiate.
@@ -1095,6 +1144,7 @@ pub(crate) fn link(
             Capability::Events => api::events::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Audio => api::audio::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::L10n => api::l10n::add_to_linker::<_, H>(linker, |c| c)?,
+            Capability::Canvas => api::canvas::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Hotdesk => api::hotdesk::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Diagnostics => api::diagnostics::add_to_linker::<_, H>(linker, |c| c)?,
         }
@@ -1137,6 +1187,46 @@ mod tests {
             pbx_outcome(Err("x".into())),
             PbxOutcome::Transport(_)
         ));
+    }
+
+    #[test]
+    fn drawings_over_the_limits_are_refused() {
+        use api::canvas::{Bitmap, Color, Op};
+        let color = Color { r: 0, g: 0, b: 0 };
+        let bitmap = |width, height, scale, len| {
+            Op::Bitmap(Bitmap {
+                x: 0,
+                y: 0,
+                width,
+                height,
+                scale,
+                color,
+                bits: vec![0; len],
+            })
+        };
+        let fill = || {
+            Op::Fill((
+                Rect {
+                    x: 0,
+                    y: 0,
+                    width: 1,
+                    height: 1,
+                },
+                color,
+            ))
+        };
+        assert!(check_drawing(&[fill(), bitmap(9, 2, 1, 4), bitmap(256, 256, 8, 8192)]).is_ok());
+        assert!(check_drawing(&(0..512).map(|_| fill()).collect::<Vec<_>>()).is_ok());
+        assert!(check_drawing(&(0..513).map(|_| fill()).collect::<Vec<_>>()).is_err());
+        // Nine pixels a row need two bytes a row.
+        assert!(check_drawing(&[bitmap(9, 2, 1, 2)]).is_err());
+        assert!(check_drawing(&[bitmap(0, 2, 1, 0)]).is_err());
+        assert!(check_drawing(&[bitmap(257, 1, 1, 33)]).is_err());
+        assert!(check_drawing(&[bitmap(8, 1, 0, 1)]).is_err());
+        assert!(check_drawing(&[bitmap(8, 1, 9, 1)]).is_err());
+        // Nine full-size bitmaps are 72 KiB.
+        let many: Vec<Op> = (0..9).map(|_| bitmap(256, 256, 1, 8192)).collect();
+        assert!(check_drawing(&many).is_err());
     }
 
     #[test]

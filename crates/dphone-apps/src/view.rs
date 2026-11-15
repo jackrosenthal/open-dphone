@@ -4,6 +4,9 @@
 //! `None` is the window itself (the app content area), keys reach the app
 //! only when claimed, and softkeys belong to widgets.
 
+pub use crate::host::bindings::dphone::app::canvas::{
+    Bitmap, Color, Op as DrawOp, Role as ColorRole,
+};
 pub use crate::host::bindings::dphone::app::types::{
     Align, Font, InputMode, ListItem, Metrics, Rect, Size, Skin, Softkey, WidgetKind,
 };
@@ -82,6 +85,17 @@ pub trait AppWindow: Send {
     fn define_image(&mut self, _name: &str, _file: &[u8]) -> bool {
         false
     }
+    /// A color of the skin (capability `canvas`).
+    fn theme_color(&self, _role: ColorRole) -> Color {
+        Color { r: 0, g: 0, b: 0 }
+    }
+    /// Creates a canvas widget.
+    fn create_canvas(&mut self, _parent: Option<u32>, _bounds: Rect) -> u32 {
+        0
+    }
+    /// Replaces what a canvas widget shows.  The host has checked the
+    /// limits of the interface.
+    fn draw(&mut self, _w: u32, _ops: Vec<DrawOp>) {}
     fn set_softkeys(&mut self, w: Option<u32>, keys: &[Softkey]);
     fn claim_keys(&mut self, w: Option<u32>, keys: &[Key]);
     /// Next pending user event, if any.

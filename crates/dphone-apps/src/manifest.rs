@@ -24,6 +24,7 @@ pub enum Capability {
     Events,
     Audio,
     L10n,
+    Canvas,
     /// Built-in apps only.
     Hotdesk,
     /// Built-in apps only.
@@ -31,7 +32,7 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Capability; 13] = [
+    pub const ALL: [Capability; 14] = [
         Capability::Ui,
         Capability::Timers,
         Capability::Storage,
@@ -43,6 +44,7 @@ impl Capability {
         Capability::Events,
         Capability::Audio,
         Capability::L10n,
+        Capability::Canvas,
         Capability::Hotdesk,
         Capability::Diagnostics,
     ];
@@ -60,6 +62,7 @@ impl Capability {
             Capability::Events => "events",
             Capability::Audio => "audio",
             Capability::L10n => "l10n",
+            Capability::Canvas => "canvas",
             Capability::Hotdesk => "hotdesk",
             Capability::Diagnostics => "diagnostics",
         }

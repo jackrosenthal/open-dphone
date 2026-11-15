@@ -1045,9 +1045,11 @@ name = "dphone-apps"
 version = "3.0.0"
 dependencies = [
  "dphone-apps",
+ "dphone-hal",
  "dphone-state",
  "dphone-ui",
  "log",
+ "png",
  "rustix",
  "serde",
  "serde_json",

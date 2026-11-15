@@ -29,7 +29,8 @@
 //! below the content area belongs to the toolkit.
 //!
 //! **Widgets** mirror the stock set: [`WidgetKind::Group`], `Text`, `List`,
-//! `Scroll`, `Input`, `Image`.  They are addressed by [`WidgetId`] handles
+//! `Scroll`, `Input`, `Image`, and add `Canvas`, which shows a list of
+//! drawing operations ([`AppView::canvas_set_ops`]).  They are addressed by [`WidgetId`] handles
 //! which are never reused within a view.  Destroying a widget destroys its
 //! children.  Calls on a dead handle are ignored (getters return `None`).
 //!
@@ -102,6 +103,8 @@ pub enum WidgetKind {
     Input,
     /// A bitmap.
     Image,
+    /// Free drawing: a list of [`DrawOp`]s, painted in order.
+    Canvas,
 }
 
 /// A rectangle relative to the parent widget (or the app content area).
@@ -307,6 +310,19 @@ pub enum ImageSource {
     Rgba { width: u16, height: u16, pixels: Arc<[u8]> },
 }
 
+/// One drawing operation of a [`WidgetKind::Canvas`].  Coordinates are
+/// relative to the canvas; nothing is drawn outside it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DrawOp {
+    /// A filled rectangle.
+    Fill { rect: Rect, color: Color },
+    /// A one-color picture: one bit per pixel, rows from the top, each
+    /// padded to whole bytes, the leftmost pixel in the highest bit.  Each
+    /// set bit is drawn as a `scale` x `scale` square; clear bits are not
+    /// drawn.  A picture with too few `bits` for its size draws nothing.
+    Bitmap { x: i16, y: i16, width: u16, height: u16, scale: u8, color: Color, bits: Arc<[u8]> },
+}
+
 /// Text entry modes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum InputMode {
@@ -428,6 +444,8 @@ pub(crate) struct Node {
     pub placeholder: String,
     // Image
     pub image: ImageSource,
+    // Canvas (shared: the renderer works on a copy of the node)
+    pub ops: Arc<[DrawOp]>,
 }
 
 impl Node {
@@ -463,6 +481,7 @@ impl Node {
             cursor: 0,
             placeholder: String::new(),
             image: ImageSource::None,
+            ops: Arc::new([]),
         }
     }
 }
@@ -734,6 +753,13 @@ impl Tree {
         }
     }
 
+    /// Replaces what a `Canvas` shows.
+    pub fn canvas_set_ops(&mut self, id: WidgetId, ops: Vec<DrawOp>) {
+        if let Some(n) = self.node_mut(id) {
+            n.ops = ops.into();
+        }
+    }
+
     /// Gives a widget the keyboard (`None`: nothing focused).
     pub fn focus(&mut self, id: Option<WidgetId>) {
         let id = id.filter(|i| self.node(*i).is_some());
@@ -891,6 +917,7 @@ impl AppView {
         fn input_set_max_len(&self, id: WidgetId, max: u16);
         fn input_set_placeholder(&self, id: WidgetId, text: &str);
         fn set_image(&self, id: WidgetId, image: ImageSource);
+        fn canvas_set_ops(&self, id: WidgetId, ops: Vec<DrawOp>);
         fn focus(&self, id: Option<WidgetId>);
         fn focused(&self) -> Option<WidgetId>;
         fn set_softkeys(&self, owner: Option<WidgetId>, keys: Vec<Softkey>);
@@ -901,6 +928,12 @@ impl AppView {
     /// Pixel width of `text` in a font of this skin, for layout.
     pub fn text_width(&self, font: Font, text: &str) -> u16 {
         crate::skin::Theme::for_model(self.inner.model).text_width(font, text)
+    }
+
+    /// A color of this model's skin, as red, green, and blue.
+    pub fn theme_color(&self, color: ThemeColor) -> (u8, u8, u8) {
+        let c = crate::skin::Theme::for_model(self.inner.model).theme_color(color);
+        ((c >> 16) as u8, (c >> 8) as u8, c as u8)
     }
 
     pub(crate) fn mark_dirty(&self) {

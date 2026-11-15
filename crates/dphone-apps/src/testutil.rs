@@ -31,6 +31,8 @@ pub struct Node {
     pub image: String,
     pub softkeys: Vec<Softkey>,
     pub claims: Vec<Key>,
+    /// What a canvas shows (`None`: not a canvas).
+    pub drawing: Option<Vec<DrawOp>>,
 }
 
 #[derive(Default)]
@@ -42,6 +44,8 @@ pub struct Win {
     pub claims: Vec<Key>,
     /// Package pictures handed over with `define_image`: name and size.
     pub images: Vec<(String, usize)>,
+    /// How many times the app has drawn on a canvas.
+    pub draws: u32,
     events: VecDeque<WindowEvent>,
     wake: Option<Arc<dyn Fn() + Send + Sync>>,
 }
@@ -170,6 +174,23 @@ impl FakeUi {
                 .map(|n| n.text.clone())
                 .collect()
         })
+    }
+
+    /// What the app's canvases show, in creation order, each with its
+    /// bounds.
+    pub fn drawings(&self, app: &str) -> Vec<(Rect, Vec<DrawOp>)> {
+        self.with(app, |w| {
+            w.nodes
+                .values()
+                .filter(|n| n.visible)
+                .filter_map(|n| n.drawing.clone().map(|d| (n.bounds, d)))
+                .collect()
+        })
+    }
+
+    /// How many times the app has drawn on a canvas.
+    pub fn draw_count(&self, app: &str) -> u32 {
+        self.with(app, |w| w.draws)
     }
 
     /// Texts of the visible text widgets drawn highlighted.
@@ -384,11 +405,8 @@ impl FakeWindow {
     }
 }
 
-impl AppWindow for FakeWindow {
-    fn metrics(&self) -> Metrics {
-        metrics_for(self.ui.model.unwrap_or(dphone_state::Model::D60))
-    }
-    fn create(&mut self, kind: WidgetKind, parent: Option<u32>, bounds: Rect) -> u32 {
+impl FakeWindow {
+    fn add(&self, kind: WidgetKind, parent: Option<u32>, bounds: Rect, canvas: bool) -> u32 {
         self.with(|w| {
             w.next += 1;
             let id = w.next;
@@ -412,9 +430,35 @@ impl AppWindow for FakeWindow {
                     image: String::new(),
                     softkeys: Vec::new(),
                     claims: Vec::new(),
+                    drawing: canvas.then(Vec::new),
                 },
             );
             id
+        })
+    }
+}
+
+impl AppWindow for FakeWindow {
+    fn metrics(&self) -> Metrics {
+        metrics_for(self.ui.model.unwrap_or(dphone_state::Model::D60))
+    }
+    fn create(&mut self, kind: WidgetKind, parent: Option<u32>, bounds: Rect) -> u32 {
+        self.add(kind, parent, bounds, false)
+    }
+    /// A different color for every role: the role's number in each part.
+    fn theme_color(&self, role: ColorRole) -> Color {
+        let v = (role as u8 + 1) * 16;
+        Color { r: v, g: v, b: v }
+    }
+    fn create_canvas(&mut self, parent: Option<u32>, bounds: Rect) -> u32 {
+        self.add(WidgetKind::Group, parent, bounds, true)
+    }
+    fn draw(&mut self, w: u32, ops: Vec<DrawOp>) {
+        self.with(|win| {
+            if let Some(n) = win.nodes.get_mut(&w).filter(|n| n.drawing.is_some()) {
+                n.drawing = Some(ops);
+                win.draws += 1;
+            }
         })
     }
     fn destroy(&mut self, id: u32) {

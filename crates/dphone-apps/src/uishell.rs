@@ -223,6 +223,46 @@ impl AppWindow for UiWindow {
             Err(_) => false,
         }
     }
+    fn theme_color(&self, role: ColorRole) -> Color {
+        let (r, g, b) = self.view.theme_color(match role {
+            ColorRole::Background => tk::ThemeColor::Background,
+            ColorRole::Foreground => tk::ThemeColor::Foreground,
+            ColorRole::Highlight => tk::ThemeColor::SelectBackground,
+            ColorRole::HighlightText => tk::ThemeColor::SelectForeground,
+            ColorRole::TitleBackground => tk::ThemeColor::TitleBackground,
+            ColorRole::TitleText => tk::ThemeColor::TitleForeground,
+            ColorRole::Secondary => tk::ThemeColor::Secondary,
+            ColorRole::Border => tk::ThemeColor::Border,
+        });
+        Color { r, g, b }
+    }
+    fn create_canvas(&mut self, parent: Option<u32>, bounds: Rect) -> u32 {
+        self.view
+            .create(tk::WidgetKind::Canvas, parent.map(id), rect(bounds))
+            .0
+    }
+    fn draw(&mut self, w: u32, ops: Vec<DrawOp>) {
+        let color = |c: Color| tk::Color::Rgb(c.r, c.g, c.b);
+        let ops = ops
+            .into_iter()
+            .map(|op| match op {
+                DrawOp::Fill((r, c)) => tk::DrawOp::Fill {
+                    rect: rect(r),
+                    color: color(c),
+                },
+                DrawOp::Bitmap(b) => tk::DrawOp::Bitmap {
+                    x: b.x,
+                    y: b.y,
+                    width: b.width,
+                    height: b.height,
+                    scale: b.scale,
+                    color: color(b.color),
+                    bits: b.bits.into(),
+                },
+            })
+            .collect();
+        self.view.canvas_set_ops(id(w), ops);
+    }
     fn set_softkeys(&mut self, w: Option<u32>, keys: &[Softkey]) {
         let keys = keys
             .iter()

@@ -207,6 +207,22 @@ fn draw_node(tree: &mut Tree, c: &mut Canvas, th: &Theme, id: WidgetId, ox: i32,
                 c.rgba(r.x + (r.w - w) / 2, r.y + (r.h - h) / 2, w, h, pixels);
             }
         },
+        WidgetKind::Canvas => {
+            for op in node.ops.iter() {
+                match op {
+                    DrawOp::Fill { rect, color } => {
+                        if let Some(col) = th.resolve(*color, None) {
+                            c.fill(IRect::new(r.x + rect.x as i32, r.y + rect.y as i32, rect.w as i32, rect.h as i32), col);
+                        }
+                    }
+                    DrawOp::Bitmap { x, y, width, height, scale, color, bits } => {
+                        if let Some(col) = th.resolve(*color, None) {
+                            c.bitmap(r.x + *x as i32, r.y + *y as i32, *width as i32, *height as i32, *scale as i32, bits, col);
+                        }
+                    }
+                }
+            }
+        }
         WidgetKind::List => {
             let mut st = ListState { selected: node.selected as usize, top: node.top_row as usize };
             let bar = node.rows.len() as i32 * node.row_height as i32 > r.h;
