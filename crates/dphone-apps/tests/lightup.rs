@@ -34,10 +34,10 @@ use std::time::{Duration, Instant};
 const APP: &str = "lightup";
 /// The grids the app allows a puzzle (`MAX_GRIDS` in the app).
 const MAX_GRIDS: u32 = 400;
-/// The texts beside the board while a puzzle is played: the line under
-/// the picture of the keys, and the two lines that say "Solved!" and the
-/// time when it comes to that.
-const PLAYING: [&str; 3] = ["or arrows and Select", "", ""];
+/// The texts beside the board while a puzzle is played: the two lines
+/// that say "Solved!" and the time when it comes to that, and nothing
+/// else (the keys are a picture).
+const PLAYING: [&str; 2] = ["", ""];
 const SOFTKEYS: [&str; 4] = ["Undo", "New", "Help", "Exit"];
 
 fn storage(nvdata: &Path) -> PathBuf {
@@ -223,7 +223,7 @@ fn expected(model: Model, game: &Game) -> Vec<Vec<Op>> {
         lists.push(
             lightup_game::draw::keymap(
                 l.panel_width - 2 * (line / 2),
-                area.height - line - 2,
+                area.height - 4,
                 palette,
                 ink,
             )
@@ -403,7 +403,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     // Solved: said so, with the time taken; the solved puzzle is written
     // down at once, and the cursor is gone.
     let texts = r.ui.texts(APP);
-    assert_eq!(texts.len(), 2, "the keys' picture and its line are gone");
+    assert_eq!(texts.len(), 2);
     assert_eq!(texts[0], "Solved!");
     let seconds: u32 = texts[1]
         .strip_prefix("Time 0:")

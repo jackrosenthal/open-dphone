@@ -295,13 +295,13 @@ fn the_cursor_is_a_frame_that_stays_clear_of_what_the_cell_shows() {
 #[test]
 fn the_picture_of_the_keys_fits_beside_every_board() {
     use lightup_game::draw::{KEYS, keymap};
-    // The line height of each display: a line of text goes under the
-    // keys, and the panel has half a line of margin on each side.
+    // The line height of each display: the panel has half a line of
+    // margin on each side, and two pixels above and below.
     for ((w, h, color), line) in WINDOWS.into_iter().zip([15u16, 17, 25]) {
         for side in [7, 10, 14] {
             let what = format!("{w}x{h} {side}");
             let l = Layout::new(w, h, side);
-            let room = (l.panel_width - 2 * (line / 2), h - line - 2);
+            let room = (l.panel_width - 2 * (line / 2), h - 4);
             let map = keymap(
                 room.0,
                 room.1,

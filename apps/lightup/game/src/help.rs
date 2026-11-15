@@ -25,14 +25,14 @@ pub const PAGES: [Page; 4] = [
     },
     Page {
         picture: ".....\nL..L.\n.....",
-        text: "No light may shine on another light.  These two do, so both are wrong.",
+        text: "No light may shine on another light.",
     },
     Page {
         picture: ".L#L.\n.1.1L\n.....",
-        text: "A numbered cell needs exactly that many lights next to it.  The left 1 is right; the right 1 has two.",
+        text: "A numbered cell needs exactly that many lights next to it.",
     },
     Page {
         picture: ".x0x.\n..x..\n.....",
-        text: "A square is your note that a cell gets no light, as next to a 0.  It changes nothing else.",
+        text: "A square is your note that a cell gets no light, as next to a 0.",
     },
 ];

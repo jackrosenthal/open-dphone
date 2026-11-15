@@ -73,9 +73,9 @@ struct Board {
     rows: Vec<(Widget, Vec<Look>)>,
     cursor: Widget,
     cursor_at: Option<(usize, usize)>,
-    /// The picture of the keys beside the board, and the line under it;
-    /// "Solved!" and the time take their place.
-    keys: [Widget; 2],
+    /// The picture of the keys beside the board; "Solved!" and the time
+    /// take its place.
+    keys: Widget,
     solved_shown: bool,
     status: Widget,
     time: Widget,
@@ -504,8 +504,8 @@ impl LightUp {
             Rect::new(l.board_x, l.board_y, l.board_side, l.board_side),
         );
 
-        // The panel beside the board: the picture of the keys with a
-        // line under it, in the middle of its height.  "Solved!" and the
+        // The panel beside the board: the picture of the keys, in the
+        // middle of its height.  "Solved!" and the
         // time, when it comes to that, are two lines in the middle.
         let gap = (m.line_height / 2) as i16;
         let (x, width) = (
@@ -513,18 +513,12 @@ impl LightUp {
             l.panel_width.saturating_sub(2 * gap as u16),
         );
         let ink = canvas::theme_color(canvas::Role::Foreground);
-        let room = m.height.saturating_sub(m.line_height + 2);
+        let room = m.height.saturating_sub(4);
         let keymap = draw::keymap(width, room, palette, Rgb(ink.r, ink.g, ink.b));
-        let top = ((m.height - keymap.height - m.line_height) / 2) as i16;
+        let top = ((m.height - keymap.height) / 2) as i16;
         let left = x + ((width - keymap.width) / 2) as i16;
         let keys = canvas::create(ROOT, Rect::new(left, top, keymap.width, keymap.height));
         paint(keys, keymap.ops);
-        let also = text(
-            Rect::new(x, top + keymap.height as i16 + 2, width, m.line_height),
-            Font::Small,
-            Align::Center,
-            "or arrows and Select",
-        );
         let top = (m.height.saturating_sub(2 * m.line_height) / 2) as i16;
         let line = |n: u16| Rect::new(x, top + (n * m.line_height) as i16, width, m.line_height);
         self.board = Some(Board {
@@ -532,7 +526,7 @@ impl LightUp {
             rows,
             cursor,
             cursor_at: None,
-            keys: [keys, also],
+            keys,
             solved_shown: false,
             status: text(line(0), Font::Bold, Align::Left, ""),
             time: text(line(1), Font::Normal, Align::Left, ""),
@@ -573,9 +567,7 @@ impl LightUp {
         if game.solved() && !board.solved_shown {
             // The keys do nothing any more: their picture makes room.
             board.solved_shown = true;
-            for w in board.keys {
-                ui::set_visible(w, false);
-            }
+            ui::set_visible(board.keys, false);
             ui::set_text(board.status, "Solved!");
             ui::set_text(board.time, &format!("Time {}", clock(self.elapsed)));
             ui::set_softkeys(
