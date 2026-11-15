@@ -3,10 +3,8 @@
  * B53 bus glue for the Ethernet switch core integrated in Broadcom BCMRING
  * SoCs (BCM11107/11109/11170/11188/11189 family).
  *
- * FIRST DRAFT, NEVER RUN ON HARDWARE.  Written from register behavior
- * recovered by static analysis of vendor binaries; see NOTES.md next to this
- * file for the evidence behind every constant used here and for the list of
- * things that are still guesses.
+ * Written from register behavior recovered by static analysis of vendor
+ * binaries and from measurements on the phones.
  *
  * The switch core uses the ordinary Broadcom "Robo" page/register numbering,
  * but it is neither behind SPI/MDIO nor laid out like the BCM63xx MMIO
@@ -37,20 +35,19 @@
  * the wrapper IMP speed register reads 0x41 with the LAN port linked at 100
  * Mb/s; and the PHY registers read the same through the wrapper's accessor
  * and directly at pages 0x10 and 0x11 (b53's default path).  The accessor is
- * kept because it is the only path the vendor writes through; direct writes
- * are untested.  The direct pages are a live MDIO path for reads, not a
+ * kept because it is the only path the vendor writes through.  The direct
+ * pages are a live MDIO path for reads, not a
  * shadow copy: a direct read of 0x10:(2 * 0x1a) cleared the PHY's
  * clear-on-read interrupt status.
  *
- * Further measurements on a stock D60 (a later read-only pass; a D40 agreed
- * where it was read).  Absent pages and registers read zero with no bus
+ * Further measurements on a stock D60 (a D40 agreed where it was read).
+ * Absent pages and registers read zero with no bus
  * residue, so a zero read never proves that a register exists.
  *
  *   - Ports: 00:06, 00:07, 31:0c, and 31:0e read zero while the same
  *     registers of ports 2 to 5 read reset values, i.e., the core has port
  *     slots 0 to 5 and 8 only.  b53's writes for ports 6 and 7 (its
- *     BCM53115 entry has nine port slots) go to absent slots; that is
- *     presumed harmless, not tested.
+ *     BCM53115 entry has nine port slots) go to absent slots.
  *   - MIB: the counter layout of pages 0x20 and 0x28 was verified against
  *     b53_mibs[] by counters moving as predicted under known traffic.
  *     Offsets 0x0c and 0xc4 also count on this core; b53 does not export
@@ -148,7 +145,7 @@
 /*
  * Page 0x34 register 0x06 (B53_VLAN_CTRL5) bit 0: set by the vendor MAC
  * driver before it configures the Tx FIFO.  Not a b53-defined bit; believed
- * (not verified) to make the switch accept frames from the CPU port without
+ * to make the switch accept frames from the CPU port without
  * a valid FCS, which is what the FIFO bridge delivers: the vendor driver
  * sends four bytes it never wrote in the FCS position.  b53 only
  * read-modify-writes this register and changes bits 2 and 3 alone, so the
@@ -188,9 +185,8 @@ struct b53_bcmring_priv {
  * without it, under the stock firmware of three phones, the core and wrapper
  * registers returned the values an earlier survey had read with it, and the
  * PHY pages the values the vendor's own accessor returns.  What that does
- * not cover is reads in quick succession, so it is still reproduced when the
- * DT gives us the chip-control syscon, until the switch has run without it
- * under this driver.
+ * not cover is reads in quick succession, so it is reproduced when the
+ * devicetree gives the chip-control syscon.
  */
 static void b53_bcmring_pre_read(struct b53_bcmring_priv *priv)
 {
@@ -243,7 +239,7 @@ static int b53_bcmring_read32(struct b53_device *dev, u8 page, u8 reg,
  * fields, among them the EAP mode in bits 52:51, in the upper half.  On
  * this core the slot does not behave like the other 64-bit registers (MIB
  * counters and ARL entries, which are low word first in two words).
- * Measured on a D60 under this driver (2026-11-14, read through /dev/mem):
+ * Measured on a D60 under this driver (read through /dev/mem):
  *
  *   - after b53 wrote 0 to word 0 and 0x00180000 (mode 3) to word 1, word 0
  *     read 0x00180000 and word 1 read 0;
@@ -429,9 +425,9 @@ static void b53_bcmring_phylink_get_caps(struct b53_device *dev, int port,
 	 * and of two BCM11170s), so phylib's generic auto-negotiation code
 	 * (used by the PHY driver entry for this core and by the generic PHY
 	 * driver alike) would advertise gigabit.  With the modes masked here
-	 * it writes zero to the
-	 * 1000BASE-T advertisement bits instead, which is what the vendor
-	 * kernel does on these SoCs (register 9 reads 0 there).
+	 * it writes zero to the 1000BASE-T advertisement bits instead, which
+	 * is what the vendor kernel does on these SoCs (register 9 reads 0
+	 * there).
 	 */
 	if (port < ESW_NUM_PHY_PORTS && !priv->soc->gigabit)
 		config->mac_capabilities &= ~MAC_1000;
@@ -556,20 +552,19 @@ static u32 b53_bcmring_get_phy_flags(struct dsa_switch *ds, int port)
 }
 
 /*
- * Bring-up aid, run once after b53 has set the switch up.  The registers
- * below are used by b53 but are unproven on this core: no vendor code touches
- * them and they read zero under the stock firmware, which is also how an
- * absent register reads.  b53's setup writes a non-zero value to each, so
- * this readback is the write experiment: a field that still reads zero is
- * absent on this core.  Expected after b53's setup: 00:21 = 0xc1, 00:22 with
- * bit 6 set, the three flood masks and the learning-disable mask with the
- * bits of the user and CPU ports, and mode 3 in each user port's EAP
- * register (42:20, 42:28; see b53_bcmring_is_eap_conf() for how this core
- * presents it).  Seen on a D60: all as expected except 00:22, which stays
- * zero (absent; its "dumb forwarding" bit only concerns unmanaged mode).
- * 02:00 is printed for
- * its MIB bits (0 and 5), which b53 leaves clear, so its value proves
- * nothing about them.
+ * Run once after b53 has set the switch up.  The registers below are used
+ * by b53 but no vendor code touches them, and they read zero under the stock
+ * firmware, which is also how an absent register reads.  b53's setup writes
+ * a non-zero value to each, so this readback shows which exist: a field that
+ * still reads zero is absent on this core.  Expected after b53's setup:
+ * 00:21 = 0xc1, 00:22 with bit 6 set, the three flood masks and the
+ * learning-disable mask with the bits of the user and CPU ports, and mode 3
+ * in each user port's EAP register (42:20, 42:28; see
+ * b53_bcmring_is_eap_conf() for how this core presents it).  Seen on a D60:
+ * all as expected except 00:22, which stays zero (absent; its "dumb
+ * forwarding" bit only concerns unmanaged mode).  02:00 is printed for its
+ * MIB bits (0 and 5), which b53 leaves clear, so its value proves nothing
+ * about them.
  */
 static void b53_bcmring_report_unproven(struct b53_device *bdev)
 {

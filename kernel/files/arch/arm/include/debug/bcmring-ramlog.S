@@ -3,7 +3,7 @@
  * Debugging macro include: append the low-level debug output to a one-page
  * text ring in on-chip RAM that survives a reset (Broadcom BCMRING ARAM).
  *
- * DEBUG ONLY (CONFIG_DEBUG_BCMRING_RAMLOG; see kernel-re/ramboot/NOTES.md).
+ * Selected by CONFIG_DEBUG_BCMRING_RAMLOG.
  *
  * Page layout, little-endian words:
  *   0x000  magic "RBLG" (0x474c4252), written by whoever initializes the

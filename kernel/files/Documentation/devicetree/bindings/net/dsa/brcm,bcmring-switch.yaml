@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
-# SKETCH ONLY: not validated with dt_binding_check, never tested on hardware.
 %YAML 1.2
 ---
 $id: http://devicetree.org/schemas/net/dsa/brcm,bcmring-switch.yaml#

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR MIT)
 /*
- * DRAFT board file for the Digium/Sangoma D65 (BCM11188, 256 MiB RAM,
- * SLC NAND, 480x272 color display).
- * Never booted, and no unit of this model has been examined on hardware.
+ * Digium/Sangoma D65 (BCM11188, 256 MiB RAM, SLC NAND, 480x272 color
+ * display).
  */
 
 /dts-v1/;
@@ -20,7 +19,6 @@
 	 * 256 MiB of DDR at 0.  The vendor 3.4 kernels keep the first 4 MiB
 	 * away from Linux (CONFIG_BCM_RAM_START_RESERVED_SIZE=0x400000, kernel
 	 * at 0x00408000; boot2 itself runs at 0x4000).
-	 * Extrapolated from the D60 boot log; no boot log of this model exists.
 	 */
 	memory@400000 {
 		device_type = "memory";

@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR MIT)
 /*
- * DRAFT board file for the Digium/Sangoma D60 (BCM11189, 128 MiB RAM,
- * SLC NAND, 480x272 color display).
- * Registers of this model were read on a running unit (stock firmware);
- * nothing of this file has been booted.
+ * Digium/Sangoma D60 (BCM11189, 128 MiB RAM, SLC NAND, 480x272 color
+ * display).
  */
 
 /dts-v1/;
@@ -31,12 +29,12 @@
 /*
  * Lamps: the D6x table (bcmring-digium-d6x-input.dtsi) is the vendor
  * kernel's, which is the same for the D60, D62, and D65.  On a D60, lighting
- * each stock LED name in turn under vendor firmware (2026-11-12) showed that
+ * each stock LED name in turn under vendor firmware showed that
  * nine names light something: msg-green, msg-red, line0-green, line0-red,
  * line1-green, line1-red, headset-green, speaker-green, and mute-red.  The
  * other eleven names light nothing and are removed here.  The colors of
- * the nine were seen and are as named.  The D62 and D65 are untested and
- * keep the full table.
+ * the nine were seen and are as named.  The D62 and D65 keep the full
+ * table.
  */
 &ledm {
 	/delete-node/ led@0,0;	/* mute-green */

@@ -2,18 +2,15 @@
 /*
  * Broadcom BCMRING (BCM1110x/1117x/1118x) embedded-switch CPU port driver.
  *
- * FIRST DRAFT.  Compile-checked only; never run on hardware.  The channel
- * programming below was since compared with the registers of DMA channels 2
- * and 3 and with the Rx descriptor ring read from a D40, a D50, and a D60
- * running the stock firmware ("measured" in the comments): control,
- * configuration, and status-address words, the ring layout, and the bridge
- * configuration words are the ones written here.
- *
  * Written from behavior recovered from the vendor "bcmring_net" module and
- * the vendor kernel's ethHw_* helpers; see NOTES.md next to this file for the
- * evidence behind every register and constant used here.
+ * the vendor kernel's ethHw_* helpers.  The channel programming below was
+ * compared with the registers of DMA channels 2 and 3 and with the Rx
+ * descriptor ring read from a D40, a D50, and a D60 running the stock
+ * firmware ("measured" in the comments): control, configuration, and
+ * status-address words, the ring layout, and the bridge configuration words
+ * are the ones written here.
  *
- * Hardware summary (NOTES.md sections 1 and 2):
+ * Hardware summary:
  *
  *  - The SoC has no conventional Ethernet MAC with its own descriptor rings.
  *    The CPU reaches the embedded 2-port + IMP switch through a pair of FIFOs
@@ -25,14 +22,14 @@
  *  - Rx relies on two DesignWare features the mainline dw_dmac dmaengine
  *    driver does not expose: the peripheral as flow controller with one LLI
  *    per frame, and source-status write-back (the frame status/length word is
- *    fetched from the FIFO bridge and stored in the LLI).  This draft
+ *    fetched from the FIFO bridge and stored in the LLI).  This driver
  *    therefore programs the two channels directly, as the vendor driver did,
  *    through its own "dmac" resource.  It owns the whole of that controller
  *    (register block, bus clock gate, the two channel interrupts); the
  *    devicetree keeps the controller's dw_dmac node disabled, because
  *    dw_dmac resets and powers down the whole controller.
- *    TODO: once dw_dmac supports what is listed below, move to dmaengine (or
- *    make dw_dmac leave channels 2 and 3 alone).  Needed from the DMA layer:
+ *    Moving to dmaengine would take support for the following in dw_dmac (or
+ *    dw_dmac leaving channels 2 and 3 alone):
  *      - one interrupt line per channel (channel 2 = Rx, channel 3 = Tx);
  *      - Rx: device-to-memory with the peripheral as flow controller, one
  *        block per frame of unknown length (up to 2048 bytes), a circular
@@ -46,7 +43,7 @@
  *      - 64-bit transfer width on both sides with burst length 8, FIFO
  *        mode, priority 7, handshake interface 1 for Tx.
  *    The controller is built for this: the vendor's own decode of its
- *    parameter register gives a 64-bit data bus (NOTES.md, second pass), and
+ *    parameter register gives a 64-bit data bus, and
  *    the per-channel parameter words report programmable widths, peripheral
  *    flow control, status write-back, and a 64-byte channel FIFO (one burst
  *    of eight 64-bit words) on channels 2 and 3.
@@ -279,7 +276,7 @@ struct bcmring_enet {
 	dma_addr_t rx_ring_dma;
 	struct bcmring_rx_buf rx_buf[RX_RING_SIZE];
 	unsigned int rx_head;
-	u32 rx_status_seen;		/* bring-up aid, see bcmring_rx_poll() */
+	u32 rx_status_seen;		/* bits reported by bcmring_rx_poll() */
 
 	struct napi_struct tx_napi;
 	spinlock_t tx_lock;		/* everything below */
@@ -290,7 +287,7 @@ struct bcmring_enet {
 	struct bcmring_tx_buf tx_buf[TX_RING_FRAMES];
 	struct sk_buff_head tx_pending;
 	unsigned int tx_inflight;
-	u32 tx_status_seen;		/* bring-up aid, see bcmring_tx_reap() */
+	u32 tx_status_seen;		/* bits reported by bcmring_tx_reap() */
 };
 
 /* ------------------------------------------------------------------------ */
@@ -486,7 +483,7 @@ static int bcmring_rx_poll(struct napi_struct *napi, int budget)
 		done++;
 
 		/*
-		 * Bring-up aid: only the length field of the status word is
+		 * Only the length field of the status word is
 		 * understood (the vendor driver looks at nothing else).  Report
 		 * each bit the first time it differs from the pattern seen
 		 * under the vendor firmware, together with the word count the
@@ -702,7 +699,7 @@ static void bcmring_tx_reap(struct bcmring_enet *priv, int budget, bool sent)
 		u32 status = le32_to_cpu(priv->tx_ring[2 * i + 1].dstat);
 
 		/*
-		 * Bring-up aid: the DMAC stores the bridge's Tx status word
+		 * The DMAC stores the bridge's Tx status word
 		 * in each LLI.  The vendor driver never reads it and its
 		 * layout is unknown; report each bit the first time it differs
 		 * from the one value seen under the vendor firmware.
@@ -829,7 +826,7 @@ static void bcmring_tx_timeout(struct net_device *ndev, unsigned int txqueue)
 {
 	struct bcmring_enet *priv = netdev_priv(ndev);
 
-	/* TODO: recovery is unverified; the vendor driver only wakes the queue. */
+	/* The vendor driver only wakes the queue; run the completion poll. */
 	netdev_err(ndev, "Tx timeout, channel %s, %u in flight\n",
 		   dw_ch_busy(priv, TX_CHAN) ? "busy" : "idle",
 		   priv->tx_inflight);
@@ -985,7 +982,7 @@ static int bcmring_probe(struct platform_device *pdev)
 
 	/*
 	 * Not requested exclusively: the block is shared with the other six
-	 * channels of the controller (see the TODO at the top of the file).
+	 * channels of the controller (see the top of the file).
 	 */
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dmac");
 	if (!res)

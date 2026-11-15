@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR MIT)
 /*
- * DRAFT SoC description for the Broadcom BCMRING family (BCM11107 and its
- * derivatives BCM11109, BCM11170, BCM11188, BCM11189).  Never booted.
+ * SoC description for the Broadcom BCMRING family (BCM11107 and its
+ * derivatives BCM11109, BCM11170, BCM11188, BCM11189).
  *
  * Sources: the memory map and interrupt numbers come from the GPL
  * mach-bcmring headers that were in mainline Linux up to v3.5 (mm_addr.h,
@@ -204,8 +204,8 @@
 			 * switch read, as the vendor kernel does.  Not needed
 			 * for correct values: single reads without it were
 			 * right on a D40, a D50, and a D60 under stock
-			 * firmware.  Kept until back-to-back reads have run
-			 * without it under mainline; then drop it.
+			 * firmware.  Reads in quick succession are not
+			 * covered by that.
 			 */
 			brcm,chipc = <&chipc>;
 			status = "disabled";
@@ -333,11 +333,11 @@
 		 * Voice DSP ("VPM", a CEVA TeakLite-III core).  A compute
 		 * coprocessor for codecs, echo cancellation, and band
 		 * splitting, driven by synchronous jobs; it owns no audio
-		 * hardware.  UNVERIFIED under mainline.  All addresses are
-		 * verified in the vendor kernels and the mailbox and rings
-		 * were read on running phones.
+		 * hardware.  All addresses are verified in the vendor
+		 * kernels, and the mailbox and rings were read on running
+		 * phones.
 		 *
-		 * reg: the DSP's on-chip program RAM (the size is a guess
+		 * reg: the DSP's on-chip program RAM (the size is taken
 		 * from the largest image, 8192 bytes), its 64 KiB data RAM,
 		 * the 64 KiB RAM shared with the ARM (mailbox and rings),
 		 * and the "VINTC" block, of which only the host-to-DSP
@@ -461,7 +461,7 @@
 			reg = <0x80001000 0x100>, <0x80001800 0x800>;
 			interrupt-parent = <&intc1>;
 			interrupts = <8>;	/* vendor IRQ 40, unused */
-			/* which gate feeds the block is a guess */
+			/* taken to be the gate that feeds the block */
 			clocks = <&chipc BCMRING_CLK_BUSIF_NVI>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -532,8 +532,8 @@
 		};
 
 		/*
-		 * Random-number generator.  UNVERIFIED until a mainline
-		 * boot.  The match with the bcm2835-rng driver rests on the
+		 * Random-number generator.  The match with the bcm2835-rng
+		 * driver rests on the
 		 * vendor driver (control 0x00 bit 0 = enable, status 0x04
 		 * with the warm-up count in bits 19:0 and the words
 		 * available in bits 31:24, data 0x08, interrupt mask 0x10

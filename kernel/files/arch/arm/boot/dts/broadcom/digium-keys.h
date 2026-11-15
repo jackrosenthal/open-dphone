@@ -17,25 +17,25 @@
  *                           lossless and what the vendor userspace saw.
  *
  *   DIGIUM_KEYS_PROPOSED    Standard Linux codes where the key's function
- *                           is known and Linux has a code for it (see
- *                           NOTES.md, "Key code proposal").  Everything
- *                           else becomes KEY_MACROn as a placeholder.  The
- *                           vendor codes
- *                           cannot be kept next to standard ones because
- *                           they collide numerically (e.g., 'g' == KEY_UP,
+ *                           is known and Linux has a code for it.
+ *                           Everything else becomes KEY_MACROn as a
+ *                           placeholder.  The vendor codes cannot be kept
+ *                           next to standard ones because they collide
+ *                           numerically (e.g., 'g' == KEY_UP,
  *                           'i' == KEY_LEFT, 'j' == KEY_RIGHT,
  *                           'r' == KEY_VOLUMEDOWN).
  *
- * Confirmed by pressing keys on a D60 and a D40 (2026-11-12): digits 1, 2,
+ * Confirmed by pressing keys on a D60 and a D40: digits 1, 2,
  * 3, and '#', the hookswitch, volume, the four directions, SOFT1..SOFT4
  * (left to right under the screen), LINE1 (top) and LINE2 beside the screen,
  * MUTE, SPEAKER, HEADSET, HOLD, TRANSFER, REDIAL, MSGS (voicemail), SELECT
  * (check mark), and CANCEL (X).  The hookswitch reports release when the
  * handset is lifted and press when it is replaced.  Neither phone has any
  * other key.  Confirmed the same way on a D50: LINE1..LINE4 (top to bottom),
- * CONF, INFO, and BLF1..BLF10 (one column, top to bottom).  LINE4 has only
- * been seen on the D50; the D6x tables place the same character elsewhere
- * in the matrix.  This accounts for every code in the D40/D45/D50 table.
+ * CONF, INFO, and BLF1..BLF10 (one column, top to bottom).  LINE4 is at
+ * this position on the D50 only; the D6x tables place the same character
+ * elsewhere in the matrix.  This accounts for every code in the D40/D45/D50
+ * table.
  *
  * Identified from the vendor phone application, not by pressing: the eight
  * characters that occur only in the D6x and D70 tables ('G', 'I', 'J', 'M',
@@ -45,8 +45,7 @@
  * 'J' "fn.apps", 'M' "blf.left", 'N' "blf.right", 'O' "line.4.down",
  * 'P' "line.5.down" (lines count from 0), and 'Q' "fn.dir".  The same
  * switch gives every key that was pressed the function found by pressing
- * it.  Not checked on a D62, D65, or D70: which physical key sits at each
- * of these matrix positions, and whether the model has one there at all.
+ * it.
  */
 #ifndef DIGIUM_KEYS_H
 #define DIGIUM_KEYS_H

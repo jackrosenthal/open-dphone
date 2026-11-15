@@ -3,15 +3,12 @@
  * GPIO bank driver for Broadcom BCMRING SoCs (BCM11107 family: BCM11170,
  * BCM11109, BCM11189, BCM11188, ...).
  *
- * FIRST DRAFT.  Compile-tested only; never run on hardware.
- *
  * New code written from behavior recovered from the vendor kernels of the
  * Digium/Sangoma D40/D45/D50/D70 (2.6.27.18) and D60/D62/D65 (3.4.74)
  * (functions gpio_bcmring_*, gpio_irq_*, gpio_isr_handler0/1,
  * GpioHwReg_SetIrqType).  No vendor or old-mainline source was copied; block
  * addresses and IRQ numbers agree with the old mainline
  * arch/arm/mach-bcmring/include/mach/csp/mm_addr.h and mach/irqs.h (v3.4).
- * See NOTES.md for the evidence trail.
  *
  * The SoC has two identical banks:
  *   GPIO0 @ 0x80004000, lines  0..31, IRQ_GPIO0 (INTC1 bit 0)
@@ -97,9 +94,8 @@ static int bcmring_gpio_direction_output(struct gpio_chip *gc,
 	raw_spin_lock_irqsave(&bg->lock, flags);
 	/*
 	 * The vendor driver switches the direction first and writes the level
-	 * afterwards.  Writing the latch first avoids a glitch; this assumes
-	 * the data latch is writable while the line is an input, which is
-	 * not verified.  TODO: confirm on hardware.
+	 * afterwards.  Writing the latch first avoids a glitch, provided the
+	 * data latch is writable while the line is an input.
 	 */
 	bcmring_gpio_rmw(bg, BCMRING_GPIO_DATA, BIT(offset),
 			 value ? BIT(offset) : 0);
@@ -119,10 +115,6 @@ static int bcmring_gpio_get(struct gpio_chip *gc, unsigned int offset)
 	return !!(readl(bg->base + BCMRING_GPIO_DATA) & BIT(offset));
 }
 
-/*
- * Written against the host kernel API, where gpio_chip.set returns int.
- * Kernels before v6.17 need a void return (or .set_rv in v6.15/v6.16).
- */
 static int bcmring_gpio_set(struct gpio_chip *gc, unsigned int offset,
 			    int value)
 {

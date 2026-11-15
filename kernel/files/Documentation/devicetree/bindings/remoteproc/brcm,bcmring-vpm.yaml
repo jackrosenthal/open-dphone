@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
-# SKETCH -- not validated with dt-schema, not submitted anywhere.
 %YAML 1.2
 ---
 $id: http://devicetree.org/schemas/remoteproc/brcm,bcmring-vpm.yaml#

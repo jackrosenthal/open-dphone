@@ -74,11 +74,11 @@ index d1a4edb34ad2efc3b7eb55fea612acef3627d3a8..99bc886335dc118d19487488d94eed5c
 + * Gigabit PHY core integrated in the Ethernet switch of the BCMRING SoCs
 + * (BCM11107 family).  ID 0x0143bd91; the part name is not known, and the
 + * register model is that of the BCM54xx family (closest relatives: BCM50610
-+ * and BCM50610M).  NEVER RUN ON HARDWARE under this driver.
++ * and BCM50610M).
 + *
 + * config_init reproduces the three fixups of the vendor kernel with the
 + * vendor's own values, and nothing else.  bcm54xx_config_init() is not used:
-+ * its clock, LED, and model-specific paths are untested on this core.  The
++ * it has clock, LED, and model-specific paths the vendor does not use.  The
 + * bcm-phy-lib helpers for auto power-down and downshift are not used either,
 + * because they write more than the vendor does (the single-link-pulse bit
 + * and the wirespeed retry shadow).  The auto power-down and wirespeed values

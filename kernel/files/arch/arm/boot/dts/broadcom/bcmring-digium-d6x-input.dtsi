@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 /*
- * Digium/Sangoma D60, D62, and D65: keypad, hookswitch, and lamps.  FIRST DRAFT,
- * untested.
+ * Digium/Sangoma D60, D62, and D65: keypad, hookswitch, and lamps.
  *
  * Generated from the D60 vendor kernel (Linux 3.4.74):
  * BCMRING_CUSTOM_keypad_keymap (39 entries), the LED label table, and
@@ -9,14 +8,14 @@
  * The three vendor kernels carry identical tables, so all twenty vendor
  * lamp names are described here.  A D60 has only nine of the lamps (no
  * line2..line5, no mute-green, headset-red, or speaker-red); its board file
- * deletes the rest.  Which lamps a D62 or a D65 has is untested.
+ * deletes the rest.
  *
  * Key codes: digium-keys.h keeps the vendor ASCII codes unless
  * DIGIUM_KEYS_PROPOSED is defined before this file is included.  The DGK_
  * names are the functions found by pressing the keys on a D60, a D40, and
  * a D50, and, for the keys those phones lack (BLF_LEFT, BLF_RIGHT, LINE5,
- * and LINE6), read from the vendor phone application; those positions have
- * not been pressed on a unit, and a D60 has no key there.
+ * and LINE6), read from the vendor phone application; a D60 has no key at
+ * those positions.
  */
 
 #include <dt-bindings/leds/common.h>

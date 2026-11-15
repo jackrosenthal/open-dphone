@@ -50,8 +50,8 @@ index 366f162e147d1199ddaebdb2c8cd6677e101efe0..e3336ff958b970fd4524f6fc2bc9c2fa
 +		  BCMRING SoCs) instead of sending it to a UART.  The page is
 +		  read back after the reset, e.g., from the stock firmware.
 +
-+		  This is a bring-up aid for boots without a serial cable
-+		  (kernel-re/ramboot).  Together with EARLY_PRINTK and
++		  This is a debugging aid for boots without a serial
++		  cable.  Together with EARLY_PRINTK and
 +		  "earlyprintk keep_bootcon" on the command line, the page
 +		  always holds the last 4080 characters of the kernel log.
 +		  Leave it off in any kernel that is meant to be used.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR MIT)
 /*
  * Per-model audio wiring of the Digium/Sangoma D-series phones: the sound
- * card on top of the bcmring-apm driver.  DRAFT, never booted.
+ * card on top of the bcmring-apm driver.
  *
  * Source of the per-model facts: the BCMRING_CUSTOM_halaudio_dev_list table
  * built into each model's vendor kernel.  That table says which APM channel
@@ -75,13 +75,13 @@
 		 * 0 for the headset on every audio-device change and leaves
 		 * it alone for the handset; only the D40 and D50 binaries
 		 * contain that call, and GPIO 34 is an output on a live D40
-		 * (idle level low) and not on a live D60.  Those values are
-		 * verified; what the line does on the board (analog switch
-		 * select, headset amplifier mute, or a second loudspeaker
-		 * amplifier enable) is inferred and needs a listening test,
-		 * as does any required order against the speaker amplifier
-		 * enable (GPIO 32).  Besides this line, the only difference
-		 * between the two PCMs is the speaker amplifier enable.  The
+		 * (idle level low) and not on a live D60.  What the line
+		 * does on the board (analog switch select, headset amplifier
+		 * mute, or a second loudspeaker amplifier enable) is not
+		 * known, and neither is any required order against the
+		 * speaker amplifier enable (GPIO 32).  Besides this line, the
+		 * only difference between the two PCMs is the speaker
+		 * amplifier enable.  The
 		 * APM registers of an idle D40 and D50 under stock firmware
 		 * agree with the table as far as they go: output drivers CH0
 		 * A and CH1 A running, CH0 B and CH1 B muted, both microphone

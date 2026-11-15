@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR MIT)
 /*
  * The display of the Digium/Sangoma D40, D45, and D50: one 240x120
- * grayscale SPI panel.  Runs on a D40.  The three vendor kernels carry
- * identical display driver code, tables, and board data.
+ * grayscale SPI panel.  The three vendor kernels carry identical display
+ * driver code, tables, and board data.
  *
  * Requires bcmring-digium-gray.dtsi.
  */

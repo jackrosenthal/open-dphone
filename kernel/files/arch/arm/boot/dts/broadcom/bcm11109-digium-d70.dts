@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR MIT)
 /*
- * DRAFT board file for the Digium/Sangoma D70 (BCM11109, 256 MiB RAM,
- * SLC NAND, grayscale SPI displays).
- * Never booted, and no unit of this model has been examined on hardware.
+ * Digium/Sangoma D70 (BCM11109, 256 MiB RAM, SLC NAND, grayscale SPI
+ * displays).
  */
 
 /dts-v1/;

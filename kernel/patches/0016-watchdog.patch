@@ -17,9 +17,9 @@ index f7d0a0c2c0ef1686754727bad0ba69883e2fc83e..5e0b3207579eb635ee3a1bcade00682a
 +	  left running is taken over and keeps running; once user space
 +	  has opened the device, only user space keeps the system alive.
 +
-+	  This is meant for bring-up kernels whose only way back to a
-+	  working system is the watchdog reset (kernel-re/ramboot).  Say N
-+	  unless you know that you want this.
++	  This is meant for a kernel that is tried from RAM, whose only way
++	  back to a working system is the watchdog reset.  Say N unless you
++	  know that you want this.
 +
  config ARM_SBSA_WATCHDOG
  	tristate "ARM SBSA Generic Watchdog"

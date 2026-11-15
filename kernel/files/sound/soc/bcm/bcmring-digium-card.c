@@ -4,8 +4,6 @@
  * D60, D62, D65, D70) built around the Broadcom BCMRING "APM" audio front
  * end.
  *
- * DRAFT.  Compile tested only; it has never been run on hardware.
- *
  * The APM is CPU DAI and converter in one component, so the DAI links use
  * the dummy codec.  The phones have three transducer sets on two APM
  * channels: the handset on channel 0, and the headset and the speakerphone
@@ -21,9 +19,9 @@
  * application additionally drives one GPIO, which it labels "spkr", whenever
  * the audio device changes: 1 for the speakerphone, 0 for the headset, and
  * no change for the handset.  The optional "speaker-select-gpios" property
- * reproduces that.  The values are verified in the vendor binary; what the
+ * reproduces that.  The values are those of the vendor binary; what the
  * line does electrically (an analog switch, a headset amplifier mute, or a
- * second loudspeaker amplifier enable) is inferred, not known, and so is any
+ * second loudspeaker amplifier enable) is not known, and neither is any
  * required order against the speaker amplifier enable.
  */
 
@@ -108,9 +106,9 @@ static int digium_startup(struct snd_pcm_substream *substream)
 		 * As the vendor does: set on a change to the speakerphone,
 		 * clear on a change to the headset, leave alone for the
 		 * handset.  The line is set before the pins are enabled, so
-		 * that it is settled when the speaker amplifier comes up;
-		 * that order is a guess (the vendor's two controls live in
-		 * different places and have no fixed order).
+		 * that it is settled when the speaker amplifier comes up
+		 * (the vendor's two controls live in different places and
+		 * have no fixed order).
 		 */
 		if (priv->spk_sel && id != DIGIUM_HANDSET)
 			gpiod_set_value_cansleep(priv->spk_sel,

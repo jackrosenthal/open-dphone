@@ -4,8 +4,7 @@
  * and D70 desk phones.
  *
  * Written from the behavior recovered from the vendor 2.6.27.18 kernels
- * ("digium onephone fb", functions opfb_*).  The 240x120 main panel runs on
- * a D40; the D70's two panels have not run.
+ * ("digium onephone fb", functions opfb_*).
  *
  * Two kinds of panel are handled:
  *
@@ -518,9 +517,9 @@ static int dgl_dss_power_on(struct dgl_panel *p)
 static void dgl_dss_power_off(struct dgl_panel *p)
 {
 	/*
-	 * TODO: not recovered.  The vendor driver never switches the panel
-	 * off; 0xa8 is its display-enable command (0xaf) with the enable
-	 * bits cleared, which is an inference from the command encoding.
+	 * The vendor driver never switches the panel off; 0xa8 is its
+	 * display-enable command (0xaf) with the enable bits cleared, which
+	 * is an inference from the command encoding.
 	 */
 	p->cmd[0] = DGL_DSS_DISPLAY_OFF;
 	dgl_write(p, false, p->cmd, 1);

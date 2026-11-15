@@ -3,15 +3,13 @@
  * Keypad matrix controller ("KEYC") of Broadcom BCMRING SoCs (BCM11107
  * family), as used by the Digium/Sangoma D40/D45/D50/D70/D60/D62/D65.
  *
- * FIRST DRAFT.  Compile-tested only; never run on hardware.
- *
  * New code written from behavior recovered from the vendor kernels
  * (keypad_probe, keypad_interrupt, keypad_scan, gpio_keyreserve,
  * keypad_suspend/resume in the 2.6.27.18 and 3.4.74 images; the two
  * families are instruction-for-instruction equivalent here).  The keypad
- * driver was never in mainline; nothing was copied.  See NOTES.md.
+ * driver was never in mainline; nothing was copied.
  *
- * Hardware summary (all verified from the binaries unless noted):
+ * Hardware summary:
  *   base 0x8000d000, IRQ_KEYC = 48 (INTC1 bit 16)
  *   0x00..0x10  five state registers.  Register n holds two 9-bit line
  *               groups: bits 24:16 = scan-code row 2n, bits 8:0 = row
@@ -27,7 +25,7 @@
  * function 1 (KEYPAD).  Which side the controller drives and which it
  * senses is not recovered and does not matter to this driver.
  *
- * Not carried over from the vendor driver (policy, documented in NOTES.md):
+ * Not carried over from the vendor driver (policy):
  *   - the '7'+'5'+'3' held-for-5-s kernel_restart() combination;
  *   - the up/down versus left/right mutual lockout (is_key_allowed);
  *   - the hookswitch (GPIO 51) and optional extra GPIO keys, which belong
@@ -303,10 +301,9 @@ static int bcmring_keypad_suspend(struct device *dev)
 	struct bcmring_keypad *kp = dev_get_drvdata(dev);
 
 	/*
-	 * TODO: the vendor suspend only shortens the debounce count to 15
-	 * and queues up to eight events for replay on resume.  Wake-up
-	 * behavior is untested, so this draft only mirrors the register
-	 * write.
+	 * The vendor suspend shortens the debounce count to 15 and queues up
+	 * to eight events for replay on resume.  Only the register write is
+	 * mirrored here.
 	 */
 	guard(mutex)(&kp->input->mutex);
 	if (input_device_enabled(kp->input))

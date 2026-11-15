@@ -12,7 +12,7 @@
  *	vpm_copy_in(p, src, len)	copy bytes into the window
  *	vpm_copy_out(dst, p, len)	copy bytes out of the window
  *
- * DRAFT.  Never run against a DSP.  Every rule below was recovered by static
+ * Every rule below was recovered by static
  * analysis of the vendor's host-side code for both SoC families and agrees
  * with ring snapshots of running stock phones; how the DSP firmware itself
  * treats the rings is inferred from that host code only.

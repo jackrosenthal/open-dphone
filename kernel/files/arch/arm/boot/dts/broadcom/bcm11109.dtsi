@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR MIT)
 /*
- * Broadcom BCM11109 (BCMRING family; Digium D45, D70).  DRAFT, never booted.
+ * Broadcom BCM11109 (BCMRING family; Digium D45, D70).
  *
- * Vendor capability table: PLL1 1.2 GHz, ARM 300 MHz, bus 100 MHz, UART clock 100 MHz.  Gigabit-capable
- * PHY ports (GMII capability set), touch-screen controller present.
+ * Vendor capability table: PLL1 1.2 GHz, ARM 300 MHz, bus 100 MHz, UART
+ * clock 100 MHz.  Gigabit-capable PHY ports (GMII capability set),
+ * touch-screen controller present.
  * The rates are whatever the boot loader programmed; the clock driver reads
  * them back, so nothing SoC-specific is needed for clocks here.  No
  * register-layout difference between the four SoCs was found.

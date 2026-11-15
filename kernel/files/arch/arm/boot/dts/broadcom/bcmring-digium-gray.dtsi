@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR MIT)
 /*
  * Parts common to the grayscale-display Digium/Sangoma phones D40, D45,
- * D50, and D70 (vendor Linux 2.6.27.18, "old family").  DRAFT, never
- * booted.  A D40 and a D50 were surveyed read-only under stock firmware
- * (2026-11-12): the pad-mux words, SPI mode and divider, backlight
- * register, and LED-matrix registers they showed are what this file and
- * the *-display/*-input files program.  GPIO directions were not read.
+ * D50, and D70 (vendor Linux 2.6.27.18, "old family").  The pad-mux words,
+ * SPI mode and divider, backlight register, and LED-matrix registers read
+ * on a D40 and a D50 under stock firmware are what this file and the
+ * *-display/*-input files program.
  *
  * Vendor GPIO numbers: 25 = main panel chip select (low = selected),
  * 21 = second chip select, 22 = D/C ("lcda0", low = command), 42 = main
@@ -22,9 +21,9 @@
  *
  * No fixed partition table is given, on purpose: partitions come from
  * boot2's mtdparts=.  The table in NAND block 0 is per unit.  boot1 lays
- * it out at first boot and moves partition starts past bad blocks, so the
- * surveyed D40 (two bad blocks in root0) has root1 and userdata 0x40000
- * higher than the surveyed D50.
+ * it out at first boot and moves partition starts past bad blocks, so
+ * a D40 with two bad blocks in root0 has root1 and userdata 0x40000 higher
+ * than a D50 with none.
  */
 
 &pinmux {

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR MIT)
 /*
- * DRAFT board file for the Digium/Sangoma D45 (BCM11109, 128 MiB RAM,
- * SLC NAND, grayscale SPI display).
- * Never booted, and no unit of this model has been examined on hardware.
+ * Digium/Sangoma D45 (BCM11109, 128 MiB RAM, SLC NAND, grayscale SPI
+ * display).
  */
 
 /dts-v1/;

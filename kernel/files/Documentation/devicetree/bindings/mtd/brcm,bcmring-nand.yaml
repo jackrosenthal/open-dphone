@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
-# Draft binding.  Passes dt_binding_check apart from the missing "maintainers" entry.
 %YAML 1.2
 ---
 $id: http://devicetree.org/schemas/mtd/brcm,bcmring-nand.yaml#

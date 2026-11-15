@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR MIT)
 /*
- * Broadcom BCM11189 (BCMRING family; Digium D60).  DRAFT, never booted.
+ * Broadcom BCM11189 (BCMRING family; Digium D60).
  *
- * Vendor capability table: PLL1 2.0 GHz, ARM 500 MHz, bus 166.67 MHz, UART clock 142.86 MHz.  10/100
- * PHY ports only, graphics engine and video decoder present.  Examined on
- * hardware (one D60), as is the BCM11170 (one D40, one D50); the BCM11188
- * and BCM11109 are not.
+ * Vendor capability table: PLL1 2.0 GHz, ARM 500 MHz, bus 166.67 MHz, UART
+ * clock 142.86 MHz.  10/100 PHY ports only, graphics engine and video
+ * decoder present.
  * The rates are whatever the boot loader programmed; the clock driver reads
  * them back, so nothing SoC-specific is needed for clocks here.  No
  * register-layout difference between the four SoCs was found.

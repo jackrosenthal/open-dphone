@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 /*
- * Digium/Sangoma D50: keypad, hookswitch, and lamps.  FIRST DRAFT,
- * untested.
+ * Digium/Sangoma D50: keypad, hookswitch, and lamps.
  *
  * Generated from the D50 vendor kernel (Linux 2.6.27.18):
  * BCMRING_CUSTOM_keypad_keymap (47 entries), the LED label table, and

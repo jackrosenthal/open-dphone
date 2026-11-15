@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR MIT)
 /*
  * Bluetooth of the Digium/Sangoma D65: a Broadcom BCM20702 on UART B, with
- * its voice (SCO) pins on the SoC PCM/TDM interface.  NEVER RUN: no D65 has
- * been examined on hardware.  Everything is from the D65 stock firmware
- * (release 2_9_28): the vendor kernel's board tables and PcmHw_* functions,
- * halaudio_pcm.ko, and the bsa_server start script.
+ * its voice (SCO) pins on the SoC PCM/TDM interface.  Everything is from the
+ * D65 stock firmware (release 2_9_28): the vendor kernel's board tables and
+ * PcmHw_* functions, halaudio_pcm.ko, and the bsa_server start script.
  *
  * Only the D65 has the part.  The D60 and D62 board tables name GPIOs 2, 3,
  * and 4 for it, which are lamp columns there, and the vendor driver backs

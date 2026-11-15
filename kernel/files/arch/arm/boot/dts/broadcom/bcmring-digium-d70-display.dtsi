@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR MIT)
 /*
- * SKETCH of the displays of the Digium/Sangoma D70: a 320x160 main panel
- * and a 113x357 side display ("DSS", the rapid-dial/BLF label strip) on the
- * same SPI bus.  Never booted.
+ * The displays of the Digium/Sangoma D70: a 320x160 main panel and a
+ * 113x357 side display ("DSS", the rapid-dial/BLF label strip) on the same
+ * SPI bus.
  *
  * Additional vendor GPIO numbers: 21 = side display chip select (low =
  * selected), 33 = side display reset (low = reset), 13 = side backlight

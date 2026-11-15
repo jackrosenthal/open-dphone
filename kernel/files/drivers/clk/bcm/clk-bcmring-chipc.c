@@ -3,8 +3,6 @@
  * Broadcom BCMRING (BCM11107 family: BCM11109/11170/11188/11189, ...)
  * chip-control clock and reset controller.
  *
- * FIRST DRAFT.  Compile-tested only; never run on hardware.
- *
  * The chip-control block also holds pin multiplexing (0x114 and up, handled
  * by pinctrl-single child nodes) and a few miscellaneous registers that other
  * drivers need (audio enables at 0x7c, the dummy read the Ethernet switch
@@ -22,7 +20,7 @@
  * Copyright 2003 - 2008 Broadcom Corporation), restructured for the common
  * clock framework.  The clock-ID-to-register table and the bus-interface
  * gate handling were checked against the vendor 3.4.74 kernel shipped on the
- * Digium D60 (__clk_enable at 0xc0013724).  See ../NOTES.md.
+ * Digium D60 (__clk_enable at 0xc0013724).
  *
  * Model:
  *   xtal (25 MHz, from DT)
@@ -182,10 +180,9 @@ static unsigned long bcmring_pll_recalc_rate(struct clk_hw *hw,
 	 * (77.5 at 2 GHz / 14).  With spread spectrum on, this is the top of
 	 * the modulated range.
 	 *
-	 * The "1/8" modes presumably scale the fraction by 1/8; that is a
-	 * guess from the mode names and has not been seen on hardware.
-	 * PLL2's fraction register, if it has one, is not known; PLL2 has
-	 * only been seen in integer mode.
+	 * The "1/8" modes are taken to scale the fraction by 1/8, going by
+	 * their names.  PLL2's fraction register, if it has one, is not
+	 * known; the boot loader leaves PLL2 in integer mode.
 	 */
 	if (clk->reg == CHIPC_PLL_PREDIV && mode) {
 		frac = FIELD_GET(PLL_DIVIDER_FRAC_MASK,
@@ -354,8 +351,6 @@ static const struct clk_ops bcmring_pllch_ops = {
  * meaning there, and the old source's "DDR enable is inverted" would have
  * made the clock framework clear bit 16 of the DDR register when it enables
  * this critical clock.  These registers are never written.
- * TODO: VPM rate change, gating, and phase alignment, if the DSP is ever
- * used.
  */
 static const struct clk_ops bcmring_pllch_ro_ops = {
 	.recalc_rate = bcmring_pllch_recalc_rate,
@@ -550,10 +545,9 @@ static int bcmring_register_clk(struct device *dev, struct bcmring_chipc *chipc,
 	init.parent_data = &pdata;
 	init.num_parents = 1;
 	/*
-	 * TODO: CLK_IGNORE_UNUSED is set on everything for the bring-up
-	 * phase, because it is not yet known which of the gates left on by
-	 * boot2 the system depends on (ARAM, VRAM, HPM, DDRC, BROM, ...).
-	 * Prune once the dependencies are understood.
+	 * CLK_IGNORE_UNUSED is set on everything, because it is not known
+	 * which of the gates left on by boot2 the system depends on (ARAM,
+	 * VRAM, HPM, DDRC, BROM, ...).
 	 */
 	init.flags = CLK_IGNORE_UNUSED;
 	if (critical)

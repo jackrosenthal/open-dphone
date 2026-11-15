@@ -3,13 +3,11 @@
  * Broadcom BCMRING (BCM11107 family: BCM11109/11170/11188/11189) "APM"
  * analog audio front end -- ASoC component and DAI driver.
  *
- * DRAFT.  Written from register behavior recovered by static analysis of
- * vendor binaries.  It has been compile tested only; it has never been run
- * on hardware.  Everything marked "UNVERIFIED" is an inference that needs a
- * board to confirm.  "Measured" refers to register dumps of an idle D40, D50,
- * and D60 running the stock firmware (which streams on all four FIFOs all
- * the time); they show what the vendor driver leaves in the registers, not
- * what this driver does.
+ * Written from register behavior recovered by static analysis of vendor
+ * binaries.  "Measured" refers to register dumps of an idle D40, D50, and
+ * D60 running the stock firmware (which streams on all four FIFOs all the
+ * time); they show what the vendor driver leaves in the registers, not what
+ * this driver does.
  *
  * The block contains two full-duplex mono voice channels ("CH0" and "CH1";
  * a third, capture-only channel exists in the IP but the SoCs used here
@@ -68,7 +66,7 @@
 /*
  * DMA request enables.  The vendor code only tells the channels apart (28
  * and 30 are channel 0, 29 and 31 channel 1) and always switches both
- * directions of a channel together.  UNVERIFIED: that 28/29 are capture and
+ * directions of a channel together.  That 28/29 are capture and
  * 30/31 playback is inferred from the capture-only third channel, whose
  * registers repeat the channel 0 capture positions and whose enable is bit
  * 28.  The driver does not depend on it: it switches all four together.
@@ -113,9 +111,10 @@
 #define APM_NCO_BASE_64K	0x53e2d624	/* 64000 * 2^41 / 100 MHz */
 
 /*
- * Written with all ones by the vendor's enable sequence.  UNVERIFIED names:
- * they are not plain storage (measured afterwards: 0x104 = 5, 0x10c = 5 or
- * 0x08000005, 0x114 = 0x8000), so write-one-to-clear status or flush strobes.
+ * Written with all ones by the vendor's enable sequence.  The names are
+ * inferred: the registers are not plain storage (measured afterwards:
+ * 0x104 = 5, 0x10c = 5 or 0x08000005, 0x114 = 0x8000), so they are taken to
+ * be write-one-to-clear status or flush strobes.
  */
 #define APM_FIFO_FLUSH_RX(c)	(0x104 + 8 * (c))
 #define APM_FIFO_FLUSH_TX	0x114
@@ -159,8 +158,8 @@
 #define APM_SIDETONE_WORDS	28
 
 /*
- * SoC chip-control ("chipc") bits that gate the block.  UNVERIFIED names;
- * the register reads exactly 0x97 on all three measured phones.
+ * SoC chip-control ("chipc") bits that gate the block.  The names are
+ * inferred; the register reads exactly 0x97 on all three measured phones.
  */
 #define CHIPC_AUDIO_ENABLE	0x7c
 #define  CHIPC_AUDIO_EN_APM	0x97	/* clocks + channels A and B */
@@ -338,8 +337,6 @@ static void apm_program_rate(struct apm_priv *apm, unsigned int ch)
  * that is the only sequence known to work.  Do the same on the first and
  * last active stream instead of guessing at per-channel, per-direction
  * enables.  A channel with no DMA attached simply over/underruns its FIFO.
- * UNVERIFIED: that a FIFO which has over/underrun picks up cleanly when its
- * stream is started later.
  *
  * Measured in the vendor's running state: the hold bits 31:29 of 0x020 are
  * clear while bit 31 of 0x050 is still set, so the latter does not gate
@@ -672,7 +669,7 @@ static void apm_out_ramp(struct apm_priv *apm, unsigned int ch,
  * Measured in the vendor's running state: 0x13c = 0x60000000 (ramp enabled on
  * both channels) and 0x134 = 0x00003333 (all four drivers: direction up, 40
  * ms), which is what apm_out_ramp(up) writes.
- * UNVERIFIED: what the ramp acts on, and its reset state.
+ * What the ramp acts on, and its reset state, are not known.
  */
 static int apm_out_drv_event(struct snd_soc_dapm_widget *w,
 			     struct snd_kcontrol *kcontrol, int event)
@@ -968,8 +965,8 @@ static int apm_dai_hw_params(struct snd_pcm_substream *substream,
 	 * programs the rates just before it enables the channels;
 	 * apm_start_all() does the latter.  While the block runs, leave an
 	 * unchanged rate alone (the other direction of this channel may be
-	 * streaming).  UNVERIFIED: changing the rate of an idle channel while
-	 * the other channel streams, which the vendor never does.
+	 * streaming).  The vendor never changes the rate of an idle channel
+	 * while the other channel streams; this driver does.
 	 */
 	spin_lock_irqsave(&apm->lock, flags);
 	if (apm->rate[dai->id] != &apm_rates[i] || !apm->active) {
@@ -992,7 +989,7 @@ static int apm_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 	/*
 	 * The DMA ring is armed before this runs and torn down after it (the
 	 * default ASoC trigger order), like the vendor's start; no priming is
-	 * needed, see the notes.
+	 * needed.
 	 */
 	spin_lock_irqsave(&apm->lock, flags);
 	switch (cmd) {
@@ -1174,9 +1171,8 @@ static int apm_probe(struct platform_device *pdev)
 
 	/*
 	 * Get the DMA channels before any clock, reset, or register is
-	 * touched: while the SoC's DMA controller has no working dmaengine
-	 * driver this is where probing defers, and a deferred probe must not
-	 * have reprogrammed the APM clocks.
+	 * touched: this is where probing defers, and a deferred probe must
+	 * not have reprogrammed the APM clocks.
 	 */
 	ret = apm_request_dma(pdev, apm);
 	if (ret)

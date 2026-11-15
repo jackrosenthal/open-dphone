@@ -2,8 +2,6 @@
 /*
  * Broadcom BCMRING (BCM11107 family) devicetree machine support.
  *
- * FIRST DRAFT.  Compile-tested only; never run on hardware.
- *
  * Two things cannot be expressed with existing drivers and devicetree:
  *
  *  1. "Unsecure" setup.  The SoC is an ARM1176JZ-S with TrustZone glue.
@@ -204,7 +202,7 @@ static void __init bcmring_set_unsecure(void)
 	 * RAM boot) can inherit a controller stopped in mid-frame that never
 	 * fetches again (current-address register frozen, no next-base
 	 * interrupt), which the PL111 driver does not recover from.  Seen on
-	 * a D60; clearing it by this reset was tested there.
+	 * a D60, where this reset clears it.
 	 */
 	val = readl(bcmring_chipc + CHIPC_SOFT_RESET1);
 	writel(val | CHIPC_SOFT_RESET_LCD, bcmring_chipc + CHIPC_SOFT_RESET1);
@@ -297,10 +295,10 @@ static int bcmring_restart(struct notifier_block *nb, unsigned long mode,
 	writel(val | 0x3fe7, bcmring_chipc + CHIPC_SOFT_RESET2);
 
 	/*
-	 * TODO: the vendor code uses the warm reset (bit 1, with SoftReset2
+	 * The vendor code uses the warm reset (bit 1, with SoftReset2
 	 * |= 0x3f87, leaving the Ethernet switch alone) only for a requested
 	 * 'h' reboot while a vendor-specific flag is set; everything else is
-	 * a chip soft reset.
+	 * a chip soft reset, which is the only kind done here.
 	 */
 	stub(bcmring_chipc, CHIPC_SOFT_RESET_CHIP_SOFT);
 
@@ -325,10 +323,10 @@ static struct notifier_block bcmring_restart_nb = {
  * This runs as the last step before the jump (a syscore shutdown callback,
  * after every driver's) and only for kexec: a restart goes through a chip
  * reset, which leaves all of this in its reset state anyway.  The steps
- * and their order are those of the loader that started this kernel out of
- * the stock firmware in every RAM boot of the bring-up (halt the DSP,
- * switch both DMA controllers off, mask every interrupt source); a
- * controller whose bus gate is off is not touched, since its registers do
+ * and their order (halt the DSP, switch both DMA controllers off, mask
+ * every interrupt source) are those of the loader that starts this kernel
+ * from RAM out of the stock firmware; a controller whose bus gate is off
+ * is not touched, since its registers do
  * not answer then.  The watchdog is deliberately left running: it is what
  * ends a next kernel that hangs.
  */

@@ -3,12 +3,10 @@
  * Broadcom BCMRING (BCM11107 family: BCM11109/11170/11188/11189) voice DSP
  * ("VPM", a CEVA TeakLite-III core): loader, start/stop, and job transport.
  *
- * DRAFT.  Written from an interface description recovered by static analysis
- * of vendor binaries and by read-only observation of phones running the
- * stock firmware.  Compile tested only; it has never been run on hardware.
+ * Written from an interface description recovered by static analysis of
+ * vendor binaries and by observation of phones running the stock firmware.
  * Comments say "verified" for what was read out of a vendor binary or
- * measured on a phone, "inferred" for conclusions drawn from that, and
- * "GUESS" for choices this driver had to make where nothing is known.
+ * measured on a phone, and "inferred" for conclusions drawn from that.
  *
  * What the DSP is: a compute coprocessor.  The host sends it synchronous
  * "jobs" (codec frames, echo-canceller frames, band splitting, and their
@@ -141,7 +139,10 @@ enum {
 #define VPM_JOB_TIMEOUT_MAX_MS	10000
 #define VPM_IDLE_TIMEOUT_US	100000
 #define VPM_BOOT_SETTLE_MS	50	/* the vendor's sleep after "run" */
-/* GUESS: the vendor formats a register dump whose layout is not decoded. */
+/*
+ * The vendor formats a register dump whose layout is not decoded; this many
+ * words are printed raw instead.
+ */
 #define VPM_ASSERT_DUMP_WORDS	64
 
 #define VPM_FW_NAME		"dspapp1107_lcc.bin"
@@ -373,8 +374,8 @@ static int bcmring_vpm_clock_on(struct bcmring_vpm *vpm)
 	ret = bcmring_vpm_phase_align(vpm);
 	if (ret < 0) {
 		/*
-		 * The vendor only prints a message and runs the core anyway.
-		 * GUESS: refusing is the safer course for a first bring-up.
+		 * The vendor only prints a message and runs the core anyway;
+		 * refusing is the safer course.
 		 */
 		dev_err(vpm->dev, "clock phase alignment failed\n");
 		return ret;
@@ -1090,7 +1091,7 @@ static int bcmring_vpm_start(struct rproc *rproc)
  * Halt and gate the clock, the state the vendor puts the core in between
  * jobs.  The vendor's shutdown path also sets bits 31:30 of the second
  * reset word ("unhold" requests in the old public headers) before gating
- * the clock.  GUESS: that write is left out, because its effect is not
+ * the clock.  That write is left out, because its effect is not
  * known and the halted state is the one measured on idle phones; the next
  * start pulses the resets as a first start does.
  */

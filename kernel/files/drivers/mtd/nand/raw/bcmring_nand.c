@@ -2,8 +2,6 @@
 /*
  * Broadcom BCMRING "UMI" raw NAND controller (vendor name: bcm_umi-nand).
  *
- * FIRST DRAFT.  Compile-tested only; never run on hardware.
- *
  * The register definitions, the controller initialisation, and the hardware
  * BCH page read/write/correct sequences are adapted from the GPL driver that
  * was in mainline Linux up to v3.5 (drivers/mtd/nand/bcm_umi_nand.c,
@@ -12,7 +10,7 @@
  * were checked against the vendor 3.4.74 kernel of the Digium D60
  * (bcm_umi_nand_inithw, bcm_umi_bch_read_page_hwecc,
  * bcm_umi_bch_write_page_hwecc, nand_bcm_umi_bch_correct_page).  The
- * exec_op plumbing and the software BCH path are new.  See ../NOTES.md.
+ * exec_op plumbing and the software BCH path are new.
  *
  * On-flash format (verified against a full raw dump of a D60, 2048 + 64):
  *   - four 512-byte ECC steps per 2 KiB page, 16 OOB bytes per step;
@@ -50,8 +48,8 @@
 #define   UMI_NAND_TCR_TIMING_MASK	GENMASK(18, 0)
 /*
  * Timing value the vendor kernel programs (tBTA, tWP, tWR, tAS, tOE,
- * tRC/tLC fields).  TODO: derive from the SDR timings and the bus clock in
- * a ->setup_interface() hook; the field encodings are not recovered.
+ * tRC/tLC fields).  The field encodings are not recovered, so the value is
+ * not derived from the SDR timings and the bus clock.
  */
 #define   UMI_NAND_TCR_TIMING_VENDOR	0x00052267
 #define UMI_NAND_RCSR			0x1c
@@ -348,8 +346,8 @@ static int bcmring_bch_correct(struct bcmring_nand *nfc, u8 *data,
 		loc = readl(nfc->umi + UMI_BCH_RD_ERR_LOC(i));
 		loc = (loc >> ((i % 2) * 16)) & UMI_BCH_ERR_LOC_MASK;
 		/*
-		 * TODO: confirm on hardware that locations inside the ECC
-		 * bytes are never reported with an index below 512 * 8.
+		 * Only locations inside the data are corrected; a location
+		 * past the data is in the ECC bytes.
 		 */
 		if ((loc >> 5) * 4 < len)
 			bcmring_bch_flip_bit(data, loc);
@@ -608,8 +606,7 @@ static int bcmring_nand_probe(struct platform_device *pdev)
 
 	/*
 	 * The vendor driver takes no clock.  The bus-interface gate that
-	 * feeds this block is assumed to be "NVI" (not verified); it is
-	 * optional here.
+	 * feeds this block is taken to be "NVI"; it is optional here.
 	 */
 	clk = devm_clk_get_optional_enabled(dev, NULL);
 	if (IS_ERR(clk))

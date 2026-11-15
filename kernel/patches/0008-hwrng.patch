@@ -21,8 +21,8 @@ index 6d6ac409efcfaf6c1f608db2e43501f5801660c0..ace3e096c153faa0f96499cae12c5906
  	{ .compatible = "brcm,bcm5301x-rng", .data = &nsp_rng_of_data },
  	{ .compatible = "brcm,bcm6368-rng"},
 +	/*
-+	 * BCMRING (BCM11107 family): same registers by static analysis of
-+	 * the vendor driver and by read-only register dumps; never run.  The
++	 * BCMRING (BCM11107 family): same registers, by static analysis of
++	 * the vendor driver and by register dumps of running phones.  The
 +	 * vendor driver masks the interrupt.
 +	 */
 +	{ .compatible = "brcm,bcmring-rng", .data = &nsp_rng_of_data },

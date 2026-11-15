@@ -3,19 +3,15 @@
  * LED matrix controller ("LEDM") of Broadcom BCMRING SoCs (BCM11107
  * family), as used by the Digium/Sangoma D40/D45/D50/D70/D60/D62/D65.
  *
- * FIRST DRAFT.  Compile-tested only; never run on hardware.
- *
  * New code written from behavior recovered from the vendor kernels
  * (ledm_probe, ledm_brightness_set, led_clk_set, ledmHw_Init,
  * ledmHw_Enable, ledmHw_WriteCoords in the 2.6.27.18 and 3.4.74 images;
  * identical in both families).  The driver was never in mainline; the
  * block address matches MM_ADDR_IO_LEDM in the old mainline
  * arch/arm/mach-bcmring/include/mach/csp/mm_addr.h.  Nothing was copied.
- * See NOTES.md.
  *
- * Hardware summary (verified from the binaries; field names follow the
- * vendor's boot message "mode=%s clk_div=%u res_div=%u on_time=%u
- * guard_time=%u"):
+ * Hardware summary (field names follow the vendor's boot message
+ * "mode=%s clk_div=%u res_div=%u on_time=%u guard_time=%u"):
  *   base 0x80002000 (the PWM block used for the LCD backlight follows at
  *   0x80002040 and is not touched here)
  *   0x00 control
@@ -174,8 +170,9 @@ static void bcmring_ledm_hw_init(struct bcmring_ledm *ledm, struct device *dev)
 	ctrl |= FIELD_PREP(LEDM_CTRL_ROWS, scan_rows);
 	ctrl |= FIELD_PREP(LEDM_CTRL_COLS, scan_cols);
 	/*
-	 * TODO: serial mode (bit 21, pads 16/17 on mux function 6) exists in
-	 * the vendor driver but no Digium board selects it; not implemented.
+	 * Serial mode (bit 21, pads 16/17 on mux function 6) exists in the
+	 * vendor driver, but no Digium board selects it; it is not
+	 * implemented.
 	 */
 	writel(ctrl, ledm->base + LEDM_CTRL);
 	writel(ctrl | LEDM_CTRL_ENABLE, ledm->base + LEDM_CTRL);

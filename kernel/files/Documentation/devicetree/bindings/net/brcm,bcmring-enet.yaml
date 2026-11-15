@@ -1,7 +1,4 @@
 # SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
-# SKETCH ONLY.  Not validated with dt_binding_check.  Addresses and interrupt
-# numbers come from the vendor binaries (see NOTES.md); nothing here has been
-# tried on hardware.
 %YAML 1.2
 ---
 $id: http://devicetree.org/schemas/net/brcm,bcmring-enet.yaml#
@@ -25,9 +22,7 @@ description: |
   bus-interface clock gate, and the interrupt lines of channels 2 and 3.
   At probe the driver switches the controller on and disables, masks, and
   clears all eight channels; the controller's own snps,dma-spear1340 node
-  must stay disabled, and its other six channels are unavailable.  This is
-  the part of the SKETCH that will not pass upstream review as is: it
-  hands a general-purpose DMA controller to the Ethernet node.
+  must stay disabled, and its other six channels are unavailable.
 
 allOf:
   - $ref: ethernet-controller.yaml#

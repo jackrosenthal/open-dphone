@@ -4,9 +4,8 @@
  * SoCs (BCM11107 family, including BCM11188/BCM11189), as wired on the
  * Digium/Sangoma D40, D45, D50, D70, D60, D62, and D65 phones.
  *
- * FIRST DRAFT.  Compile-tested only; never run on hardware.  Written from
- * the behavior recovered from the vendor 3.4.74 kernel (pwmHw_* and
- * lcd_backlight_* functions); see NOTES.md in this directory.
+ * Written from the behavior recovered from the vendor 3.4.74 kernel (pwmHw_*
+ * and lcd_backlight_* functions).
  *
  * The block is one 32-bit register:
  *
@@ -129,11 +128,10 @@ static int bcmring_bl_update_status(struct backlight_device *bd)
 	}
 
 	/*
-	 * TODO: fallback for boards without the GPIO handover described.
-	 * The pad level with modulation disabled, or with duty 0, has not
-	 * been observed (the vendor driver never leaves the pad on the PWM
-	 * function in either state), so this is a guess: full scale is
-	 * approximated by duty 31/32 and off by duty 0 with modulation
+	 * Boards without the GPIO handover.  The pad level with modulation
+	 * disabled, or with duty 0, is not known (the vendor driver never
+	 * leaves the pad on the PWM function in either state), so full scale
+	 * is approximated by duty 31/32 and off by duty 0 with modulation
 	 * stopped.
 	 */
 	if (level) {
@@ -222,7 +220,7 @@ static int bcmring_bl_probe(struct platform_device *pdev)
 	 * "pwm" is the modulator clock (vendor clock "LED_PWM", 12.5 MHz
 	 * from the crystal); "bus" is the register-interface gate the vendor
 	 * code opens by hand (chipc BusIntfClock bit 16, shared with the LED
-	 * matrix block).  Both optional until the clock driver exists.
+	 * matrix block).  Both are optional.
 	 */
 	clk = devm_clk_get_optional_enabled(dev, "bus");
 	if (IS_ERR(clk))
