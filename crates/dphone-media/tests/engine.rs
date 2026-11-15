@@ -469,6 +469,32 @@ fn tones_ring_and_volume() {
         r.core.handle(Command::PlayRing(None, 4096));
         assert!(!r.events.try_iter().any(|e| matches!(e, Event::SoundEnded { .. })), "a ring is not a sound file");
 
+        // The gain of a sounding ring changes without starting it again
+        // (the volume keys while the ringer sounds): three passes of a
+        // 0.1 s burst and a 0.1 s pause, the middle one at no gain.
+        let burst: std::sync::Arc<[i16]> =
+            (0..1600).map(|i| ((i as f64 * 1000.0 * std::f64::consts::TAU / 16_000.0).sin() * 8000.0) as i16).collect();
+        r.core.handle(Command::SetRingGain(0));
+        r.core.handle(Command::PlayRing(Some(RingSource::Pcm { samples: burst, pause_ms: 100 }), 4096));
+        let mut passes = Vec::new();
+        for gain in [4096, 0, 4096] {
+            r.core.handle(Command::SetRingGain(gain));
+            r.audio.lock().unwrap().played.clear();
+            for _ in 0..20 {
+                r.core.tick();
+            }
+            let played = std::mem::take(&mut r.audio.lock().unwrap().played);
+            let (burst, pause) = played.split_at(played.len() / 2);
+            passes.push((goertzel(burst, 1000, r.rate), goertzel(pause, 1000, r.rate)));
+        }
+        assert!(passes[0].0 > 1000.0 && passes[2].0 > 1000.0, "{family:?}: {passes:?}");
+        assert!(passes[1].0 < 50.0, "{family:?}: {passes:?}");
+        // Had a gain change started the ring again, a burst would have
+        // sounded where a pause belongs.
+        assert!(passes.iter().all(|p| p.1 < p.0.max(1000.0) / 4.0), "{family:?}: {passes:?}");
+        r.core.handle(Command::PlayRing(None, 4096));
+        r.audio.lock().unwrap().played.clear();
+
         // A sound file: 0.25 s of 1 kHz played once from 0.05 s in; the
         // engine says where it ended.
         let file: std::sync::Arc<[i16]> =

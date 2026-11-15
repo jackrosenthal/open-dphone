@@ -1044,18 +1044,26 @@ impl Default for Audio {
 }
 
 impl Audio {
+    /// The volume the volume keys adjust now (never `Current`): that of
+    /// the path that carries a call, dialing, or a tone, and the ringer's
+    /// when the phone is idle or the ringer is what sounds (the ringer
+    /// uses the speaker).
+    pub fn current_target(&self) -> VolumeTarget {
+        match self.path {
+            AudioPath::Handset => VolumeTarget::Handset,
+            AudioPath::Headset => VolumeTarget::Headset,
+            AudioPath::Speaker if !self.ringing => VolumeTarget::Speaker,
+            AudioPath::Speaker | AudioPath::None => VolumeTarget::Ringer,
+        }
+    }
+
     pub fn volume(&self, target: VolumeTarget) -> u8 {
         match target {
             VolumeTarget::Handset => self.handset_volume,
             VolumeTarget::Headset => self.headset_volume,
             VolumeTarget::Speaker => self.speaker_volume,
             VolumeTarget::Ringer => self.ringer_volume,
-            VolumeTarget::Current => match self.path {
-                AudioPath::Handset => self.handset_volume,
-                AudioPath::Headset => self.headset_volume,
-                AudioPath::Speaker => self.speaker_volume,
-                AudioPath::None => self.ringer_volume,
-            },
+            VolumeTarget::Current => self.volume(self.current_target()),
         }
     }
 }

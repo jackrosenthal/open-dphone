@@ -15,6 +15,17 @@
 //! an off-hook dialer keeps its path open between the dial tone and the
 //! key tones; a request made for a call is dropped when the last call has
 //! gone and nothing is sounding any more.
+//!
+//! Volume keys: they adjust the volume of the path in use, and the
+//! ringer's when the phone is idle or ringing.  When they adjust the
+//! ringer's on an idle phone, the ringer sounds so that the user hears
+//! the new volume, as on stock (2_9_28 `phone`: the key handler at
+//! 0x7b310 and the volume observer at 0x7df40, which plays the active
+//! ringtone once on the ringer's output unless something is already
+//! playing; the volume popup's end at 0x7aa84 stops it, two seconds after
+//! the last volume key, or at any other key, the hookswitch, or a call).
+//! Further key presses change the volume of the ring that is sounding
+//! and do not start it again; so do they for a real ring.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
@@ -41,6 +52,11 @@ use crate::mainrole::{Context, state_model};
 const SLOTS: usize = 3;
 /// First RTP port tried; pairs go up from here.
 const RTP_PORT_BASE: u16 = 10_000;
+
+/// How long the ringer goes on sounding after the last volume key that
+/// adjusted it (stock's volume popup stays this long, and the ringtone it
+/// plays ends with it).
+const VOLUME_PREVIEW: Duration = Duration::from_secs(2);
 
 /// A negotiated stream, in this module's own terms.
 #[derive(Clone, Debug)]
@@ -111,6 +127,11 @@ struct Inner {
     /// timer whether the preview is still its own.
     preview: u64,
     previews: u64,
+    /// The preview in progress is the volume keys' (the ringer sounding
+    /// at the volume just set), not a ringtone picked in the settings.
+    preview_is_volume: bool,
+    /// The ringtone that incoming calls ring with (`active_ringtone`).
+    ringtone: String,
     /// The sound file playing for an app.
     playback: Option<Playback>,
     /// Sound files stopped or replaced, until the engine says where they
@@ -167,6 +188,40 @@ fn tone_spec(tone: Tone) -> Option<ToneSpec> {
 }
 
 impl AudioService {
+    /// The service with no engine yet.
+    fn new(store: Store, family: dphone_vpm::Family) -> AudioService {
+        AudioService {
+            inner: Arc::new(Mutex::new(Inner {
+                engine: None,
+                why_no_engine: "not started".into(),
+                family,
+                slots: [None; SLOTS],
+                reserved: HashMap::new(),
+                ports: HashMap::new(),
+                started: HashMap::new(),
+                connected: Vec::new(),
+                page: None,
+                requested: None,
+                release_when_quiet: false,
+                tone: None,
+                ringing: false,
+                sound: false,
+                preview: 0,
+                previews: 0,
+                preview_is_volume: false,
+                ringtone: String::new(),
+                playback: None,
+                ended: Vec::new(),
+                playbacks: 0,
+                path: AudioPath::None,
+                next_port: RTP_PORT_BASE,
+                bind_ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            })),
+            store,
+            listener: Arc::new(Mutex::new(None)),
+        }
+    }
+
     /// Codecs that can run now.
     pub fn codecs(&self) -> Vec<PayloadCodec> {
         let inner = self.inner.lock().unwrap();
@@ -198,6 +253,7 @@ impl AudioService {
 
     /// Reserve an RTP/RTCP socket pair for a call; returns the RTP port.
     pub fn open(&self, call: CallId) -> Result<u16, String> {
+        self.end_volume_preview(None);
         let mut inner = self.inner.lock().unwrap();
         if inner.engine.is_none() {
             return Err(format!("audio is not available: {}", inner.why_no_engine));
@@ -305,6 +361,9 @@ impl AudioService {
     /// disconnect).  Unlike [`AudioService::connect`], which call control
     /// replaces wholesale, this stays until changed.
     pub fn connect_page(&self, call: Option<CallId>) {
+        if call.is_some() {
+            self.end_volume_preview(None);
+        }
         self.inner.lock().unwrap().page = call;
         self.refresh();
     }
@@ -324,6 +383,9 @@ impl AudioService {
     }
 
     pub fn tone(&self, tone: Option<Tone>) {
+        if tone.is_some() {
+            self.end_volume_preview(None);
+        }
         {
             let mut inner = self.inner.lock().unwrap();
             inner.tone = tone;
@@ -428,6 +490,9 @@ impl AudioService {
     }
 
     pub fn request_path(&self, path: AudioPath) {
+        if path != AudioPath::None {
+            self.end_volume_preview(None);
+        }
         {
             let mut inner = self.inner.lock().unwrap();
             inner.requested = (path != AudioPath::None).then_some(path);
@@ -436,9 +501,11 @@ impl AudioService {
         self.refresh();
     }
 
-    /// Take the volume settings from the merged configuration.
+    /// Take the volume settings and the ringtone from the merged
+    /// configuration.
     pub fn apply_config(&self, cfg: &dphone_config::Config) {
         let level = |id: &str, now: u8| cfg.setting_num::<u8>(id).map(|v| v.min(VOLUME_MAX)).unwrap_or(now);
+        self.inner.lock().unwrap().ringtone = cfg.ringtones().active;
         self.store.update::<Audio, _>(|a| {
             a.handset_volume = level("handset_volume", a.handset_volume);
             a.headset_volume = level("headset_volume", a.headset_volume);
@@ -500,7 +567,8 @@ impl AudioService {
         });
     }
 
-    fn set_volume(&self, target: VolumeTarget, level: u8) {
+    /// Sets a volume; returns which one `target` was (never `Current`).
+    fn set_volume(&self, target: VolumeTarget, level: u8) -> VolumeTarget {
         let level = level.min(VOLUME_MAX);
         let (path, ringing) = {
             let inner = self.inner.lock().unwrap();
@@ -530,9 +598,110 @@ impl AudioService {
             VolumeTarget::Headset => apply(MPath::Headset),
             VolumeTarget::Speaker => apply(MPath::Speaker),
             VolumeTarget::Ringer | VolumeTarget::Current => {
-                // The ring player takes its gain when it starts; a change
-                // while ringing applies from the next ring.
+                // A ring that is sounding (for a call, or a preview) goes
+                // on at the new volume; an app's sound file, which plays
+                // in the ring's place, is not the ringer's to scale.
+                if inner.ringing && inner.playback.is_none() {
+                    let _ = inner.send(Ec::SetRingGain(ring_gain_q12(level)));
+                }
             }
+        }
+        target
+    }
+
+    /// The volume keys adjusted the ringer's volume: on an idle phone the
+    /// ringer sounds, with the ringtone calls ring with, until
+    /// [`VOLUME_PREVIEW`] after the last such key (or until something
+    /// else happens: see [`AudioService::end_volume_preview`]).  A ring
+    /// that is already sounding is left to go on, at the new volume.
+    fn volume_preview(&self) {
+        let (calls, off_hook) =
+            (self.store.read::<dphone_state::Calls, _>(|c| !c.is_idle()), self.store.read::<Audio, _>(|a| a.off_hook));
+        let (mine, started) = {
+            let mut inner = self.inner.lock().unwrap();
+            let started = inner.preview == 0;
+            if started {
+                let busy = calls
+                    || off_hook
+                    || inner.ringing
+                    || inner.path != AudioPath::None
+                    || inner.requested.is_some()
+                    || inner.tone.is_some()
+                    || inner.sound
+                    || inner.playback.is_some()
+                    || inner.page.is_some()
+                    || !inner.connected.is_empty()
+                    || !inner.ports.is_empty()
+                    || inner.slots.iter().any(Option::is_some);
+                if busy {
+                    return;
+                }
+                inner.ringing = true;
+                let source = super::ringtones::source(&inner.ringtone);
+                let level = self.store.read::<Audio, _>(|a| a.ringer_volume);
+                let _ = inner.send(Ec::PlayRing(Some(source), ring_gain_q12(level)));
+            } else if !inner.preview_is_volume {
+                // A ringtone picked in the settings is sounding; it ends
+                // by its own clock.
+                return;
+            }
+            inner.previews += 1;
+            inner.preview = inner.previews;
+            inner.preview_is_volume = true;
+            (inner.preview, started)
+        };
+        if started {
+            self.refresh();
+        }
+        let me = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(VOLUME_PREVIEW).await;
+            me.end_volume_preview(Some(mine));
+        });
+    }
+
+    /// Stops the ringer if it is sounding for the volume keys: `Some` is
+    /// the preview whose time is up (nothing if a later key press has
+    /// taken it over), `None` anything that ends it at once (another key,
+    /// the hookswitch, a call, a tone, a path request).  A real ring and
+    /// a ringtone picked in the settings are not touched.
+    fn end_volume_preview(&self, timed_out: Option<u64>) {
+        {
+            let inner = self.inner.lock().unwrap();
+            if inner.preview == 0 || !inner.preview_is_volume || timed_out.is_some_and(|t| t != inner.preview) {
+                return;
+            }
+        }
+        self.stop_sound();
+    }
+
+    /// A key or the hookswitch, from the event stream.
+    fn input_event(&self, event: &dphone_state::Event) {
+        match *event {
+            dphone_state::Event::Hook { off_hook, .. } => {
+                self.end_volume_preview(None);
+                self.store.update::<Audio, _>(|a| a.off_hook = off_hook);
+                {
+                    let mut inner = self.inner.lock().unwrap();
+                    // Lifting the handset takes the audio there; replacing it
+                    // drops an explicit handset choice (call control decides
+                    // whether the call ends).
+                    if off_hook {
+                        if inner.path != AudioPath::None && !inner.ringing {
+                            inner.requested = Some(AudioPath::Handset);
+                        }
+                    } else if inner.requested == Some(AudioPath::Handset) {
+                        inner.requested = None;
+                    }
+                }
+                self.refresh();
+            }
+            dphone_state::Event::Key { key, down: true, .. }
+                if !matches!(key, dphone_state::Key::VolumeUp | dphone_state::Key::VolumeDown) =>
+            {
+                self.end_volume_preview(None);
+            }
+            _ => {}
         }
     }
 
@@ -560,10 +729,17 @@ impl AudioService {
                 let _ = self.inner.lock().unwrap().send(Ec::MuteMic(on));
                 self.store.update::<Audio, _>(|a| a.muted = on);
             }
-            Command::SetVolume { target, level } => self.set_volume(target, level),
+            Command::SetVolume { target, level } => {
+                self.set_volume(target, level);
+            }
             Command::AdjustVolume { target, delta } => {
                 let now = self.current_level(target) as i16;
-                self.set_volume(target, (now + delta as i16).clamp(0, VOLUME_MAX as i16) as u8);
+                let which = self.set_volume(target, (now + delta as i16).clamp(0, VOLUME_MAX as i16) as u8);
+                // The volume keys (they step the volume in use), on the
+                // ringer's: let the user hear it, even at a limit.
+                if target == VolumeTarget::Current && which == VolumeTarget::Ringer {
+                    self.volume_preview();
+                }
             }
             Command::SetHeadsetMode { on } => {
                 self.store.update::<Audio, _>(|a| a.headset_mode = on);
@@ -590,6 +766,7 @@ impl AudioService {
                     inner.sound = true;
                     inner.previews += 1;
                     inner.preview = inner.previews;
+                    inner.preview_is_volume = false;
                     inner.preview
                 };
                 self.refresh();
@@ -814,34 +991,7 @@ pub async fn start(ctx: &Context, hal: Option<SharedHal>) -> AudioService {
         crate::model::Family::Old => dphone_vpm::Family::Old,
         crate::model::Family::New => dphone_vpm::Family::New,
     };
-    let service = AudioService {
-        inner: Arc::new(Mutex::new(Inner {
-            engine: None,
-            why_no_engine: "not started".into(),
-            family,
-            slots: [None; SLOTS],
-            reserved: HashMap::new(),
-            ports: HashMap::new(),
-            started: HashMap::new(),
-            connected: Vec::new(),
-            page: None,
-            requested: None,
-            release_when_quiet: false,
-            tone: None,
-            ringing: false,
-            sound: false,
-            preview: 0,
-            previews: 0,
-            playback: None,
-            ended: Vec::new(),
-            playbacks: 0,
-            path: AudioPath::None,
-            next_port: RTP_PORT_BASE,
-            bind_ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-        })),
-        store: ctx.store.clone(),
-        listener: Arc::new(Mutex::new(None)),
-    };
+    let service = AudioService::new(ctx.store.clone(), family);
     ctx.store.update::<Audio, _>(|a| a.dsp = DspStatus::Starting);
 
     let built = if ctx.sim {
@@ -1031,30 +1181,15 @@ fn decode_sound(bytes: &[u8]) -> Result<Vec<i16>, String> {
     Ok(bytes.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)).collect())
 }
 
-/// Keep `Audio::off_hook` current and move a call between handset and
-/// speaker when the handset is lifted or replaced.
+/// Keep `Audio::off_hook` current, move a call between handset and
+/// speaker when the handset is lifted or replaced, and end the volume
+/// keys' ringer preview at any other key.
 async fn hook_watch(service: AudioService, store: Store) {
     let sub = store.subscribe_events(dphone_state::Topic::Audio);
     loop {
         let wake = sub.changed().await;
         for event in wake.events {
-            if let dphone_state::Event::Hook { off_hook, .. } = event {
-                store.update::<Audio, _>(|a| a.off_hook = off_hook);
-                {
-                    let mut inner = service.inner.lock().unwrap();
-                    // Lifting the handset takes the audio there; replacing it
-                    // drops an explicit handset choice (call control decides
-                    // whether the call ends).
-                    if off_hook {
-                        if inner.path != AudioPath::None && !inner.ringing {
-                            inner.requested = Some(AudioPath::Handset);
-                        }
-                    } else if inner.requested == Some(AudioPath::Handset) {
-                        inner.requested = None;
-                    }
-                }
-                service.refresh();
-            }
+            service.input_event(&event);
         }
     }
 }
@@ -1161,7 +1296,7 @@ fn register_diag(ctx: &Context, service: AudioService) {
                         };
                         match (target, level.parse::<u8>()) {
                             (Some(t), Ok(l)) => {
-                                svc.set_volume(t, l);
+                                let _ = svc.set_volume(t, l);
                                 Ok(String::new())
                             }
                             _ => Err("volume handset|headset|speaker|ringer|current 0..10".into()),
@@ -1386,6 +1521,239 @@ mod tests {
         assert_eq!(ring_gain_q12(5), 4096);
         assert_eq!(ring_gain_q12(0), 0);
         assert!(ring_gain_q12(10) > ring_gain_q12(9));
+    }
+}
+
+/// The volume keys on the ringer's volume: the ringer sounds on an idle
+/// phone and only there, and stops by itself or when something happens.
+/// (No engine runs here: these check what the service decides, and
+/// `dphone-media`'s engine tests check that a sounding ring takes a new
+/// gain without starting again.)
+#[cfg(test)]
+mod volume_key_tests {
+    use super::*;
+    use dphone_state::{AccountId, Call, CallState, Calls, Direction, Event, InputSource, Key, Model, Party};
+
+    fn service() -> AudioService {
+        AudioService::new(Store::new(Model::D60), dphone_vpm::Family::New)
+    }
+
+    fn key(svc: &AudioService, delta: i8) {
+        svc.command(Command::AdjustVolume { target: VolumeTarget::Current, delta }).unwrap();
+    }
+
+    /// The volume keys' preview in progress, if any.
+    fn preview(svc: &AudioService) -> Option<u64> {
+        let inner = svc.inner.lock().unwrap();
+        (inner.preview != 0 && inner.preview_is_volume).then_some(inner.preview)
+    }
+
+    /// (the ringer sounds, the open path) as the rest of the phone sees them.
+    fn sounding(svc: &AudioService) -> (bool, AudioPath) {
+        assert_eq!(svc.inner.lock().unwrap().ringing, svc.store.get::<Audio>().ringing);
+        svc.store.read::<Audio, _>(|a| (a.ringing, a.path))
+    }
+
+    fn add_call(svc: &AudioService, state: CallState) -> CallId {
+        let id = svc.store.next_call_id();
+        svc.store.update::<Calls, _>(|c| {
+            let mut call = Call::new(id, AccountId(0), Direction::Incoming, Party::default());
+            call.state = state;
+            c.calls.push(call);
+        });
+        id
+    }
+
+    #[tokio::test]
+    async fn the_ringer_sounds_at_the_new_volume_on_an_idle_phone() {
+        let svc = service();
+        assert_eq!(sounding(&svc), (false, AudioPath::None));
+        key(&svc, 1);
+        assert_eq!(svc.store.get::<Audio>().ringer_volume, 6);
+        assert_eq!(sounding(&svc), (true, AudioPath::Speaker), "the ringer, on its own output");
+        let first = preview(&svc).expect("a preview");
+        // It is the ringer's volume that the popup shows and that the
+        // next key adjusts, though the speaker is what is open.
+        let a = svc.store.get::<Audio>();
+        assert_eq!((a.current_target(), a.volume(VolumeTarget::Current)), (VolumeTarget::Ringer, 6));
+        // No lamp for it, as for a ring.
+        assert_eq!(dphone_state::audio_lamps(&a, &svc.store.get::<Calls>()).0, dphone_state::LampState::OFF);
+
+        // Another key: the same ring goes on, and the time starts again.
+        key(&svc, 1);
+        let second = preview(&svc).expect("still a preview");
+        assert_ne!(first, second);
+        let a = svc.store.get::<Audio>();
+        assert_eq!((a.ringer_volume, a.speaker_volume, a.ringing), (7, 5, true));
+        svc.end_volume_preview(Some(first));
+        assert_eq!(sounding(&svc), (true, AudioPath::Speaker), "the first key's time is not the preview's any more");
+        svc.end_volume_preview(Some(second));
+        assert_eq!((sounding(&svc), preview(&svc)), ((false, AudioPath::None), None));
+
+        // At a limit the volume stays and the ringer still sounds; at 0
+        // it "sounds" at no gain.
+        svc.store.update::<Audio, _>(|a| a.ringer_volume = VOLUME_MAX);
+        key(&svc, 1);
+        assert_eq!((svc.store.get::<Audio>().ringer_volume, sounding(&svc).0), (VOLUME_MAX, true));
+        svc.end_volume_preview(None);
+        svc.store.update::<Audio, _>(|a| a.ringer_volume = 1);
+        key(&svc, -1);
+        assert_eq!((svc.store.get::<Audio>().ringer_volume, sounding(&svc).0), (0, true));
+        svc.end_volume_preview(None);
+        assert_eq!(sounding(&svc), (false, AudioPath::None));
+
+        // Setting the ringer's volume some other way (the menu, the web
+        // UI) is not the volume keys.
+        svc.command(Command::SetVolume { target: VolumeTarget::Ringer, level: 4 }).unwrap();
+        svc.command(Command::AdjustVolume { target: VolumeTarget::Ringer, delta: 1 }).unwrap();
+        assert_eq!((svc.store.get::<Audio>().ringer_volume, sounding(&svc).0), (5, false));
+    }
+
+    #[tokio::test]
+    async fn it_stops_by_itself() {
+        let svc = service();
+        key(&svc, -1);
+        assert!(sounding(&svc).0);
+        tokio::time::sleep(VOLUME_PREVIEW / 2).await;
+        key(&svc, -1);
+        tokio::time::sleep(VOLUME_PREVIEW * 3 / 4).await;
+        assert!(sounding(&svc).0, "the time runs from the last key");
+        tokio::time::sleep(VOLUME_PREVIEW / 2).await;
+        assert_eq!((sounding(&svc), preview(&svc)), ((false, AudioPath::None), None));
+        assert_eq!(svc.store.get::<Audio>().ringer_volume, 3);
+    }
+
+    #[tokio::test]
+    async fn not_during_a_call() {
+        // A call on the handset: the keys are the handset's.
+        let svc = service();
+        add_call(&svc, CallState::Active);
+        svc.request_path(AudioPath::Handset);
+        key(&svc, 1);
+        let a = svc.store.get::<Audio>();
+        assert_eq!((a.handset_volume, a.ringer_volume), (6, 5));
+        assert_eq!((sounding(&svc), preview(&svc)), ((false, AudioPath::Handset), None));
+
+        // A call with no path open (on hold): no ringer over it.
+        let svc = service();
+        add_call(&svc, CallState::Held { local: true, remote: false });
+        key(&svc, 1);
+        assert_eq!((sounding(&svc), preview(&svc)), ((false, AudioPath::None), None));
+
+        // Dial tone on the speaker: the keys are the speaker's.
+        let svc = service();
+        svc.tone(Some(Tone::Dial));
+        key(&svc, 1);
+        let a = svc.store.get::<Audio>();
+        assert_eq!((a.speaker_volume, a.ringer_volume), (6, 5));
+        assert_eq!((sounding(&svc), preview(&svc)), ((false, AudioPath::Speaker), None));
+
+        // The handset off its hook with nothing sounding.
+        let svc = service();
+        svc.input_event(&Event::Hook { off_hook: true, source: InputSource::Physical });
+        key(&svc, 1);
+        assert_eq!((sounding(&svc), preview(&svc)), ((false, AudioPath::None), None));
+    }
+
+    #[tokio::test]
+    async fn not_while_ringing_for_a_call() {
+        let svc = service();
+        add_call(&svc, CallState::Ringing);
+        svc.ring(Some("Classic"));
+        key(&svc, 1);
+        // The ringer's volume changed, and the ring is the call's still:
+        // nothing ends it but call control.
+        assert_eq!(svc.store.get::<Audio>().ringer_volume, 6);
+        assert_eq!((sounding(&svc), preview(&svc)), ((true, AudioPath::Speaker), None));
+        svc.end_volume_preview(None);
+        svc.input_event(&Event::Key { key: Key::Digit(5), down: true, source: InputSource::Physical });
+        tokio::time::sleep(VOLUME_PREVIEW + Duration::from_millis(200)).await;
+        assert_eq!(sounding(&svc), (true, AudioPath::Speaker));
+        svc.ring(None);
+        assert_eq!(sounding(&svc), (false, AudioPath::None));
+    }
+
+    #[tokio::test]
+    async fn the_handset_another_key_or_a_tone_stops_it() {
+        let svc = service();
+        let start = |svc: &AudioService| {
+            key(svc, 1);
+            assert_eq!(sounding(svc), (true, AudioPath::Speaker));
+        };
+        let stopped = |svc: &AudioService, what: &str| {
+            assert_eq!((sounding(svc).0, preview(svc)), (false, None), "{what}");
+        };
+
+        start(&svc);
+        svc.input_event(&Event::Hook { off_hook: true, source: InputSource::Physical });
+        stopped(&svc, "the handset lifted");
+        assert_eq!(sounding(&svc).1, AudioPath::None, "the ringer's speaker is not a path to move to the handset");
+        assert!(svc.store.get::<Audio>().off_hook);
+        svc.input_event(&Event::Hook { off_hook: false, source: InputSource::Physical });
+
+        // The volume keys themselves and key releases are not "another key".
+        start(&svc);
+        for (key, down) in [(Key::VolumeUp, true), (Key::VolumeDown, true), (Key::VolumeUp, false), (Key::Digit(5), false)] {
+            svc.input_event(&Event::Key { key, down, source: InputSource::Physical });
+            assert!(preview(&svc).is_some(), "{key:?} {down}");
+        }
+        svc.input_event(&Event::Key { key: Key::Digit(5), down: true, source: InputSource::Physical });
+        stopped(&svc, "another key");
+
+        start(&svc);
+        svc.tone(Some(Tone::Dial));
+        stopped(&svc, "a tone");
+        assert_eq!(svc.store.get::<Audio>().tone, Some(Tone::Dial));
+        svc.tone(None);
+
+        start(&svc);
+        svc.request_path(AudioPath::Speaker);
+        stopped(&svc, "the speaker key");
+        svc.request_path(AudioPath::None);
+        assert_eq!(sounding(&svc), (false, AudioPath::None));
+    }
+
+    #[tokio::test]
+    async fn an_arriving_call_takes_the_ringer() {
+        // Call control reserves the call's port first.
+        let svc = service();
+        key(&svc, 1);
+        let mine = preview(&svc).unwrap();
+        let call = add_call(&svc, CallState::Ringing);
+        let _ = svc.open(call);
+        assert_eq!((sounding(&svc), preview(&svc)), ((false, AudioPath::None), None));
+        svc.ring(Some("Classic"));
+        // The preview's time coming up, or another key, does not stop
+        // the call's ring.
+        svc.end_volume_preview(Some(mine));
+        svc.end_volume_preview(None);
+        assert_eq!((sounding(&svc), preview(&svc)), ((true, AudioPath::Speaker), None));
+
+        // The ring itself coming first does the same.
+        let svc = service();
+        key(&svc, 1);
+        let mine = preview(&svc).unwrap();
+        svc.ring(Some("Classic"));
+        assert_eq!(preview(&svc), None);
+        svc.end_volume_preview(Some(mine));
+        tokio::time::sleep(VOLUME_PREVIEW + Duration::from_millis(200)).await;
+        assert_eq!(sounding(&svc), (true, AudioPath::Speaker));
+    }
+
+    #[tokio::test]
+    async fn a_ringtone_tried_in_the_settings_is_left_alone() {
+        let svc = service();
+        svc.command(Command::PlaySound { name: "Classic".into() }).unwrap();
+        assert!(sounding(&svc).0);
+        key(&svc, 1);
+        // Its volume changes; it stays the settings' preview, which
+        // another key does not end.
+        assert_eq!(svc.store.get::<Audio>().ringer_volume, 6);
+        assert_eq!(preview(&svc), None);
+        svc.input_event(&Event::Key { key: Key::Down, down: true, source: InputSource::Physical });
+        assert!(sounding(&svc).0);
+        svc.command(Command::StopSound).unwrap();
+        assert_eq!(sounding(&svc), (false, AudioPath::None));
     }
 }
 

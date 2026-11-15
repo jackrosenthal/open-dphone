@@ -100,10 +100,13 @@ struct Host {
 
 impl EhsHost for Host {
     fn status(&mut self) -> PhoneStatus {
+        // The ringer also sounds with no call (a ringtone tried in the
+        // settings, the volume keys); that is nothing for the headset.
+        let alerting = self.store.read::<Calls, _>(|c| c.ringing().next().is_some());
         self.store.read::<Audio, _>(|a| PhoneStatus {
             headset_active: a.path == AudioPath::Headset,
             muted: a.muted,
-            ringing: a.ringing,
+            ringing: a.ringing && alerting,
             bluetooth_headset: a.headset_kind == HeadsetKind::Bluetooth,
         })
     }

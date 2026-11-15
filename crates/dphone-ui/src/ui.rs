@@ -797,6 +797,13 @@ impl Ui {
             }
         }
         let captures = self.nav.top_ref().captures_all_keys();
+        // Any other key takes the volume popup down, as on stock (whose
+        // `phone` hides it, and stops the ringer it sounded, on any event
+        // but a volume key; the audio subsystem stops the ringer here).
+        if self.popup.is_some() && !matches!(key, Key::VolumeUp | Key::VolumeDown) {
+            self.popup = None;
+            self.needs_draw = true;
+        }
         if !captures && matches!(key, Key::VolumeUp | Key::VolumeDown) {
             let delta = if key == Key::VolumeUp { 1 } else { -1 };
             self.store.post(Command::AdjustVolume { target: VolumeTarget::Current, delta });
@@ -832,6 +839,10 @@ impl Ui {
         self.off_hook = off_hook;
         self.store.emit(Event::Hook { off_hook, source });
         self.activity();
+        if self.popup.take().is_some() {
+            // The hookswitch takes the volume popup down as a key does.
+            self.needs_draw = true;
+        }
         if self.nav.kind == BaseKind::Update {
             return;
         }
@@ -1034,11 +1045,14 @@ impl Ui {
         // Volume popup.
         if self.popup.is_some() {
             let a = &st.audio;
-            let (label, icon) = match a.path {
-                AudioPath::Handset => (tr::VOL_HANDSET, "handset"),
-                AudioPath::Headset => (tr::VOL_HEADSET, "headset"),
-                AudioPath::Speaker => (tr::VOL_SPEAKER, "speaker"),
-                AudioPath::None => (tr::VOL_RINGER, "ring"),
+            // The ringer sounds on the speaker (for a call, or to let the
+            // user hear the volume the keys just set): that is the
+            // ringer's volume, not the speaker's.
+            let (label, icon) = match a.current_target() {
+                VolumeTarget::Handset => (tr::VOL_HANDSET, "handset"),
+                VolumeTarget::Headset => (tr::VOL_HEADSET, "headset"),
+                VolumeTarget::Speaker => (tr::VOL_SPEAKER, "speaker"),
+                VolumeTarget::Ringer | VolumeTarget::Current => (tr::VOL_RINGER, "ring"),
             };
             let (w, h) = if th.gray { (bounds.w * 3 / 4, th.line_h * 2 + 12) } else { (300, 84) };
             let inner = widgets::modal(c, th, bounds, w, h);

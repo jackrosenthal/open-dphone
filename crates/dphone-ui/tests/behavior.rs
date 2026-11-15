@@ -964,3 +964,53 @@ fn hardware_tests_go_over_an_app() {
     r.ui.pump();
     assert!(p.wait().is_err());
 }
+
+#[test]
+fn volume_popup_while_the_ringer_sounds() {
+    let rig = || {
+        let mut r = Rig::new(Model::D60);
+        r.ui.set_fixed_time(Some((1_000_000, 1_700_000_000)));
+        r.store.update::<Audio, _>(|a| {
+            a.ringer_volume = 3;
+            a.speaker_volume = 9;
+        });
+        r.ui.pump();
+        r
+    };
+    let shot = |r: &Rig| r.ui.canvas().pixels().to_vec();
+    let mut r = rig();
+    let idle = shot(&r);
+    r.tap(Key::VolumeUp);
+    assert_eq!(r.audio_cmds(), vec![Command::AdjustVolume { target: VolumeTarget::Current, delta: 1 }]);
+    let popup = shot(&r);
+    assert_ne!(popup, idle);
+    // The audio subsystem sounds the ringer, on the speaker, for the user
+    // to hear the volume: the popup stays the ringer's.
+    r.store.update::<Audio, _>(|a| {
+        a.path = AudioPath::Speaker;
+        a.ringing = true;
+    });
+    r.ui.pump();
+    assert_eq!(r.store.get::<Audio>().volume(VolumeTarget::Current), 3);
+    assert!(shot(&r) == popup, "the ringer's popup while the ringer sounds");
+    // The speaker open for anything else is the speaker's volume.
+    r.store.update::<Audio, _>(|a| a.ringing = false);
+    r.ui.pump();
+    assert_eq!(r.store.get::<Audio>().volume(VolumeTarget::Current), 9);
+    assert!(shot(&r) != popup, "the speaker's popup");
+    r.store.update::<Audio, _>(|a| a.path = AudioPath::None);
+    r.ui.pump();
+    assert!(shot(&r) == popup);
+
+    // Another key takes the popup down (the time is fixed: it did not
+    // run out), and so does the hookswitch.
+    r.tap(Key::Cancel);
+    assert!(shot(&r) == idle, "Cancel takes the popup down");
+    r.tap(Key::VolumeDown);
+    assert!(shot(&r) == popup);
+    r.hook(true);
+    let mut plain = rig();
+    plain.hook(true);
+    assert_eq!(r.screen(), plain.screen());
+    assert!(shot(&r) == shot(&plain), "the hookswitch takes the popup down");
+}

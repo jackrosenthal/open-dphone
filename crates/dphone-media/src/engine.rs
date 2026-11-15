@@ -202,6 +202,9 @@ pub enum Command {
     /// file: it plays once, and [`Event::SoundEnded`] says where it ended
     /// or was replaced.
     PlayRing(Option<RingSource>, i32),
+    /// Changes the gain of the ring that is sounding (4096 = unity); the
+    /// ring goes on from where it is.  Nothing if there is no ring.
+    SetRingGain(i32),
     /// Sends a digit on a stream, optionally with a tone to the user.
     SendDtmf { id: usize, key: char, duration_ms: u32, mode: DtmfMode, feedback: bool },
     /// The DSP is about to be restarted: send it nothing until
@@ -591,6 +594,11 @@ impl EngineCore {
                     p.set_gain_q12(gain_q12);
                     p
                 });
+            }
+            Command::SetRingGain(gain_q12) => {
+                if let Some(ring) = &mut self.ring {
+                    ring.set_gain_q12(gain_q12);
+                }
             }
             Command::SendDtmf { id, key, duration_ms, mode, feedback } => {
                 if feedback
