@@ -1,10 +1,16 @@
-//! Pre-rasterized glyph atlases (built by `build.rs`).
+//! Glyph tables built by `build.rs`: pre-rasterized outline fonts with
+//! 4-bit coverage (color skin), and bitmap fonts, one bit per pixel (gray
+//! skins).
 
-/// One glyph: 4-bit coverage, row-major, high nibble first, byte-aligned at
-/// its start.
+/// One glyph, row-major, byte-aligned at its start.  With 4-bit coverage:
+/// high nibble first.  One bit per pixel: most significant bit first, each
+/// row padded to a byte.
 #[derive(Clone, Copy, Debug)]
 pub struct GlyphRec {
-    pub ch: u32,
+    /// Offset of the glyph's data in the font's blob.
+    pub off: u32,
+    /// The code point (all are in the Basic Multilingual Plane).
+    pub ch: u16,
     pub adv: i8,
     /// Left edge relative to the pen.
     pub xoff: i8,
@@ -12,7 +18,6 @@ pub struct GlyphRec {
     pub top: i8,
     pub w: u8,
     pub h: u8,
-    pub off: u32,
 }
 
 /// One face at one pixel size.
@@ -21,6 +26,11 @@ pub struct FontData {
     pub px: u8,
     pub ascent: i8,
     pub descent: i8,
+    /// Bits per pixel of the glyph data: 4 (coverage, blended) or 1 (a
+    /// bitmap font: every set pixel is drawn solid).
+    pub bits: u8,
+    /// Where to look for a character this font lacks.
+    pub fallback: Option<&'static FontData>,
     /// Sorted by `ch`.
     pub glyphs: &'static [GlyphRec],
     pub data: &'static [u8],
@@ -28,18 +38,28 @@ pub struct FontData {
 
 impl FontData {
     pub fn glyph(&self, ch: char) -> Option<&GlyphRec> {
-        let c = ch as u32;
+        let c = u16::try_from(ch as u32).ok()?;
         self.glyphs.binary_search_by_key(&c, |g| g.ch).ok().map(|i| &self.glyphs[i])
     }
 
-    /// The glyph for `ch`, or `?` when the atlas lacks it.
-    pub fn glyph_or_fallback(&self, ch: char) -> Option<&GlyphRec> {
-        self.glyph(ch).or_else(|| self.glyph('?'))
+    /// The glyph for `ch` and the font that holds it: this font's, else
+    /// the fallback font's, else the fallback's replacement character
+    /// (U+FFFD), else this font's `?`.
+    pub fn glyph_or_fallback(&self, ch: char) -> Option<(&FontData, &GlyphRec)> {
+        if let Some(g) = self.glyph(ch) {
+            return Some((self, g));
+        }
+        if let Some(f) = self.fallback
+            && let Some(g) = f.glyph(ch).or_else(|| f.glyph('\u{FFFD}'))
+        {
+            return Some((f, g));
+        }
+        self.glyph('?').map(|g| (self, g))
     }
 
     /// Advance width of a string in pixels.
     pub fn width(&self, s: &str) -> i32 {
-        s.chars().filter_map(|c| self.glyph_or_fallback(c)).map(|g| g.adv as i32).sum()
+        s.chars().filter_map(|c| self.glyph_or_fallback(c)).map(|(_, g)| g.adv as i32).sum()
     }
 
     /// Ascent plus descent.
@@ -51,7 +71,7 @@ impl FontData {
     pub fn fit(&self, s: &str, max: i32) -> usize {
         let mut w = 0;
         for (i, c) in s.char_indices() {
-            w += self.glyph_or_fallback(c).map(|g| g.adv as i32).unwrap_or(0);
+            w += self.glyph_or_fallback(c).map(|(_, g)| g.adv as i32).unwrap_or(0);
             if w > max {
                 return i;
             }

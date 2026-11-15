@@ -160,7 +160,8 @@ pub fn softkey_bar(c: &mut Canvas, th: &Theme, labels: &[String; 4]) {
         if let Some(icon) = label.strip_prefix("icon:").and_then(|n| th.icon(n)) {
             c.icon_in(icon, body, th.sk_fg);
         } else {
-            c.text_in(f, body.inset_xy(4, 0), label, th.sk_fg, HAlign::Center);
+            // (On gray the cell is narrow, and the shape has no slanted sides.)
+            c.text_in(f, body.inset_xy(if th.gray { 2 } else { 4 }, 0), label, th.sk_fg, HAlign::Center);
         }
     }
 }

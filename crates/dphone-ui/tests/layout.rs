@@ -263,3 +263,39 @@ fn boot_screen_has_a_loading_bar_and_no_softkeys() {
         assert_eq!(ui.screen_name(), "idle", "{model}");
     }
 }
+
+#[test]
+fn gray_text_is_bitmap_with_a_fallback_font() {
+    use dphone_ui::appview::Font;
+    for model in [Model::D40, Model::D70] {
+        let th = Theme::for_model(model);
+        for role in [Font::Normal, Font::Bold, Font::Small, Font::Title, Font::Large] {
+            let f = th.font(role);
+            assert_eq!(f.bits, 1, "{model} {role:?}: a bitmap font");
+            // Latin text with accents comes from the face itself.
+            for ch in "Zoë Çelik Łukasz Ðặng…".chars() {
+                let (from, _) = f.glyph_or_fallback(ch).unwrap();
+                assert!(std::ptr::eq(from, f), "{model} {role:?}: {ch:?}");
+            }
+            // Greek and Cyrillic come from the fallback font, and a
+            // character neither has is the replacement character.
+            let fallback = f.fallback.expect("a fallback font");
+            for ch in "Жанна Ωέγα".chars().filter(|c| *c != ' ') {
+                let (from, g) = f.glyph_or_fallback(ch).unwrap();
+                assert!(std::ptr::eq(from, fallback) && g.ch as u32 == ch as u32, "{model} {role:?}: {ch:?}");
+            }
+            let (from, g) = f.glyph_or_fallback('漢').unwrap();
+            assert!(std::ptr::eq(from, fallback) && g.ch == 0xFFFD, "{model} {role:?}");
+            // The fallback's line fits in the face's.
+            assert!(fallback.ascent <= f.ascent && fallback.descent <= f.descent, "{model} {role:?}");
+            // Digits have one width.
+            let w = f.width("0");
+            assert!("123456789".chars().all(|d| f.width(&d.to_string()) == w), "{model} {role:?}");
+        }
+        assert_eq!(th.clock_font().bits, 1, "{model}");
+    }
+    // The color skin keeps its anti-aliased outline text.
+    let th = Theme::for_model(Model::D60);
+    assert_eq!(th.font(Font::Normal).bits, 4);
+    assert!(th.font(Font::Normal).fallback.is_none());
+}

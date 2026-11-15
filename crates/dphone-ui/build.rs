@@ -1,7 +1,9 @@
 //! Build-time asset pipeline: rasterizes the TrueType fonts in
-//! `assets/fonts` into glyph atlases and the SVG artwork in `assets/icons`
-//! and `assets/art` into per-skin bitmaps, so the phone renders with
-//! integer blits only.  (Floating point is used here, on the build host.)
+//! `assets/fonts` into glyph atlases (color skin), converts the bitmap
+//! fonts in `assets/fonts/bitmap` into one-bit glyph tables (gray skins),
+//! and rasterizes the SVG artwork in `assets/icons` and `assets/art` into
+//! per-skin bitmaps, so the phone renders with integer blits only.
+//! (Floating point is used here, on the build host.)
 //!
 //! Output: `$OUT_DIR/assets_gen.rs` plus one blob per table.
 
@@ -20,29 +22,38 @@ const SKIN_FILE_TAGS: [&str; 3] = ["small-gray", "large-gray", "color"];
 ///
 /// Color sizes follow the stock screenshots: 14 px body text (cap height
 /// 10), a 16 px title, and a clock whose digits are 64 px tall.
+///
+/// The gray skins (the first two rows) take bitmap fonts, drawn pixel for
+/// pixel in solid levels: on a 240x120 four-level panel, scaled outline
+/// text is blurry.  A file name ending in `.bdf` is a bitmap font in
+/// `assets/fonts/bitmap` (the pixel size here is then only a note: a
+/// bitmap font has one size).  The faces are the X11 Adobe Helvetica
+/// bitmaps: proportional, with digits of one width; body text has a cap
+/// height of 8 pixels on the small panels (stock's 10 px text: 7) and 9
+/// on the D70.  The clock is the largest size there is (digits 25 pixels
+/// tall).
 const FONTS: [[(&str, f32, bool); 9]; 3] = [
-    // Gray body sizes are the stock `default_fontsize`: 10 and 11.
     [
-        ("DroidSans.ttf", 10.0, false),
-        ("DroidSans-Bold.ttf", 10.0, false),
-        ("DroidSans.ttf", 9.0, false),
-        ("DroidSans.ttf", 10.0, false),
-        ("DroidSans-Bold.ttf", 19.0, false),
-        ("DroidSans-Bold.ttf", 36.0, true),
-        ("DroidSans.ttf", 10.0, false),
-        ("DroidSans.ttf", 10.0, false),
-        ("DroidSans.ttf", 10.0, false),
+        ("helvR10-75dpi.bdf", 10.0, false),
+        ("helvB10-75dpi.bdf", 10.0, false),
+        ("helvR08-75dpi.bdf", 8.0, false),
+        ("helvB10-75dpi.bdf", 10.0, false),
+        ("helvB18-75dpi.bdf", 18.0, false),
+        ("helvB24-100dpi.bdf", 34.0, true),
+        ("helvR10-75dpi.bdf", 10.0, false),
+        ("helvR10-75dpi.bdf", 10.0, false),
+        ("helvR10-75dpi.bdf", 10.0, false),
     ],
     [
-        ("DroidSans.ttf", 11.0, false),
-        ("DroidSans-Bold.ttf", 11.0, false),
-        ("DroidSans.ttf", 10.0, false),
-        ("DroidSans.ttf", 11.0, false),
-        ("DroidSans-Bold.ttf", 24.0, false),
-        ("DroidSans-Bold.ttf", 52.0, true),
-        ("DroidSans.ttf", 11.0, false),
-        ("DroidSans.ttf", 11.0, false),
-        ("DroidSans.ttf", 11.0, false),
+        ("helvR12-75dpi.bdf", 12.0, false),
+        ("helvB12-75dpi.bdf", 12.0, false),
+        ("helvR10-75dpi.bdf", 10.0, false),
+        ("helvB12-75dpi.bdf", 12.0, false),
+        ("helvB24-75dpi.bdf", 24.0, false),
+        ("helvB24-100dpi.bdf", 34.0, true),
+        ("helvR12-75dpi.bdf", 12.0, false),
+        ("helvR12-75dpi.bdf", 12.0, false),
+        ("helvR12-75dpi.bdf", 12.0, false),
     ],
     [
         ("Roboto-Regular.ttf", 14.0, false),
@@ -55,6 +66,23 @@ const FONTS: [[(&str, f32, bool); 9]; 3] = [
         ("Roboto-Regular.ttf", 17.0, false),
         ("Roboto-Regular.ttf", 22.0, false),
     ],
+];
+
+/// The fallback of each bitmap face: a fixed-width X11 "misc" font of
+/// about the same height with far more characters (Greek, Cyrillic,
+/// Hebrew, Armenian, Georgian, symbols, ...), used for one character at a
+/// time when the face lacks it.  A character neither has is drawn as the
+/// fallback's replacement character (U+FFFD).  None of these fonts has
+/// Chinese, Japanese, or Korean.
+const BITMAP_FALLBACKS: [(&str, &str); 8] = [
+    ("helvR08-75dpi.bdf", "6x10.bdf"),
+    ("helvR10-75dpi.bdf", "6x10.bdf"),
+    ("helvB10-75dpi.bdf", "6x10.bdf"),
+    ("helvR12-75dpi.bdf", "6x13.bdf"),
+    ("helvB12-75dpi.bdf", "6x13.bdf"),
+    ("helvB18-75dpi.bdf", "6x13.bdf"),
+    ("helvB24-75dpi.bdf", "6x13.bdf"),
+    ("helvB24-100dpi.bdf", "6x13.bdf"),
 ];
 
 /// Asset classes: directory, pixel height per skin, and whether the color
@@ -101,8 +129,7 @@ impl Nibbles {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn gen_font(out: &mut String, blobs: &Path, assets: &Path, name: &str, file: &str, px: f32, gray: bool, digits: bool) {
+fn gen_font(out: &mut String, blobs: &Path, assets: &Path, name: &str, file: &str, px: f32, digits: bool) {
     let data = fs::read(assets.join("fonts").join(file)).expect("font file");
     let font = fontdue::Font::from_bytes(data, fontdue::FontSettings { scale: px, ..Default::default() })
         .expect("font parse");
@@ -122,14 +149,6 @@ fn gen_font(out: &mut String, blobs: &Path, assets: &Path, name: &str, file: &st
         let off = blob.len();
         let mut nib = Nibbles::new();
         for &c in &cov {
-            // Small gray text has no hinting; steepen the coverage curve so
-            // stems land on solid levels instead of smearing over two.
-            let c = if gray && px < 20.0 {
-                let v = (c as i32 - 40) * 255 / 150;
-                v.clamp(0, 255) as u8
-            } else {
-                c
-            };
             nib.push(((c as u32 * 15 + 127) / 255) as u8);
         }
         blob.extend(nib.finish());
@@ -146,7 +165,7 @@ fn gen_font(out: &mut String, blobs: &Path, assets: &Path, name: &str, file: &st
     fs::write(&blob_path, &blob).unwrap();
     writeln!(
         out,
-        "pub static {name}: FontData = FontData {{ px: {}, ascent: {ascent}, descent: {descent}, glyphs: &[\n{recs}], data: include_bytes!({:?}) }};",
+        "pub static {name}: FontData = FontData {{ px: {}, ascent: {ascent}, descent: {descent}, bits: 4, fallback: None, glyphs: &[\n{recs}], data: include_bytes!({:?}) }};",
         px as u32,
         blob_path
     )
@@ -154,6 +173,73 @@ fn gen_font(out: &mut String, blobs: &Path, assets: &Path, name: &str, file: &st
 }
 
 /// Renders an SVG `height` pixels tall, or at its own size.
+/// Converts a BDF bitmap font into a one-bit glyph table: each glyph's
+/// rows as in the file, most significant bit first, each row padded to a
+/// byte.  (BDF is a line-oriented text format; the few keywords read here
+/// are all a font needs.)
+fn gen_bitmap_font(out: &mut String, blobs: &Path, assets: &Path, name: &str, file: &str, digits: bool, fallback: Option<&str>) {
+    let path = assets.join("fonts/bitmap").join(file);
+    let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let num = |w: Option<&str>| -> i32 { w.and_then(|w| w.parse().ok()).unwrap_or_else(|| panic!("{}: bad number", path.display())) };
+    let (mut px, mut ascent, mut descent) = (0, 0, 0);
+    let mut blob: Vec<u8> = Vec::new();
+    // (code point, record line)
+    let mut recs: Vec<(u32, String)> = Vec::new();
+    let (mut ch, mut adv, mut bbx) = (-1, 0, [0i32; 4]);
+    let mut lines = text.lines();
+    while let Some(line) = lines.next() {
+        let mut words = line.split_ascii_whitespace();
+        match words.next() {
+            Some("PIXEL_SIZE") => px = num(words.next()),
+            Some("FONT_ASCENT") => ascent = num(words.next()),
+            Some("FONT_DESCENT") => descent = num(words.next()),
+            Some("ENCODING") => ch = num(words.next()),
+            Some("DWIDTH") => adv = num(words.next()),
+            Some("BBX") => bbx = [num(words.next()), num(words.next()), num(words.next()), num(words.next())],
+            Some("BITMAP") => {
+                let [w, h, xoff, yoff] = bbx;
+                let row_bytes = (w as usize).div_ceil(8);
+                let off = blob.len();
+                for _ in 0..h {
+                    let row = lines.next().unwrap_or_else(|| panic!("{}: short bitmap", path.display())).trim();
+                    for i in 0..row_bytes {
+                        let byte = row.get(i * 2..i * 2 + 2).and_then(|b| u8::from_str_radix(b, 16).ok());
+                        blob.push(byte.unwrap_or_else(|| panic!("{}: bad bitmap row {row:?}", path.display())));
+                    }
+                }
+                // (The glyph tables hold code points of the Basic
+                // Multilingual Plane, which is all these fonts have.)
+                let keep = match u16::try_from(ch).ok().and_then(|c| char::from_u32(c as u32)) {
+                    // (Code point 0 is some fonts' own "missing" box.)
+                    Some(c) if digits => c.is_ascii_digit() || matches!(c, ':' | ' ' | '-'),
+                    Some(c) => c >= ' ',
+                    None => false,
+                };
+                if keep {
+                    recs.push((
+                        ch as u32,
+                        format!("    GlyphRec {{ ch: {ch}, adv: {adv}, xoff: {xoff}, top: {}, w: {w}, h: {h}, off: {off} }},\n", yoff + h),
+                    ));
+                } else {
+                    blob.truncate(off);
+                }
+            }
+            _ => {}
+        }
+    }
+    assert!(px > 0 && !recs.is_empty(), "{}: not a BDF font", path.display());
+    recs.sort();
+    let recs: String = recs.into_iter().map(|(_, r)| r).collect();
+    let blob_path = blobs.join(format!("{name}.bin"));
+    fs::write(&blob_path, &blob).unwrap();
+    let fallback = fallback.map_or("None".to_string(), |f| format!("Some(&{f})"));
+    writeln!(
+        out,
+        "pub static {name}: FontData = FontData {{ px: {px}, ascent: {ascent}, descent: {descent}, bits: 1, fallback: {fallback}, glyphs: &[\n{recs}], data: include_bytes!({blob_path:?}) }};",
+    )
+    .unwrap();
+}
+
 fn render_svg(path: &Path, height: Option<u32>, opt: &resvg::usvg::Options) -> (u32, u32, Vec<u8>) {
     let data = fs::read(path).unwrap();
     let tree = resvg::usvg::Tree::from_data(&data, opt)
@@ -232,17 +318,34 @@ fn main() {
 
     let mut out = String::from("// Generated by build.rs; do not edit.\nuse crate::font::{FontData, GlyphRec};\nuse crate::icons::IconRec;\n");
 
-    // Fonts (deduplicated by file and size within a skin).
+    // The bitmap fonts' fallbacks, once each.
+    let mut fallbacks: Vec<(&str, String)> = Vec::new();
+    for (_, file) in BITMAP_FALLBACKS {
+        if !fallbacks.iter().any(|f| f.0 == file) {
+            let name = format!("FONT_FALLBACK_{}", fallbacks.len());
+            gen_bitmap_font(&mut out, &out_dir, &assets, &name, file, false, None);
+            fallbacks.push((file, name));
+        }
+    }
+
+    // Fonts (deduplicated by file and size; the outline fonts' tables are
+    // named after their skin).
+    let mut done: Vec<(&str, u32, bool, String)> = Vec::new();
     for (si, skin) in SKINS.iter().enumerate() {
         let mut names: Vec<String> = Vec::new();
-        let mut done: Vec<(&str, u32, bool, String)> = Vec::new();
         for (file, px, digits) in FONTS[si] {
             let key = (file, px as u32, digits);
             let name = match done.iter().find(|d| (d.0, d.1, d.2) == key) {
                 Some(d) => d.3.clone(),
                 None => {
                     let name = format!("FONT_{skin}_{}", done.len());
-                    gen_font(&mut out, &out_dir, &assets, &name, file, px, si < 2, digits);
+                    if file.ends_with(".bdf") {
+                        let fallback = BITMAP_FALLBACKS.iter().find(|f| f.0 == file).map(|f| f.1);
+                        let fallback = fallback.and_then(|f| fallbacks.iter().find(|n| n.0 == f)).map(|n| n.1.as_str());
+                        gen_bitmap_font(&mut out, &out_dir, &assets, &name, file, digits, fallback);
+                    } else {
+                        gen_font(&mut out, &out_dir, &assets, &name, file, px, digits);
+                    }
                     done.push((file, px as u32, digits, name.clone()));
                     name
                 }

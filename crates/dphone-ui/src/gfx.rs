@@ -276,7 +276,7 @@ impl Canvas {
         let c = self.color(c);
         let mut pen = x;
         for ch in s.chars() {
-            let Some(g) = font.glyph_or_fallback(ch) else { continue };
+            let Some((font, g)) = font.glyph_or_fallback(ch) else { continue };
             let gx = pen + g.xoff as i32;
             let gy = y - g.top as i32;
             pen += g.adv as i32;
@@ -289,6 +289,20 @@ impl Canvas {
                 continue;
             }
             let data = &font.data[g.off as usize..];
+            if font.bits == 1 {
+                // A bitmap font: its pixels as they are, in one solid
+                // level.
+                let row_bytes = (g.w as usize).div_ceil(8);
+                for row in 0..g.h as usize {
+                    let bits = &data[row * row_bytes..];
+                    for col in 0..g.w as usize {
+                        if bits[col / 8] & (0x80 >> (col % 8)) != 0 {
+                            self.put_blend(gx + col as i32, gy + row as i32, c, 1, 1);
+                        }
+                    }
+                }
+                continue;
+            }
             let mut n = 0usize;
             for row in 0..g.h as i32 {
                 for col in 0..g.w as i32 {
