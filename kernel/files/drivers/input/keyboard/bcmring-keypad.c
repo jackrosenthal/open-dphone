@@ -342,5 +342,5 @@ static struct platform_driver bcmring_keypad_driver = {
 };
 module_platform_driver(bcmring_keypad_driver);
 
-MODULE_DESCRIPTION("Broadcom BCMRING keypad controller driver (first draft)");
+MODULE_DESCRIPTION("Broadcom BCMRING keypad controller driver");
 MODULE_LICENSE("GPL");

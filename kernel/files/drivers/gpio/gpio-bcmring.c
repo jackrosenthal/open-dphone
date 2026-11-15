@@ -338,5 +338,5 @@ static struct platform_driver bcmring_gpio_driver = {
 };
 module_platform_driver(bcmring_gpio_driver);
 
-MODULE_DESCRIPTION("Broadcom BCMRING GPIO bank driver (first draft)");
+MODULE_DESCRIPTION("Broadcom BCMRING GPIO bank driver");
 MODULE_LICENSE("GPL");

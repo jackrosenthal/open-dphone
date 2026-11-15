@@ -264,5 +264,5 @@ static struct platform_driver bcmring_ledm_driver = {
 };
 module_platform_driver(bcmring_ledm_driver);
 
-MODULE_DESCRIPTION("Broadcom BCMRING LED matrix driver (first draft)");
+MODULE_DESCRIPTION("Broadcom BCMRING LED matrix driver");
 MODULE_LICENSE("GPL");
