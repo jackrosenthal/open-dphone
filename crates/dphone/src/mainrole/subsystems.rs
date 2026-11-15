@@ -128,25 +128,24 @@ pub async fn start(ctx: &Context, opts: &Options) {
         hub.on_change(move |cfg| audio.apply_config(cfg));
     }
 
-    // UART A: the EHS headset adapter's by default; the serial console's
-    // when `serial_console` is on.
+    // The EHS headset adapter on UART A, when the configuration gives it the
+    // UART (`serial_console` off); otherwise the serial console keeps it.
     {
         let ehs = ehs::start(ctx, hal.clone());
-        match config.as_ref().map(|c| c.lock().unwrap().config()) {
-            Some(cfg) => ehs.apply_config(&cfg),
-            None => ehs.no_config(),
+        if let Some(cfg) = config.as_ref().map(|c| c.lock().unwrap().config()) {
+            ehs.apply_config(&cfg);
         }
         hub.on_change(move |cfg| ehs.apply_config(cfg));
     }
 
-    // 7. The main role's own command domains: Config, Network, Update, System.
+    // 6. The main role's own command domains: Config, Network, Update, System.
     let firmware_mtd = mtd.clone();
     system::start(ctx, system::Parts { config: config.clone(), hub: hub.clone(), net: net.clone(), mtd });
 
     // Provisioned certificates, kept in nvdata for the TLS users below.
     trust::start(ctx, config.clone(), &hub);
 
-    // 8. dphone-sip and dphone-dpma: accounts, provisioning.
+    // 7. dphone-sip and dphone-dpma: accounts, provisioning.
     let telephony = telephony::start(ctx, config.clone(), &hub, net.clone(), audio.clone());
     // Provisioned firmware: downloaded over HTTP(S) and written by the
     // updater.  The DPMA client does not exist yet (it starts once the
