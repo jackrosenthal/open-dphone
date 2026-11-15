@@ -189,6 +189,28 @@ static ALL: [Wallpaper; 42] = [
             dither: true,
         },
     },
+    Wallpaper {
+        id: "regatta",
+        name: "Regatta",
+        family: Family::Gradients,
+        // Yellow menus under a blue title bar: the picture's proportions.
+        scheme: Scheme::Light { primary: 0x1848C8, surface: 0xFFE14A },
+        tweaks: &[],
+        spec: Spec {
+            // Vivid yellow nearly everywhere; a vivid blue grows out of
+            // the lower right corner, through a sky blue and a pale
+            // yellow rather than through the gray the two would mix to.
+            // The dark text is over the yellow and the sky blue only.
+            base: Base::Grad(Grad::Radial {
+                cx: 480,
+                cy: 272,
+                r: 520,
+                stops: &[(0, 0x1848C8), (20, 0x2A6CF0), (33, 0x4AA0FF), (46, 0xFFF0A8), (60, 0xFFD21E), (100, 0xFFB400)],
+            }),
+            layers: &[],
+            dither: true,
+        },
+    },
     // ------------------------------------------------------------ Bubbles
     Wallpaper {
         id: "bokeh",
@@ -286,26 +308,6 @@ static ALL: [Wallpaper; 42] = [
                 Layer::Bands { num: -1, den: 1, add: false, color: 0x1E5468, bands: &[(230, 96, 170, 170), (-330, 130, 110, 110)] },
                 Layer::Bands { num: -1, den: 1, add: false, color: 0x2A7C82, bands: &[(334, 44, 170, 170), (420, 160, 70, 70)] },
                 Layer::Bands { num: -1, den: 1, add: false, color: 0xC89A48, bands: &[(326, 8, 220, 220)] },
-            ],
-            dither: true,
-        },
-    },
-    Wallpaper {
-        id: "regatta",
-        name: "Regatta",
-        family: Family::Modern,
-        scheme: Scheme::Dark { primary: 0x1848C8, surface: 0x0A1430 },
-        // The yellow of the picture, where the palette has an accent.
-        tweaks: &[("accent", 0xFFD21E)],
-        spec: Spec {
-            base: Base::Grad(Grad::Linear { ax: 1, ay: 1, stops: &[(0, 0x1238B0), (60, 0x0E2A8C), (100, 0x0A1C60)] }),
-            layers: &[
-                // As on Slant, the bands keep clear of the clock and the
-                // date (x - y from -170 to 205); the yellow ones also of
-                // the status icons (up to 296).
-                Layer::Bands { num: -1, den: 1, add: false, color: 0x2A62E8, bands: &[(230, 70, 200, 200)] },
-                Layer::Bands { num: -1, den: 1, add: false, color: 0xFFD21E, bands: &[(300, 64, 256, 256), (378, 10, 256, 256)] },
-                Layer::Bands { num: -1, den: 1, add: false, color: 0x3C7CFF, bands: &[(402, 120, 190, 190)] },
             ],
             dither: true,
         },
