@@ -417,6 +417,15 @@ impl api::runtime::Host for AppCtx {
     fn in_foreground(&mut self) -> bool {
         self.foreground
     }
+    fn random(&mut self) -> u64 {
+        let mut bytes = [0u8; 8];
+        if getrandom::fill(&mut bytes).is_err() {
+            // No kernel source (not on the phone): the clocks, stirred.
+            let t = dphone_state::clock::mono_ms() ^ dphone_state::clock::unix_secs().rotate_left(32);
+            return t.wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(29) ^ t;
+        }
+        u64::from_le_bytes(bytes)
+    }
 }
 
 impl api::ui::Host for AppCtx {

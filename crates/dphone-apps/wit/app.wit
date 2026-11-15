@@ -228,6 +228,9 @@ interface runtime {
   /// 0 error, 1 warn, 2 info, 3 debug.
   log: func(level: u8, message: string);
   in-foreground: func() -> bool;
+  /// 64 random bits from the phone's random source, e.g., to seed a
+  /// game's own generator.
+  random: func() -> u64;
 }
 
 /// Widgets and softkeys.  Capability `ui`.

@@ -47,6 +47,7 @@ fn publishes_the_app_list() {
             "diagnostics",
             "faulty",
             "hotdesking",
+            "lightup",
             "parking",
             "probe",
             "queues",

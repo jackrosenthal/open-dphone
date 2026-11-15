@@ -289,6 +289,7 @@ fn fabricate(store: &Store, model: Model) {
             app("calendar", "Calendar", "Month calendar"),
             app("boxpusher", "Box Pusher", "Push every box onto a target"),
             app("desksparrow", "Desk Sparrow", "A one-key flying game"),
+            app("lightup", "Light Up", "Light every cell of the grid"),
         ];
     });
     store.update::<st::Ui, _>(|u| {

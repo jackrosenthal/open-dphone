@@ -27,6 +27,7 @@ members = [
     "crates/dphone-web",
     "crates/eff",
     "crates/jffs2-image",
+    "crates/lightup-game",
     "xtask",
 ]
 exclude = ["apps"]

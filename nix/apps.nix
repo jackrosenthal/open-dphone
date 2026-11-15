@@ -34,6 +34,8 @@ let
           (root + "/crates/app-sdk")
           # The Box Pusher puzzle itself, which the app `boxpusher` is built on.
           (root + "/crates/boxpusher-game")
+          # Likewise the Light Up puzzle, for the app `lightup`.
+          (root + "/crates/lightup-game")
           (root + "/crates/dphone-apps/wit")
         ];
       };

@@ -1,0 +1,10 @@
+{
+  "name": "lightup",
+  "id": "org.opendphone.lightup",
+  "displayName": { "fallback": "Light Up" },
+  "description": { "fallback": "Light every cell of the grid" },
+  "type": "foreground",
+  "iconFile": "lightup",
+  "wasm": "lightup.wasm",
+  "capabilities": ["ui", "timers", "storage", "canvas"]
+}

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["contacts", "voicemail", "status", "parking", "queues", "hotdesking", "calendar", "diagnostics", "desksparrow", "boxpusher"]
+members = ["contacts", "voicemail", "status", "parking", "queues", "hotdesking", "calendar", "diagnostics", "desksparrow", "boxpusher", "lightup"]
 
 [workspace.package]
 version = "3.0.0"
@@ -16,3 +16,7 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# The Light Up generator works for seconds on the phone: speed before size.
+[profile.release.package.lightup-game]
+opt-level = 3
