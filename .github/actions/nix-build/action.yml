@@ -36,7 +36,7 @@ runs:
     # Made here, by the runner's user: Nix would make a missing directory
     # itself, as root.
     - shell: bash
-      run: mkdir -p "$RUNNER_TEMP"/nix/{cache,in,new,results}
+      run: mkdir -p "$RUNNER_TEMP"/nix/{cache,in,new,results,links}
 
     # A multi-user installation with the sandbox on, and with /dev/kvm
     # opened.  The installer sets `max-jobs = auto`, and `cores` is left at
@@ -69,7 +69,7 @@ runs:
       shell: bash
       run: |
         # shellcheck disable=SC2086 # one argument per installable
-        nix build --print-build-logs --out-link "$RUNNER_TEMP/nix/result" $INSTALLABLES
+        nix build --print-build-logs --out-link "$RUNNER_TEMP/nix/links/result" $INSTALLABLES
       env:
         INSTALLABLES: ${{ inputs.installables }}
 
@@ -95,7 +95,7 @@ runs:
     - if: inputs.results == 'true'
       shell: bash
       run: |
-        "$GITHUB_ACTION_PATH/store.sh" results "$RUNNER_TEMP/nix/results" "$RUNNER_TEMP"/nix/result*
+        "$GITHUB_ACTION_PATH/store.sh" results "$RUNNER_TEMP/nix/results" "$RUNNER_TEMP"/nix/links/*
         du --summarize --human-readable "$RUNNER_TEMP/nix/results"
 
     - if: inputs.results == 'true'

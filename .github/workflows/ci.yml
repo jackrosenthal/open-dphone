@@ -86,7 +86,7 @@ jobs:
           name: rootfs
           installables: .#rootfs .#rootfs-tree .#dphone .#dphone-image .#kernel
           cache: true
-          stores: nix-new-*
+          stores: nix-new-{kernel,web,apps,brush,coreutils,sed,workspace}
           results: true
 
   model:
@@ -109,7 +109,7 @@ jobs:
       # The out-link is the image itself, under its own name in the store.
       - name: Copy the image out of the store
         run: |
-          image="$(readlink "$RUNNER_TEMP/nix/result")"
+          image="$(readlink "$RUNNER_TEMP/nix/links/result")"
           mkdir dist
           cp "$image" "dist/${image#/nix/store/*-}"
           ls -l dist
@@ -136,7 +136,7 @@ jobs:
           name: tests
           installables: .#checks.x86_64-linux.tests
           cache: true
-          stores: nix-new-*
+          stores: nix-new-{workspace,apps,checks-deps}
 
   clippy:
     name: clippy
@@ -151,7 +151,7 @@ jobs:
           name: clippy
           installables: .#checks.x86_64-linux.clippy
           cache: true
-          stores: nix-new-*
+          stores: nix-new-checks-deps
 
   # Runs in a virtual machine, with the runner's /dev/kvm.
   jffs2-mount:
@@ -181,7 +181,7 @@ jobs:
       - uses: ./.github/actions/nix-build
         with:
           cache: true
-          stores: nix-new-*
+          stores: nix-new-{kernel,brush,coreutils,sed,rootfs,tests,clippy,jffs2-mount}
 
       - run: nix flake check --print-build-logs
 
@@ -278,7 +278,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Rust
-        run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown && rustup default stable
+        run: rustup toolchain install stable --profile minimal && rustup default stable
 
       # The SDK has the firmware's version.
       - name: The tag names the SDK's version
