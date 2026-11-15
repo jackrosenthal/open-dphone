@@ -794,6 +794,17 @@ fn main() -> std::io::Result<()> {
     if args.recovery {
         store.update::<st::System, _>(|s| s.phase = st::Phase::Recovery);
     }
+    // A static address in the configuration is the address in effect.
+    if let Some(addr) = config.lock().unwrap().config().static_ipv4() {
+        store.update::<st::Network, _>(|n| {
+            n.ipv4.source = st::AddrSource::Static;
+            n.ipv4.address = Some(addr.address);
+            n.ipv4.prefix_len = addr.prefix_len;
+            n.ipv4.gateway = addr.gateway;
+            n.ipv4.lease_secs = 0;
+            n.ipv4.dhcp_server = None;
+        });
+    }
     if args.failing {
         store.set_health(st::Subsystem::Sip, st::HealthStatus::Failed("no configuration".into()));
         store.set_health(st::Subsystem::Dpma, st::HealthStatus::Degraded("not responding".into()));

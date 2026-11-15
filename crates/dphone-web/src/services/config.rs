@@ -44,14 +44,36 @@ fn valid_setting_id(id: &str) -> bool {
         && id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
 }
 
-/// The IDs of the settings a layer holds.
+/// The IDs of the settings a layer holds: those for every network, and
+/// those for the network profile in effect.
 fn layer_ids(c: &ConfigStore, layer: Layer) -> std::collections::HashSet<String> {
+    let cfg = c.config();
+    let network = cfg.selected_network();
     let mut ids = std::collections::HashSet::new();
     if let Ok(Some(root)) = c.layer(layer) {
-        ids.extend(root.children_named("setting").filter_map(|e| e.attr("id").map(str::to_owned)));
+        ids.extend(
+            root.children_named("setting")
+                .filter(|e| e.attr("network_id").is_none_or(|n| Some(n) == network))
+                .filter_map(|e| e.attr("id").map(str::to_owned)),
+        );
     }
     ids
 }
+
+/// The static address in effect, when it is the provisioning server's.
+fn served_static(cfg: &dphone_config::Config) -> Option<dphone_config::view::StaticIpv4> {
+    cfg.static_ipv4().filter(|s| s.source == dphone_config::SettingSource::Provisioned)
+}
+
+/// The stock settings that say how the phone gets its address.
+const ADDRESSING: [&str; 6] = [
+    "network_enable_dhcp",
+    "network_static_ip_address",
+    "network_subnet_mask",
+    "network_default_gateway",
+    "network_primary_dns_server",
+    "network_secondary_dns_server",
+];
 
 pub async fn list_settings(ctx: Ctx, req: pb::ListSettingsRequest) -> Result<pb::ListSettingsResponse, ConnectError> {
     with_config(&ctx.app, false, move |c| {
@@ -181,13 +203,23 @@ pub(crate) fn network_settings(app: &App) -> pb::NetworkSettings {
     let n = cfg.network();
     let t = cfg.time();
     let ip = |a: Option<Ipv4Addr>| a.map(|a| a.to_string()).unwrap_or_default();
+    // The server's static address, when in effect, is what the form shows.
+    let served = served_static(&cfg);
+    let (dhcp, static_ip, subnet_mask, gateway, dns) = match &served {
+        Some(s) => {
+            let mask = Ipv4Addr::from(u32::MAX.checked_shl(32 - u32::from(s.prefix_len)).unwrap_or(0));
+            (false, Some(s.address), Some(mask), s.gateway, s.dns.clone())
+        }
+        None => (n.dhcp, n.static_ip, n.subnet_mask, n.gateway, n.dns.clone()),
+    };
     pb::NetworkSettings {
-        dhcp: n.dhcp,
-        static_ip: ip(n.static_ip),
-        subnet_mask: ip(n.subnet_mask),
-        gateway: ip(n.gateway),
-        primary_dns: ip(n.dns.first().copied()),
-        secondary_dns: ip(n.dns.get(1).copied()),
+        addressing_provisioned: served.is_some(),
+        dhcp,
+        static_ip: ip(static_ip),
+        subnet_mask: ip(subnet_mask),
+        gateway: ip(gateway),
+        primary_dns: ip(dns.first().copied()),
+        secondary_dns: ip(dns.get(1).copied()),
         domain: n.domain.unwrap_or_default(),
         vlan_discovery_mode: n.vlan_discovery_mode,
         vlan_id: n.vlan_id.map(u32::from),
@@ -295,8 +327,12 @@ pub async fn set_network_settings(
         let cfg = c.config();
         // Write only what differs, so untouched settings stay provisioned
         // (and frozen ones do not fail the whole save).
+        // While the server's static address is in effect the form shows
+        // it, not the phone's own address settings, which stay as they are.
+        let served = served_static(&cfg).is_some();
         let diff: Vec<(&str, &str)> = changes
             .iter()
+            .filter(|(id, _)| !(served && ADDRESSING.contains(id)))
             .filter(|(id, v)| cfg.setting(id).unwrap_or("") != v.as_str())
             .map(|(id, v)| (*id, v.as_str()))
             .collect();
@@ -528,16 +564,31 @@ pub async fn list_contact_lists(
         let mut names = c.nvdata().contact_list_names().unwrap_or_default();
         names.retain(|n| list_name(n).is_ok());
         names.sort();
+        // A list the server supplies is stored under its ID, spelled as
+        // stock spells an ID in a file name.
+        let served: Vec<String> = c
+            .config()
+            .contact_sources()
+            .iter()
+            .map(|s| s.id.replace('%', "%25").replace('.', "%2E").replace('/', "%2F"))
+            .collect();
         let lists = names
             .into_iter()
             .map(|name| match read_list(c, &name).and_then(|t| parse_contacts(&t).map_err(|e| ConnectError::invalid_argument(e.to_string()))) {
                 Ok(groups) => pb::ContactListInfo {
+                    provisioned: served.contains(&name),
                     name,
                     groups: groups.len() as u32,
                     contacts: groups.iter().map(|g| g.contacts.len() as u32).sum(),
                     error: String::new(),
                 },
-                Err(e) => pb::ContactListInfo { name, groups: 0, contacts: 0, error: e.message.unwrap_or_default() },
+                Err(e) => pb::ContactListInfo {
+                    provisioned: served.contains(&name),
+                    name,
+                    groups: 0,
+                    contacts: 0,
+                    error: e.message.unwrap_or_default(),
+                },
             })
             .collect();
         Ok(pb::ListContactListsResponse { lists })

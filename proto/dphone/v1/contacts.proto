@@ -41,6 +41,8 @@ message ContactListInfo {
   uint32 groups = 2;
   uint32 contacts = 3;
   string error = 4;
+  // The provisioning server supplies this list.
+  bool provisioned = 5;
 }
 
 message ListContactListsRequest {}

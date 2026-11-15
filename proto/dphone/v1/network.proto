@@ -60,6 +60,10 @@ message NetworkStatus {
 
 // The stored settings (stock setting IDs underneath).
 message NetworkSettings {
+  // The provisioning server's static address is in effect: `dhcp` and the
+  // address fields below describe it, and SetNetworkSettings leaves the
+  // phone's own address settings alone.
+  bool addressing_provisioned = 22;
   bool dhcp = 1;
   string static_ip = 2;
   string subnet_mask = 3;

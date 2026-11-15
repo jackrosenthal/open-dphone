@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useState } from "react";
-import { Alert, Badge, Button, Card, Field, Input, KeyValue, PageHeader, Select, Spinner, Toggle } from "../components/ui";
+import { Alert, Badge, Button, Card, Dpma, Field, Input, KeyValue, PageHeader, Select, Spinner, Toggle } from "../components/ui";
+import { ConfigService } from "../gen/dphone/v1/config_pb";
 import { NetPhase, NetworkService, type NetworkSettings } from "../gen/dphone/v1/network_pb";
 import { duration } from "../lib/format";
 import { addressSourceNames, label, netPhaseNames, vlanSourceNames } from "../lib/labels";
@@ -23,6 +24,8 @@ export function Network() {
     onError: setError,
   });
   const renew = useMutation(NetworkService.method.renewDhcp, { onError: setError });
+  // Which stock settings DPMA set, by setting ID.
+  const stock = useQuery(ConfigService.method.listSettings, {});
 
   if (q.error) return <ErrorNote error={q.error} />;
   if (!q.data) return <Spinner />;
@@ -32,20 +35,59 @@ export function Network() {
     setSaved(false);
     setDraft({ ...s, [k]: v });
   };
-  const text = (k: "staticIp" | "subnetMask" | "gateway" | "primaryDns" | "secondaryDns" | "domain", label: string, disabled = false) => (
-    <Field label={label}>
-      <Input value={s[k]} disabled={disabled} onChange={(e) => set(k, e.target.value)} />
-    </Field>
+  // The stock setting behind each field of the form.
+  const ids = {
+    dhcp: "network_enable_dhcp",
+    staticIp: "network_static_ip_address",
+    subnetMask: "network_subnet_mask",
+    gateway: "network_default_gateway",
+    primaryDns: "network_primary_dns_server",
+    secondaryDns: "network_secondary_dns_server",
+    domain: "network_domain_name",
+    ipv6Enabled: "network_ipv6_enabled",
+    vlanDiscoveryMode: "network_vlan_discovery_mode",
+    vlanId: "network_vlan_id",
+    pcVlanId: "pc_vlan_id",
+    sipDscp: "sip_dscp",
+    rtpDscp: "rtp_dscp",
+    pcQos: "pc_qos",
+    sipQos: "sip_qos",
+    rtpQos: "rtp_qos",
+    dot1xPassthrough: "8021x_passthrough",
+  } as const;
+  const addressing = ["dhcp", "staticIp", "subnetMask", "gateway", "primaryDns", "secondaryDns"];
+  /// True when DPMA set the field: it is then disabled, with the tooltip.
+  const dpma = (k: keyof typeof ids) => {
+    if (s.addressingProvisioned && addressing.includes(k)) return true;
+    const setting = stock.data?.settings.find((x) => x.id === ids[k]);
+    return !!setting && (setting.provisioned || setting.frozen);
+  };
+  const text = (k: "staticIp" | "subnetMask" | "gateway" | "primaryDns" | "secondaryDns" | "domain", label: string) => (
+    <Dpma on={dpma(k)}>
+      <Field label={label}>
+        <Input value={s[k]} disabled={dpma(k)} onChange={(e) => set(k, e.target.value)} />
+      </Field>
+    </Dpma>
   );
   const num = (k: "sipDscp" | "rtpDscp" | "sipQos" | "rtpQos" | "pcQos", label: string, max: number) => (
-    <Field label={label}>
-      <Input type="number" min={0} max={max} value={s[k]} onChange={(e) => set(k, Number(e.target.value))} />
-    </Field>
+    <Dpma on={dpma(k)}>
+      <Field label={label}>
+        <Input type="number" min={0} max={max} value={s[k]} disabled={dpma(k)} onChange={(e) => set(k, Number(e.target.value))} />
+      </Field>
+    </Dpma>
   );
   const vlan = (k: "vlanId" | "pcVlanId", label: string, disabled = false) => (
-    <Field label={label}>
-      <Input type="number" min={1} max={4094} placeholder="None" disabled={disabled} value={s[k] ?? ""} onChange={(e) => set(k, e.target.value === "" ? undefined : Number(e.target.value))} />
-    </Field>
+    <Dpma on={dpma(k)}>
+      <Field label={label}>
+        <Input type="number" min={1} max={4094} placeholder="None" disabled={disabled || dpma(k)} value={s[k] ?? ""} onChange={(e) => set(k, e.target.value === "" ? undefined : Number(e.target.value))} />
+      </Field>
+    </Dpma>
+  );
+  const mode = (dhcp: boolean, name: string) => (
+    <label className={dpma("dhcp") ? "flex items-center gap-2 text-sm opacity-50" : "flex items-center gap-2 text-sm"}>
+      <input type="radio" name="addressing" className="size-4 accent-brand-600" checked={s.dhcp === dhcp} disabled={dpma("dhcp")} onChange={() => set("dhcp", dhcp)} />
+      <span className="text-slate-700 dark:text-slate-300">{name}</span>
+    </label>
   );
 
   return (
@@ -60,7 +102,7 @@ export function Network() {
             actions={
               <>
                 <Badge tone={net.phase === NetPhase.UP ? "green" : net.phase === NetPhase.FAILED ? "red" : "amber"}>{label(netPhaseNames, net.phase, NetPhase[net.phase])}</Badge>
-                {q.data.settings?.dhcp && (
+                {net.ipv4Source === "dhcp" && (
                   <Button size="sm" onClick={() => renew.mutate({})} busy={renew.isPending}>
                     Renew DHCP
                   </Button>
@@ -114,25 +156,36 @@ export function Network() {
         >
           <div className="space-y-6">
             <section className="space-y-4">
-              <Toggle label="DHCP" checked={s.dhcp} onChange={(v) => set("dhcp", v)} />
+              <Dpma on={dpma("dhcp")} className="flex w-fit gap-6" >
+                {mode(false, "Static")}
+                {mode(true, "DHCP")}
+              </Dpma>
               <div className="grid gap-4 sm:grid-cols-3">
-                {text("staticIp", "IP address", s.dhcp)}
-                {text("subnetMask", "Subnet mask", s.dhcp)}
-                {text("gateway", "Gateway", s.dhcp)}
-                {text("primaryDns", "Primary DNS", s.dhcp)}
-                {text("secondaryDns", "Secondary DNS", s.dhcp)}
+                {!s.dhcp && (
+                  <>
+                    {text("staticIp", "IP address")}
+                    {text("subnetMask", "Subnet mask")}
+                    {text("gateway", "Gateway")}
+                    {text("primaryDns", "Primary DNS")}
+                    {text("secondaryDns", "Secondary DNS")}
+                  </>
+                )}
                 {text("domain", "Domain")}
               </div>
-              <Toggle label="IPv6" checked={s.ipv6Enabled} onChange={(v) => set("ipv6Enabled", v)} />
+              <Dpma on={dpma("ipv6Enabled")} className="w-fit">
+                <Toggle label="IPv6" checked={s.ipv6Enabled} disabled={dpma("ipv6Enabled")} onChange={(v) => set("ipv6Enabled", v)} />
+              </Dpma>
             </section>
             <section className="grid gap-4 border-t border-slate-100 pt-5 dark:border-slate-800 sm:grid-cols-3">
-              <Field label="VLAN discovery">
-                <Select value={s.vlanDiscoveryMode.toUpperCase()} onChange={(e) => set("vlanDiscoveryMode", e.target.value)}>
-                  <option value="LLDP">LLDP-MED</option>
-                  <option value="MANUAL">Manual</option>
-                  <option value="NONE">None</option>
-                </Select>
-              </Field>
+              <Dpma on={dpma("vlanDiscoveryMode")}>
+                <Field label="VLAN discovery">
+                  <Select value={s.vlanDiscoveryMode.toUpperCase()} disabled={dpma("vlanDiscoveryMode")} onChange={(e) => set("vlanDiscoveryMode", e.target.value)}>
+                    <option value="LLDP">LLDP-MED</option>
+                    <option value="MANUAL">Manual</option>
+                    <option value="NONE">None</option>
+                  </Select>
+                </Field>
+              </Dpma>
               {vlan("vlanId", "Voice VLAN ID", s.vlanDiscoveryMode.toUpperCase() !== "MANUAL")}
               {vlan("pcVlanId", "PC port VLAN ID")}
               {num("sipDscp", "SIP DSCP", 63)}
@@ -140,9 +193,9 @@ export function Network() {
               {num("pcQos", "PC port 802.1p priority", 7)}
               {num("sipQos", "SIP 802.1p priority", 7)}
               {num("rtpQos", "RTP 802.1p priority", 7)}
-              <div className="flex items-end pb-2">
-                <Toggle label="802.1X passthrough" checked={s.dot1xPassthrough} onChange={(v) => set("dot1xPassthrough", v)} />
-              </div>
+              <Dpma on={dpma("dot1xPassthrough")} className="flex items-end pb-2">
+                <Toggle label="802.1X passthrough" checked={s.dot1xPassthrough} disabled={dpma("dot1xPassthrough")} onChange={(v) => set("dot1xPassthrough", v)} />
+              </Dpma>
             </section>
           </div>
         </Card>

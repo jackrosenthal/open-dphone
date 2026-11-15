@@ -512,3 +512,31 @@ async fn login_throttling() {
     tokio::time::sleep(Duration::from_millis(1100)).await;
     assert!(login(p.addr, "789").await.is_ok());
 }
+
+/// A static address from the provisioning server is what the network form
+/// shows, and saving the form leaves the phone's own address settings alone.
+#[tokio::test]
+async fn provisioned_static_address_in_the_network_form() {
+    let p = phone().await;
+    let s = login(p.addr, "789").await.ok().unwrap();
+    p.config
+        .lock()
+        .unwrap()
+        .apply_fetched(
+            r#"<config><setting id="dphone_static_address" value="10.10.14.120/23"/><setting id="dphone_static_gateway" value="10.10.14.1"/></config>"#,
+        )
+        .unwrap();
+    let v = rpc_json(p.addr, &s, "NetworkService/GetNetwork", "{}").await.json();
+    let form = &v["settings"];
+    assert_eq!(form["addressingProvisioned"], true);
+    assert_ne!(form["dhcp"], true);
+    assert_eq!(form["staticIp"], "10.10.14.120");
+    assert_eq!(form["subnetMask"], "255.255.254.0");
+    assert_eq!(form["gateway"], "10.10.14.1");
+    let body = serde_json::json!({ "settings": form }).to_string();
+    let r = rpc_json(p.addr, &s, "NetworkService/SetNetworkSettings", &body).await;
+    assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    let config = p.config.lock().unwrap().config();
+    assert!(config.network().dhcp, "the phone's own setting still says DHCP");
+    assert_eq!(config.network().static_ip, None);
+}
