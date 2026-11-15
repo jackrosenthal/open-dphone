@@ -185,3 +185,26 @@ fn the_count_starts_over_when_the_menu_is_shown_again() {
     r.at(16_001);
     assert_eq!(r.commands(), pick(5));
 }
+
+/// A phone in its setup shows the setup screens from the start: before the
+/// DPMA client has started (no address yet) there is no idle screen.
+#[test]
+fn setup_shows_before_the_client_has_started() {
+    let mut r = Rig::new(Model::D40, Vec::new());
+    r.store.update::<Provisioning, _>(|p| p.phase = ProvisionPhase::Idle);
+    r.at(1000);
+    assert_eq!(r.ui.screen_name(), "provisioning");
+    r.at(120_000);
+    assert_eq!(r.ui.screen_name(), "provisioning");
+    assert!(r.commands().is_empty());
+    // The client starts and waits for a server: the list, then the count.
+    r.store.update::<Provisioning, _>(|p| {
+        p.phase = ProvisionPhase::AwaitingServer;
+        p.discovered = vec![server(5)];
+    });
+    r.at(120_001);
+    r.at(126_000);
+    assert!(r.commands().is_empty());
+    r.at(126_001);
+    assert_eq!(r.commands(), pick(5));
+}

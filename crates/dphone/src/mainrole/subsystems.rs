@@ -101,7 +101,8 @@ pub async fn start(ctx: &Context, opts: &Options) {
             crate::diag::EXIT_UNAVAILABLE
         });
         system::start(ctx, system::Parts { config, hub, net, mtd: None });
-        finish(ctx);
+        // No UI and no telephony: there is no setup to show.
+        finish(ctx, None);
         return;
     }
 
@@ -207,7 +208,8 @@ pub async fn start(ctx: &Context, opts: &Options) {
     }
 
     let _ = (audio, hal, telephony, ui);
-    finish(ctx);
+    tokio::spawn(provisioning::follow_setup(ctx.clone()));
+    finish(ctx, config.as_ref());
 }
 
 /// Whether the SSH server should listen.  This is the one place that reads
@@ -234,10 +236,24 @@ fn apply_ssh_switch(ctx: &Context, config: Option<&SharedConfig>) {
     crate::ssh::set_enabled(enabled);
 }
 
-fn finish(ctx: &Context) {
-    ctx.store.update::<dphone_state::System, _>(|s| {
-        s.phase = if ctx.recovery.is_some() { dphone_state::Phase::Recovery } else { dphone_state::Phase::Running };
+/// Start-up is over: the phone is in recovery, in its setup (no saved
+/// provisioning server and no accounts, as after a factory reset; see
+/// `provisioning::starts_in_setup`), or running.
+fn finish(ctx: &Context, config: Option<&SharedConfig>) {
+    use dphone_state::Phase;
+    let setup = config.is_some_and(|c| {
+        let store = c.lock().unwrap();
+        provisioning::starts_in_setup(&store.config(), store.nvdata().read("configurator.xml").ok().flatten().as_deref())
     });
+    let phase = if ctx.recovery.is_some() {
+        Phase::Recovery
+    } else if setup {
+        info!("setup: no saved server and no accounts; the phone starts at the server menu");
+        Phase::Provisioning
+    } else {
+        Phase::Running
+    };
+    ctx.store.update::<dphone_state::System, _>(|s| s.phase = phase);
 }
 
 fn start_state(ctx: &Context) {

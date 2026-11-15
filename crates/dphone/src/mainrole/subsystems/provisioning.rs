@@ -192,16 +192,29 @@ pub async fn feed_discovery(ctx: Context, net: NetHandle, dpma: DpmaHandle) {
     }
 }
 
-/// Whether the phone is in its setup (`Phase::Provisioning`: the display
-/// shows the provisioning screens, not the idle screen), given the phase
-/// it is in, the DPMA client's, and the number of SIP accounts.
+/// Whether the phone starts in its setup (`Phase::Provisioning`: the
+/// display shows the provisioning screens, not the idle screen): it has no
+/// saved provisioning server (`configurator.xml`) and no SIP accounts, as
+/// after a factory reset.  This is stock's condition for its `fresh` state
+/// (`stateMachine.js`, `StateMachine.start`).
 ///
-/// As on stock (`stateMachine.js`, `StateMachine.start`), setup begins on
-/// a phone with no saved server and no accounts: the DPMA client reaches
-/// `AwaitingServer` only without a saved server, as after a factory reset.
-/// Setup ends when the phone is provisioned or the user chose to go on
-/// without a server.  A phone with a saved server or with accounts of its
-/// own never enters it.
+/// It is decided from nvdata when start-up ends, not from the DPMA client:
+/// the client starts only once the phone has an address, and until then
+/// (or for good, with no network) the phone would show an idle screen it
+/// cannot place a call from.
+pub fn starts_in_setup(cfg: &Config, configurator: Option<&[u8]>) -> bool {
+    let saved = configurator.map(dphone_dpma::xml::Configurator::parse).unwrap_or_default();
+    saved.saved_server().is_none() && cfg.accounts().is_empty()
+}
+
+/// The phase the phone is in, given the one it was in, the DPMA client's,
+/// and the number of SIP accounts.
+///
+/// Setup begins at the start ([`starts_in_setup`]) or when the client comes
+/// to wait for a server on a phone without accounts (it waits only when no
+/// server is saved, e.g., after "Forget server").  It ends when the phone
+/// is provisioned or the user chose to go on without a server.  A phone
+/// with a saved server or with accounts of its own never enters it.
 pub fn system_phase(now: dphone_state::Phase, provisioning: &ProvisionPhase, accounts: usize) -> dphone_state::Phase {
     use dphone_state::Phase;
     match (now, provisioning) {
@@ -211,7 +224,8 @@ pub fn system_phase(now: dphone_state::Phase, provisioning: &ProvisionPhase, acc
     }
 }
 
-/// Keeps `System::phase` at [`system_phase`].
+/// Keeps `System::phase` at [`system_phase`].  Runs from the start of the
+/// main role, whether or not the DPMA client ever starts.
 pub async fn follow_setup(ctx: Context) {
     let sub = ctx.store.subscribe([Topic::System, Topic::Provisioning, Topic::Accounts]);
     loop {
@@ -220,7 +234,11 @@ pub async fn follow_setup(ctx: Context) {
         let now = ctx.store.read::<dphone_state::System, _>(|s| s.phase);
         let next = system_phase(now, &provisioning, accounts);
         if next != now {
-            info!("dpma: {}", if next == dphone_state::Phase::Provisioning { "no saved server and no accounts; showing the server menu" } else { "setup is over" });
+            if next == dphone_state::Phase::Provisioning {
+                info!("setup: no saved server and no accounts; showing the server menu");
+            } else {
+                info!("setup: over ({provisioning:?})");
+            }
             // Only the step that was decided on: a shutdown that began in
             // between stays.
             ctx.store.update::<dphone_state::System, _>(|s| {
@@ -233,10 +251,9 @@ pub async fn follow_setup(ctx: Context) {
     }
 }
 
-/// Starts [`feed_discovery`] and [`follow_setup`].
+/// Starts [`feed_discovery`].
 pub fn start_discovery(ctx: &Context, net: &NetHandle, dpma: &DpmaHandle) {
     tokio::spawn(feed_discovery(ctx.clone(), net.clone(), dpma.clone()));
-    tokio::spawn(follow_setup(ctx.clone()));
 }
 
 #[cfg(test)]
@@ -328,14 +345,32 @@ mod tests {
     }
 
     #[test]
+    fn a_phone_starts_in_setup_without_a_server_and_accounts() {
+        let account = r#"<config><accounts><account id="100" userid="100" authname="100" passwd="x"><host_primary server="pbx.test" port="5060" transport="udp"/></account></accounts></config>"#;
+        let saved = br#"<config><setting id="config_server_url" value="sip:proxy@10.0.0.5:5060" /></config>"#;
+        let http = br#"<config><setting id="config_server_url" value="http://pbx/cfg" /><setting id="config_server_type" value="curl" /></config>"#;
+        // After a factory reset: no configurator.xml, no accounts.
+        assert!(starts_in_setup(&config("<config/>"), None));
+        assert!(starts_in_setup(&config("<config/>"), Some(b"<config>\n</config>\n")));
+        // A saved DPMA server: the phone goes to it, whatever comes of it.
+        assert!(!starts_in_setup(&config("<config/>"), Some(saved)));
+        // Accounts of the phone's own.
+        assert_eq!(config(account).accounts().len(), 1);
+        assert!(!starts_in_setup(&config(account), None));
+        // Stock's HTTP provisioning is not a server of ours.
+        assert!(starts_in_setup(&config("<config/>"), Some(http)));
+    }
+
+    #[test]
     fn setup_is_for_a_phone_with_no_server_and_no_accounts() {
         use dphone_state::Phase;
         let failed = ProvisionPhase::Failed { reason: "no answer".into(), code: None };
         // After a factory reset: no saved server, so the client waits for
         // one, and no accounts.  The server menu takes the display.
         assert_eq!(system_phase(Phase::Running, &ProvisionPhase::AwaitingServer, 0), Phase::Provisioning);
-        // It keeps it through the choice of a server and of a user, and
-        // through a failure.
+        // It keeps it before the client has started (no address yet),
+        // through the choice of a server and of a user, and through a
+        // failure.
         for p in [ProvisionPhase::AwaitingServer, ProvisionPhase::Handshaking, ProvisionPhase::AwaitingUser, ProvisionPhase::FetchingConfig, ProvisionPhase::Applying, failed.clone(), ProvisionPhase::Idle] {
             assert_eq!(system_phase(Phase::Provisioning, &p, 0), Phase::Provisioning, "{p:?}");
         }

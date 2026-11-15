@@ -175,6 +175,77 @@ fn a_phone_with_no_server_and_no_accounts_shows_the_server_menu() {
     assert!(state("provisioning").contains("phase: Standalone"), "{}", state("provisioning"));
 }
 
+/// A factory reset from the phone's own menu, on a provisioned phone: the
+/// menu writes stock's marker and the phone restarts; the next start
+/// performs the reset and comes up at the server menu, not the idle screen.
+#[test]
+fn a_factory_reset_from_the_menu_leads_to_the_server_menu() {
+    let dir = temp();
+    let nv = dir.path().join("nv");
+    let put = |rel: &str, text: &str| {
+        let path = nv.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    // A phone a server provisioned: the saved server (nothing answers
+    // there), the configuration it sent with an account, the phone's own
+    // settings, and state of ours under open/.
+    put("configurator.xml", "<config>\n    <setting id=\"config_server_url\" value=\"sip:proxy@127.0.0.1:9\" />\n</config>\n");
+    put(
+        "fetched-config.xml",
+        "<config>\n<accounts>\n<account index=\"0\" account_id=\"100\" username=\"100\" password=\"x\" authname=\"100\" line_label=\"100\" register=\"1\" type=\"sip\">\n<host_primary server=\"127.0.0.1\" port=\"9\" transport=\"udp\" />\n</account>\n</accounts>\n<setting id=\"dphone_ssh_enabled\" value=\"1\" />\n</config>\n",
+    );
+    put("dphone_settings.txtpb", "serial_console: true\n");
+    put("open/net-no-bridge", "1\n");
+    put("systime", "2026-11-15 04:42:00\n");
+
+    let state = |socket: &Path, topic: &str| diag(socket, &["state", topic]).1;
+    let screen = |socket: &Path| {
+        let ui = state(socket, "ui");
+        ui.lines().find(|l| l.trim_start().starts_with("screen:")).unwrap_or_default().trim().to_string()
+    };
+    let (mut main, socket) = start_main(dir.path(), &["--no-ssh"]);
+    wait_for("diag socket", Duration::from_secs(10), || socket.exists());
+    wait_for("the idle screen of a provisioned phone", Duration::from_secs(30), || screen(&socket) == "screen: \"idle\",");
+    assert!(state(&socket, "system").contains("phase: Running"), "{}", state(&socket, "system"));
+    wait_for("the provisioned account", Duration::from_secs(30), || state(&socket, "accounts").contains("\"100\""));
+
+    // Menu, Settings, Reset, Factory reset, Yes.
+    let press = |keys: &[&str], want: &str| {
+        let mut args = vec!["key"];
+        args.extend_from_slice(keys);
+        assert_eq!(diag(&socket, &args).0, 0, "{keys:?}");
+        wait_for(want, Duration::from_secs(10), || screen(&socket) == format!("screen: \"{want}\","));
+    };
+    press(&["menu"], "menu");
+    press(&["down", "down", "down", "down", "down", "select"], "settings");
+    press(&["down", "down", "down", "down", "select"], "reset");
+    press(&["down", "down", "down", "select"], "confirm");
+    assert_eq!(diag(&socket, &["key", "select"]).0, 0);
+    // The marker is written and the main role goes down for the restart.
+    let status = main.0.wait().unwrap();
+    assert!(nv.join("factory-reset").exists(), "the marker (exit {status:?})");
+    assert!(nv.join("configurator.xml").exists(), "the reset itself is for the next start");
+
+    // The next start.
+    let (_main, socket) = start_main(dir.path(), &["--no-ssh"]);
+    wait_for("diag socket again", Duration::from_secs(10), || socket.exists() && diag(&socket, &["ping"]).0 == 0);
+    wait_for("the server menu after the reset", Duration::from_secs(30), || screen(&socket) == "screen: \"provisioning\",");
+    for gone in ["factory-reset", "configurator.xml", "fetched-config.xml", "dphone_settings.txtpb", "open/net-no-bridge", "systime"] {
+        assert!(!nv.join(gone).exists(), "{gone} survived the reset");
+    }
+    assert!(state(&socket, "system").contains("phase: Provisioning"), "{}", state(&socket, "system"));
+    assert!(state(&socket, "provisioning").contains("server: None"), "{}", state(&socket, "provisioning"));
+    // Setup was decided from nvdata when start-up ended, not left to the
+    // DPMA client, which on a phone starts only once there is an address.
+    let log = diag(&socket, &["log", "-n", "500"]).1;
+    assert!(log.contains("the phone starts at the server menu"), "{log}");
+    assert!(!state(&socket, "accounts").contains("\"100\""), "{}", state(&socket, "accounts"));
+    // It stays there: the idle screen does not come back by itself.
+    std::thread::sleep(Duration::from_secs(8));
+    assert_eq!(screen(&socket), "screen: \"provisioning\",");
+}
+
 /// The speaker, headset, and mute lamps follow the audio state the main
 /// role keeps.
 #[test]

@@ -390,13 +390,8 @@ impl Machine {
             let server = picked.unwrap_or_else(|| DiscoveredServer { source: DiscoverySource::Manual, name: m.clone(), address: m.clone() });
             return (Some(server), found);
         }
-        let saved = self.configurator();
-        if let Some(url) = saved.get("config_server_url") {
-            // `config_server_type` other than digium/boot66 is stock's HTTP
-            // provisioning, which is not this client's business.
-            if matches!(saved.get("config_server_type"), Some("digium") | Some("boot66") | None) {
-                return (Some(DiscoveredServer { source: DiscoverySource::Saved, name: url.to_string(), address: url.to_string() }), found);
-            }
+        if let Some(url) = self.configurator().saved_server() {
+            return (Some(DiscoveredServer { source: DiscoverySource::Saved, name: url.to_string(), address: url.to_string() }), found);
         }
         (None, found)
     }

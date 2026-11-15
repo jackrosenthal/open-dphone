@@ -68,6 +68,15 @@ impl Configurator {
         self.settings.iter().find(|(k, _)| k == id).map(|(_, v)| v.as_str()).filter(|v| !v.is_empty() && *v != "null")
     }
 
+    /// The DPMA server this file saves, if any: `config_server_url`, which
+    /// is written once a server has provisioned the phone.  A
+    /// `config_server_type` other than digium/boot66 is stock's HTTP
+    /// provisioning, which is not the DPMA client's business.
+    pub fn saved_server(&self) -> Option<&str> {
+        let url = self.get("config_server_url")?;
+        matches!(self.get("config_server_type"), Some("digium") | Some("boot66") | None).then_some(url)
+    }
+
     pub fn set(&mut self, id: &str, value: &str) {
         match self.settings.iter_mut().find(|(k, _)| k == id) {
             Some(s) => s.1 = value.to_string(),
