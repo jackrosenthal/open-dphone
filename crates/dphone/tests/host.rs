@@ -158,6 +158,16 @@ fn diag_commands_and_restart() {
 #[test]
 fn a_phone_with_no_server_and_no_accounts_shows_the_server_menu() {
     let dir = temp();
+    // A SIP port of the phone's own: the DPMA client starts once the SIP
+    // stack has its port, and the other tests of this file, which run at
+    // the same time, each have a simulator that asks for 5060.
+    let sip_port = std::net::UdpSocket::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    std::fs::create_dir_all(dir.path().join("nv")).unwrap();
+    std::fs::write(
+        dir.path().join("nv/ui-config.xml"),
+        format!("<config>\n    <setting id=\"transport_udp_port\" value=\"{sip_port}\" />\n</config>\n"),
+    )
+    .unwrap();
     let (_main, socket) = start_main(dir.path(), &["--no-ssh"]);
     wait_for("diag socket", Duration::from_secs(10), || socket.exists());
     let state = |topic: &str| diag(&socket, &["state", topic]).1;
