@@ -127,6 +127,9 @@ in
     checksStage.full
     // {
       cargoArtifacts = checksStage.deps;
+      # The check is that this builds; nothing builds on its target
+      # directory, so it is not archived into the output.
+      doInstallCargoArtifacts = false;
       doCheck = true;
       # Every failure in one run, not only the first crate's.
       cargoTestExtraArgs = "--no-fail-fast";
@@ -176,6 +179,7 @@ in
     checksStage.full
     // {
       cargoArtifacts = checksStage.deps;
+      doInstallCargoArtifacts = false;
       cargoClippyExtraArgs = "--all-targets -- -D warnings";
     }
     // lib.optionalAttrs (appsClippy != null) {
