@@ -43,12 +43,12 @@ mod atlas {
 }
 
 pub use appview::{AppEvent, AppEvents, AppView};
-pub use ui::{Ui, UiConfig, UiHandle};
+pub use ui::{IdleSoftkey, Ui, UiConfig, UiHandle};
 
 /// Size in pixels of the area on the idle screen offered to an app's idle
 /// view ([`UiHandle::add_idle_view`]).  Widget rectangles in that view are
 /// relative to this area, not to the app content area.
 pub fn idle_app_area(model: dphone_state::Model) -> dphone_state::Size {
     let th = skin::Theme::for_model(model);
-    dphone_state::Size::new(th.tab_x as u16, screens::idle::idle_app_h(th) as u16)
+    dphone_state::Size::new(th.idle_tab_x as u16, screens::idle::idle_app_h(th) as u16)
 }

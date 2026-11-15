@@ -117,6 +117,79 @@ pub async fn unset_settings(
     .await
 }
 
+// ---------------------------------------------------------- idle softkeys
+
+/// The softkeys in effect and every softkey the phone offers: the
+/// functions, then an entry per app (the contacts app is "contacts").
+fn idle_softkeys(app: &App, cfg: &dphone_config::Config) -> pb::IdleSoftkeys {
+    let set = cfg.idle_softkeys();
+    let choice = |name: &str, label: &str| pb::IdleSoftkeyChoice { name: name.to_owned(), label: label.to_owned() };
+    let mut choices: Vec<pb::IdleSoftkeyChoice> = [
+        ("call_log", "Call Log"),
+        ("contacts", "Contacts"),
+        ("status", "Status"),
+        ("info", "Info"),
+        ("menu", "Menu"),
+        ("apps", "Apps"),
+        ("dnd", "DND"),
+        ("forward", "Forward"),
+        ("redial", "Redial"),
+    ]
+    .iter()
+    .map(|(name, label)| choice(name, label))
+    .collect();
+    // The apps the phone has (one that is switched off is not among them).
+    let apps = app.store.get::<st::Apps>();
+    for a in apps.installed.iter().filter(|a| a.name != "contacts") {
+        let label = if a.display_name.is_empty() { &a.name } else { &a.display_name };
+        choices.push(choice(&format!("app:{}", a.name), &format!("{label} (app)")));
+    }
+    // A softkey in effect for an app the phone does not have keeps its
+    // entry (the phone does not show it).
+    for key in &set.keys {
+        if !choices.iter().any(|c| c.name == key.name) {
+            choices.push(choice(&key.name, key.name.strip_prefix("app:").unwrap_or(&key.name)));
+        }
+    }
+    pb::IdleSoftkeys {
+        softkeys: set.keys.into_iter().map(|k| k.name).collect(),
+        source: super::ssh::setting_source(set.source).into(),
+        locked: set.locked,
+        choices,
+    }
+}
+
+pub async fn get_idle_softkeys(
+    ctx: Ctx,
+    _req: pb::GetIdleSoftkeysRequest,
+) -> Result<pb::GetIdleSoftkeysResponse, ConnectError> {
+    let keys = idle_softkeys(&ctx.app, &config_of(&ctx.app));
+    Ok(pb::GetIdleSoftkeysResponse { idle_softkeys: Some(keys).into() })
+}
+
+pub async fn set_idle_softkeys(
+    ctx: Ctx,
+    req: pb::SetIdleSoftkeysRequest,
+) -> Result<pb::SetIdleSoftkeysResponse, ConnectError> {
+    let list = req.softkeys.join(",");
+    if req.softkeys.iter().any(|k| k.contains(',')) || list.len() > 512 {
+        return Err(ConnectError::invalid_argument("not a softkey list"));
+    }
+    dphone_config::settings::parse_idle_softkeys(&list).map_err(ConnectError::invalid_argument)?;
+    let app = ctx.app.clone();
+    let keys = with_config(&ctx.app, true, move |c| {
+        if c.config().idle_softkeys().locked {
+            return Err(super::ssh::locked());
+        }
+        let config = c
+            .update_dphone_settings(|s| s.idle_softkeys = (!list.is_empty()).then_some(list))
+            .map_err(crate::services::config_error)?;
+        Ok(idle_softkeys(&app, &config))
+    })
+    .await?;
+    Ok(pb::SetIdleSoftkeysResponse { idle_softkeys: Some(keys).into() })
+}
+
 // --------------------------------------------------------------- network
 
 pub(crate) fn network_settings(app: &App) -> pb::NetworkSettings {

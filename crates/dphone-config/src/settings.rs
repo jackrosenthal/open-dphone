@@ -33,7 +33,8 @@ pub const SETTINGS_FILE_BAD: &str = "dphone_settings.txtpb.bad";
 
 /// Field names of [`DphoneSettings`]; anything else in the file is carried
 /// through as text.  A test checks this list against the generated code.
-const KNOWN_FIELDS: &[&str] = &["ssh_enabled", "ignore_provisioned_firmware", "serial_console", "metrics_enabled"];
+const KNOWN_FIELDS: &[&str] =
+    &["ssh_enabled", "ignore_provisioned_firmware", "serial_console", "metrics_enabled", "idle_softkeys"];
 
 const HEADER: &str = "# Open DPhone settings (dphone.settings.v1.DphoneSettings, protobuf text format).\n\
                       # A field that is absent takes its default.\n";
@@ -75,6 +76,65 @@ pub const PROVISIONED_SSH_ENABLED: &str = "dphone_ssh_enabled";
 pub const PROVISIONED_IGNORE_FIRMWARE: &str = "dphone_ignore_provisioned_firmware";
 pub const PROVISIONED_SERIAL_CONSOLE: &str = "dphone_serial_console";
 pub const PROVISIONED_METRICS_ENABLED: &str = "dphone_metrics_enabled";
+pub const PROVISIONED_IDLE_SOFTKEYS: &str = "dphone_idle_softkeys";
+
+/// The names an idle softkey list may hold, besides `app:<name>`.
+pub const IDLE_SOFTKEY_NAMES: &[&str] =
+    &["call_log", "contacts", "status", "info", "menu", "apps", "dnd", "forward", "redial"];
+
+/// One softkey of the idle screen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IdleSoftkey {
+    /// One of [`IDLE_SOFTKEY_NAMES`], or `app:<name>`.
+    pub name: String,
+    /// The label a keymap entry carries (`label1`): text, or a stock string
+    /// token such as `_CONTACTS`.
+    pub label: Option<String>,
+}
+
+/// The idle screen's softkeys in effect, where they came from, and whether
+/// the provisioning server froze them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IdleSoftkeys {
+    pub keys: Vec<IdleSoftkey>,
+    pub source: SettingSource,
+    pub locked: bool,
+}
+
+/// Parse an idle softkey list (`call_log,contacts,app:parking`).  Blank
+/// items are skipped; an unknown name is an error that names it.
+pub fn parse_idle_softkeys(list: &str) -> Result<Vec<IdleSoftkey>, String> {
+    list.split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(|item| {
+            let app = item.strip_prefix("app:").is_some_and(|name| {
+                !name.is_empty() && name.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'.'))
+            });
+            if app || IDLE_SOFTKEY_NAMES.contains(&item) {
+                Ok(IdleSoftkey { name: item.to_owned(), label: None })
+            } else {
+                Err(format!("unknown softkey {item:?}"))
+            }
+        })
+        .collect()
+}
+
+/// The idle softkey a stock keymap action stands for, if it has a place on
+/// the idle screen (`action` and the first `<arg>` of a `<key>`).
+pub fn idle_softkey_for_action(action: &str, arg: Option<&str>, label: Option<&str>) -> Option<IdleSoftkey> {
+    let name = match action {
+        "missed_or_call_log" => "call_log".to_owned(),
+        "contacts" | "phonebooks" | "directory" => "contacts".to_owned(),
+        "forward_calls" => "forward".to_owned(),
+        // The contacts app is the Contacts softkey.
+        "show_application" if arg == Some("contacts") => "contacts".to_owned(),
+        "show_application" => format!("app:{}", arg.filter(|a| !a.is_empty())?),
+        a if IDLE_SOFTKEY_NAMES.contains(&a) => a.to_owned(),
+        _ => return None,
+    };
+    Some(IdleSoftkey { name, label: label.map(str::to_owned) })
+}
 /// Setting IDs a provisioning server uses for a static IPv4 arrangement:
 /// the address as `a.b.c.d/prefix length`, the gateway, and the DNS servers
 /// as a comma-separated list.  Stock firmware does not know them.  (Stock's
@@ -190,6 +250,7 @@ mod tests {
             ignore_provisioned_firmware: Some(true),
             serial_console: Some(true),
             metrics_enabled: Some(true),
+            idle_softkeys: Some("menu".into()),
         };
         let text = encode_to_string_pretty(&all);
         let names: Vec<&str> = text.lines().map(|l| l.split(':').next().unwrap()).collect();
@@ -232,6 +293,23 @@ mod tests {
         assert_eq!(r(Some(true), Some(false), false), Resolved { value: true, source: Local, locked: false });
         assert_eq!(r(Some(true), Some(false), true), Resolved { value: false, source: Provisioned, locked: true });
         assert_eq!(r(Some(false), None, true), Resolved { value: false, source: Local, locked: false });
+    }
+
+    #[test]
+    fn idle_softkey_lists() {
+        let names = |l: &str| parse_idle_softkeys(l).map(|v| v.into_iter().map(|k| k.name).collect::<Vec<_>>());
+        assert_eq!(names("call_log, contacts,,app:parking ,dnd").unwrap(), ["call_log", "contacts", "app:parking", "dnd"]);
+        assert_eq!(names("").unwrap(), Vec::<String>::new());
+        assert_eq!(names("menu,lunch").unwrap_err(), "unknown softkey \"lunch\"");
+        assert!(names("app:").is_err() && names("app:a b").is_err());
+        let key = |a, arg| idle_softkey_for_action(a, arg, None).map(|k| k.name);
+        assert_eq!(key("missed_or_call_log", None).as_deref(), Some("call_log"));
+        assert_eq!(key("show_application", Some("queues")).as_deref(), Some("app:queues"));
+        assert_eq!(key("show_application", Some("contacts")).as_deref(), Some("contacts"));
+        assert_eq!(key("forward_calls", None).as_deref(), Some("forward"));
+        assert_eq!(key("show_application", None), None);
+        assert_eq!(key("none", None), None);
+        assert_eq!(key("end_call", None), None);
     }
 
     #[test]

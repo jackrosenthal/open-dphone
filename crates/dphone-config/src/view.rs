@@ -8,7 +8,7 @@
 use std::net::Ipv4Addr;
 
 use crate::model::Model;
-use crate::settings::{self, DphoneSettings, Resolved, SettingSource};
+use crate::settings::{self, DphoneSettings, IdleSoftkeys, Resolved, SettingSource};
 use crate::xml::Element;
 
 /// One merged configuration.  Cheap to share behind an `Arc`.
@@ -305,7 +305,6 @@ pub struct LogSettings {
 pub struct AccessSettings {
     pub web_ui_enabled: bool,
     pub ssh_enabled: bool,
-    pub allow_app_dev: bool,
     /// Whether a provisioned `<firmware>` entry is ignored (development
     /// aid; by default the server's firmware is followed, as on stock).
     pub ignore_provisioned_firmware: bool,
@@ -483,6 +482,36 @@ impl Config {
     pub fn metrics_enabled(&self) -> Resolved<bool> {
         let (p, frozen) = self.provisioned_bool(settings::PROVISIONED_METRICS_ENABLED);
         settings::resolve(self.settings.metrics_enabled, p, frozen, true)
+    }
+
+    /// The idle screen's softkeys.  The sources combine as for the other
+    /// Open DPhone settings: a frozen provisioned list wins, then the local
+    /// list, then an ordinary provisioned list; with none of those, the
+    /// softkeys are those of the `idle` keymap state, as on stock (the
+    /// base layer's, or the ones a provisioning server sent).  A list that
+    /// does not parse counts as not set.
+    pub fn idle_softkeys(&self) -> IdleSoftkeys {
+        let list = |l: Option<&str>| l.and_then(|l| settings::parse_idle_softkeys(l).ok()).filter(|k| !k.is_empty());
+        let id = settings::PROVISIONED_IDLE_SOFTKEYS;
+        let provisioned = list(self.setting(id));
+        let frozen = provisioned.is_some() && self.setting_frozen(id);
+        let local = list(self.settings.idle_softkeys.as_deref());
+        match (provisioned, local) {
+            (Some(keys), _) if frozen => IdleSoftkeys { keys, source: SettingSource::Provisioned, locked: true },
+            (_, Some(keys)) => IdleSoftkeys { keys, source: SettingSource::Local, locked: false },
+            (Some(keys), None) => IdleSoftkeys { keys, source: SettingSource::Provisioned, locked: false },
+            (None, None) => IdleSoftkeys {
+                keys: self
+                    .softkeys("idle")
+                    .iter()
+                    .filter_map(|k| {
+                        settings::idle_softkey_for_action(&k.action, k.args.first().map(String::as_str), k.label.as_deref())
+                    })
+                    .collect(),
+                source: SettingSource::Default,
+                locked: false,
+            },
+        }
     }
 
     /// The static IPv4 arrangement in effect, or `None` for DHCP.
@@ -758,7 +787,6 @@ impl Config {
         AccessSettings {
             web_ui_enabled: self.setting_bool("web_ui_enabled", true),
             ssh_enabled: self.ssh_enabled().value,
-            allow_app_dev: self.setting_bool("allow_app_dev", false),
             ignore_provisioned_firmware: self.ignore_provisioned_firmware().value,
         }
     }

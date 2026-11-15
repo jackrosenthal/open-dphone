@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/v1/config.proto.
  */
 export const file_dphone_v1_config: GenFile = /*@__PURE__*/
-  fileDesc("ChZkcGhvbmUvdjEvY29uZmlnLnByb3RvEglkcGhvbmUudjEiUwoHU2V0dGluZxIKCgJpZBgBIAEoCRINCgV2YWx1ZRgCIAEoCRIOCgZmcm96ZW4YAyABKAgSDQoFbG9jYWwYBCABKAgSDgoGc2VjcmV0GAUgASgIIiUKE0xpc3RTZXR0aW5nc1JlcXVlc3QSDgoGcHJlZml4GAEgASgJIlAKFExpc3RTZXR0aW5nc1Jlc3BvbnNlEiQKCHNldHRpbmdzGAEgAygLMhIuZHBob25lLnYxLlNldHRpbmcSEgoKZ2VuZXJhdGlvbhgCIAEoBCIqCg1TZXR0aW5nQ2hhbmdlEgoKAmlkGAEgASgJEg0KBXZhbHVlGAIgASgJIj8KElNldFNldHRpbmdzUmVxdWVzdBIpCgdjaGFuZ2VzGAEgAygLMhguZHBob25lLnYxLlNldHRpbmdDaGFuZ2UiKQoTU2V0U2V0dGluZ3NSZXNwb25zZRISCgpnZW5lcmF0aW9uGAEgASgEIiMKFFVuc2V0U2V0dGluZ3NSZXF1ZXN0EgsKA2lkcxgBIAMoCSIrChVVbnNldFNldHRpbmdzUmVzcG9uc2USEgoKZ2VuZXJhdGlvbhgBIAEoBCJWCgtCb29sU2V0dGluZxINCgV2YWx1ZRgBIAEoCBIoCgZzb3VyY2UYAiABKA4yGC5kcGhvbmUudjEuU2V0dGluZ1NvdXJjZRIOCgZsb2NrZWQYAyABKAgqhQEKDVNldHRpbmdTb3VyY2USHgoaU0VUVElOR19TT1VSQ0VfVU5TUEVDSUZJRUQQABIaChZTRVRUSU5HX1NPVVJDRV9ERUZBVUxUEAESGAoUU0VUVElOR19TT1VSQ0VfTE9DQUwQAhIeChpTRVRUSU5HX1NPVVJDRV9QUk9WSVNJT05FRBADMoICCg1Db25maWdTZXJ2aWNlEk8KDExpc3RTZXR0aW5ncxIeLmRwaG9uZS52MS5MaXN0U2V0dGluZ3NSZXF1ZXN0Gh8uZHBob25lLnYxLkxpc3RTZXR0aW5nc1Jlc3BvbnNlEkwKC1NldFNldHRpbmdzEh0uZHBob25lLnYxLlNldFNldHRpbmdzUmVxdWVzdBoeLmRwaG9uZS52MS5TZXRTZXR0aW5nc1Jlc3BvbnNlElIKDVVuc2V0U2V0dGluZ3MSHy5kcGhvbmUudjEuVW5zZXRTZXR0aW5nc1JlcXVlc3QaIC5kcGhvbmUudjEuVW5zZXRTZXR0aW5nc1Jlc3BvbnNlYgZwcm90bzM");
+  fileDesc("ChZkcGhvbmUvdjEvY29uZmlnLnByb3RvEglkcGhvbmUudjEiUwoHU2V0dGluZxIKCgJpZBgBIAEoCRINCgV2YWx1ZRgCIAEoCRIOCgZmcm96ZW4YAyABKAgSDQoFbG9jYWwYBCABKAgSDgoGc2VjcmV0GAUgASgIIiUKE0xpc3RTZXR0aW5nc1JlcXVlc3QSDgoGcHJlZml4GAEgASgJIlAKFExpc3RTZXR0aW5nc1Jlc3BvbnNlEiQKCHNldHRpbmdzGAEgAygLMhIuZHBob25lLnYxLlNldHRpbmcSEgoKZ2VuZXJhdGlvbhgCIAEoBCIqCg1TZXR0aW5nQ2hhbmdlEgoKAmlkGAEgASgJEg0KBXZhbHVlGAIgASgJIj8KElNldFNldHRpbmdzUmVxdWVzdBIpCgdjaGFuZ2VzGAEgAygLMhguZHBob25lLnYxLlNldHRpbmdDaGFuZ2UiKQoTU2V0U2V0dGluZ3NSZXNwb25zZRISCgpnZW5lcmF0aW9uGAEgASgEIiMKFFVuc2V0U2V0dGluZ3NSZXF1ZXN0EgsKA2lkcxgBIAMoCSIrChVVbnNldFNldHRpbmdzUmVzcG9uc2USEgoKZ2VuZXJhdGlvbhgBIAEoBCIwChFJZGxlU29mdGtleUNob2ljZRIMCgRuYW1lGAEgASgJEg0KBWxhYmVsGAIgASgJIokBCgxJZGxlU29mdGtleXMSEAoIc29mdGtleXMYASADKAkSKAoGc291cmNlGAIgASgOMhguZHBob25lLnYxLlNldHRpbmdTb3VyY2USDgoGbG9ja2VkGAMgASgIEi0KB2Nob2ljZXMYBCADKAsyHC5kcGhvbmUudjEuSWRsZVNvZnRrZXlDaG9pY2UiGAoWR2V0SWRsZVNvZnRrZXlzUmVxdWVzdCJJChdHZXRJZGxlU29mdGtleXNSZXNwb25zZRIuCg1pZGxlX3NvZnRrZXlzGAEgASgLMhcuZHBob25lLnYxLklkbGVTb2Z0a2V5cyIqChZTZXRJZGxlU29mdGtleXNSZXF1ZXN0EhAKCHNvZnRrZXlzGAEgAygJIkkKF1NldElkbGVTb2Z0a2V5c1Jlc3BvbnNlEi4KDWlkbGVfc29mdGtleXMYASABKAsyFy5kcGhvbmUudjEuSWRsZVNvZnRrZXlzIlYKC0Jvb2xTZXR0aW5nEg0KBXZhbHVlGAEgASgIEigKBnNvdXJjZRgCIAEoDjIYLmRwaG9uZS52MS5TZXR0aW5nU291cmNlEg4KBmxvY2tlZBgDIAEoCCqFAQoNU2V0dGluZ1NvdXJjZRIeChpTRVRUSU5HX1NPVVJDRV9VTlNQRUNJRklFRBAAEhoKFlNFVFRJTkdfU09VUkNFX0RFRkFVTFQQARIYChRTRVRUSU5HX1NPVVJDRV9MT0NBTBACEh4KGlNFVFRJTkdfU09VUkNFX1BST1ZJU0lPTkVEEAMytgMKDUNvbmZpZ1NlcnZpY2USTwoMTGlzdFNldHRpbmdzEh4uZHBob25lLnYxLkxpc3RTZXR0aW5nc1JlcXVlc3QaHy5kcGhvbmUudjEuTGlzdFNldHRpbmdzUmVzcG9uc2USTAoLU2V0U2V0dGluZ3MSHS5kcGhvbmUudjEuU2V0U2V0dGluZ3NSZXF1ZXN0Gh4uZHBob25lLnYxLlNldFNldHRpbmdzUmVzcG9uc2USUgoNVW5zZXRTZXR0aW5ncxIfLmRwaG9uZS52MS5VbnNldFNldHRpbmdzUmVxdWVzdBogLmRwaG9uZS52MS5VbnNldFNldHRpbmdzUmVzcG9uc2USWAoPR2V0SWRsZVNvZnRrZXlzEiEuZHBob25lLnYxLkdldElkbGVTb2Z0a2V5c1JlcXVlc3QaIi5kcGhvbmUudjEuR2V0SWRsZVNvZnRrZXlzUmVzcG9uc2USWAoPU2V0SWRsZVNvZnRrZXlzEiEuZHBob25lLnYxLlNldElkbGVTb2Z0a2V5c1JlcXVlc3QaIi5kcGhvbmUudjEuU2V0SWRsZVNvZnRrZXlzUmVzcG9uc2ViBnByb3RvMw");
 
 /**
  * @generated from message dphone.v1.Setting
@@ -187,6 +187,137 @@ export const UnsetSettingsResponseSchema: GenMessage<UnsetSettingsResponse> = /*
   messageDesc(file_dphone_v1_config, 7);
 
 /**
+ * A softkey the idle screen can have.
+ *
+ * @generated from message dphone.v1.IdleSoftkeyChoice
+ */
+export type IdleSoftkeyChoice = Message<"dphone.v1.IdleSoftkeyChoice"> & {
+  /**
+   * "call_log", "menu", ..., or "app:<app name>".
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string label = 2;
+   */
+  label: string;
+};
+
+/**
+ * Describes the message dphone.v1.IdleSoftkeyChoice.
+ * Use `create(IdleSoftkeyChoiceSchema)` to create a new message.
+ */
+export const IdleSoftkeyChoiceSchema: GenMessage<IdleSoftkeyChoice> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_config, 8);
+
+/**
+ * @generated from message dphone.v1.IdleSoftkeys
+ */
+export type IdleSoftkeys = Message<"dphone.v1.IdleSoftkeys"> & {
+  /**
+   * Names of the softkeys in effect, in order.
+   *
+   * @generated from field: repeated string softkeys = 1;
+   */
+  softkeys: string[];
+
+  /**
+   * @generated from field: dphone.v1.SettingSource source = 2;
+   */
+  source: SettingSource;
+
+  /**
+   * The provisioning server fixed the list; it cannot be changed here.
+   *
+   * @generated from field: bool locked = 3;
+   */
+  locked: boolean;
+
+  /**
+   * Every softkey this phone offers, those in effect included.
+   *
+   * @generated from field: repeated dphone.v1.IdleSoftkeyChoice choices = 4;
+   */
+  choices: IdleSoftkeyChoice[];
+};
+
+/**
+ * Describes the message dphone.v1.IdleSoftkeys.
+ * Use `create(IdleSoftkeysSchema)` to create a new message.
+ */
+export const IdleSoftkeysSchema: GenMessage<IdleSoftkeys> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_config, 9);
+
+/**
+ * @generated from message dphone.v1.GetIdleSoftkeysRequest
+ */
+export type GetIdleSoftkeysRequest = Message<"dphone.v1.GetIdleSoftkeysRequest"> & {
+};
+
+/**
+ * Describes the message dphone.v1.GetIdleSoftkeysRequest.
+ * Use `create(GetIdleSoftkeysRequestSchema)` to create a new message.
+ */
+export const GetIdleSoftkeysRequestSchema: GenMessage<GetIdleSoftkeysRequest> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_config, 10);
+
+/**
+ * @generated from message dphone.v1.GetIdleSoftkeysResponse
+ */
+export type GetIdleSoftkeysResponse = Message<"dphone.v1.GetIdleSoftkeysResponse"> & {
+  /**
+   * @generated from field: dphone.v1.IdleSoftkeys idle_softkeys = 1;
+   */
+  idleSoftkeys?: IdleSoftkeys | undefined;
+};
+
+/**
+ * Describes the message dphone.v1.GetIdleSoftkeysResponse.
+ * Use `create(GetIdleSoftkeysResponseSchema)` to create a new message.
+ */
+export const GetIdleSoftkeysResponseSchema: GenMessage<GetIdleSoftkeysResponse> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_config, 11);
+
+/**
+ * @generated from message dphone.v1.SetIdleSoftkeysRequest
+ */
+export type SetIdleSoftkeysRequest = Message<"dphone.v1.SetIdleSoftkeysRequest"> & {
+  /**
+   * Empty: drop the list set on the phone, which puts the provisioned or
+   * default softkeys back.
+   *
+   * @generated from field: repeated string softkeys = 1;
+   */
+  softkeys: string[];
+};
+
+/**
+ * Describes the message dphone.v1.SetIdleSoftkeysRequest.
+ * Use `create(SetIdleSoftkeysRequestSchema)` to create a new message.
+ */
+export const SetIdleSoftkeysRequestSchema: GenMessage<SetIdleSoftkeysRequest> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_config, 12);
+
+/**
+ * @generated from message dphone.v1.SetIdleSoftkeysResponse
+ */
+export type SetIdleSoftkeysResponse = Message<"dphone.v1.SetIdleSoftkeysResponse"> & {
+  /**
+   * @generated from field: dphone.v1.IdleSoftkeys idle_softkeys = 1;
+   */
+  idleSoftkeys?: IdleSoftkeys | undefined;
+};
+
+/**
+ * Describes the message dphone.v1.SetIdleSoftkeysResponse.
+ * Use `create(SetIdleSoftkeysResponseSchema)` to create a new message.
+ */
+export const SetIdleSoftkeysResponseSchema: GenMessage<SetIdleSoftkeysResponse> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_config, 13);
+
+/**
  * The effective value of one of Open DPhone's own on/off settings.
  *
  * @generated from message dphone.v1.BoolSetting
@@ -215,7 +346,7 @@ export type BoolSetting = Message<"dphone.v1.BoolSetting"> & {
  * Use `create(BoolSettingSchema)` to create a new message.
  */
 export const BoolSettingSchema: GenMessage<BoolSetting> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_config, 8);
+  messageDesc(file_dphone_v1_config, 14);
 
 /**
  * Where the value of one of Open DPhone's own settings came from.
@@ -285,6 +416,24 @@ export const ConfigService: GenService<{
     methodKind: "unary";
     input: typeof UnsetSettingsRequestSchema;
     output: typeof UnsetSettingsResponseSchema;
+  },
+  /**
+   * The softkeys of the phone's idle screen, in order.
+   *
+   * @generated from rpc dphone.v1.ConfigService.GetIdleSoftkeys
+   */
+  getIdleSoftkeys: {
+    methodKind: "unary";
+    input: typeof GetIdleSoftkeysRequestSchema;
+    output: typeof GetIdleSoftkeysResponseSchema;
+  },
+  /**
+   * @generated from rpc dphone.v1.ConfigService.SetIdleSoftkeys
+   */
+  setIdleSoftkeys: {
+    methodKind: "unary";
+    input: typeof SetIdleSoftkeysRequestSchema;
+    output: typeof SetIdleSoftkeysResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_dphone_v1_config, 0);

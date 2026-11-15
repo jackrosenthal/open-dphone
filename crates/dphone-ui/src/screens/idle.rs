@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::gfx::Rgb;
+use crate::IdleSoftkey;
 use dphone_state::{AccountId, BlfState, LineKeyBinding, Registration};
 
 pub(crate) struct Idle;
@@ -95,10 +96,9 @@ pub(crate) fn status_icons(cx: &Cx) -> Vec<(&'static str, u32)> {
     v
 }
 
-/// Draws the status icons in the header band, from its left edge.
-pub(crate) fn draw_status_icons(cx: &Cx, c: &mut Canvas, fg: Rgb) {
+/// Draws the status icons in the header band `r`, from its left edge.
+pub(crate) fn draw_status_icons(cx: &Cx, c: &mut Canvas, r: IRect, fg: Rgb) {
     let th = cx.th;
-    let r = th.header_rect();
     let f = th.font(Font::Normal);
     // Stock: the first icon starts at x 8 (color); the count follows 8
     // pixels after it.
@@ -119,15 +119,15 @@ pub(crate) fn draw_status_icons(cx: &Cx, c: &mut Canvas, fg: Rgb) {
     c.restore_clip(old);
 }
 
-/// Draws the line-key tabs down the right edge.  Tab `i` is at
-/// [`Theme::tab_rect`]`(i)`: a fixed pitch from the top of the screen, so
-/// that each label sits beside its physical key.
-pub(crate) fn draw_tabs(cx: &Cx, c: &mut Canvas) {
+/// Draws the line-key tabs down the right edge, from `x`.  Tab `i` is at
+/// [`Theme::tab_rect_from`]`(x, i)`: a fixed pitch from the top of the
+/// screen, so that each label sits beside its physical key.
+pub(crate) fn draw_tabs(cx: &Cx, c: &mut Canvas, x: i32) {
     let th = cx.th;
     let f = th.font(Font::Normal);
     let edge = if th.gray { th.fg } else { 0x000001 };
     for (i, tab) in line_tabs(cx).iter().enumerate() {
-        let r = th.tab_rect(i);
+        let r = th.tab_rect_from(x, i);
         if r.bottom() > th.soft_y {
             break;
         }
@@ -174,11 +174,10 @@ pub(crate) fn draw_tabs(cx: &Cx, c: &mut Canvas) {
     }
 }
 
-/// The header band on gray skins: black, left of the tab column, with
+/// The header band `r` on gray skins: black, left of the tab column, with
 /// `text` (a call state) or the status icons.
-pub(crate) fn gray_header(cx: &Cx, c: &mut Canvas, text: Option<&str>) {
+pub(crate) fn gray_header(cx: &Cx, c: &mut Canvas, r: IRect, text: Option<&str>) {
     let th = cx.th;
-    let r = th.header_rect();
     c.fill(r, th.title_bg);
     match text {
         Some(t) => c.text_in(
@@ -188,7 +187,7 @@ pub(crate) fn gray_header(cx: &Cx, c: &mut Canvas, text: Option<&str>) {
             th.title_fg,
             HAlign::Left,
         ),
-        None => draw_status_icons(cx, c, th.title_fg),
+        None => draw_status_icons(cx, c, r, th.title_fg),
     }
 }
 
@@ -237,41 +236,64 @@ impl Screen for Idle {
     fn wallpaper(&self) -> bool {
         true
     }
+    /// The configured softkeys ([`UiConfig::idle_softkeys`]); an action's
+    /// id is its place in that list, from 1.
     fn softkeys(&self, cx: &Cx) -> Vec<Soft> {
-        // Stock: the first softkey reads "Missed Calls" while there are
-        // unseen missed calls.
-        let log = if cx.st.call_log.missed_unseen > 0 { tr::MISSED_CALLS_KEY } else { tr::CALL_LOG };
-        vec![
-            soft(1, log),
-            soft(2, tr::CONTACTS),
-            soft(8, tr::STATUS),
-            soft(3, tr::MENU),
-            soft(4, tr::APPS),
-            soft(5, if cx.st.features.dnd { tr::DND_OFF } else { tr::DND }),
-            soft(6, tr::FORWARD),
-            soft(7, tr::REDIAL),
-        ]
+        let keys = cx.cfg.idle_softkeys.iter().enumerate().filter_map(|(i, key)| {
+            let label = match key {
+                // Stock: "Missed Calls" while there are unseen missed calls.
+                IdleSoftkey::CallLog if cx.st.call_log.missed_unseen > 0 => tr::MISSED_CALLS_KEY,
+                IdleSoftkey::CallLog => tr::CALL_LOG,
+                IdleSoftkey::Contacts => tr::CONTACTS,
+                IdleSoftkey::Status => tr::STATUS,
+                IdleSoftkey::Info => tr::INFO,
+                IdleSoftkey::Menu => tr::MENU,
+                IdleSoftkey::Apps => tr::APPS,
+                IdleSoftkey::Dnd if cx.st.features.dnd => tr::DND_OFF,
+                IdleSoftkey::Dnd => tr::DND,
+                IdleSoftkey::Forward => tr::FORWARD,
+                IdleSoftkey::Redial => tr::REDIAL,
+                IdleSoftkey::App { name, label } => {
+                    // An app the phone does not have, or one that is
+                    // switched off, has no softkey.
+                    let app = cx.st.apps.installed.iter().find(|a| a.name == *name)?;
+                    match label {
+                        Some(label) => label,
+                        None if app.display_name.is_empty() => name,
+                        None => &app.display_name,
+                    }
+                }
+            };
+            Some(soft(i as u32 + 1, label))
+        });
+        keys.collect()
     }
     fn softkey(&mut self, cx: &Cx, id: u32) -> Nav {
-        match id {
-            1 => Nav::Push(menus::call_log()),
-            2 => {
+        let Some(key) = (id as usize).checked_sub(1).and_then(|i| cx.cfg.idle_softkeys.get(i)) else {
+            return Nav::Stay;
+        };
+        match key {
+            IdleSoftkey::CallLog => Nav::Push(menus::call_log()),
+            IdleSoftkey::Contacts => {
                 cx.post(Command::LaunchApp { name: "contacts".into() });
                 Nav::Stay
             }
-            3 => Nav::Push(menus::main_menu()),
-            4 => Nav::Push(menus::launcher()),
-            5 => {
+            IdleSoftkey::Status | IdleSoftkey::Info => Nav::Push(menus::about()),
+            IdleSoftkey::Menu => Nav::Push(menus::main_menu()),
+            IdleSoftkey::Apps => Nav::Push(menus::launcher()),
+            IdleSoftkey::Dnd => {
                 cx.post(Command::SetDnd { on: !cx.st.features.dnd });
                 Nav::Stay
             }
-            6 => Nav::Push(menus::forward_menu()),
-            7 => {
+            IdleSoftkey::Forward => Nav::Push(menus::forward_menu()),
+            IdleSoftkey::Redial => {
                 cx.post(Command::Redial);
                 Nav::Stay
             }
-            8 => Nav::Push(menus::about()),
-            _ => Nav::Stay,
+            IdleSoftkey::App { name, .. } => {
+                cx.post(Command::LaunchApp { name: name.clone() });
+                Nav::Stay
+            }
         }
     }
     fn key(&mut self, cx: &Cx, key: Key) -> Nav {
@@ -289,15 +311,16 @@ impl Screen for Idle {
     fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
         let th = cx.th;
         // The background (wallpaper) is already painted.
+        let header = th.header_rect_to(th.idle_tab_x);
         if th.gray {
-            gray_header(cx, c, None);
+            gray_header(cx, c, header, None);
         } else {
-            draw_status_icons(cx, c, th.fg);
+            draw_status_icons(cx, c, header, th.fg);
         }
-        draw_tabs(cx, c);
+        draw_tabs(cx, c, th.idle_tab_x);
 
         // The clock area: left of the tabs, below the header band.
-        let mut main = IRect::new(area.x, th.header_h, th.tab_x - area.x, area.bottom() - th.header_h);
+        let mut main = IRect::new(area.x, th.header_h, th.idle_tab_x - area.x, area.bottom() - th.header_h);
         if let Some(view) = cx.idle_view {
             let (rest, app) = main.split_bottom(idle_app_h(th));
             let mut tree = view.batch_quiet();

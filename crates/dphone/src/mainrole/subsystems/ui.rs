@@ -105,6 +105,7 @@ fn ui_config(ctx: &Context, cfg: Option<&Config>) -> UiConfig {
     if let Some(v) = cfg.setting_num::<u8>("contrast") {
         out.contrast = v;
     }
+    out.idle_softkeys = idle_softkeys(&cfg.idle_softkeys().keys);
     let active = cfg.ringtones().active;
     if let Some(name) = out.ringtones.iter().find(|n| n.eq_ignore_ascii_case(&active)) {
         out.ringtone = name.clone();
@@ -140,6 +141,11 @@ fn dial_plan(plan: &str) -> Option<DialPlan> {
             }
         })
         .ok()
+}
+
+/// The configured idle softkeys as the UI's.
+fn idle_softkeys(keys: &[dphone_config::IdleSoftkey]) -> Vec<dphone_ui::IdleSoftkey> {
+    keys.iter().filter_map(|k| dphone_ui::IdleSoftkey::from_name(&k.name, k.label.as_deref())).collect()
 }
 
 pub struct UiParts {

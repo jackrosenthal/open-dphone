@@ -40,10 +40,10 @@ fn measured_geometry_per_skin() {
     // (model, tab x and width, tab pitch, header height, softkey top and
     // height, first softkey x, pitch, width)
     let table = [
-        (Model::D40, (155, 85), 23, 15, (103, 17), (0, 60, 60)),
-        (Model::D45, (155, 85), 23, 15, (103, 17), (0, 60, 60)),
-        (Model::D50, (155, 85), 23, 15, (103, 17), (0, 60, 60)),
-        (Model::D70, (206, 114), 23, 17, (141, 19), (0, 80, 80)),
+        (Model::D40, (155, 85), 23, 15, (103, 17), (0, 60, 59)),
+        (Model::D45, (155, 85), 23, 15, (103, 17), (0, 60, 59)),
+        (Model::D50, (155, 85), 23, 15, (103, 17), (0, 60, 59)),
+        (Model::D70, (206, 114), 23, 17, (141, 19), (0, 80, 79)),
         (Model::D60, (296, 184), 40, 40, (244, 25), (14, 116, 104)),
         (Model::D62, (296, 184), 40, 40, (244, 25), (14, 116, 104)),
         (Model::D65, (296, 184), 40, 40, (244, 25), (14, 116, 104)),
@@ -136,9 +136,13 @@ fn color_idle_matches_stock_rows() {
     assert_eq!(l, i32::MAX, "text under the date");
 }
 
+/// The rows are stock's.  Two widths are not: the idle screen's tabs start
+/// as far left as the clock allows (stock: x 155 and 206), and a softkey
+/// fills its cell but for the last column (stock: a white column at each
+/// side).
 #[test]
-fn gray_idle_matches_stock_rows() {
-    for (model, tab_x, soft_y, pitch) in [(Model::D40, 155, 103, 60), (Model::D50, 155, 103, 60), (Model::D70, 206, 141, 80)] {
+fn gray_idle_rows() {
+    for (model, tab_x, soft_y, pitch) in [(Model::D40, 114, 103, 60), (Model::D50, 114, 103, 60), (Model::D70, 160, 141, 80)] {
         let ui = idle(model, 2);
         let c = ui.canvas();
         let (w, h) = (c.width(), c.height());
@@ -158,12 +162,17 @@ fn gray_idle_matches_stock_rows() {
             assert_eq!(c.pixel(w - 30, top + 22), BLACK, "{model} tab at {top}");
             assert_eq!(c.pixel(w - 30, top + 21), WHITE, "{model} tab at {top}");
         }
-        // Softkeys: black cells from soft_y to the bottom, a white column
-        // at each cell edge, white above.
+        assert_eq!(Theme::for_model(model).idle_tab_x, tab_x, "{model}");
+        // The clock, at its widest, stays clear of the tabs.
+        let th = Theme::for_model(model);
+        let clock = th.clock_font().width("12:58") + 3 + th.date_font().width("PM");
+        assert!(clock + 8 <= tab_x, "{model}: clock {clock}");
+        // Softkeys: black cells from soft_y to the bottom with the top
+        // corners cut, one white column between two cells, white above.
         for i in 0..4 {
             let x = i * pitch;
-            assert_eq!(c.pixel(x, soft_y + 8), WHITE, "{model} key {i}");
-            assert_eq!(c.pixel(x + 1, soft_y + 3), BLACK, "{model} key {i}");
+            assert_eq!(c.pixel(x, soft_y), WHITE, "{model} key {i}");
+            assert_eq!(c.pixel(x, soft_y + 3), BLACK, "{model} key {i}");
             assert_eq!(c.pixel(x + pitch - 2, soft_y + 3), BLACK, "{model} key {i}");
             assert_eq!(c.pixel(x + pitch - 1, soft_y + 8), WHITE, "{model} key {i}");
             assert_eq!(c.pixel(x + pitch / 2, soft_y), BLACK, "{model} key {i}");

@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useMemo, useState } from "react";
 import { Badge, Button, Card, Field, Input, PageHeader, Select, Spinner, Toggle, td, th } from "../components/ui";
-import { ConfigService, type Setting } from "../gen/dphone/v1/config_pb";
+import { ConfigService, SettingSource, type IdleSoftkeys as IdleSoftkeysMessage, type Setting } from "../gen/dphone/v1/config_pb";
 import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
 
@@ -78,7 +78,6 @@ const groups: { title: string; items: Item[] }[] = [
     title: "Access",
     items: [
       { id: "web_ui_enabled", label: "Web interface", type: "bool" },
-      { id: "allow_app_dev", label: "Allow app development", type: "bool" },
     ],
   },
 ];
@@ -120,6 +119,77 @@ function Control({ item, setting, value, onChange }: { item: Item; setting?: Set
       )}
       {item.hint && <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">{item.hint}</span>}
     </label>
+  );
+}
+
+/// The softkeys of the phone's idle screen, in order.  Each change is
+/// saved as it is made.
+function IdleSoftkeys() {
+  const [error, setError] = useState<unknown>();
+  const [saved, setSaved] = useState<IdleSoftkeysMessage>();
+  const loaded = useQuery(ConfigService.method.getIdleSoftkeys, {});
+  const set = useMutation(ConfigService.method.setIdleSoftkeys, {
+    onError: setError,
+    onSuccess: (r) => {
+      setError(undefined);
+      setSaved(r.idleSoftkeys);
+    },
+  });
+  const keys = saved ?? loaded.data?.idleSoftkeys;
+  const names = keys?.softkeys ?? [];
+  const label = (name: string) => keys?.choices.find((c) => c.name === name)?.label ?? name;
+  const fixed = !keys || keys.locked || set.isPending;
+  const save = (softkeys: string[]) => set.mutate({ softkeys });
+  const move = (i: number, by: number) => {
+    const next = [...names];
+    [next[i], next[i + by]] = [next[i + by], next[i]];
+    save(next);
+  };
+  const origin = keys?.locked ? "Set by the provisioning server." : keys?.source === SettingSource.PROVISIONED ? "Provisioned." : "";
+  return (
+    <Card
+      title="Idle screen softkeys"
+      actions={
+        keys?.source === SettingSource.LOCAL &&
+        !keys.locked && (
+          <Button size="sm" variant="ghost" disabled={set.isPending} onClick={() => save([])}>
+            Revert
+          </Button>
+        )
+      }
+    >
+      <div className="space-y-3">
+        <ErrorNote error={error ?? loaded.error} />
+        <ol className="divide-y divide-slate-100 dark:divide-slate-800">
+          {names.map((name, i) => (
+            <li key={name + i} className="flex items-center gap-1 py-1.5 text-sm">
+              <span className="w-6 text-slate-400">{i + 1}</span>
+              <span className="flex-1">{label(name)}</span>
+              <Button size="sm" variant="ghost" aria-label="Move up" disabled={fixed || i === 0} onClick={() => move(i, -1)}>
+                ↑
+              </Button>
+              <Button size="sm" variant="ghost" aria-label="Move down" disabled={fixed || i === names.length - 1} onClick={() => move(i, 1)}>
+                ↓
+              </Button>
+              <Button size="sm" variant="ghost" aria-label="Remove" disabled={fixed || names.length === 1} onClick={() => save(names.filter((_, j) => j !== i))}>
+                ✕
+              </Button>
+            </li>
+          ))}
+        </ol>
+        <Select aria-label="Add a softkey" value="" disabled={fixed} onChange={(e) => e.target.value && save([...names, e.target.value])}>
+          <option value="">Add…</option>
+          {(keys?.choices ?? [])
+            .filter((c) => !names.includes(c.name))
+            .map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.label}
+              </option>
+            ))}
+        </Select>
+        {origin && <p className="text-xs text-slate-500 dark:text-slate-400">{origin}</p>}
+      </div>
+    </Card>
   );
 }
 
@@ -181,6 +251,7 @@ export function Settings() {
               </div>
             </Card>
           ))}
+          <IdleSoftkeys />
         </div>
 
         <Card

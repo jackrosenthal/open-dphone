@@ -247,7 +247,7 @@ impl Screen for Dialer {
             _ => tr::NEW_CALL_TITLE,
         };
         call_header(cx, c, label, &[]);
-        idle::draw_tabs(cx, c);
+        idle::draw_tabs(cx, c, th.tab_x);
         // Stock: the digits appear on the first line of a call card.
         let acct = self
             .account
@@ -354,7 +354,7 @@ pub(crate) fn call_header(cx: &Cx, c: &mut Canvas, text: &str, flags: &[&str]) {
     let th = cx.th;
     let r = th.header_rect();
     if th.gray {
-        idle::gray_header(cx, c, Some(text));
+        idle::gray_header(cx, c, r, Some(text));
     } else {
         c.fill(r, th.title_bg);
         c.hline(r.x, r.bottom(), r.w, 0x000001);
@@ -656,7 +656,7 @@ impl Screen for CallScreen {
             flags.push("lock");
         }
         call_header(cx, c, &label, &flags);
-        idle::draw_tabs(cx, c);
+        idle::draw_tabs(cx, c, th.tab_x);
         // One card per call, the selected one first (stock shows the call
         // card directly under the state band).
         let mut calls: Vec<&Call> = vec![sel];

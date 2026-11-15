@@ -343,6 +343,54 @@ fn active_call_keys() {
 }
 
 #[test]
+fn idle_softkeys_follow_the_configuration() {
+    use dphone_ui::IdleSoftkey;
+    let mut r = Rig::new(Model::D40);
+    // The default: Call Log, Contacts, Status; Menu, Apps, DND; Forward.
+    // No Redial softkey: every model has a Redial key.
+    r.tap(Key::Soft(4));
+    r.tap(Key::Soft(4));
+    r.tap(Key::Soft(2));
+    r.tap(Key::Soft(3));
+    assert_eq!(r.call_cmds(), vec![]);
+    r.tap(Key::Soft(1));
+    assert_eq!(r.screen(), "forward");
+    r.tap(Key::Cancel);
+    r.tap(Key::Redial);
+    assert_eq!(r.call_cmds(), vec![Command::Redial]);
+
+    // A configured list: functions and apps.  An app the phone does not
+    // have (absent, or switched off) gets no softkey, so four keys are
+    // left, and there is no "More..." page.
+    r.store.update::<Apps, _>(|a| a.installed.push(AppInfo { name: "parking".into(), ..Default::default() }));
+    let keys = ["app:parking", "app:calendar", "redial", "dnd", "menu"];
+    let keys = keys.iter().map(|k| IdleSoftkey::from_name(k, Some("_PARKED_CALLS")).unwrap()).collect::<Vec<_>>();
+    assert_eq!(keys[0], IdleSoftkey::App { name: "parking".into(), label: Some("Parked Calls".into()) });
+    r.ui.handle().set_config(UiConfig { backlight_timeout_secs: 0, idle_softkeys: keys, ..Default::default() });
+    r.ui.pump();
+    r.tap(Key::Soft(1));
+    assert_eq!(Rig::drain(&r.apps), vec![Command::LaunchApp { name: "parking".into() }]);
+    r.tap(Key::Soft(2));
+    r.tap(Key::Soft(3));
+    assert_eq!(r.call_cmds(), vec![Command::Redial, Command::SetDnd { on: true }]);
+    r.tap(Key::Soft(4));
+    assert_eq!(r.screen(), "menu");
+    r.tap(Key::Cancel);
+    // The app arrives: its softkey is second, and the five page.
+    r.store.update::<Apps, _>(|a| a.installed.push(AppInfo { name: "calendar".into(), ..Default::default() }));
+    r.ui.pump();
+    r.tap(Key::Soft(2));
+    assert_eq!(Rig::drain(&r.apps), vec![Command::LaunchApp { name: "calendar".into() }]);
+    r.tap(Key::Soft(4));
+    r.tap(Key::Soft(2));
+    assert_eq!(r.screen(), "menu");
+    // Names that are not softkeys.
+    assert_eq!(IdleSoftkey::from_name("lunch", None), None);
+    assert_eq!(IdleSoftkey::from_name("bluetooth", None), None);
+    assert_eq!(IdleSoftkey::from_name("app:", None), None);
+}
+
+#[test]
 fn menu_shortcuts_and_settings() {
     let mut r = Rig::new(Model::D60);
     // Idle softkeys page behind "More...": Call Log, Contacts, Status,

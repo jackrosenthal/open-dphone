@@ -568,16 +568,13 @@ impl Canvas {
     /// bottom edge comes to a shallow point at the center, aimed at the
     /// physical key below (the last five rows of `r` are the point), with
     /// rounded corners and an optional one-pixel outline, all
-    /// anti-aliased by coverage.  On gray: a cell with rounded top corners
-    /// and a one-pixel gap at each side.
+    /// anti-aliased by coverage.  On gray: `r` filled, with its two top
+    /// corners cut.
     pub fn softkey_shape(&mut self, r: IRect, fill: Rgb, edge: Option<Rgb>) {
         if self.gray {
+            // The two top corners are cut.
             for j in 0..r.h {
-                let inset = match j {
-                    0 => 3,
-                    1 => 2,
-                    _ => 1,
-                };
+                let inset = (2 - j).max(0);
                 self.span(r.y + j, r.x + inset, r.right() - inset, fill);
             }
             return;

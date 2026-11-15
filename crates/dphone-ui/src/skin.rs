@@ -8,10 +8,16 @@
 //! | | D40/D45/D50 | D70 | D60/D62/D65 |
 //! | --- | --- | --- | --- |
 //! | Line-key tab column | x 155..239 | x 206..319 | x 297..479 |
+//! | The same, idle screen | x 114..239 | x 160..319 | x 297..479 |
 //! | Tab pitch from y = 0 | 23 | 23 | 40 |
 //! | Header band (left of the tabs) | y 0..14 | y 0..16 | y 0..39 |
 //! | Softkey shapes | y 103..119 | y 141..159 | y 244..268 |
-//! | Softkey x: first, pitch, width | 0, 60, 60 | 0, 80, 80 | 14, 116, 104 |
+//! | Softkey x: first, pitch, width | 0, 60, 59 | 0, 80, 79 | 14, 116, 104 |
+//!
+//! Two things on the gray skins are wider than stock's, for the room they
+//! give a label: the idle screen's tab column starts as far left as the
+//! clock allows, and a softkey shape fills its cell but for one column
+//! (stock: two).
 //!
 //! Colors of the color skin are the stock values by measurement; the
 //! wallpaper and every bitmap are our own.
@@ -48,6 +54,9 @@ pub struct Theme {
     pub tab_x: i32,
     pub tab_w: i32,
     pub tab_h: i32,
+    /// Left edge of the tabs on the idle screen, where only the clock is
+    /// beside them.
+    pub idle_tab_x: i32,
     /// Height of the header band at the top left of the idle and call
     /// screens (15, 17, 40).
     pub header_h: i32,
@@ -117,6 +126,7 @@ static COLOR: Theme = Theme {
     tab_x: 296,
     tab_w: 184,
     tab_h: 40,
+    idle_tab_x: 296,
     header_h: 40,
     line_h: 25,
     row_h: 32,
@@ -166,12 +176,15 @@ const fn gray_theme(skin: Skin) -> Theme {
         softkey_h: if large { 20 } else { 18 },
         soft_x0: 0,
         soft_pitch: if large { 80 } else { 60 },
-        soft_w: if large { 80 } else { 60 },
+        soft_w: if large { 79 } else { 59 },
         soft_y: if large { 141 } else { 103 },
         soft_h: if large { 19 } else { 17 },
         tab_x: if large { 206 } else { 155 },
         tab_w: if large { 114 } else { 85 },
         tab_h: 23,
+        // The widest clock ("12:58 PM") is 102 pixels on the small panel
+        // and 105 on the large one.
+        idle_tab_x: if large { 160 } else { 114 },
         header_h: if large { 17 } else { 15 },
         line_h: if large { 17 } else { 15 },
         row_h: if large { 17 } else { 15 },
@@ -299,11 +312,21 @@ impl Theme {
 
     /// Line-key tab `i` (0 = beside line key 1), border included.
     pub fn tab_rect(&self, i: usize) -> IRect {
-        IRect::new(self.tab_x, i as i32 * self.tab_h, self.tab_w, self.tab_h)
+        self.tab_rect_from(self.tab_x, i)
+    }
+
+    /// Line-key tab `i` of a tab column whose left edge is `x`.
+    pub fn tab_rect_from(&self, x: i32, i: usize) -> IRect {
+        IRect::new(x, i as i32 * self.tab_h, self.width - x, self.tab_h)
     }
 
     /// The header band left of the tab column.
     pub fn header_rect(&self) -> IRect {
-        IRect::new(0, 0, self.tab_x - if self.gray { 1 } else { 0 }, self.header_h)
+        self.header_rect_to(self.tab_x)
+    }
+
+    /// The header band left of a tab column whose left edge is `x`.
+    pub fn header_rect_to(&self, x: i32) -> IRect {
+        IRect::new(0, 0, x - if self.gray { 1 } else { 0 }, self.header_h)
     }
 }

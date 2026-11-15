@@ -8,6 +8,9 @@ service ConfigService {
   rpc SetSettings(SetSettingsRequest) returns (SetSettingsResponse);
   // Drops local overrides so that provisioned or default values show again.
   rpc UnsetSettings(UnsetSettingsRequest) returns (UnsetSettingsResponse);
+  // The softkeys of the phone's idle screen, in order.
+  rpc GetIdleSoftkeys(GetIdleSoftkeysRequest) returns (GetIdleSoftkeysResponse);
+  rpc SetIdleSoftkeys(SetIdleSoftkeysRequest) returns (SetIdleSoftkeysResponse);
 }
 
 message Setting {
@@ -60,6 +63,39 @@ enum SettingSource {
   SETTING_SOURCE_LOCAL = 2;
   // Supplied by the provisioning server.
   SETTING_SOURCE_PROVISIONED = 3;
+}
+
+// A softkey the idle screen can have.
+message IdleSoftkeyChoice {
+  // "call_log", "menu", ..., or "app:<app name>".
+  string name = 1;
+  string label = 2;
+}
+
+message IdleSoftkeys {
+  // Names of the softkeys in effect, in order.
+  repeated string softkeys = 1;
+  SettingSource source = 2;
+  // The provisioning server fixed the list; it cannot be changed here.
+  bool locked = 3;
+  // Every softkey this phone offers, those in effect included.
+  repeated IdleSoftkeyChoice choices = 4;
+}
+
+message GetIdleSoftkeysRequest {}
+
+message GetIdleSoftkeysResponse {
+  IdleSoftkeys idle_softkeys = 1;
+}
+
+message SetIdleSoftkeysRequest {
+  // Empty: drop the list set on the phone, which puts the provisioned or
+  // default softkeys back.
+  repeated string softkeys = 1;
+}
+
+message SetIdleSoftkeysResponse {
+  IdleSoftkeys idle_softkeys = 1;
 }
 
 // The effective value of one of Open DPhone's own on/off settings.

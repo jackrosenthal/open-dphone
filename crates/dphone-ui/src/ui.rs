@@ -21,6 +21,64 @@ use std::time::Duration;
 
 use crate::dialplan::DialPlan;
 
+/// What a softkey of the idle screen does.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IdleSoftkey {
+    /// The call log; labeled "Missed Calls" while there are unseen ones.
+    CallLog,
+    Contacts,
+    /// Phone information ("Status").
+    Status,
+    /// Phone information ("Info").
+    Info,
+    Menu,
+    /// The app launcher.
+    Apps,
+    /// Switches Do Not Disturb.
+    Dnd,
+    /// The call forwarding menu.
+    Forward,
+    Redial,
+    /// Opens the app `name`; not shown while the phone has no such app
+    /// (absent, or switched off).  Without a `label`, the app's display
+    /// name.
+    App { name: String, label: Option<String> },
+}
+
+impl IdleSoftkey {
+    /// The softkey a configured name stands for: `call_log`, `contacts`,
+    /// `status`, `info`, `menu`, `apps`, `dnd`, `forward`, `redial`, or
+    /// `app:<name>`.  `label` is a keymap entry's label:
+    /// text, or one of stock's string tokens (`_CONTACTS`).
+    pub fn from_name(name: &str, label: Option<&str>) -> Option<IdleSoftkey> {
+        Some(match name {
+            "call_log" => IdleSoftkey::CallLog,
+            "contacts" => IdleSoftkey::Contacts,
+            "status" => IdleSoftkey::Status,
+            "info" => IdleSoftkey::Info,
+            "menu" => IdleSoftkey::Menu,
+            "apps" => IdleSoftkey::Apps,
+            "dnd" => IdleSoftkey::Dnd,
+            "forward" => IdleSoftkey::Forward,
+            "redial" => IdleSoftkey::Redial,
+            _ => {
+                let app = name.strip_prefix("app:").filter(|a| !a.is_empty())?;
+                let label = match label {
+                    Some("_CONTACTS") => Some(tr::CONTACTS),
+                    Some("_STATUS") => Some(tr::STATUS),
+                    Some("_FORWARD") => Some(tr::FORWARD),
+                    Some("_PARKED_CALLS") => Some(tr::PARKED_CALLS),
+                    Some("_QUEUES") => Some(tr::QUEUES),
+                    // Another token: the app's own name serves.
+                    Some(l) if l.starts_with('_') || l.is_empty() => None,
+                    l => l,
+                };
+                IdleSoftkey::App { name: app.to_string(), label: label.map(str::to_string) }
+            }
+        })
+    }
+}
+
 /// Settings the integrator maps from the merged configuration.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UiConfig {
@@ -60,6 +118,8 @@ pub struct UiConfig {
     /// Seconds each app's idle view shows before the next takes its turn
     /// (stock `idle_cycle_seconds`: 10 by default); 0 shows none.
     pub idle_cycle_secs: u32,
+    /// The idle screen's softkeys, in order.
+    pub idle_softkeys: Vec<IdleSoftkey>,
 }
 
 impl Default for UiConfig {
@@ -79,6 +139,10 @@ impl Default for UiConfig {
             dial_plans: Vec::new(),
             default_dial_plan: None,
             idle_cycle_secs: 10,
+            idle_softkeys: {
+                use IdleSoftkey::*;
+                vec![CallLog, Contacts, Status, Menu, Apps, Dnd, Forward]
+            },
         }
     }
 }

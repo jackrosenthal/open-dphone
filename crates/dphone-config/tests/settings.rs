@@ -366,3 +366,54 @@ fn provisioned_ssh_keys_combine_with_local_ones() {
     assert!(!nv.exists(mirror));
     assert_eq!(s3.ssh_authorized_keys().unwrap(), [KEY_LOCAL]);
 }
+
+#[test]
+fn idle_softkeys_sources() {
+    let (_d, _nv, mut s) = store();
+    let names = |c: &dphone_config::Config| c.idle_softkeys().keys.iter().map(|k| k.name.clone()).collect::<Vec<_>>();
+    // Nothing set: the base layer's `idle` keymap state.
+    let c = s.config();
+    assert_eq!(names(&c), ["call_log", "contacts", "status", "menu", "apps", "dnd", "forward"]);
+    assert_eq!(c.idle_softkeys().keys[6].label.as_deref(), Some("_FORWARD"));
+    assert_eq!((c.idle_softkeys().source, c.idle_softkeys().locked), (SettingSource::Default, false));
+
+    // A server's keymap replaces the base layer's, as on stock.
+    let keymap = r#"<keymap><state id="idle" conflict="freeze"><softkeys>
+        <key id="0" action="missed_or_call_log"/>
+        <key id="1" action="show_application" label1="_PARKED_CALLS"><arg>parking</arg></key>
+        <key id="2" action="none"/>
+        <key id="3" action="menu"/>
+    </softkeys></state></keymap>"#;
+    s.apply_fetched(&format!("<config>{keymap}</config>")).unwrap();
+    let c = s.config();
+    assert_eq!(names(&c), ["call_log", "app:parking", "menu"]);
+    assert_eq!(c.idle_softkeys().source, SettingSource::Default);
+
+    // A provisioned list comes before the keymap, and a local list before
+    // that.
+    s.apply_fetched(&format!(r#"<config>{keymap}<setting id="dphone_idle_softkeys" value="menu, apps"/></config>"#)).unwrap();
+    assert_eq!(names(&s.config()), ["menu", "apps"]);
+    assert_eq!(s.config().idle_softkeys().source, SettingSource::Provisioned);
+    let c = s.update_dphone_settings(|d| d.idle_softkeys = Some("dnd,app:queues".into())).unwrap();
+    assert_eq!(names(&c), ["dnd", "app:queues"]);
+    assert_eq!((c.idle_softkeys().source, c.idle_softkeys().locked), (SettingSource::Local, false));
+
+    // A list that does not parse counts as not set.
+    let c = s.update_dphone_settings(|d| d.idle_softkeys = Some("dnd,lunch".into())).unwrap();
+    assert_eq!(names(&c), ["menu", "apps"]);
+
+    // Frozen by the server: the local list has no effect.
+    s.update_dphone_settings(|d| d.idle_softkeys = Some("dnd".into())).unwrap();
+    s.apply_fetched(r#"<config><setting id="dphone_idle_softkeys" value="call_log" conflict="freeze"/></config>"#).unwrap();
+    let c = s.config();
+    assert_eq!(names(&c), ["call_log"]);
+    assert_eq!((c.idle_softkeys().source, c.idle_softkeys().locked), (SettingSource::Provisioned, true));
+}
+
+#[test]
+fn a_provisioned_allow_app_dev_is_carried_and_unused() {
+    let (_d, _nv, mut s) = store();
+    assert_eq!(s.config().setting("allow_app_dev"), None);
+    let c = s.apply_fetched(&provisioned(r#"<setting id="allow_app_dev" value="1"/>"#)).unwrap();
+    assert_eq!(c.setting("allow_app_dev"), Some("1"));
+}

@@ -38,7 +38,7 @@ fn factory_layers_freeze_model_facts() {
             assert!(matches!(s.set(id, "9"), Err(ConfigError::Frozen(_))));
         }
         assert_eq!(c.setting("enable_blf_on_unused_line_keys"), Some("1"));
-        assert_eq!(c.softkeys("idle").len(), 6);
+        assert_eq!(c.softkeys("idle").len(), 7);
         assert_eq!(c.keymap_states().len(), if model == Model::D70 { 18 } else { 19 });
         assert_eq!(c.enabled_codecs().iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), [
             "PCMU", "PCMA", "G722", "G726-32"

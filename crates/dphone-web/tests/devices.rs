@@ -347,3 +347,54 @@ async fn serial_console_switch() {
     let (status, v) = call(&p, &l, "SystemService/SetSerialConsole", json!({})).await;
     assert_eq!((status, v["code"].as_str()), (400, Some("failed_precondition")));
 }
+
+#[tokio::test]
+async fn idle_softkeys() {
+    let p = phone(Model::D40).await;
+    let l = login(p.addr).await;
+    let settings = p.dir.join("nvdata/dphone_settings.txtpb");
+    // Nothing set: the softkeys of the `idle` keymap state.  No Redial
+    // softkey: every model has a Redial key.
+    let (_, v) = call(&p, &l, "ConfigService/GetIdleSoftkeys", json!({})).await;
+    let v = &v["idleSoftkeys"];
+    assert_eq!(v["softkeys"], json!(["call_log", "contacts", "status", "menu", "apps", "dnd", "forward"]));
+    assert_eq!(v["source"], "SETTING_SOURCE_DEFAULT");
+    let offered: Vec<&str> = v["choices"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap()).collect();
+    assert_eq!(offered, ["call_log", "contacts", "status", "info", "menu", "apps", "dnd", "forward", "redial"]);
+
+    let (status, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({ "softkeys": ["menu", "app:parking", "dnd"] })).await;
+    assert_eq!(status, 200, "{v}");
+    assert_eq!(v["idleSoftkeys"]["softkeys"], json!(["menu", "app:parking", "dnd"]));
+    // The functions, then the phone's apps; a softkey in effect whose app
+    // the phone does not have (absent, or switched off) is still listed.
+    p.store.update::<st::Apps, _>(|a| {
+        a.installed.push(st::AppInfo { name: "queues".into(), display_name: "Queues".into(), ..Default::default() })
+    });
+    let (_, v) = call(&p, &l, "ConfigService/GetIdleSoftkeys", json!({})).await;
+    let choices = v["idleSoftkeys"]["choices"].as_array().unwrap();
+    assert_eq!(choices[9], json!({ "name": "app:queues", "label": "Queues (app)" }));
+    assert_eq!(choices[10], json!({ "name": "app:parking", "label": "parking" }));
+    assert_eq!(choices.len(), 11);
+    assert_eq!(v["idleSoftkeys"]["source"], "SETTING_SOURCE_LOCAL");
+    assert!(std::fs::read_to_string(&settings).unwrap().contains("idle_softkeys: \"menu,app:parking,dnd\""));
+
+    let (status, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({ "softkeys": ["menu", "lunch"] })).await;
+    assert_eq!((status, v["code"].as_str()), (400, Some("invalid_argument")), "{v}");
+
+    // An empty list drops the local one.
+    let (_, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({})).await;
+    assert_eq!(v["idleSoftkeys"]["source"], "SETTING_SOURCE_DEFAULT");
+    assert!(!std::fs::read_to_string(&settings).unwrap().contains("idle_softkeys"));
+
+    // A list the provisioning server froze cannot be changed here.
+    p.config
+        .lock()
+        .unwrap()
+        .apply_fetched(r#"<config><setting id="dphone_idle_softkeys" value="call_log,menu" conflict="freeze"/></config>"#)
+        .unwrap();
+    let (_, v) = call(&p, &l, "ConfigService/GetIdleSoftkeys", json!({})).await;
+    assert_eq!(v["idleSoftkeys"]["softkeys"], json!(["call_log", "menu"]));
+    assert_eq!(v["idleSoftkeys"]["locked"], true);
+    let (status, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({ "softkeys": ["menu"] })).await;
+    assert_eq!((status, v["code"].as_str()), (400, Some("failed_precondition")));
+}

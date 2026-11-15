@@ -103,7 +103,6 @@
     <!-- Access -->
     <setting id="web_ui_enabled" value="1"/>
     <setting id="login_password" value="789"/>
-    <setting id="allow_app_dev" value="0"/>
     <setting id="log_level" value="information"/>
     <setting id="log_port" value="514"/>
 
@@ -203,14 +202,17 @@
     <multicastpage/>
 
     <keymap>
+        <!-- "apps" and "dnd" are Open DPhone actions.  (Stock: call log,
+             contacts, status, info, forward, menu.) -->
         <state id="idle" conflict="replace">
             <softkeys>
                 <key id="0" action="missed_or_call_log"/>
                 <key id="1" action="show_application" label1="_CONTACTS"><arg>contacts</arg></key>
                 <key id="2" action="status"/>
-                <key id="3" action="info"/>
-                <key id="4" action="forward_calls" label1="_FORWARD"/>
-                <key id="5" action="menu"/>
+                <key id="3" action="menu"/>
+                <key id="4" action="apps"/>
+                <key id="5" action="dnd"/>
+                <key id="6" action="forward_calls" label1="_FORWARD"/>
             </softkeys>
         </state>
         <state id="hold" conflict="replace">

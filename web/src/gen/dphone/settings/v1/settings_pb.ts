@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/settings/v1/settings.proto.
  */
 export const file_dphone_settings_v1_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSLmAQoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBARIbCg5zZXJpYWxfY29uc29sZRgDIAEoCEgCiAEBEhwKD21ldHJpY3NfZW5hYmxlZBgEIAEoCEgDiAEBQg4KDF9zc2hfZW5hYmxlZEIeChxfaWdub3JlX3Byb3Zpc2lvbmVkX2Zpcm13YXJlQhEKD19zZXJpYWxfY29uc29sZUISChBfbWV0cmljc19lbmFibGVkYgZwcm90bzM");
+  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSKUAgoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBARIbCg5zZXJpYWxfY29uc29sZRgDIAEoCEgCiAEBEhwKD21ldHJpY3NfZW5hYmxlZBgEIAEoCEgDiAEBEhoKDWlkbGVfc29mdGtleXMYBSABKAlIBIgBAUIOCgxfc3NoX2VuYWJsZWRCHgocX2lnbm9yZV9wcm92aXNpb25lZF9maXJtd2FyZUIRCg9fc2VyaWFsX2NvbnNvbGVCEgoQX21ldHJpY3NfZW5hYmxlZEIQCg5faWRsZV9zb2Z0a2V5c2IGcHJvdG8z");
 
 /**
  * Settings that only Open DPhone has.  Stored on the phone in protobuf text
@@ -65,6 +65,19 @@ export type DphoneSettings = Message<"dphone.settings.v1.DphoneSettings"> & {
    * @generated from field: optional bool metrics_enabled = 4;
    */
   metricsEnabled?: boolean | undefined;
+
+  /**
+   * The idle screen's softkeys, in order, as a comma-separated list of:
+   * call_log, contacts, status, info, menu, apps, dnd, forward, redial, and
+   * app:<name> (opens the app of that name; not shown while the phone has
+   * no such app).  Default: the softkeys of the "idle" keymap state in the
+   * XML configuration, as on the stock firmware.  The provisioned form
+   * carries the same list:
+   * <setting id="dphone_idle_softkeys" value="call_log,contacts,menu"/>.
+   *
+   * @generated from field: optional string idle_softkeys = 5;
+   */
+  idleSoftkeys?: string | undefined;
 };
 
 /**

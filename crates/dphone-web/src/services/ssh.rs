@@ -10,20 +10,19 @@ use crate::{pb, sshkeys, App};
 use dphone_config::{parse_authorized_key, ConfigStore, Resolved, SettingSource};
 use std::sync::Arc;
 
-pub(crate) fn bool_setting(r: Resolved<bool>) -> pb::BoolSetting {
-    pb::BoolSetting {
-        value: r.value,
-        source: match r.source {
-            SettingSource::Default => pb::SettingSource::SETTING_SOURCE_DEFAULT,
-            SettingSource::Local => pb::SettingSource::SETTING_SOURCE_LOCAL,
-            SettingSource::Provisioned => pb::SettingSource::SETTING_SOURCE_PROVISIONED,
-        }
-        .into(),
-        locked: r.locked,
+pub(crate) fn setting_source(source: SettingSource) -> pb::SettingSource {
+    match source {
+        SettingSource::Default => pb::SettingSource::SETTING_SOURCE_DEFAULT,
+        SettingSource::Local => pb::SettingSource::SETTING_SOURCE_LOCAL,
+        SettingSource::Provisioned => pb::SettingSource::SETTING_SOURCE_PROVISIONED,
     }
 }
 
-fn locked() -> ConnectError {
+pub(crate) fn bool_setting(r: Resolved<bool>) -> pb::BoolSetting {
+    pb::BoolSetting { value: r.value, source: setting_source(r.source).into(), locked: r.locked }
+}
+
+pub(crate) fn locked() -> ConnectError {
     ConnectError::new(Code::FailedPrecondition, "This setting is fixed by the provisioning server.")
 }
 
