@@ -11,6 +11,8 @@
 //! - [`inspect`]: read-only status.
 //! - [`boot2`]: a model of the stock second-stage loader's decisions, used
 //!   to refuse images and states it would not boot.
+//! - [`ramboot`]: lay out an EFF's kernel and root file system for
+//!   `kexec`, to try an image without installing it.
 //!
 //! Never touched: `boot1`, `boot2`, the partition table, `nvdata` contents
 //! other than `/nvdata/open/trial`.  Bootstrap (type 1) OTAs are rejected
@@ -39,6 +41,7 @@ pub mod error;
 mod flash;
 pub mod inspect;
 pub mod install;
+pub mod ramboot;
 pub mod trial;
 
 #[cfg(test)]

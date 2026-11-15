@@ -173,6 +173,7 @@ fn shutdown(kind: Shutdown, args: &[String]) -> Result<(), String> {
             Shutdown::Reboot => libc::SIGTERM,
             Shutdown::Halt => libc::SIGUSR1,
             Shutdown::PowerOff => libc::SIGUSR2,
+            Shutdown::Kexec => sys::kexec_signal(),
         };
         // The init role (PID 1) does the orderly part: it stops the main
         // role, syncs, and unmounts nvdata before the system call.

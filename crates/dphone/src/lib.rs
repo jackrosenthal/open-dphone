@@ -26,6 +26,7 @@ pub mod mainrole;
 pub mod model;
 pub mod out;
 pub mod paths;
+pub mod ramboot_cli;
 pub mod ssh;
 pub mod sys;
 pub mod tz;

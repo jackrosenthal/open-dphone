@@ -16,6 +16,8 @@ pub const LOCAL_HELP: &str = "\
 Commands run locally:
   main       run the main role (see 'dphone main --help')
   update     firmware: status, install an EFF, switch bank (see 'dphone update')
+  ramboot    start an EFF's kernel and root file system from RAM without
+             installing it (see 'dphone ramboot --help')
   mount, umount, insmod, rmmod, lsmod, modprobe, reboot, poweroff, halt, dmesg, ps
 ";
 
@@ -63,6 +65,7 @@ pub fn run(args: Vec<OsString>) -> i32 {
         }
         "init" => run_init_test(command_args),
         "update" => crate::update_cli::run(command_args),
+        "ramboot" => crate::ramboot_cli::run(command_args),
         "--help" | "-h" => {
             crate::out!("{}", usage());
             0

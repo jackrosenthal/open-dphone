@@ -62,7 +62,7 @@ boot2 copies the image from `k0`/`k1` to the address in zImage header word `0x28
 
 The word at `0x24` is the zImage magic `0x016f2818` and must be checked first.  This is what `~/d60-re/kernel-re/boot/d60bootimg.py zimage --load 0x02000000` does; its `check_span` also lists what the load range must not overlap.  Reference pair for testing the Rust tool: `~/d60-re/kernel-re/build/images/d60-tiny-zImage-dtb.raw` (input) and `d60-tiny-k.bin` (output); they differ only in those two words.
 
-The RAM-boot loader (`~/d60-re/kernel-re/ramboot`) takes the unpatched `.raw` file and refuses a patched one.
+`dphone ramboot` takes the patched image out of an EFF and loads it at the address in word `0x28`.  The RAM-boot loader for the stock firmware (`~/d60-re/kernel-re/ramboot`) takes the unpatched `.raw` file and refuses a patched one.
 
 ## What userspace sees
 
@@ -141,7 +141,21 @@ D65 only, for Bluetooth, after the list above and only when Bluetooth is wanted:
 
 ## Testing a kernel without flashing it
 
-The RAM-boot loader in `~/d60-re/kernel-re/ramboot` (see its `NOTES.md`, section 6) starts a mainline image out of the running stock firmware.  It accepts an unpatched image (`zImage` from `.#kernel` followed by `dtbs/bcm11189-digium-d60.dtb`, zero-padded to a multiple of 4 bytes) with the word `any-image` in `/var/ramboot/options`, and `/var/ramboot/cmdline` replaces the command line, so `root=` can point at any partition.  The stock watchdog is running at that hand-off; this kernel keeps it fed for 120 s (`CONFIG_WATCHDOG_OPEN_TIMEOUT`) and then stops unless userspace has opened `/dev/watchdog`, so a boot that never reaches a working init returns to stock by itself.  A panic reboots after 10 s through the kernel's own restart path, which has not been exercised yet.
+boot2 has no watchdog, so a kernel in flash that hangs before user space leaves the phone dead until JTAG.  Try a new kernel from RAM first:
+
+```text
+dphone ramboot IMAGE.eff            # on a running Open DPhone; see 'dphone ramboot --help'
+```
+
+It takes the EFF that `dphone update` installs and starts that image's kernel, devicetree, and root file system with kexec, writing nothing to flash (`crates/dphone-update/src/ramboot.rs` has the design).  What the kernel contributes:
+
+- `CONFIG_KEXEC` in the running kernel.  The image is entered the way boot2 enters it: at the load address in its header, with an ATAG list (memory size and command line) that the decompressor folds into the appended DTB.
+- `CONFIG_MTD_PHRAM` in the started kernel.  The image's JFFS2 root is placed at the top of RAM, the ATAG memory size ends below it, and `phram.phram=ramroot,<start>,<length>,0x20000` makes it an MTD device (`root=mtd:ramroot`).  That device registers before the NAND, so it is `mtd0` and the flash partitions count from 1: find partitions by name.
+- The kexec hand-over in `mach-bcmring` (`bcmring_kexec_quiesce`): as the last step before the jump, the DSP is halted, both DMA controllers are switched off, and every interrupt source is masked, which is the state a boot loader hands over in.  A restart is not affected.
+- `bcmring.coldsim` on the started kernel's command line: the peripheral resets are pulsed and the peripheral clocks gated at early init, so drivers find what a chip reset leaves.
+- The watchdog keeps running across the jump (the init role sets 60 s and feeds it last).  The started kernel takes it over and keeps it fed for 120 s (`CONFIG_WATCHDOG_OPEN_TIMEOUT`) unless user space has opened `/dev/watchdog`, so a kernel that hangs, or never reaches a working init, resets the phone into the installed firmware.  A panic reboots after 10 s.
+
+A phone whose installed kernel predates `CONFIG_KEXEC` needs one ordinary flash of a newer image first.  From the stock firmware, the RAM-boot loader in `~/d60-re/kernel-re/ramboot` (see its `NOTES.md`, section 6) does the same job: it accepts an unpatched image (`zImage` from `.#kernel` followed by `dtbs/bcm11189-digium-d60.dtb`, zero-padded to a multiple of 4 bytes) with the word `any-image` in `/var/ramboot/options`, and `/var/ramboot/cmdline` replaces the command line, so `root=` can point at any partition.
 
 ## Status
 

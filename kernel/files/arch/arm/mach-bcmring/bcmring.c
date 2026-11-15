@@ -32,10 +32,12 @@
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/irqchip.h>
+#include <linux/kexec.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/reboot.h>
 #include <linux/sizes.h>
+#include <linux/syscore_ops.h>
 
 #include <asm/cacheflush.h>
 #include <asm/fncpy.h>
@@ -46,6 +48,8 @@
 #define CHIPC_UART_CLK		0x18
 #define CHIPC_SPI_CLK		0x24
 #define CHIPC_BUSINTF_CLK	0x5c
+#define   CHIPC_BUSINTF_DMAC0		BIT(5)
+#define   CHIPC_BUSINTF_DMAC1		BIT(6)
 #define CHIPC_SOFT_RESET1	0x80
 #define CHIPC_SOFT_RESET2	0x84
 #define   CHIPC_CLK_BYPASS		BIT(17)
@@ -66,6 +70,16 @@
 
 /* PL192-style interrupt controllers */
 #define VIC_INT_ENABLE_CLEAR	0x14
+
+/* DesignWare AHB DMA controller: what switching it off takes */
+#define DW_MASK_TFR		0x310	/* five mask registers, 8 bytes apart */
+#define DW_CLEAR_TFR		0x338	/* five clear registers, likewise */
+#define DW_DMA_CFG		0x398
+#define DW_CH_EN		0x3a0
+#define   DW_ALL_CH_CLR			0xff00	/* write enables, bits clear */
+
+/* DSP "VINTC" block (drivers/remoteproc/bcmring_vpm.c) */
+#define VINTC_HALT		0x1c	/* 1 = core halted */
 
 #define BCMRING_NR_VICS		3
 
@@ -298,6 +312,106 @@ static struct notifier_block bcmring_restart_nb = {
 	.priority = 192,
 };
 
+#ifdef CONFIG_KEXEC_CORE
+/*
+ * kexec.  A boot loader hands over with the DSP halted, no DMA channel
+ * running, and no interrupt source enabled; a running system does not, and
+ * a DMA channel left running (the Ethernet receiver in particular) would
+ * write into the memory of the next kernel while it starts.  The driver
+ * shutdown callbacks do not cover this: the Ethernet driver and the DSP
+ * driver have none, and the DSP firmware programs channel 0 of the first
+ * controller by itself.
+ *
+ * This runs as the last step before the jump (a syscore shutdown callback,
+ * after every driver's) and only for kexec: a restart goes through a chip
+ * reset, which leaves all of this in its reset state anyway.  The steps
+ * and their order are those of the loader that started this kernel out of
+ * the stock firmware in every RAM boot of the bring-up (halt the DSP,
+ * switch both DMA controllers off, mask every interrupt source); a
+ * controller whose bus gate is off is not touched, since its registers do
+ * not answer then.  The watchdog is deliberately left running: it is what
+ * ends a next kernel that hangs.
+ */
+static void __iomem *bcmring_kexec_dma[2];
+static void __iomem *bcmring_kexec_vintc;
+
+static void bcmring_kexec_dma_off(void __iomem *base)
+{
+	unsigned int i;
+
+	writel(DW_ALL_CH_CLR, base + DW_CH_EN);
+	writel(0, base + DW_DMA_CFG);
+	for (i = 0; i < 5; i++)
+		writel(DW_ALL_CH_CLR, base + DW_MASK_TFR + 8 * i);
+	for (i = 0; i < 1000000 && (readl(base + DW_DMA_CFG) & 1); i++)
+		cpu_relax();
+	for (i = 0; i < 5; i++)
+		writel(0xff, base + DW_CLEAR_TFR + 8 * i);
+}
+
+static void bcmring_kexec_quiesce(void *data)
+{
+	static const u32 gate[] = {
+		CHIPC_BUSINTF_DMAC0, CHIPC_BUSINTF_DMAC1,
+	};
+	unsigned long flags;
+	unsigned int i;
+	u32 gates;
+
+	if (!kexec_in_progress || !bcmring_chipc)
+		return;
+
+	pr_info("bcmring: kexec: halting the DSP, DMA off, interrupts masked\n");
+	/* No handler may run between the steps; none can after the last. */
+	local_irq_save(flags);
+	if (bcmring_kexec_vintc)
+		writel(1, bcmring_kexec_vintc + VINTC_HALT);
+	gates = readl(bcmring_chipc + CHIPC_BUSINTF_CLK);
+	for (i = 0; i < ARRAY_SIZE(bcmring_kexec_dma); i++) {
+		if (bcmring_kexec_dma[i] && (gates & gate[i]))
+			bcmring_kexec_dma_off(bcmring_kexec_dma[i]);
+	}
+	for (i = 0; i < ARRAY_SIZE(bcmring_vics); i++) {
+		if (bcmring_vics[i])
+			writel(~0U, bcmring_vics[i] + VIC_INT_ENABLE_CLEAR);
+	}
+	local_irq_restore(flags);
+}
+
+static const struct syscore_ops bcmring_kexec_syscore_ops = {
+	.shutdown = bcmring_kexec_quiesce,
+};
+
+static struct syscore bcmring_kexec_syscore = {
+	.ops = &bcmring_kexec_syscore_ops,
+};
+
+/* Mapped at machine init: the callback must not sleep. */
+static void __init bcmring_kexec_init(void)
+{
+	struct device_node *np;
+	unsigned int n = 0;
+
+	/* Both controllers, the one the Ethernet driver owns included. */
+	for_each_compatible_node(np, NULL, "snps,dma-spear1340") {
+		if (n < ARRAY_SIZE(bcmring_kexec_dma))
+			bcmring_kexec_dma[n++] = of_iomap(np, 0);
+	}
+	/* The DSP node's compatible is per SoC; its name is not. */
+	np = of_find_node_by_name(NULL, "dsp");
+	if (np) {
+		int i = of_property_match_string(np, "reg-names", "vintc");
+
+		if (i >= 0)
+			bcmring_kexec_vintc = of_iomap(np, i);
+		of_node_put(np);
+	}
+	register_syscore(&bcmring_kexec_syscore);
+}
+#else
+static inline void bcmring_kexec_init(void) { }
+#endif
+
 /*
  * At machine init (an arch initcall), not later: a panic while drivers
  * probe must find the restart handler in place, or "panic=" ends in
@@ -321,6 +435,8 @@ static void __init bcmring_init_machine(void)
 				bcmring_vics[n++] = of_iomap(np, 0);
 		}
 	}
+
+	bcmring_kexec_init();
 
 	np = of_find_compatible_node(NULL, NULL, "brcm,bcmring-aram");
 	if (!np || of_address_to_resource(np, 0, &res)) {

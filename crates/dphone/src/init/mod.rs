@@ -39,7 +39,18 @@
 //!   kernel or a hung init role; a hung main role is handled by the rules
 //!   above rather than by starving the watchdog, which would skip the clean
 //!   unmount of nvdata.
-//! - Signals to PID 1: `SIGTERM` reboot, `SIGUSR1` halt, `SIGUSR2` power off.
+//! - Signals to PID 1: `SIGTERM` reboot, `SIGUSR1` halt, `SIGUSR2` power off,
+//!   and `SIGRTMIN+6` to start the kernel that `dphone ramboot` loaded.
+//!
+//! ## A system started from RAM
+//!
+//! `dphone ramboot` starts an image's kernel with its root file system in
+//! RAM.  Such a system is from neither firmware bank
+//! ([`trial::started_from_ram`]), and the image a pending trial is about
+//! is not the one running: the trial record is left as it is, neither
+//! counted nor confirmed.  nvdata is mounted as always (the settings, the
+//! address, and the SSH keys are there).  `dphone.max_uptime=` on the
+//! command line ends the run by itself (see `Supervisor::periodic`).
 
 pub mod modules;
 pub mod mounts;
@@ -173,6 +184,10 @@ pub fn run(hooks: Hooks) -> ! {
     );
     sup.model = detected.map(|d| d.model);
     sup.recovery = nv_state == NvdataState::Recovery;
+    sup.from_ram = trial::started_from_ram();
+    if sup.from_ram {
+        info!("started from RAM: the root file system is not a firmware bank; a reboot returns to the installed firmware");
+    }
     // Count the boot against a pending trial before anything that touches
     // more hardware: a driver that stalls the phone while its module loads
     // (the watchdog then resets it) must still use up the trial's boots,
@@ -238,6 +253,9 @@ struct Supervisor {
     real: bool,
     model: Option<model::Model>,
     recovery: bool,
+    /// Started from RAM, not booted from a bank: trial records are not
+    /// ours to count or confirm.
+    from_ram: bool,
     max_uptime: Option<u64>,
     sigfd: RawFd,
     main: Option<MainProc>,
@@ -264,6 +282,7 @@ impl Supervisor {
             real,
             model: None,
             recovery: false,
+            from_ram: false,
             max_uptime: std::fs::read_to_string("/proc/cmdline")
                 .ok()
                 .and_then(|c| c.split_ascii_whitespace().find_map(|w| w.strip_prefix("dphone.max_uptime=").and_then(|v| v.parse().ok()))),
@@ -288,6 +307,12 @@ impl Supervisor {
     fn begin_trial_accounting(&mut self) {
         if self.recovery {
             // nvdata is a stand-in tmpfs; there is no record to read.
+            return;
+        }
+        if self.from_ram {
+            if trial::load(&self.paths.open_dir()).is_some() {
+                info!("a trial boot is pending; this system was started from RAM and leaves the record alone");
+            }
             return;
         }
         self.trial = trial::count_boot(&self.paths.open_dir());
@@ -328,7 +353,9 @@ impl Supervisor {
         unsafe {
             let mut set: libc::sigset_t = std::mem::zeroed();
             libc::sigemptyset(&mut set);
-            for sig in [libc::SIGCHLD, libc::SIGTERM, libc::SIGUSR1, libc::SIGUSR2, libc::SIGINT, libc::SIGHUP] {
+            for sig in
+                [libc::SIGCHLD, libc::SIGTERM, libc::SIGUSR1, libc::SIGUSR2, libc::SIGINT, libc::SIGHUP, sys::kexec_signal()]
+            {
                 libc::sigaddset(&mut set, sig);
             }
             libc::sigprocmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
@@ -387,6 +414,7 @@ impl Supervisor {
                 libc::SIGTERM | libc::SIGINT => self.shutdown(Shutdown::Reboot, None),
                 libc::SIGUSR1 => self.shutdown(Shutdown::Halt, None),
                 libc::SIGUSR2 => self.shutdown(Shutdown::PowerOff, None),
+                s if s == sys::kexec_signal() => self.start_loaded_kernel(),
                 _ => {}
             }
         }
@@ -731,7 +759,28 @@ impl Supervisor {
         }
     }
 
-    /// Stop everything and reboot, halt, or power off.  Never returns.
+    /// `dphone ramboot` has loaded a kernel and asks for the jump.  Refused
+    /// (the phone keeps running) when no image is loaded, or when the
+    /// watchdog is not armed: the watchdog is what brings the installed
+    /// firmware back if the new kernel hangs, since boot2 has none.
+    fn start_loaded_kernel(&mut self) {
+        if !self.real {
+            return;
+        }
+        if std::fs::read_to_string(sys::KEXEC_LOADED).map_or(true, |s| s.trim() != "1") {
+            error!("asked to start a loaded kernel, but none is loaded; ignored");
+            return;
+        }
+        if !self.wd.is_armed() {
+            error!("asked to start a loaded kernel, but the watchdog is not armed; ignored");
+            sys::kexec_unload();
+            return;
+        }
+        self.shutdown(Shutdown::Kexec, None)
+    }
+
+    /// Stop everything and reboot, halt, power off, or start the loaded
+    /// kernel.  Never returns.
     fn shutdown(&mut self, kind: Shutdown, reason: Option<&str>) -> ! {
         info!("shutting down ({kind:?})");
         let may_write = !self.recovery && !(self.real && !crate::paths::stock_writes_allowed());
@@ -757,9 +806,21 @@ impl Supervisor {
         self.save_clock();
         mounts::unmount_for_shutdown();
         self.wd.feed();
-        if kind != Shutdown::Reboot {
+        match kind {
+            Shutdown::Reboot => {}
             // Nothing will feed the watchdog after a halt; try to disarm it.
-            self.wd.disarm();
+            Shutdown::Halt | Shutdown::PowerOff => self.wd.disarm(),
+            // The watchdog stays armed across the jump, with time for the
+            // image to be copied into place and the new kernel to reach
+            // its watchdog driver.  nvdata is unmounted and every process
+            // is gone, so the flash is idle when the kernel is left.
+            Shutdown::Kexec => {
+                if !self.wd.set_timeout(watchdog::KEXEC_TIMEOUT_SECS) {
+                    warn!("could not lengthen the watchdog timeout for the jump");
+                }
+                self.wd.feed();
+                info!("starting the loaded kernel");
+            }
         }
         let err = sys::reboot(kind);
         error!("reboot system call failed: {err}");

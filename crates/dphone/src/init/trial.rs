@@ -117,9 +117,48 @@ pub fn count_boot(open_dir: &Path) -> Option<TrialRecord> {
     Some(record)
 }
 
+/// Whether a kernel command line and an MTD table (`/proc/mtd`) say that
+/// the root file system is one of the two firmware banks.  A system
+/// started from RAM (`dphone ramboot`: `root=mtd:ramroot`; or a test
+/// kernel with its root in `userdata`) is from neither.
+pub fn root_is_a_bank(cmdline: &str, proc_mtd: &str) -> bool {
+    dphone_update::bank::root_mtd_index(cmdline).is_some_and(|index| {
+        ["root0", "root1"].iter().any(|name| super::nvdata::mtd_index(proc_mtd, name) == Some(index))
+    })
+}
+
+/// Whether this system was started from RAM rather than booted from a
+/// bank.  Such a system is not the image a pending trial is about: it
+/// must neither count against the trial nor confirm it.
+pub fn started_from_ram() -> bool {
+    let read = |p: &str| std::fs::read_to_string(p).unwrap_or_default();
+    !root_is_a_bank(&read("/proc/cmdline"), &read("/proc/mtd"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bank_or_ram() {
+        let mtd = "dev:    size   erasesize  name\n\
+                   mtd0: 00020000 00020000 \"boot1\"\n\
+                   mtd3: 00ee0000 00020000 \"nvdata\"\n\
+                   mtd6: 02d00000 00020000 \"root0\"\n\
+                   mtd7: 02d00000 00020000 \"root1\"\n\
+                   mtd8: 01000000 00020000 \"userdata\"\n";
+        assert!(root_is_a_bank("console=ttyAMA0 root=/dev/mtdblock6 rootfstype=jffs2 ro", mtd));
+        assert!(root_is_a_bank("root=/dev/mtdblock7 ro", mtd));
+        // A root in userdata, and the RAM root of 'dphone ramboot'.
+        assert!(!root_is_a_bank("root=/dev/mtdblock8 ro", mtd));
+        assert!(!root_is_a_bank("root=mtd:ramroot rootfstype=jffs2 ro phram.phram=ramroot,0x6ec0000,0x1140000,0x20000", mtd));
+        assert!(!root_is_a_bank("", mtd));
+        // With the RAM device registered first, the flash partitions count
+        // from one: the bank is still found by name.
+        let shifted = "mtd0: 01140000 00020000 \"ramroot\"\nmtd7: 02d00000 00020000 \"root0\"\nmtd8: 02d00000 00020000 \"root1\"\n";
+        assert!(root_is_a_bank("root=/dev/mtdblock7 ro", shifted));
+        assert!(!root_is_a_bank("root=/dev/mtdblock6 ro", shifted));
+    }
 
     /// The display is covered while a trial is pending.  The cover must
     /// not end before the init role has ended an unhealthy trial boot (the

@@ -14,6 +14,14 @@ const WDIOC_SETTIMEOUT: libc::c_ulong = 0xc004_5706;
 /// Seconds without a feed before the hardware resets the phone.
 pub const TIMEOUT_SECS: libc::c_int = 30;
 
+/// The timeout set just before jumping into a kernel loaded with `dphone
+/// ramboot`.  It has to cover the copy of the image into place (some
+/// 20 MiB, with the caches off), the decompressor, and the new kernel up
+/// to its watchdog driver, which then keeps the watchdog fed until its
+/// init role opens it.  60 s is also what the stock firmware runs the
+/// watchdog with, and with which every RAM boot out of stock was made.
+pub const KEXEC_TIMEOUT_SECS: libc::c_int = 60;
+
 pub struct Watchdog {
     dev: Option<File>,
     warned: bool,
@@ -67,6 +75,14 @@ impl Watchdog {
     /// work on the hardware (the kernel's restart code has not).
     pub fn starve(&mut self) {
         self.disabled = true;
+    }
+
+    /// Change the timeout of the armed watchdog and feed it.  Returns
+    /// whether the driver took it.
+    pub fn set_timeout(&mut self, secs: libc::c_int) -> bool {
+        let Some(f) = self.dev.as_ref() else { return false };
+        let mut timeout = secs;
+        sys::ioctl_int(f, WDIOC_SETTIMEOUT, &mut timeout).is_ok()
     }
 
     pub fn is_armed(&self) -> bool {

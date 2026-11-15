@@ -345,7 +345,9 @@ async fn confirm_trial_when_healthy(ctx: Context) {
     loop {
         tokio::time::sleep(Duration::from_secs(5)).await;
         if ctx.health.is_healthy() {
-            if !ctx.sim && !ctx.safe && ctx.recovery.is_none() {
+            // Not from a system started from RAM (`dphone ramboot`): the
+            // image on trial is the one in flash, not the one running.
+            if !ctx.sim && !ctx.safe && ctx.recovery.is_none() && !crate::init::trial::started_from_ram() {
                 let _ = trial::mark_healthy(&ctx.paths.open_dir(), Some(&ctx.store));
             }
             ctx.store.heartbeat(Subsystem::Core);

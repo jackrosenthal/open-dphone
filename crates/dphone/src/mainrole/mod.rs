@@ -174,6 +174,7 @@ impl Context {
             Shutdown::Reboot => libc::SIGTERM,
             Shutdown::Halt => libc::SIGUSR1,
             Shutdown::PowerOff => libc::SIGUSR2,
+            Shutdown::Kexec => sys::kexec_signal(),
         };
         if let Err(e) = sys::kill(1, sig) {
             error!("cannot signal the init role: {e}");

@@ -64,6 +64,9 @@ pub enum Shutdown {
     Reboot,
     Halt,
     PowerOff,
+    /// Jump into the kernel image loaded with [`kexec_load`] (`dphone
+    /// ramboot`).  Only the init role asks for this, on [`kexec_signal`].
+    Kexec,
 }
 
 /// `reboot(2)`.  Does not sync; the caller does.
@@ -72,10 +75,54 @@ pub fn reboot(kind: Shutdown) -> io::Error {
         Shutdown::Reboot => libc::RB_AUTOBOOT,
         Shutdown::Halt => libc::RB_HALT_SYSTEM,
         Shutdown::PowerOff => libc::RB_POWER_OFF,
+        Shutdown::Kexec => libc::RB_KEXEC,
     };
     // SAFETY: plain system call.
     unsafe { libc::reboot(cmd) };
     io::Error::last_os_error()
+}
+
+/// Reads "1" while a kernel image is loaded for [`Shutdown::Kexec`];
+/// absent when the kernel has no kexec.
+pub const KEXEC_LOADED: &str = "/sys/kernel/kexec_loaded";
+
+/// One piece of a kernel image for [`kexec_load`]: `bufsz` bytes at `buf`
+/// go to physical address `mem`; the rest of `memsz` is cleared.  `mem`
+/// and `memsz` are multiples of the page size.  (`struct kexec_segment`.)
+#[repr(C)]
+pub struct KexecSegment {
+    pub buf: *const libc::c_void,
+    pub bufsz: usize,
+    pub mem: usize,
+    pub memsz: usize,
+}
+
+/// `kexec_load(2)`: hand the kernel an image to start at physical address
+/// `entry` on [`Shutdown::Kexec`].  The kernel copies the data during the
+/// call.  Nothing else changes until that reboot call.
+///
+/// # Safety
+///
+/// Every segment's `buf` must be readable for `bufsz` bytes.
+pub unsafe fn kexec_load(entry: usize, segments: &[KexecSegment]) -> io::Result<()> {
+    // KEXEC_ARCH_ARM: EM_ARM in the upper half of the flags.
+    const KEXEC_ARCH_ARM: libc::c_ulong = 40 << 16;
+    // SAFETY: the segment array is valid for its length; the caller
+    // vouches for the buffers.
+    check(unsafe { libc::syscall(libc::SYS_kexec_load, entry, segments.len(), segments.as_ptr(), KEXEC_ARCH_ARM) })?;
+    Ok(())
+}
+
+/// Drop a loaded kernel image.
+pub fn kexec_unload() {
+    // SAFETY: no segments, no pointers.
+    unsafe { libc::syscall(libc::SYS_kexec_load, 0usize, 0usize, std::ptr::null::<KexecSegment>(), 0 as libc::c_ulong) };
+}
+
+/// The signal that asks PID 1 for [`Shutdown::Kexec`]: `SIGRTMIN+6`, the
+/// one systemd takes for the same request.
+pub fn kexec_signal() -> libc::c_int {
+    libc::SIGRTMIN() + 6
 }
 
 pub fn sync() {
