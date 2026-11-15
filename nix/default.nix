@@ -7,6 +7,7 @@
 #   dphone-image       host tool: EFF, OTA, kernel image, rootfs
 #   brush, coreutils, sed   shell and utilities (ARMv6, static)
 #   apps               built-in phone apps (.wasm)
+#   asterisk-modules   Asterisk with res_dpma_rs, for the tests (x86-64)
 #   web                frontend bundle
 #   rootfs-tree        the root file system as a directory
 #   rootfs             the JFFS2 image
@@ -58,10 +59,10 @@ let
     else
       null;
 
+  asterisk = pkgs.callPackage ./asterisk.nix { inherit rustPlatform; };
   workspace = pkgs.callPackage ./workspace.nix {
     inherit craneLib rust;
-    inherit stock;
-    asterisk = pkgs.callPackage ./asterisk.nix { inherit rustPlatform; };
+    inherit stock asterisk;
     webDist = web;
     appsStaged = if apps != null then apps.testFixture else null;
     appsUnitTests = if apps != null then apps.unitTests else null;
@@ -96,6 +97,7 @@ in
     kernel-source = kernel.source;
     inherit (userland) brush coreutils sed;
     inherit (workspace) dphone dphone-image;
+    asterisk-modules = asterisk.modules;
     rootfs-tree = image.rootfsTree;
     inherit (image) rootfs;
     all = pkgs.linkFarm "open-dphone-${workspace.version}" (
