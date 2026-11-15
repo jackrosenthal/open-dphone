@@ -2,13 +2,18 @@
 //! EFF into the spare bank, maintain boot2's `ctrl` record, and support
 //! trial boots with rollback.
 //!
-//! - [`install::Updater`]: stream an EFF (ours or stock) into the bank that
-//!   is not running, verify by reading back, and commit.
+//! - [`install::Updater`]: write an EFF (ours or stock) into the bank that
+//!   is not running, read it back and compare, and select it.  A file is
+//!   checked in full before anything is written; a stream goes straight
+//!   into the spare bank.
+//! - [`lock`]: one update at a time.
 //! - [`ctrl`]: the `ctrl` partition's replication layout per family and a
-//!   power-cut-tolerant writer.
+//!   power-cut-tolerant writer (shared with the early-boot stage through
+//!   `dphone-ctrl`).
 //! - [`trial`]: the pending-trial record in nvdata and the rollback the
-//!   init role calls.
-//! - [`inspect`]: read-only status.
+//!   init role calls.  The early-boot stage in the kernel partition
+//!   (`dphone-early`) counts the boots.
+//! - [`inspect`]: read-only status, and the read-back check of a bank.
 //! - [`boot2`]: a model of the stock second-stage loader's decisions, used
 //!   to refuse images and states it would not boot.
 //! - [`ramboot`]: lay out an EFF's kernel and root file system for
@@ -18,13 +23,13 @@
 //! other than `/nvdata/open/trial`.  Bootstrap (type 1) OTAs are rejected
 //! by the OTA parser.
 //!
-//! Typical use by the main role:
+//! Typical use by the main role (the updater takes the lock, refuses while
+//! an installed image is still on trial, and records the trial itself):
 //!
 //! ```ignore
-//! let installed = Updater::new(hal.mtd.as_mut(), model, &cmdline)
+//! Updater::new(hal.mtd.as_mut(), model, &cmdline, &open_dir)
 //!     .store(store.clone())
 //!     .install_eff(upload)?;
-//! trial::begin(&open_dir, &installed)?;
 //! // then reboot
 //! ```
 //!
@@ -41,6 +46,7 @@ pub mod error;
 mod flash;
 pub mod inspect;
 pub mod install;
+pub mod lock;
 pub mod ramboot;
 pub mod trial;
 
@@ -50,7 +56,7 @@ mod memnand;
 mod tests;
 
 pub use bank::Bank;
-pub use ctrl::Replication;
+pub use ctrl::{Replication, replication_for};
 pub use error::{Result, UpdateError};
-pub use inspect::{BankStatus, Status, inspect};
-pub use install::{Installed, Options, Updater, is_stock_version, select_bank};
+pub use inspect::{BankStatus, Status, inspect, verify_bank};
+pub use install::{Installed, Options, Staged, Updater, abandon, check_eff, is_stock_version, select_bank};

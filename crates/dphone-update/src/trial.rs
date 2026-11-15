@@ -1,14 +1,16 @@
 //! Trial boot (plan section 12): the nvdata side.
 //!
-//! boot2 never falls back on its own, so after an update a pending-trial
-//! record is left in nvdata.  The init role (`dphone`, `init/trial.rs`)
-//! counts boots against it, clears it when the main role reports healthy,
-//! and calls back into [`rollback`] when the trial runs out.
+//! boot2 never falls back on its own, so an update leaves a pending-trial
+//! record in nvdata before it selects the new bank.  The early-boot stage
+//! in the new image's kernel partition (`dphone-early`) counts boots
+//! against it before the root file system is needed, and selects the
+//! previous bank again when the count runs out, when the root cannot be
+//! mounted, or when it has no init to run.  The init role (`dphone`,
+//! `init/trial.rs`) removes the record when the main role reports healthy,
+//! and calls back into [`rollback`] when the main role keeps failing.
 //!
-//! The record is the init role's text file `/nvdata/open/trial`; this
-//! module writes the same keys (`pending`, `previous_bank`, `boots`,
-//! `max_boots`) plus `trial_bank`, which the init role's parser ignores and
-//! [`rollback`] uses to refuse a stale record.
+//! The record is the text file `/nvdata/open/trial`; its format and the
+//! rules for counting are in `dphone-ctrl`, shared with the early stage.
 
 use std::fs;
 use std::io::{self, Write};
@@ -19,10 +21,10 @@ use dphone_state::{Model, Store, TrialBoot, Update};
 
 use crate::bank::{self, Bank};
 use crate::error::{Result, UpdateError};
-use crate::install::{Installed, select_bank};
+use crate::install::select_bank;
 
 /// Boots a trial gets (same default as the init role).
-pub const DEFAULT_MAX_BOOTS: u32 = 3;
+pub const DEFAULT_MAX_BOOTS: u32 = dphone_ctrl::trial::DEFAULT_MAX_BOOTS;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrialRecord {
@@ -40,40 +42,34 @@ pub fn record_path(open_dir: &Path) -> PathBuf {
 
 impl TrialRecord {
     pub fn parse(text: &str) -> Option<Self> {
-        let mut pending = false;
-        let mut previous = None;
-        let mut trial_bank = None;
-        let (mut boots, mut max_boots) = (0, DEFAULT_MAX_BOOTS);
-        for line in text.lines() {
-            let Some((key, value)) = line.split_once('=') else { continue };
-            let value = value.trim();
-            match key.trim() {
-                "pending" => pending = value == "1",
-                "previous_bank" => previous = Some(bank::from_index(value.parse().ok()?)?),
-                "trial_bank" => trial_bank = value.parse().ok().and_then(bank::from_index),
-                "boots" => boots = value.parse().ok()?,
-                "max_boots" => max_boots = value.parse().ok()?,
-                _ => {}
-            }
-        }
-        if !pending {
-            return None;
-        }
-        Some(TrialRecord { previous_bank: previous?, trial_bank, boots, max_boots })
+        let t = dphone_ctrl::trial::Trial::parse(text.as_bytes())?;
+        Some(TrialRecord {
+            previous_bank: bank::from_index(t.previous_bank as u32)?,
+            trial_bank: t.trial_bank.and_then(|b| bank::from_index(b as u32)),
+            boots: t.boots,
+            max_boots: t.max_boots,
+        })
     }
 
     pub fn to_text(&self) -> String {
-        let mut s = format!(
-            "pending=1\nprevious_bank={}\nboots={}\nmax_boots={}\n",
-            bank::index(self.previous_bank),
-            self.boots,
-            self.max_boots
-        );
-        if let Some(t) = self.trial_bank {
-            s.push_str(&format!("trial_bank={}\n", bank::index(t)));
-        }
-        s
+        let t = dphone_ctrl::trial::Trial {
+            previous_bank: bank::index(self.previous_bank) as u8,
+            trial_bank: self.trial_bank.map(|b| bank::index(b) as u8),
+            boots: self.boots,
+            max_boots: self.max_boots,
+        };
+        let mut buf = [0u8; dphone_ctrl::trial::TEXT_MAX];
+        let n = t.format(&mut buf);
+        String::from_utf8_lossy(&buf[..n]).into_owned()
     }
+}
+
+/// Whether a record is about an image that is still on trial: `ctrl`
+/// selects a bank other than the one to return to.  (After the phone went
+/// back, or before the commit of an update that then failed, `ctrl`
+/// selects the bank to return to, and the record is a leftover.)
+pub fn is_pending(record: &TrialRecord, ctrl: &eff::ctrl::CtrlRecord) -> bool {
+    ctrl.boot_side() != bank::index(record.previous_bank) as u32
 }
 
 /// The pending trial, if any.
@@ -94,26 +90,12 @@ fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     fs::File::open(dir)?.sync_all()
 }
 
-/// Records a pending trial after a committed installation.  Call this
-/// before rebooting into the new image.
-///
-/// Nothing is recorded when the image is stock firmware: stock does not
-/// know the record, and one left behind would be counted against whatever
-/// Open DPhone image is installed next.  Any older record is removed in
-/// that case.  Returns whether a trial was started.
-pub fn begin(open_dir: &Path, installed: &Installed) -> io::Result<bool> {
-    if installed.is_stock {
-        clear(open_dir)?;
-        return Ok(false);
-    }
-    let record = TrialRecord {
-        previous_bank: installed.previous,
-        trial_bank: Some(installed.bank),
-        boots: 0,
-        max_boots: DEFAULT_MAX_BOOTS,
-    };
-    write_atomic(&record_path(open_dir), record.to_text().as_bytes())?;
-    Ok(true)
+/// Records a trial of `trial_bank`, with `previous` as the bank to return
+/// to.  The updater calls this just before it selects `trial_bank`.
+pub fn record(open_dir: &Path, previous: Bank, trial_bank: Bank) -> io::Result<()> {
+    let record =
+        TrialRecord { previous_bank: previous, trial_bank: Some(trial_bank), boots: 0, max_boots: DEFAULT_MAX_BOOTS };
+    write_atomic(&record_path(open_dir), record.to_text().as_bytes())
 }
 
 /// Records a pending trial for an image that something else installed and
@@ -136,7 +118,7 @@ pub fn begin(open_dir: &Path, installed: &Installed) -> io::Result<bool> {
 /// Also refused, because the record could then never do its work: no valid
 /// `ctrl` record, a `return_to` equal to the selected bank, either bank not
 /// bootable by boot2's rules, and stock firmware in the bank on trial
-/// (stock does not count trial boots; see [`begin`]).
+/// (stock does not count trial boots).
 pub fn arm(mtd: &mut dyn Mtd, cmdline: &str, open_dir: &Path, return_to: Option<Bank>) -> Result<TrialRecord> {
     let refused = |m: String| Err(UpdateError::Refused(m));
     let st = crate::inspect::inspect(mtd, cmdline, None)?;

@@ -315,6 +315,20 @@ impl Supervisor {
             }
             return;
         }
+        if std::env::var_os(trial::EARLY_ENV).is_some() {
+            // The early-boot stage in the kernel partition counted this
+            // boot before the root file system was mounted, and went back
+            // itself if the trial was used up.  What is left here is to
+            // know that a trial is on: to confirm it, or to go back when
+            // the main role keeps failing.
+            let read = |p: &str| std::fs::read_to_string(p).unwrap_or_default();
+            let running = dphone_ctrl::boot::running_bank(&read("/proc/cmdline"), &read("/proc/mtd"));
+            self.trial = trial::load(&self.paths.open_dir()).filter(|r| trial::is_about(r, running));
+            if let Some(record) = &self.trial {
+                info!("trial boot {} of {} (previous bank {})", record.boots, record.max_boots, record.previous_bank);
+            }
+            return;
+        }
         self.trial = trial::count_boot(&self.paths.open_dir());
         if let Some(record) = self.trial.clone() {
             info!("trial boot {} of {} (previous bank {})", record.boots, record.max_boots, record.previous_bank);

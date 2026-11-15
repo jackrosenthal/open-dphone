@@ -10,6 +10,8 @@ members = [
     "crates/dphone-apps",
     "crates/dphone-bt",
     "crates/dphone-config",
+    "crates/dphone-ctrl",
+    "crates/dphone-early",
     "crates/dphone-hal",
     "crates/dphone-image",
     "crates/dphone-media",

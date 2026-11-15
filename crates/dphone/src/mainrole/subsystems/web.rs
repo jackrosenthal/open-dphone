@@ -7,7 +7,7 @@ use std::time::Duration;
 use dphone_hal::{PixelFormat, Screen};
 use dphone_state::{HealthStatus, Subsystem};
 use dphone_web::{
-    FileFirmwareSink, FirmwareInfo, MirrorFormat, MirrorFrame, MirrorScreen, PtyShellHost, ScreenSource, WebOptions,
+    FileFirmwareSink, FirmwareInfo, FirmwareSink, FirmwareUpload, MirrorFormat, MirrorFrame, MirrorScreen, PtyShellHost, ScreenSource, WebOptions,
     WebServer, WebSwitch,
 };
 use log::{error, info, warn};
@@ -67,6 +67,115 @@ fn inspect(path: &std::path::Path) -> std::io::Result<FirmwareInfo> {
     })
 }
 
+/// The firmware upload of the phone: the image goes into the spare bank as
+/// it arrives (one erase block in memory at a time; nothing in `/tmp` or
+/// `/run`, which are RAM), is verified there, and stays unselected until
+/// the user confirms the installation.  A bad upload costs the spare
+/// bank's old contents and nothing else.
+struct FlashFirmwareSink(super::system::Flash);
+
+/// The upload's bytes on their way to the updater's thread.
+struct ChunkReader {
+    rx: std::sync::mpsc::Receiver<Vec<u8>>,
+    chunk: Vec<u8>,
+    pos: usize,
+}
+
+impl std::io::Read for ChunkReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        while self.pos == self.chunk.len() {
+            match self.rx.recv() {
+                Ok(chunk) => (self.chunk, self.pos) = (chunk, 0),
+                // The upload ended (or was abandoned): end of the stream.
+                Err(_) => return Ok(0),
+            }
+        }
+        let n = buf.len().min(self.chunk.len() - self.pos);
+        buf[..n].copy_from_slice(&self.chunk[self.pos..self.pos + n]);
+        self.pos += n;
+        Ok(n)
+    }
+}
+
+struct FlashUpload {
+    tx: Option<std::sync::mpsc::SyncSender<Vec<u8>>>,
+    worker: Option<std::thread::JoinHandle<Result<dphone_update::Staged, String>>>,
+    model: dphone_state::Model,
+}
+
+impl FlashUpload {
+    /// Ends the stream and takes the updater's verdict.
+    fn join(&mut self) -> std::io::Result<dphone_update::Staged> {
+        self.tx = None;
+        let worker = self.worker.take().ok_or_else(|| std::io::Error::other("the upload has ended"))?;
+        match worker.join() {
+            Ok(Ok(staged)) => Ok(staged),
+            Ok(Err(e)) => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
+            Err(_) => Err(std::io::Error::other("the updater failed")),
+        }
+    }
+}
+
+impl FirmwareSink for FlashFirmwareSink {
+    fn begin(&self, _size: Option<u64>) -> std::io::Result<Box<dyn FirmwareUpload>> {
+        // The bank an earlier upload was staged in is about to be rewritten.
+        *super::system::STAGED.lock().map_err(|_| std::io::Error::other("staged image lock poisoned"))? = None;
+        // A few chunks of slack; the sender waits when flash is the slower.
+        let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(8);
+        let flash = self.0.clone();
+        let worker = std::thread::Builder::new().name("update".into()).spawn(move || {
+            let mut mtd = flash.mtd.lock().map_err(|_| "flash lock poisoned".to_string())?;
+            let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+            dphone_update::Updater::new(mtd.as_mut(), flash.model, &cmdline, &flash.open_dir)
+                .store(flash.store.clone())
+                .stage_eff(ChunkReader { rx, chunk: Vec::new(), pos: 0 })
+                .map_err(|e| e.to_string())
+        })?;
+        Ok(Box::new(FlashUpload { tx: Some(tx), worker: Some(worker), model: self.0.model }))
+    }
+
+    fn discard(&self, _path: &std::path::Path) {
+        // The bank keeps what was written; without this it cannot be selected.
+        if let Ok(mut staged) = super::system::STAGED.lock() {
+            *staged = None;
+        }
+    }
+}
+
+impl FirmwareUpload for FlashUpload {
+    fn write(&mut self, chunk: &[u8]) -> std::io::Result<()> {
+        let sent = self.tx.as_ref().is_some_and(|tx| tx.send(chunk.to_vec()).is_ok());
+        if sent {
+            return Ok(());
+        }
+        // The updater stopped reading: it refused or failed.  Say why.
+        Err(match self.join() {
+            Err(e) => e,
+            Ok(_) => std::io::Error::new(std::io::ErrorKind::InvalidData, "data after the end of the image"),
+        })
+    }
+
+    fn finish(mut self: Box<Self>) -> std::io::Result<(std::path::PathBuf, FirmwareInfo)> {
+        let staged = self.join()?;
+        let info = FirmwareInfo {
+            version: staged.version.trim().to_string(),
+            model: self.model.to_string(),
+            is_stock: staged.is_stock,
+        };
+        *super::system::STAGED.lock().map_err(|_| std::io::Error::other("staged image lock poisoned"))? = Some(staged);
+        Ok((super::system::STAGED_PATH.into(), info))
+    }
+}
+
+/// Where firmware uploads go: into flash on a phone; into a file (which
+/// the installation then reads twice) where there is no flash.
+fn firmware_sink(upload_dir: &std::path::Path) -> Box<dyn FirmwareSink> {
+    match super::system::flash() {
+        Some(flash) => Box::new(FlashFirmwareSink(flash)),
+        None => Box::new(FileFirmwareSink::new(upload_dir).with_inspector(inspect)),
+    }
+}
+
 pub fn start(
     ctx: &Context,
     opts: &Options,
@@ -117,7 +226,7 @@ pub fn start(
     tokio::spawn(async move {
         loop {
             let mut server = WebServer::new(ctx.store.clone(), config.clone(), options.clone())
-                .with_firmware_sink(Box::new(FileFirmwareSink::new(options.upload_dir.clone()).with_inspector(inspect)))
+                .with_firmware_sink(firmware_sink(&options.upload_dir))
                 .with_switch(switch.clone())
                 .with_shell(Arc::new(shell_host(&ctx)));
             if let Some(tap) = &tap {
@@ -146,4 +255,100 @@ pub fn start(
             tokio::time::sleep(Duration::from_secs(10)).await;
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use dphone_state::{Bank, Model, Reply, Store};
+    use dphone_update::{boot2, ctrl, trial};
+    use eff::ctrl::{CtrlRecord, Side};
+
+    use super::*;
+    use crate::mainrole::subsystems::system::{self, Flash, STAGED_PATH};
+
+    const BLOCK: usize = 128 * 1024;
+
+    fn bytes(seed: u32, len: usize) -> Vec<u8> {
+        let mut x = seed | 1;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                (x >> 8) as u8
+            })
+            .collect()
+    }
+
+    fn kernel(seed: u32, len: usize) -> Vec<u8> {
+        let mut k = bytes(seed, len);
+        k[0x24..0x28].copy_from_slice(&boot2::ZIMAGE_MAGIC.to_le_bytes());
+        k[0x28..0x2c].copy_from_slice(&0x0200_0000u32.to_le_bytes());
+        k[0x2c..0x30].copy_from_slice(&(0x0200_0000u32 + len as u32).to_le_bytes());
+        k
+    }
+
+    /// A web upload on a phone: the image goes into the spare bank chunk by
+    /// chunk and is verified there, nothing is selected until the
+    /// installation is confirmed, and a broken upload selects nothing.
+    #[test]
+    fn an_upload_is_staged_in_flash_and_selected_by_the_install_command() {
+        let model = Model::D60;
+        let mut hal = dphone_hal::Hal::sim(model);
+        // Bank A holds an image and is the one boot2 boots; this test
+        // system runs from neither bank, so the upload goes to bank B.
+        let (ka, ra) = (kernel(1, 300_000), bytes(2, 3 * BLOCK + 17));
+        let old = eff::ota::pack(&ka, &ra, "old", "2_9_28_D60_firmware.bin").unwrap();
+        let sim = hal.sim.clone().expect("sim handle");
+        sim.mtd_load("k0", &ka).unwrap();
+        sim.mtd_load("root0", &ra).unwrap();
+        let rec = CtrlRecord { active: 0, sides: [Side::from_header(&eff::ota::Ota::parse(&old).unwrap().header.app), Side::INVALID] };
+        ctrl::write(hal.mtd.open("ctrl").unwrap().as_mut(), &rec, dphone_update::replication_for(model.family())).unwrap();
+        let (kn, rn) = (kernel(3, 400_000), bytes(4, 5 * BLOCK + 99));
+        let ota = eff::ota::pack(&kn, &rn, "new", "3_0_0_D60_firmware.bin").unwrap();
+        let image = eff::envelope::pack(&eff::EffHeader::new("D60", "3_0_0").unwrap(), &ota, [7; 8]).unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(model);
+        let mtd: system::SharedMtd = Arc::new(Mutex::new(std::mem::replace(&mut hal.mtd, Box::new(dphone_hal::Null("mtd")))));
+        let sink = FlashFirmwareSink(Flash { mtd: mtd.clone(), model, open_dir: dir.path().to_path_buf(), store: store.clone() });
+        let next_boot = || boot2::simulate(mtd.lock().unwrap().as_mut()).unwrap().side;
+
+        // An upload that breaks off: an error, and nothing to install.
+        let mut upload = sink.begin(None).unwrap();
+        for chunk in image[..image.len() / 2].chunks(16 * 1024) {
+            upload.write(chunk).unwrap();
+        }
+        assert!(upload.finish().is_err());
+        assert!(system::STAGED.lock().unwrap().is_none());
+        assert_eq!(next_boot(), Bank::A);
+        let e = system::install(&store, &mtd, model, STAGED_PATH, false, dir.path()).unwrap_err();
+        assert!(format!("{e:?}").contains("upload it again"), "{e:?}");
+
+        // The whole image: staged, described, and still not selected.
+        let mut upload = sink.begin(Some(image.len() as u64)).unwrap();
+        for chunk in image.chunks(16 * 1024) {
+            upload.write(chunk).unwrap();
+        }
+        let (path, info) = upload.finish().unwrap();
+        assert_eq!(path.to_str(), Some(STAGED_PATH));
+        assert_eq!((info.version.as_str(), info.model.as_str(), info.is_stock), ("3_0_0", "D60", false));
+        assert_eq!(next_boot(), Bank::A);
+        assert!(trial::load(dir.path()).is_none());
+        assert_eq!(boot2::load_kernel(mtd.lock().unwrap().as_mut(), Bank::B).unwrap().unwrap(), kn);
+
+        // Confirmed: selected, with the trial recorded.
+        let reply = system::install(&store, &mtd, model, STAGED_PATH, false, dir.path()).unwrap();
+        assert!(matches!(reply, Reply::Text(v) if v == "3_0_0"));
+        assert_eq!(next_boot(), Bank::B);
+        assert_eq!(trial::load(dir.path()).unwrap().previous_bank, Bank::A);
+        assert!(system::STAGED.lock().unwrap().is_none());
+        // And no second upload while that image is on trial.
+        let mut upload = sink.begin(None).unwrap();
+        let refused = image.chunks(16 * 1024).try_for_each(|c| upload.write(c)).and_then(|()| upload.finish().map(|_| ()));
+        assert!(refused.unwrap_err().to_string().contains("dphone update abandon"));
+        assert_eq!(next_boot(), Bank::B);
+    }
 }

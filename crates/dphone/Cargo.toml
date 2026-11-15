@@ -28,6 +28,7 @@ dphone-hal = { path = "../dphone-hal" }
 dphone-bt = { path = "../dphone-bt" }
 dphone-net = { path = "../dphone-net" }
 dphone-update = { path = "../dphone-update" }
+dphone-ctrl = { path = "../dphone-ctrl" }
 eff = { path = "../eff" }
 dphone-sip = { path = "../dphone-sip" }
 dphone-dpma = { path = "../dphone-dpma" }

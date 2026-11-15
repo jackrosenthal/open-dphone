@@ -13,8 +13,8 @@ use eff::EffHeader;
 use crate::bank::{self, Bank};
 use crate::boot2::{self, ZIMAGE_MAGIC};
 use crate::ctrl::{self, Replication};
-use crate::inspect::inspect;
-use crate::install::{Installed, Options, Updater, select_bank};
+use crate::inspect::{inspect, verify_bank};
+use crate::install::{Installed, Options, Updater, abandon, check_eff, select_bank};
 use crate::memnand::{BLOCK, MemNand, PAGE};
 use crate::trial;
 use crate::{UpdateError, flash};
@@ -169,7 +169,7 @@ const CMD_A: &str = "console=ttyAMA0,115200n8 digium_board=D60 root=/dev/mtdbloc
 const CMD_B: &str = "console=ttyAMA0,115200n8 digium_board=D60 root=/dev/mtdblock7 rootfstype=jffs2 ro bootmemheap";
 
 fn repl_of(model: Model) -> Replication {
-    Replication::for_family(model.family())
+    ctrl::replication_for(model.family())
 }
 
 /// A phone with `a` in bank A (active) and `b` in bank B.
@@ -211,9 +211,16 @@ fn assert_bank_holds(nand: &MemNand, bank: Bank, img: &Image) {
     assert_eq!(rec.sides[bank::index(bank)].header(), Some(img.header));
 }
 
+/// Installs with a trial directory of its own: the tests of the flash
+/// side install again and again, which a pending trial forbids.
 fn install(nand: &MemNand, model: Model, cmdline: &str, eff: &[u8]) -> crate::Result<Installed> {
+    install_in(nand, model, cmdline, eff, tempfile::tempdir().unwrap().path())
+}
+
+/// Installs with the trial record (and the update lock) in `dir`.
+fn install_in(nand: &MemNand, model: Model, cmdline: &str, eff: &[u8], dir: &std::path::Path) -> crate::Result<Installed> {
     let mut m = nand.clone();
-    Updater::new(&mut m, model, cmdline).install_eff(eff)
+    Updater::new(&mut m, model, cmdline, dir).install_eff(eff)
 }
 
 fn sizes() -> (usize, usize) {
@@ -317,7 +324,7 @@ fn install_into_the_spare_bank_both_families_both_directions() {
             let store = Store::new(model);
             let mut phases = Vec::new();
             let mut m = nand.clone();
-            let done = Updater::new(&mut m, model, cmdline)
+            let done = Updater::new(&mut m, model, cmdline, tempfile::tempdir().unwrap().path())
                 .store(store.clone())
                 .progress(|p| phases.push(p.clone()))
                 .install_eff(&new.eff[..])
@@ -360,13 +367,13 @@ fn stock_images_install_and_are_flagged() {
     let ours = image("D60", "3_0_0", 1, kl, rl);
     let stock = image("D60", "2_9_28", 2, kl, rl);
     let nand = phone(Model::D60, &ours, &ours, Bank::A);
-    let done = install(&nand, Model::D60, CMD_A, &stock.eff).unwrap();
+    // No trial for stock, and a record left over from an earlier trial
+    // (the phone is back on the bank to return to) is cleared.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(trial::record_path(dir.path()), "pending=1\nprevious_bank=0\n").unwrap();
+    let done = install_in(&nand, Model::D60, CMD_A, &stock.eff, dir.path()).unwrap();
     assert!(done.is_stock);
     assert_bank_holds(&nand, Bank::B, &stock);
-    // No trial for stock, and an older record is cleared.
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::write(trial::record_path(dir.path()), "pending=1\nprevious_bank=1\n").unwrap();
-    assert!(!trial::begin(dir.path(), &done).unwrap());
     assert_eq!(trial::load(dir.path()), None);
 }
 
@@ -390,7 +397,7 @@ fn assert_refused_untouched(model: Model, cmdline: &str, nand: &MemNand, eff: &[
     let before = nand.snapshot();
     let ops = nand.ops();
     let mut m = nand.clone();
-    let err = Updater::new(&mut m, model, cmdline).options(opts).install_eff(eff).unwrap_err();
+    let err = Updater::new(&mut m, model, cmdline, tempfile::tempdir().unwrap().path()).options(opts).install_eff(eff).unwrap_err();
     assert_eq!(nand.ops(), ops, "no flash operation: {err}");
     assert_eq!(nand.snapshot(), before);
     err
@@ -475,7 +482,7 @@ fn refuses_when_the_bank_that_stays_is_not_bootable() {
     assert!(matches!(e, UpdateError::Refused(_)), "{e}");
     // ...unless told to go ahead (recovery from a RAM boot).
     let mut m = nand.clone();
-    Updater::new(&mut m, Model::D60, CMD_A)
+    Updater::new(&mut m, Model::D60, CMD_A, tempfile::tempdir().unwrap().path())
         .options(Options { allow_unbootable_other: true, ..Default::default() })
         .install_eff(&new.eff[..])
         .unwrap();
@@ -542,7 +549,7 @@ fn corrupt_or_truncated_streams_never_commit() {
         let store = Store::new(Model::D60);
         let mut m = nand.clone();
         let ops = nand.ops();
-        let err = Updater::new(&mut m, Model::D60, CMD_A)
+        let err = Updater::new(&mut m, Model::D60, CMD_A, tempfile::tempdir().unwrap().path())
             .store(store.clone())
             .install_eff(Tamper { data: &new.eff, pos: 0, flip, end })
             .unwrap_err();
@@ -582,7 +589,7 @@ fn block_failures_stop_the_update_or_mark_bad_when_asked() {
         let nand = phone(Model::D60, &old, &old, Bank::A);
         if write_fault { nand.corrupt_writes(part, 2) } else { nand.fail_erases(part, 2) }
         let mut m = nand.clone();
-        Updater::new(&mut m, Model::D60, CMD_A)
+        Updater::new(&mut m, Model::D60, CMD_A, tempfile::tempdir().unwrap().path())
             .options(Options { mark_bad_on_failure: true, ..Default::default() })
             .install_eff(&new.eff[..])
             .unwrap();
@@ -601,9 +608,8 @@ fn trial_and_rollback() {
         let old = image(&name, "2_9_28", 1, kl, rl);
         let new = image(&name, "3_0_0", 3, kl, rl);
         let nand = phone(model, &old, &old, Bank::A);
-        let done = install(&nand, model, CMD_A, &new.eff).unwrap();
         let dir = tempfile::tempdir().unwrap();
-        assert!(trial::begin(dir.path(), &done).unwrap());
+        install_in(&nand, model, CMD_A, &new.eff, dir.path()).unwrap();
         let rec = trial::load(dir.path()).unwrap();
         assert_eq!((rec.previous_bank, rec.trial_bank, rec.boots), (Bank::A, Some(Bank::B), 0));
 
@@ -754,9 +760,8 @@ fn inspect_reports_banks_and_next_boot() {
     assert!(s.banks[0].bootable() && s.banks[1].bootable());
     assert_eq!(s.banks[1].rootfs_bad_blocks, 1);
 
-    let done = install(&nand, Model::D60, CMD_A, &new.eff).unwrap();
     let dir = tempfile::tempdir().unwrap();
-    trial::begin(dir.path(), &done).unwrap();
+    install_in(&nand, Model::D60, CMD_A, &new.eff, dir.path()).unwrap();
     let s = inspect(&mut m, CMD_A, Some(dir.path())).unwrap();
     assert_eq!((s.running, s.active, s.next_boot), (Some(Bank::A), Some(Bank::B), Bank::B));
     assert_eq!(s.banks[1].version.as_deref(), Some("3_0_0"));
@@ -902,4 +907,387 @@ fn memnand_obeys_nand_rules() {
     p.erase(0).unwrap();
     p.read(0, &mut b).unwrap();
     assert_eq!(b, [0xff; 4]);
+}
+
+// ------------------------------------------- one update, verified, on trial
+
+/// A reader that calls `at_half` once, when half of the data has been read.
+struct Midway<'a, F: FnMut()> {
+    data: &'a [u8],
+    pos: usize,
+    at_half: Option<F>,
+}
+
+impl<F: FnMut()> Read for Midway<'_, F> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.pos >= self.data.len() / 2
+            && let Some(mut f) = self.at_half.take()
+        {
+            f();
+        }
+        let n = buf.len().min(self.data.len() - self.pos).min(1000);
+        buf[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
+        self.pos += n;
+        Ok(n)
+    }
+}
+
+#[test]
+fn one_update_at_a_time() {
+    let (kl, rl) = sizes();
+    let old = image("D60", "2_9_28", 1, kl, rl);
+    let new = image("D60", "3_0_0", 3, kl, rl);
+    let other = image("D60", "3_0_1", 4, kl, rl);
+    let nand = phone(Model::D60, &old, &old, Bank::A);
+    let dir = tempfile::tempdir().unwrap();
+    let mut m = nand.clone();
+    // While the first update is writing, everything else that would write
+    // a bank or ctrl is refused, and does nothing to the flash.
+    let meanwhile = || {
+        let (ops, before) = (nand.ops(), nand.snapshot());
+        let e = install_in(&nand, Model::D60, CMD_A, &other.eff, dir.path()).unwrap_err();
+        assert!(matches!(&e, UpdateError::Refused(m) if m.contains("another firmware update")), "{e}");
+        let e = Updater::new(&mut nand.clone(), Model::D60, CMD_A, dir.path())
+            .install_eff_file(std::io::Cursor::new(&other.eff))
+            .unwrap_err();
+        assert!(matches!(e, UpdateError::Refused(_)), "{e}");
+        assert!(matches!(abandon(&mut nand.clone(), Model::D60, dir.path()), Err(UpdateError::Refused(_))));
+        assert!(matches!(crate::lock::acquire(dir.path()), Err(UpdateError::Refused(_))));
+        assert_eq!((nand.ops(), nand.snapshot()), (ops, before));
+    };
+    let reader = Midway { data: &new.eff, pos: 0, at_half: Some(meanwhile) };
+    Updater::new(&mut m, Model::D60, CMD_A, dir.path()).install_eff(reader).unwrap();
+    assert_bank_holds(&nand, Bank::B, &new);
+    assert_eq!(boot2::simulate(&mut m).unwrap().side, Bank::B);
+    // The lock went with the update.
+    drop(crate::lock::acquire(dir.path()).unwrap());
+}
+
+#[test]
+fn no_update_while_an_image_is_on_trial_until_it_is_abandoned() {
+    let (kl, rl) = sizes();
+    let old = image("D60", "2_9_28", 1, kl, rl);
+    let new = image("D60", "3_0_0", 3, kl, rl);
+    let other = image("D60", "3_0_1", 4, kl, rl);
+    let nand = phone(Model::D60, &old, &old, Bank::A);
+    let dir = tempfile::tempdir().unwrap();
+    let mut m = nand.clone();
+    assert_eq!(abandon(&mut m, Model::D60, dir.path()).unwrap(), None);
+    install_in(&nand, Model::D60, CMD_A, &new.eff, dir.path()).unwrap();
+    // Before the reboot (still running A) and after it (running B on
+    // trial): no other image, as a stream or as a file.
+    for cmdline in [CMD_A, CMD_B] {
+        let (ops, before) = (nand.ops(), nand.snapshot());
+        let e = install_in(&nand, Model::D60, cmdline, &other.eff, dir.path()).unwrap_err();
+        assert!(matches!(&e, UpdateError::Refused(m) if m.contains("dphone update abandon")), "{e}");
+        let e = Updater::new(&mut m, Model::D60, cmdline, dir.path())
+            .install_eff_file(std::io::Cursor::new(&other.eff))
+            .unwrap_err();
+        assert!(matches!(e, UpdateError::Refused(_)), "{e}");
+        assert_eq!((nand.ops(), nand.snapshot()), (ops, before), "refused before any flash operation");
+        assert_eq!(trial::load(dir.path()).unwrap().boots, 0, "the record is as it was");
+    }
+    // Giving it up selects the bank to return to and removes the record.
+    assert_eq!(abandon(&mut m, Model::D60, dir.path()).unwrap(), Some(Bank::A));
+    assert_eq!(boot2::simulate(&mut m).unwrap().side, Bank::A);
+    assert_eq!(trial::load(dir.path()), None);
+    assert_bank_holds(&nand, Bank::A, &old);
+    // Then the other image installs.
+    install_in(&nand, Model::D60, CMD_A, &other.eff, dir.path()).unwrap();
+    assert_bank_holds(&nand, Bank::B, &other);
+    // A confirmed trial (record removed by the init role) does not stand
+    // in the way either: the phone now runs B and writes A.
+    trial::clear(dir.path()).unwrap();
+    install_in(&nand, Model::D60, CMD_B, &new.eff, dir.path()).unwrap();
+    assert_bank_holds(&nand, Bank::A, &new);
+    assert_eq!(trial::load(dir.path()).unwrap().previous_bank, Bank::B);
+}
+
+/// The incident of 2026-11-14 as far as one update goes: a truncated file
+/// (the copy to a full `/tmp` had failed) must cost nothing.
+#[test]
+fn a_bad_file_touches_neither_the_flash_nor_the_trial_record() {
+    let (kl, rl) = sizes();
+    let old = image("D60", "2_9_28", 1, kl, rl);
+    let new = image("D60", "3_0_0", 3, kl, rl);
+    let len = new.eff.len();
+    let cases: Vec<(Option<usize>, usize)> = vec![
+        (Some(116 + 400 + 160 + 5000), len),      // a flipped bit in the kernel
+        (Some(116 + 400 + 160 + kl + 9000), len), // in the rootfs
+        (Some(len - 20), len),                    // in the last blocks
+        (None, len - 16),                         // one AES block short
+        (None, len / 2),                          // cut in the rootfs
+        (None, 116 + 400 + 160 + 2000),           // cut in the kernel
+        (None, 100),                              // cut in the envelope
+    ];
+    for (flip, end) in cases {
+        let nand = phone(Model::D60, &old, &old, Bank::A);
+        let dir = tempfile::tempdir().unwrap();
+        let mut file = new.eff[..end].to_vec();
+        if let Some(at) = flip {
+            file[at] ^= 0x01;
+        }
+        assert!(matches!(check_eff(&file[..], Model::D60), Err(UpdateError::Image(_))));
+        let (ops, before) = (nand.ops(), nand.snapshot());
+        let mut m = nand.clone();
+        let err = Updater::new(&mut m, Model::D60, CMD_A, dir.path())
+            .install_eff_file(std::io::Cursor::new(&file))
+            .unwrap_err();
+        assert!(matches!(err, UpdateError::Image(_)), "{flip:?} {end}: {err}");
+        assert_eq!(nand.ops(), ops, "no flash operation ({flip:?} {end})");
+        assert_eq!(nand.snapshot(), before);
+        assert_eq!(trial::load(dir.path()), None);
+        assert!(!trial::record_path(dir.path()).exists());
+    }
+    // An image for another model, too; and the good file installs.
+    let nand = phone(Model::D60, &old, &old, Bank::A);
+    let dir = tempfile::tempdir().unwrap();
+    let mut m = nand.clone();
+    let wrong = image("D40", "3_0_0", 3, kl, rl);
+    let ops = nand.ops();
+    let err = Updater::new(&mut m, Model::D60, CMD_A, dir.path())
+        .install_eff_file(std::io::Cursor::new(&wrong.eff))
+        .unwrap_err();
+    assert!(matches!(err, UpdateError::WrongModel { .. }), "{err}");
+    assert_eq!(nand.ops(), ops);
+    assert_eq!(check_eff(&new.eff[..], Model::D60).unwrap(), "3_0_0");
+    Updater::new(&mut m, Model::D60, CMD_A, dir.path()).install_eff_file(std::io::Cursor::new(&new.eff)).unwrap();
+    assert_bank_holds(&nand, Bank::B, &new);
+    assert_eq!(trial::load(dir.path()).unwrap().trial_bank, Some(Bank::B));
+}
+
+/// A stream cannot be read twice: a bad one costs the spare bank's old
+/// contents, and nothing else.
+#[test]
+fn a_bad_stream_leaves_the_selection_and_the_trial_record_alone() {
+    let (kl, rl) = sizes();
+    let old = image("D60", "2_9_28", 1, kl, rl);
+    let new = image("D60", "3_0_0", 3, kl, rl);
+    let nand = phone(Model::D60, &old, &old, Bank::A);
+    let dir = tempfile::tempdir().unwrap();
+    let mut m = nand.clone();
+    let before = nand.snapshot();
+    let err = Updater::new(&mut m, Model::D60, CMD_A, dir.path())
+        .install_eff(Tamper { data: &new.eff, pos: 0, flip: None, end: new.eff.len() / 2 })
+        .unwrap_err();
+    assert!(matches!(err, UpdateError::Image(_)), "{err}");
+    assert_eq!(boot2::simulate(&mut m).unwrap().side, Bank::A);
+    assert_bank_holds(&nand, Bank::A, &old);
+    assert!(!trial::record_path(dir.path()).exists());
+    let rec = ctrl::read(m.open("ctrl").unwrap().as_mut()).unwrap();
+    assert!(!rec.sides[1].is_valid(), "the half-written bank cannot be selected");
+    // Nothing but the spare bank and its header in ctrl changed.
+    let after = nand.snapshot();
+    for (i, (name, _)) in crate::memnand::PARTS.iter().enumerate() {
+        if !["ctrl", "k1", "root1"].contains(name) {
+            assert_eq!(after[i], before[i], "{name} changed");
+        }
+    }
+}
+
+/// The bank is read back and compared with the image after the last write
+/// and before `ctrl` selects it: flash that changes in between is caught.
+#[test]
+fn flash_corrupted_after_writing_is_caught_before_the_bank_is_selected() {
+    let (kl, rl) = sizes();
+    let old = image("D60", "2_9_28", 1, kl, rl);
+    let new = image("D60", "3_0_0", 3, kl, rl);
+    for (part, offset) in [("k1", 2 * BLOCK as usize + 77), ("root1", 4 * BLOCK as usize + 5), ("root1", rl + 2000)] {
+        let nand = phone(Model::D60, &old, &old, Bank::A);
+        let dir = tempfile::tempdir().unwrap();
+        let mut m = nand.clone();
+        let mut hit = false;
+        let err = Updater::new(&mut m, Model::D60, CMD_A, dir.path())
+            .progress(|phase| {
+                // Every block has been written and compared by now.
+                if matches!(phase, UpdatePhase::Verifying { percent: 0 }) && !hit {
+                    hit = true;
+                    nand.flip_bit(part, offset);
+                }
+            })
+            .install_eff(&new.eff[..])
+            .unwrap_err();
+        assert!(hit);
+        assert!(matches!(err, UpdateError::Verify(_)), "{part} {offset}: {err}");
+        assert_eq!(boot2::simulate(&mut m).unwrap().side, Bank::A);
+        let rec = ctrl::read(m.open("ctrl").unwrap().as_mut()).unwrap();
+        assert!(!rec.sides[1].is_valid());
+        assert!(!trial::record_path(dir.path()).exists());
+    }
+}
+
+/// A web upload: written and verified during the upload, selected only
+/// when the user confirms, and read back once more at that point.
+#[test]
+fn a_staged_image_is_selected_only_by_the_commit() {
+    let (kl, rl) = sizes();
+    let old = image("D60", "2_9_28", 1, kl, rl);
+    let new = image("D60", "3_0_0", 3, kl, rl);
+    let nand = phone(Model::D60, &old, &old, Bank::A);
+    let dir = tempfile::tempdir().unwrap();
+    let mut m = nand.clone();
+    let staged = Updater::new(&mut m, Model::D60, CMD_A, dir.path()).stage_eff(&new.eff[..]).unwrap();
+    assert_eq!((staged.bank, staged.previous, staged.version.as_str()), (Bank::B, Bank::A, "3_0_0"));
+    assert_eq!(boot2::simulate(&mut m).unwrap().side, Bank::A);
+    assert!(!ctrl::read(m.open("ctrl").unwrap().as_mut()).unwrap().sides[1].is_valid());
+    assert!(!trial::record_path(dir.path()).exists());
+    // The bank changed since: the commit refuses, and nothing is selected.
+    nand.flip_bit("root1", 3 * BLOCK as usize);
+    let err = Updater::new(&mut m, Model::D60, CMD_A, dir.path()).commit(&staged).unwrap_err();
+    assert!(matches!(err, UpdateError::Verify(_)), "{err}");
+    assert_eq!(boot2::simulate(&mut m).unwrap().side, Bank::A);
+    assert!(!trial::record_path(dir.path()).exists());
+    nand.flip_bit("root1", 3 * BLOCK as usize);
+    // As staged: selected, with the trial recorded.
+    let done = Updater::new(&mut m, Model::D60, CMD_A, dir.path()).commit(&staged).unwrap();
+    assert_eq!((done.bank, done.previous), (Bank::B, Bank::A));
+    assert_eq!(boot2::simulate(&mut m).unwrap().side, Bank::B);
+    assert_bank_holds(&nand, Bank::B, &new);
+    assert_eq!(trial::load(dir.path()).unwrap().previous_bank, Bank::A);
+}
+
+/// `dphone update status`: a bank whose root file system is only partly
+/// there (the incident: the first 28 blocks, erased beyond) has a valid
+/// header and a loadable kernel, and is still not the image.
+#[test]
+fn verify_bank_compares_both_components_with_the_header() {
+    let (kl, rl) = sizes();
+    let a = image("D60", "2_9_28", 1, kl, rl);
+    let b = image("D60", "3_0_0", 3, kl, rl);
+    let nand = phone(Model::D60, &a, &b, Bank::B);
+    let mut m = nand.clone();
+    let (ops, before) = (nand.ops(), nand.snapshot());
+    assert_eq!(verify_bank(&mut m, Bank::A, &a.header).unwrap(), Ok(()));
+    assert_eq!(verify_bank(&mut m, Bank::B, &b.header).unwrap(), Ok(()));
+    nand.load("root1", &b.rootfs[..2 * BLOCK as usize]);
+    let why = verify_bank(&mut m, Bank::B, &b.header).unwrap().unwrap_err();
+    assert!(why.contains("root file system"), "{why}");
+    assert!(inspect(&mut m, CMD_A, None).unwrap().banks[1].bootable(), "boot2's own checks still pass");
+    nand.load("root1", &b.rootfs);
+    nand.flip_bit("k1", 5000);
+    let why = verify_bank(&mut m, Bank::B, &b.header).unwrap().unwrap_err();
+    assert!(why.contains("kernel"), "{why}");
+    assert_eq!(verify_bank(&mut m, Bank::A, &a.header).unwrap(), Ok(()));
+    assert_eq!(nand.ops(), ops, "verifying never writes");
+    nand.flip_bit("k1", 5000);
+    assert_eq!(nand.snapshot(), before);
+}
+
+// ------------------------------------- shared with the early-boot stage
+
+#[test]
+fn the_shared_record_code_agrees_with_the_typed_record() {
+    use dphone_ctrl::record;
+    for bytes in [unhex(D60_DUMP), unhex(D40_DUMP), unhex(D50_DUMP), d60_live()] {
+        let rec = CtrlRecord::parse(&bytes).unwrap();
+        assert!(record::valid(&bytes));
+        assert_eq!(record::active(&bytes), rec.active);
+        assert_eq!(record::boot_side(&bytes), rec.boot_side());
+        let raw: record::Record = bytes.clone().try_into().unwrap();
+        for active in [0, 1] {
+            let mut want = rec;
+            want.active = active;
+            assert_eq!(record::with_active(&raw, active), want.to_bytes());
+        }
+        for (i, side) in [Side::INVALID, rec.sides[1]].into_iter().enumerate() {
+            let mut one = rec;
+            one.sides[0] = side;
+            let b = one.to_bytes();
+            assert_eq!(record::side_valid(&b, 0), i == 1);
+            assert!(record::side_valid(&b, 1));
+            assert_eq!(record::boot_side(&b), one.boot_side());
+        }
+        let mut bad = bytes.clone();
+        bad[3] ^= 1;
+        assert!(!record::valid(&bad));
+    }
+    assert!(!record::valid(&[0xff; 304]));
+    assert!(!record::valid(&[0u8; 304]));
+    assert!(!record::valid(&[0u8; 100]));
+    // The layout the early stage takes from `digium_board=` is the family's.
+    for model in Model::ALL {
+        let cmdline = format!("console=ttyAMA0 digium_board={model} root=/dev/mtdblock6 ro");
+        assert_eq!(dphone_ctrl::boot::replication(&cmdline), repl_of(model), "{model}");
+    }
+}
+
+/// An MTD partition as the early stage's writer sees it.
+struct Raw(Box<dyn dphone_hal::MtdPartition>);
+
+impl dphone_ctrl::Flash for Raw {
+    type Error = dphone_hal::HalError;
+    fn geometry(&self) -> dphone_ctrl::Geometry {
+        let i = self.0.info();
+        dphone_ctrl::Geometry { size: i.size, erase_size: i.erase_size, write_size: i.write_size }
+    }
+    fn is_bad(&mut self, offset: u64) -> Result<bool, Self::Error> {
+        self.0.is_bad(offset)
+    }
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), Self::Error> {
+        self.0.read(offset, buf)
+    }
+    fn erase(&mut self, offset: u64) -> Result<(), Self::Error> {
+        self.0.erase(offset)
+    }
+    fn write(&mut self, offset: u64, data: &[u8]) -> Result<(), Self::Error> {
+        self.0.write(offset, data)
+    }
+}
+
+/// What the early stage does when a trial is used up or the new root is
+/// unusable (`dphone-early`, `go_back`), on the same flash as the updater:
+/// the result is byte for byte what the updater's own bank switch writes.
+#[test]
+fn the_early_stage_goes_back_exactly_as_the_updater_would() {
+    use dphone_ctrl::{boot, record, trial::Trial};
+    let (kl, rl) = sizes();
+    for model in [Model::D60, Model::D40] {
+        let name = model.to_string();
+        let old = image(&name, "2_9_28", 1, kl, rl);
+        let new = image(&name, "3_0_0", 3, kl, rl);
+        let nand = phone(model, &old, &old, Bank::A);
+        let dir = tempfile::tempdir().unwrap();
+        install_in(&nand, model, CMD_A, &new.eff, dir.path()).unwrap();
+        let mut m = nand.clone();
+        assert_eq!(boot2::simulate(&mut m).unwrap().side, Bank::B);
+
+        // The record the updater left is the early stage's to count: three
+        // boots of bank B, and the fourth goes back.
+        let text = std::fs::read(trial::record_path(dir.path())).unwrap();
+        let mut trial = Trial::parse(&text).unwrap();
+        for _ in 0..3 {
+            let boot::Step::Count(next) = boot::step(Some(1), Some(trial)) else { panic!("not counted") };
+            trial = next;
+        }
+        let boot::Step::GoBack(trial) = boot::step(Some(1), Some(trial)) else { panic!("did not go back") };
+        assert_eq!(trial.previous_bank, 0);
+        // What the updater's parser makes of the record as the early stage
+        // stores it.
+        let mut buf = [0u8; dphone_ctrl::trial::TEXT_MAX];
+        let n = trial.format(&mut buf);
+        let typed = trial::TrialRecord::parse(std::str::from_utf8(&buf[..n]).unwrap()).unwrap();
+        assert_eq!((typed.previous_bank, typed.trial_bank, typed.boots), (Bank::A, Some(Bank::B), 4));
+
+        // The updater's way back, on a copy.
+        let reference = nand.clone_contents();
+        select_bank(&mut reference.clone(), model, Bank::A).unwrap();
+
+        // The early stage's.
+        let cmdline = format!("digium_board={name} root=/dev/mtdblock7 rootfstype=jffs2 ro");
+        let mut part = Raw(m.open("ctrl").unwrap());
+        let current = dphone_ctrl::scan(&mut part).unwrap().record.unwrap();
+        assert!(record::side_valid(&current, trial.previous_bank as usize));
+        let wanted = record::with_active(&current, trial.previous_bank as u32);
+        let mut scratch = vec![0u8; 2 * BLOCK as usize];
+        assert!(matches!(dphone_ctrl::write(&mut part, &wanted, boot::replication(&cmdline), &mut scratch), Ok(0)));
+        assert_eq!(nand.contents("ctrl"), reference.contents("ctrl"), "{model}");
+        assert_eq!(boot2::simulate(&mut m).unwrap().side, Bank::A);
+        assert_bank_holds(&nand, Bank::A, &old);
+        // Too little scratch space is refused before anything is erased.
+        let ops = nand.ops();
+        let other = record::with_active(&current, 1);
+        let e = dphone_ctrl::write(&mut part, &other, boot::replication(&cmdline), &mut scratch[..BLOCK as usize]);
+        assert!(matches!(e, Err(dphone_ctrl::WriteError::Geometry)));
+        assert_eq!(nand.ops(), ops);
+    }
 }

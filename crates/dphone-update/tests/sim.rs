@@ -50,7 +50,7 @@ fn install_on_the_hal_sim_at_real_geometry() {
             active: 0,
             sides: [Side::from_header(&eff::ota::Ota::parse(&ota_a).unwrap().header.app), Side::INVALID],
         };
-        let repl = dphone_update::Replication::for_family(model.family());
+        let repl = dphone_update::replication_for(model.family());
         ctrl::write(hal.mtd.open("ctrl").unwrap().as_mut(), &rec, repl).unwrap();
 
         // New image near the kernel slot's limit with two bad blocks in it.
@@ -65,7 +65,7 @@ fn install_on_the_hal_sim_at_real_geometry() {
         sim.mtd_set_bad("ctrl", 2, true);
 
         let cmdline = "console=ttyAMA0,115200n8 root=/dev/mtdblock6 rootfstype=jffs2 ro";
-        let done = Updater::new(hal.mtd.as_mut(), model, cmdline).install_eff(&eff[..]).unwrap();
+        let done = Updater::new(hal.mtd.as_mut(), model, cmdline, tempfile::tempdir().unwrap().path()).install_eff(&eff[..]).unwrap();
         assert_eq!((done.bank, done.previous), (Bank::B, Bank::A));
 
         // Independent reading of the raw partition contents.
@@ -157,7 +157,7 @@ fn installing_the_vendor_eff_reproduces_what_stock_wrote() {
     assert_eq!(status.ctrl_copies, (4, 4, 0));
 
     let file = std::io::BufReader::new(std::fs::File::open(&eff_path).unwrap());
-    let done = Updater::new(hal.mtd.as_mut(), Model::D60, cmdline).install_eff(file).unwrap();
+    let done = Updater::new(hal.mtd.as_mut(), Model::D60, cmdline, tempfile::tempdir().unwrap().path()).install_eff(file).unwrap();
     assert_eq!((done.bank, done.is_stock, done.version.as_str()), (Bank::B, true, "2_9_28"));
 
     // Byte for byte what stock's updater left in bank 0.
@@ -195,7 +195,7 @@ fn old_family_ctrl_layout_matches_the_dumps() {
         let rec = CtrlRecord::parse(&dump[..304]).unwrap();
         let mut hal = Hal::sim(model);
         let sim = hal.sim.clone().unwrap();
-        let repl = dphone_update::Replication::for_family(model.family());
+        let repl = dphone_update::replication_for(model.family());
         ctrl::write(hal.mtd.open("ctrl").unwrap().as_mut(), &rec, repl).unwrap();
         assert!(sim.mtd_contents("ctrl").unwrap() == dump, "{sub}: our ctrl image differs from stock's");
     }

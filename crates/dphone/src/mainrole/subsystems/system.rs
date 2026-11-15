@@ -50,6 +50,32 @@ impl ConfigHub {
 /// The flash, shared between the update command handler and diagnostics.
 pub type SharedMtd = Arc<Mutex<Box<dyn Mtd>>>;
 
+/// What writing an image into the spare bank takes; for the web upload,
+/// which goes into flash as it arrives.
+#[derive(Clone)]
+pub struct Flash {
+    pub mtd: SharedMtd,
+    pub model: dphone_state::Model,
+    pub open_dir: std::path::PathBuf,
+    pub store: Store,
+}
+
+static FLASH: std::sync::OnceLock<Flash> = std::sync::OnceLock::new();
+
+/// The flash of this phone, once the system subsystem has started; `None`
+/// when there is none.
+pub fn flash() -> Option<Flash> {
+    FLASH.get().cloned()
+}
+
+/// The image a web upload wrote into the spare bank and verified there.
+/// It is not selected: `Command::InstallFirmware` with [`STAGED_PATH`]
+/// commits it.
+pub static STAGED: Mutex<Option<dphone_update::Staged>> = Mutex::new(None);
+
+/// The `path` of `Command::InstallFirmware` that means the staged image.
+pub const STAGED_PATH: &str = "staged:";
+
 pub struct Parts {
     pub config: Option<SharedConfig>,
     pub hub: ConfigHub,
@@ -65,6 +91,14 @@ pub fn start(ctx: &Context, parts: Parts) {
     tokio::spawn(update_domain(ctx.clone(), mtd.clone()));
     tokio::spawn(confirm_trial_when_healthy(ctx.clone()));
 
+    if let Some(mtd) = &mtd {
+        let _ = FLASH.set(Flash {
+            mtd: mtd.clone(),
+            model: state_model(ctx.model),
+            open_dir: ctx.paths.open_dir(),
+            store: ctx.store.clone(),
+        });
+    }
     // Seed the update state: running bank and trial status.
     if let Some(mtd) = mtd {
         let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
@@ -299,6 +333,7 @@ async fn update_domain(ctx: Context, mtd: Option<SharedMtd>) {
                         Bank::A => Bank::B,
                         Bank::B => Bank::A,
                     };
+                    let _lock = dphone_update::lock::acquire(&ctx.paths.open_dir()).map_err(|e| e.to_string())?;
                     dphone_update::select_bank(m.as_mut(), model, other).map_err(|e| e.to_string())?;
                     let _ = trial::clear(&ctx.paths.open_dir());
                     Ok::<(), String>(())
@@ -316,7 +351,7 @@ async fn update_domain(ctx: Context, mtd: Option<SharedMtd>) {
     }
 }
 
-fn install(
+pub(super) fn install(
     store: &Store,
     mtd: &SharedMtd,
     model: dphone_state::Model,
@@ -324,28 +359,46 @@ fn install(
     allow_stock: bool,
     open_dir: &std::path::Path,
 ) -> Result<Reply, CommandError> {
-    let open = || std::fs::File::open(path).map(|f| std::io::BufReader::with_capacity(64 * 1024, f));
+    let stock_refusal = |version: &str| {
+        CommandError::Denied(format!(
+            "{version} is stock firmware; installing it replaces Open DPhone and must be asked for explicitly"
+        ))
+    };
+    if path == STAGED_PATH {
+        // A web upload: the image is in the spare bank already, verified
+        // and not selected.  The commit reads it back once more.
+        let mut slot = STAGED.lock().map_err(|_| CommandError::Failed("staged image lock poisoned".into()))?;
+        let staged = slot.as_ref().ok_or_else(|| CommandError::Failed("no uploaded image is waiting; upload it again".into()))?;
+        if staged.is_stock && !allow_stock {
+            return Err(stock_refusal(&staged.version));
+        }
+        let mut m = mtd.lock().map_err(|_| CommandError::Failed("flash lock poisoned".into()))?;
+        let installed = Updater::new(m.as_mut(), model, &cmdline(), open_dir)
+            .store(store.clone())
+            .commit(staged)
+            .map_err(|e| CommandError::Failed(e.to_string()))?;
+        *slot = None;
+        info!("update: selected {} in bank {:?}", installed.version, installed.bank);
+        return Ok(Reply::Text(installed.version));
+    }
+    let mut file = std::fs::File::open(path)
+        .map(|f| std::io::BufReader::with_capacity(64 * 1024, f))
+        .map_err(|e| CommandError::Failed(format!("{path}: {e}")))?;
     // Look at the label first: a stock image is only written when asked for.
-    let header = eff::EffReader::new(open().map_err(|e| CommandError::Failed(format!("{path}: {e}")))?)
+    let header = eff::EffReader::new(&mut file)
         .map_err(|e| CommandError::Failed(format!("{path}: {e}")))?
         .header()
         .clone();
     if dphone_update::is_stock_version(&header.version) && !allow_stock {
-        return Err(CommandError::Denied(format!(
-            "{} is stock firmware; installing it replaces Open DPhone and must be asked for explicitly",
-            header.version
-        )));
+        return Err(stock_refusal(&header.version));
     }
-    let reader = open().map_err(|e| CommandError::Failed(format!("{path}: {e}")))?;
     let mut m = mtd.lock().map_err(|_| CommandError::Failed("flash lock poisoned".into()))?;
-    let installed = Updater::new(m.as_mut(), model, &cmdline())
+    // A file: read and checked in full before anything is written.
+    let installed = Updater::new(m.as_mut(), model, &cmdline(), open_dir)
         .store(store.clone())
-        .install_eff(reader)
+        .install_eff_file(file)
         .map_err(|e| CommandError::Failed(e.to_string()))?;
     info!("update: installed {} into bank {:?}", installed.version, installed.bank);
-    if let Err(e) = trial::begin(open_dir, &installed) {
-        warn!("update: could not record the trial boot: {e}");
-    }
     Ok(Reply::Text(installed.version))
 }
 

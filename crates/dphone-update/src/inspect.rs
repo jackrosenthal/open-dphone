@@ -102,6 +102,21 @@ pub fn inspect(mtd: &mut dyn Mtd, cmdline: &str, open_dir: Option<&Path>) -> Res
     })
 }
 
+/// Reads a bank's kernel and root file system back and compares them with
+/// the lengths and checksums its `ctrl` header records: the read-and-compare
+/// the updater does before it selects a bank.  `Ok(Err(why))` when the
+/// contents are not the image the header describes (boot2 checks none of
+/// this: it would boot the bank all the same).
+pub fn verify_bank(mtd: &mut dyn Mtd, bank: Bank, header: &AppHeader) -> Result<std::result::Result<(), String>> {
+    let mut kpart = mtd.open(bank::kernel_part(bank))?;
+    let mut rpart = mtd.open(bank::rootfs_part(bank))?;
+    match flash::verify_image(kpart.as_mut(), rpart.as_mut(), header, |_| {}) {
+        Ok(()) => Ok(Ok(())),
+        Err(crate::UpdateError::Verify(why)) => Ok(Err(why)),
+        Err(e) => Err(e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::version_from_image_name;

@@ -2,6 +2,12 @@
 # order, kernel/files copied over the tree, configured from kernel/configs.
 # One build serves every model; only the appended DTB differs.
 #
+# The kernel image carries an initramfs with one program, the early-boot
+# stage (crates/dphone-early): it counts trial boots and can select the
+# previous bank before the root file system is needed, then mounts the
+# root and runs its init.  The initramfs is not compressed by itself; it
+# is compressed with the rest of the zImage.
+#
 # Output layout:
 #   zImage                       XZ-compressed kernel, no DTB appended
 #   dtbs/<board>.dtb             the seven board devicetrees
@@ -21,6 +27,8 @@
   xz,
   openssl,
   kernelSrc, # path: the repository's kernel/ directory
+  earlyInit, # the built dphone-early ($out/bin/dphone-early, static ARM)
+  initramfsList, # path: crates/dphone-early/initramfs.list
   defconfig ? "bcmring_tiny_defconfig",
 }:
 let
@@ -96,6 +104,10 @@ stdenv.mkDerivation {
   configurePhase = ''
     runHook preConfigure
     make $makeFlags ${defconfig}
+    sed 's|@INIT@|${earlyInit}/bin/dphone-early|' ${initramfsList} > initramfs.list
+    scripts/config --file build/.config --set-str INITRAMFS_SOURCE "$PWD/initramfs.list"
+    make $makeFlags olddefconfig
+    grep -q '^CONFIG_INITRAMFS_COMPRESSION_NONE=y' build/.config
     runHook postConfigure
   '';
 

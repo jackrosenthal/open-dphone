@@ -4,15 +4,39 @@
 //!
 //! This is also the way back to stock firmware: `dphone update install
 //! FILE.eff` accepts a stock EFF.
+//!
+//! An image need not be copied to the phone first (its `/tmp` is RAM, and
+//! smaller than two images): `dphone update install -` reads it from
+//! standard input (`ssh root@PHONE dphone update install - < FILE.eff`),
+//! and `dphone update install http://...` downloads it, in both cases
+//! straight into the bank that is not running.
 
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
 use dphone_hal::Mtd;
 use dphone_hal::phone::PhoneMtd;
 use dphone_update::{Bank, Options, Updater, inspect, select_bank, trial};
+
+/// Where `install` reads the image from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Source {
+    File(PathBuf),
+    Stdin,
+    Url(String),
+}
+
+fn parse_source(s: &str) -> Result<Source, String> {
+    Ok(if s == "-" {
+        Source::Stdin
+    } else if s.starts_with("http://") || s.starts_with("https://") {
+        Source::Url(s.to_string())
+    } else {
+        Source::File(PathBuf::from(s))
+    })
+}
 
 use crate::init::trial::TrialRecord;
 
@@ -22,11 +46,20 @@ pub enum UpdateCommand {
     Status,
     /// Install an image into the bank that is not running, and select it
     ///
-    /// The image (Open DPhone or stock) is written, verified, and selected
-    /// for the next boot; reboot afterwards with 'dphone reboot'.
+    /// The image (Open DPhone or stock) is written, read back and compared,
+    /// and selected for the next boot; reboot afterwards with 'dphone
+    /// reboot'.  A file is read and checked in full before anything is
+    /// written.  An image from standard input or a URL goes straight into
+    /// the bank that is not running, without being stored on the phone;
+    /// should it turn out bad, that bank's old contents are gone and
+    /// nothing else has changed.  One update runs at a time, and none while
+    /// an installed image is not confirmed yet (see 'abandon').
     Install {
-        /// The image (an EFF file)
-        file: PathBuf,
+        /// The image: an EFF file, '-' for standard input, or an http://
+        /// or https:// URL (the server's certificate is not checked; the
+        /// image's own checksums are)
+        #[arg(value_name = "FILE|-|URL", value_parser = parse_source)]
+        source: Source,
         /// The bank to write [default: the one that is not running]
         #[arg(long, value_parser = parse_bank)]
         bank: Option<Bank>,
@@ -43,6 +76,12 @@ pub enum UpdateCommand {
         #[arg(value_parser = parse_bank)]
         bank: Bank,
     },
+    /// Give up an installed image that is not confirmed yet
+    ///
+    /// Selects the bank the phone would return to and removes the trial
+    /// record, so that another image can be installed.  When the phone is
+    /// already running the image given up, reboot afterwards.
+    Abandon,
     /// Record a trial boot of the bank 'ctrl' selects for the next boot
     ///
     /// For an image installed and selected by other means (e.g., by the
@@ -111,9 +150,10 @@ pub fn rollback_hook(record: &TrialRecord) -> std::io::Result<()> {
 pub fn run(command: UpdateCommand) -> i32 {
     let result = match command {
         UpdateCommand::Status => status(),
-        UpdateCommand::Install { file, bank, allow_unbootable_other } => {
-            install(&file, Options { target: bank, allow_unbootable_other, ..Options::default() })
+        UpdateCommand::Install { source, bank, allow_unbootable_other } => {
+            install(&source, Options { target: bank, allow_unbootable_other, ..Options::default() })
         }
+        UpdateCommand::Abandon => abandon(),
         UpdateCommand::SwitchBank { bank } => switch_bank(bank),
         UpdateCommand::ArmTrial { return_to } => arm_trial(return_to),
         UpdateCommand::WriteUserdata { image } => write_userdata(&image),
@@ -153,7 +193,18 @@ fn status() -> Result<(), String> {
             Err(p) => crate::outln!("  kernel:       NOT loadable: {p}"),
         }
         crate::outln!("  bad blocks:   kernel {}, rootfs {}", b.kernel_bad_blocks, b.rootfs_bad_blocks);
-        crate::outln!("  bootable:     {}", if b.bootable() { "yes" } else { "no" });
+        crate::outln!("  boot2 boots:  {}", if b.bootable() { "yes (valid header, loadable kernel)" } else { "no" });
+        // boot2 checks no more than that.  Whether the bank holds the
+        // image its header describes takes reading all of it back.
+        match &b.header {
+            Some(h) => match dphone_update::verify_bank(&mut mtd, b.bank, h).map_err(|e| e.to_string())? {
+                Ok(()) => crate::outln!(
+                    "  contents:     kernel and root file system match the header's lengths and checksums"
+                ),
+                Err(why) => crate::outln!("  contents:     DAMAGED: {why}"),
+            },
+            None => crate::outln!("  contents:     not checked (no header to check against)"),
+        }
     }
     match &st.trial {
         Some(t) => crate::outln!("trial:          pending ({t:?})"),
@@ -165,6 +216,7 @@ fn status() -> Result<(), String> {
 fn switch_bank(bank: Bank) -> Result<(), String> {
     let model = model().ok_or("model unknown (no digium_board= and no devicetree match)")?;
     let mut mtd = open_mtd()?;
+    let _lock = dphone_update::lock::acquire(&open_dir()).map_err(|e| e.to_string())?;
     select_bank(&mut mtd, model, bank).map_err(|e| e.to_string())?;
     // A manual choice ends any trial: the init role must not undo it.
     let _ = trial::clear(&open_dir());
@@ -185,27 +237,56 @@ fn arm_trial(return_to: Option<Bank>) -> Result<(), String> {
     Ok(())
 }
 
-fn install(file: &Path, options: Options) -> Result<(), String> {
+fn abandon() -> Result<(), String> {
     let model = model().ok_or("model unknown (no digium_board= and no devicetree match)")?;
-    let reader = BufReader::with_capacity(64 * 1024, File::open(file).map_err(|e| format!("{}: {e}", file.display()))?);
+    let mut mtd = open_mtd()?;
+    match dphone_update::abandon(&mut mtd, model, &open_dir()).map_err(|e| e.to_string())? {
+        Some(bank) => {
+            crate::outln!("the unconfirmed image is given up; bank {} is selected for the next boot", bank_name(bank));
+            let running = mtd.partitions().ok().and_then(|p| dphone_update::bank::running_bank(&cmdline(), &p));
+            if running != Some(bank) {
+                crate::outln!("this system is not running from that bank: 'dphone reboot' to return to it");
+            }
+        }
+        None => crate::outln!("no installed image is waiting to be confirmed; nothing to give up"),
+    }
+    Ok(())
+}
+
+fn install(source: &Source, options: Options) -> Result<(), String> {
+    let model = model().ok_or("model unknown (no digium_board= and no devicetree match)")?;
     let mut mtd = open_mtd()?;
     let parts = mtd.partitions().map_err(|e| e.to_string())?;
     if parts.is_empty() {
         return Err("no MTD partitions".into());
     }
     let mut last = String::new();
-    let installed = Updater::new(&mut mtd, model, &cmdline())
-        .options(options)
-        .progress(|phase| {
-            let text = format!("{phase:?}");
-            if text != last {
-                crate::out!("\r{text:<40}");
-                crate::out::flush();
-                last = text;
-            }
-        })
-        .install_eff(reader)
-        .map_err(|e| format!("\n{e}"))?;
+    let updater = Updater::new(&mut mtd, model, &cmdline(), &open_dir()).options(options).progress(|phase| {
+        let text = format!("{phase:?}");
+        if text != last {
+            crate::out!("\r{text:<40}");
+            crate::out::flush();
+            last = text;
+        }
+    });
+    let mut updater = updater;
+    let installed = match source {
+        // A file can be read twice: all of it is checked before the first
+        // erase.
+        Source::File(path) => {
+            let file = File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+            updater.install_eff_file(std::io::BufReader::with_capacity(64 * 1024, file))
+        }
+        Source::Stdin => updater.install_eff(std::io::stdin().lock()),
+        Source::Url(url) => {
+            use dphone_dpma::firmware::FirmwareSource;
+            let stream = dphone_dpma::fetch::HttpSource::new()
+                .open(url, &format!("dphone-update/{}", env!("CARGO_PKG_VERSION")))
+                .map_err(|e| format!("{url}: {}", e.message))?;
+            updater.install_eff(stream)
+        }
+    }
+    .map_err(|e| format!("\n{e}"))?;
     crate::outln!();
     crate::outln!(
         "installed version {} into bank {}{}; bank {} is kept as it was",
@@ -214,13 +295,10 @@ fn install(file: &Path, options: Options) -> Result<(), String> {
         if installed.is_stock { " (stock firmware)" } else { "" },
         bank_name(installed.previous),
     );
-    let dir = open_dir();
-    if dir.exists() {
-        match trial::begin(&dir, &installed) {
-            Ok(true) => crate::outln!("trial boot recorded: the phone returns to the kept bank if the new image does not come up healthy"),
-            Ok(false) => {}
-            Err(e) => crate::errln!("warning: could not record the trial boot: {e}"),
-        }
+    if !installed.is_stock {
+        crate::outln!(
+            "trial boot recorded: the phone returns to the kept bank if the new image does not come up healthy"
+        );
     }
     crate::outln!("'dphone reboot' to boot it");
     Ok(())
@@ -299,10 +377,20 @@ mod tests {
     #[test]
     fn commands() {
         assert!(matches!(parse(&["status"]), Ok(UpdateCommand::Status)));
-        let Ok(UpdateCommand::Install { file, bank, allow_unbootable_other }) = parse(&["install", "/tmp/fw.eff"]) else {
+        let Ok(UpdateCommand::Install { source, bank, allow_unbootable_other }) = parse(&["install", "/tmp/fw.eff"]) else {
             panic!("install does not parse")
         };
-        assert_eq!((file.as_path(), bank, allow_unbootable_other), (Path::new("/tmp/fw.eff"), None, false));
+        assert_eq!((source, bank, allow_unbootable_other), (Source::File("/tmp/fw.eff".into()), None, false));
+        for (word, want) in [
+            ("-", Source::Stdin),
+            ("http://10.0.0.1/fw.eff", Source::Url("http://10.0.0.1/fw.eff".into())),
+            ("https://example.org/fw.eff", Source::Url("https://example.org/fw.eff".into())),
+            ("./-", Source::File("./-".into())),
+        ] {
+            let Ok(UpdateCommand::Install { source, .. }) = parse(&["install", word]) else { panic!("{word}") };
+            assert_eq!(source, want);
+        }
+        assert!(matches!(parse(&["abandon"]), Ok(UpdateCommand::Abandon)));
         let Ok(UpdateCommand::Install { bank, allow_unbootable_other, .. }) =
             parse(&["install", "--bank", "b", "fw.eff", "--allow-unbootable-other"])
         else {
@@ -325,6 +413,7 @@ mod tests {
             &["install", "a.eff", "b.eff"],
             &["install", "a.eff", "--bank"],
             &["install", "a.eff", "--bank", "c"],
+            &["abandon", "a"],
             &["switch-bank"],
             &["switch-bank", "2"],
             &["arm-trial", "a"],

@@ -121,6 +121,22 @@ impl MemNand {
             p.data[..data.len()].copy_from_slice(data);
         })
     }
+    /// Flips one bit, bypassing NAND rules (flash that changed by itself).
+    pub fn flip_bit(&self, name: &str, offset: usize) {
+        self.with(name, |p| p.data[offset] ^= 0x04)
+    }
+    /// An independent flash with the same contents and bad blocks.
+    pub fn clone_contents(&self) -> MemNand {
+        let copy = MemNand::new();
+        let g = self.0.lock().unwrap();
+        let mut c = copy.0.lock().unwrap();
+        for (to, from) in c.parts.iter_mut().zip(&g.parts) {
+            to.data.clone_from(&from.data);
+            to.bad.clone_from(&from.bad);
+        }
+        drop(c);
+        copy
+    }
     pub fn set_bad(&self, name: &str, block: usize) {
         self.with(name, |p| p.bad[block] = true)
     }

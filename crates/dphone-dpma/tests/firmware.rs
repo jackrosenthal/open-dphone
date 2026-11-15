@@ -127,7 +127,7 @@ impl Rig {
             active: 0,
             sides: [Side::from_header(&eff::ota::Ota::parse(&ota).unwrap().header.app), Side::INVALID],
         };
-        let repl = dphone_update::Replication::for_family(model.family());
+        let repl = dphone_update::replication_for(model.family());
         ctrl::write(hal.mtd.open("ctrl").unwrap().as_mut(), &rec, repl).unwrap();
         let store = Store::new(model);
         // Catch the reboot request.

@@ -30,7 +30,11 @@ pub enum NvdataState {
 /// Mount nvdata read-write at `/nvdata`.
 pub fn mount() -> NvdataState {
     let flags = libc::MS_NOATIME | libc::MS_NOSUID | libc::MS_NODEV;
-    match try_mount(flags) {
+    // The early-boot stage mounts nvdata to read the trial record and hands
+    // it over mounted (with the same flags), which saves a second scan.
+    let mounted = std::fs::read_to_string("/proc/mounts").is_ok_and(|m| is_mounted(&m));
+    let result = if mounted { Ok("the early-boot stage".to_string()) } else { try_mount(flags) };
+    match result {
         Ok(source) => {
             info!("nvdata mounted from {source}");
             if let Err(e) = std::fs::create_dir_all(format!("{NVDATA}/open")) {
@@ -85,6 +89,15 @@ pub fn run_pending_factory_reset(root: &std::path::Path) -> bool {
     }
 }
 
+/// Whether `/proc/mounts` text shows a JFFS2 volume on the nvdata mount
+/// point.
+fn is_mounted(proc_mounts: &str) -> bool {
+    proc_mounts.lines().any(|line| {
+        let mut f = line.split_ascii_whitespace();
+        f.nth(1) == Some(NVDATA) && f.next() == Some("jffs2")
+    })
+}
+
 fn try_mount(flags: libc::c_ulong) -> io::Result<String> {
     let proc_mtd = std::fs::read_to_string("/proc/mtd")?;
     let index = mtd_index(&proc_mtd, "nvdata")
@@ -108,6 +121,13 @@ fn try_mount(flags: libc::c_ulong) -> io::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sees_nvdata_handed_over_mounted() {
+        assert!(is_mounted("/dev/root / jffs2 ro,relatime 0 0\nmtd:nvdata /nvdata jffs2 rw,nosuid,nodev,noatime 0 0\n"));
+        assert!(!is_mounted("/dev/root / jffs2 ro,relatime 0 0\nproc /proc proc rw 0 0\n"));
+        assert!(!is_mounted("tmpfs /nvdata tmpfs rw 0 0\n"));
+    }
 
     #[test]
     fn finds_partition() {

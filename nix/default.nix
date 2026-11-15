@@ -42,7 +42,11 @@ let
   craneLib = (crane.mkLib pkgs).overrideToolchain (_: rustToolchain);
 
   userland = pkgs.callPackage ./userland.nix { inherit rustPlatform rust; };
-  kernel = pkgs.callPackage ./kernel.nix { kernelSrc = root + "/kernel"; };
+  kernel = pkgs.callPackage ./kernel.nix {
+    kernelSrc = root + "/kernel";
+    earlyInit = workspace.dphone-early;
+    initramfsList = root + "/crates/dphone-early/initramfs.list";
+  };
   # The vendor's stock images, downloaded when something needs one, and the
   # DSP firmware taken out of two of them.
   stock = pkgs.callPackage ./vendor-firmware.nix { inherit (workspace) dphone-image; };
@@ -96,7 +100,7 @@ in
     inherit kernel;
     kernel-source = kernel.source;
     inherit (userland) brush coreutils sed;
-    inherit (workspace) dphone dphone-image;
+    inherit (workspace) dphone dphone-early dphone-image;
     asterisk-modules = asterisk.modules;
     rootfs-tree = image.rootfsTree;
     inherit (image) rootfs;

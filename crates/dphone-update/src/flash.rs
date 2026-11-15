@@ -211,9 +211,47 @@ pub(crate) fn readback_crc(
         progress(done, len);
     }
     if done < len {
-        return Err(UpdateError::Layout(format!("{}: image does not fit", info.name)));
+        return Err(UpdateError::Verify(format!("{}: the image's length does not fit its good blocks", info.name)));
     }
     Ok(crc.value())
+}
+
+pub(crate) fn percent(done: u64, total: u64) -> u8 {
+    (done.min(total) * 100).checked_div(total).unwrap_or(100) as u8
+}
+
+/// Reads a bank back the way boot2 and the kernel will (good blocks in
+/// order, through the MTD driver's error correction) and compares it with
+/// the image its header describes: each component's length and CRC,
+/// nothing but erased flash after it, and a kernel header boot2 accepts.
+/// The updater does this before it selects a bank; `dphone update status`
+/// does it for both banks.  A mismatch is [`UpdateError::Verify`].
+pub(crate) fn verify_image(
+    kpart: &mut dyn MtdPartition,
+    rpart: &mut dyn MtdPartition,
+    app: &eff::ota::AppHeader,
+    mut progress: impl FnMut(u8),
+) -> Result<()> {
+    let total = app.kernel_size as u64 + app.rootfs_size as u64;
+    let kcrc = readback_crc(kpart, app.kernel_size as u64, true, |d, _| progress(percent(d, total)))?;
+    if kcrc != app.kernel_crc {
+        return Err(UpdateError::Verify(format!(
+            "kernel reads back with CRC {kcrc:#010x}, not the image's {:#010x}",
+            app.kernel_crc
+        )));
+    }
+    let rcrc =
+        readback_crc(rpart, app.rootfs_size as u64, true, |d, _| progress(percent(app.kernel_size as u64 + d, total)))?;
+    if rcrc != app.rootfs_crc {
+        return Err(UpdateError::Verify(format!(
+            "root file system reads back with CRC {rcrc:#010x}, not the image's {:#010x}",
+            app.rootfs_crc
+        )));
+    }
+    if let Err(p) = crate::boot2::check_stored_kernel(kpart)? {
+        return Err(UpdateError::Verify(format!("stored kernel: {p}")));
+    }
+    Ok(())
 }
 
 /// Reads `buf.len()` bytes from the start of the partition's good blocks,

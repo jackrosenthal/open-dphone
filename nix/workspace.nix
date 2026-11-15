@@ -88,6 +88,21 @@ let
     // lib.optionalAttrs (webDist != null) { DPHONE_WEB_DIST = "${webDist}"; }
   );
 
+  # The early-boot stage for the kernel's initramfs: no standard library,
+  # so it is built to abort on a panic (the workspace profile unwinds), and
+  # for size above all.
+  early = twoStage (
+    {
+      pname = "dphone-early";
+      cargoExtraArgs = "--locked -p dphone-early";
+      dontStrip = true;
+      dontPatchELF = true;
+      CARGO_PROFILE_RELEASE_PANIC = "abort";
+      CARGO_PROFILE_RELEASE_OPT_LEVEL = "z";
+    }
+    // rust.armEnv
+  );
+
   imageTool = twoStage (
     {
       pname = "dphone-image";
@@ -116,6 +131,10 @@ in
 
   # The firmware binary: static, ARMv6 soft-float.
   dphone = phone.package;
+
+  # `/init` of the kernel's initramfs: static, ARMv6 soft-float, a few
+  # kilobytes.
+  dphone-early = early.package;
 
   # Host tools.  `dphone-image`: EFF, OTA, kernel image, and JFFS2.
   # `dphone-apps-build`: componentizes and precompiles the WebAssembly apps.

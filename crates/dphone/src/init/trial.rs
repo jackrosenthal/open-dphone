@@ -3,8 +3,15 @@
 //! boot2 never falls back by itself.  After an update, the updater records a
 //! pending trial here.  Every boot of the trial counts; when the main role
 //! reports healthy the trial is confirmed and the record removed; when the
-//! count runs out, or the main role keeps failing, the init role asks the
-//! updater's hook to flip `ctrl` back to the previous bank and reboots.
+//! count runs out, or the main role keeps failing, the phone flips `ctrl`
+//! back to the previous bank and reboots.
+//!
+//! The counting, and going back when the count runs out or the root file
+//! system is unusable, is done by the early-boot stage in the kernel
+//! partition (`dphone-early`), before this program is needed; it says so
+//! with [`EARLY_ENV`] in the environment.  The init role then only
+//! confirms the trial, or goes back when the main role keeps failing.  It
+//! still counts by itself when started by a kernel without that stage.
 //!
 //! The record is a small text file, `/nvdata/open/trial`:
 //!
@@ -27,6 +34,19 @@ pub const TRIAL_HEALTHY_SECS: u64 = 300;
 
 /// Main-role failures within one trial boot that trigger rollback at once.
 pub const MAX_TRIAL_CRASHES: u32 = 5;
+
+/// Set (to `1`) in the init role's environment by the early-boot stage:
+/// this boot has been counted against a pending trial already.
+pub const EARLY_ENV: &str = "DPHONE_EARLY";
+
+/// Whether a record is about the boot of bank `running` (0 or 1): not when
+/// the system was started from RAM, and not when the bank running is the
+/// one to return to (the phone went back, or has not restarted into the
+/// new image yet).  The same rule as the early stage's
+/// (`dphone_ctrl::boot::step`).
+pub fn is_about(record: &TrialRecord, running: Option<u8>) -> bool {
+    running.is_some_and(|bank| bank != record.previous_bank)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrialRecord {
@@ -167,6 +187,20 @@ mod tests {
     #[test]
     fn the_trial_cover_lasts_as_long_as_a_trial_boot_may() {
         assert_eq!(dphone_ui::TRIAL_COVER_MAX_SECS, TRIAL_HEALTHY_SECS);
+    }
+
+    #[test]
+    fn a_record_is_about_the_bank_that_is_not_the_one_to_return_to() {
+        let r = TrialRecord::new(1);
+        assert!(is_about(&r, Some(0)));
+        assert!(!is_about(&r, Some(1)));
+        assert!(!is_about(&r, None));
+        // The early stage decides the same.
+        let t = dphone_ctrl::trial::Trial { previous_bank: 1, trial_bank: None, boots: 0, max_boots: 3 };
+        for running in [Some(0), Some(1), None] {
+            let counted = dphone_ctrl::boot::step(running, Some(t)) != dphone_ctrl::boot::Step::Boot;
+            assert_eq!(counted, is_about(&r, running));
+        }
     }
 
     #[test]

@@ -1005,6 +1005,7 @@ dependencies = [
  "dphone-apps",
  "dphone-bt",
  "dphone-config",
+ "dphone-ctrl",
  "dphone-dpma",
  "dphone-hal",
  "dphone-media",
@@ -1082,6 +1083,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "dphone-ctrl"
+version = "3.0.0"
+
+[[package]]
 name = "dphone-dpma"
 version = "3.0.0"
 dependencies = [
@@ -1099,6 +1104,13 @@ dependencies = [
  "rustls-rustcrypto",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "dphone-early"
+version = "3.0.0"
+dependencies = [
+ "dphone-ctrl",
 ]
 
 [[package]]
@@ -1192,9 +1204,11 @@ dependencies = [
 name = "dphone-update"
 version = "3.0.0"
 dependencies = [
+ "dphone-ctrl",
  "dphone-hal",
  "dphone-state",
  "eff",
+ "libc",
  "log",
  "tempfile",
 ]

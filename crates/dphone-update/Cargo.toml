@@ -9,8 +9,10 @@ publish = false
 
 [dependencies]
 eff = { path = "../eff" }
+dphone-ctrl = { path = "../dphone-ctrl" }
 dphone-hal = { path = "../dphone-hal" }
 dphone-state = { path = "../dphone-state" }
+libc = "0.2"
 log = "0.4"
 
 [dev-dependencies]

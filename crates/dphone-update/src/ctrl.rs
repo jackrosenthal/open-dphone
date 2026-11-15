@@ -4,52 +4,54 @@
 //! The 304-byte record itself is [`eff::ctrl::CtrlRecord`].  In flash it is
 //! padded to one NAND page with `0xff`.
 //!
-//! What reads it (established from the boot2 disassembly of both families
-//! and from stock `libota`):
-//!
-//! - boot2 walks the partition one erase block at a time, skips blocks
-//!   marked bad, reads the **first page** of each good block, and takes the
-//!   first copy whose record CRC is right.  It never looks at other pages.
-//! - Stock `ota_GetCtrlBlock` does the same walk.
-//!
-//! What writes it differs by family; both layouts satisfy both readers:
-//!
-//! - Old family (D40, D45, D50, D70): one copy at the start of every good
-//!   block (four copies seen on a D40 and a D50).
-//! - New family (D60, D62, D65): a copy in **every page** of every good
-//!   block (256 identical pages seen in a D60 dump and on a live D60 after
-//!   a stock update).
-//!
-//! Stock erases the whole partition and then rewrites it, which leaves a
-//! window with no record at all.  [`write`] produces the same final layout
-//! but goes one block at a time (erase, write, read back), so that at every
-//! instant some good block still starts with a whole record, old or new.
-//! Callers arrange that both the old and the new record are safe to boot.
+//! The walk over the partition and the power-cut-tolerant writer are in
+//! `dphone-ctrl`, which the early-boot stage in the kernel partition uses
+//! too: the two write the record in exactly the same way.  This module
+//! puts the updater's types around them.
 
-use dphone_hal::MtdPartition;
+use dphone_ctrl::Flash;
+pub use dphone_ctrl::Replication;
+use dphone_hal::{HalError, MtdPartition};
 use dphone_state::Family;
-use eff::ctrl::{CTRL_RECORD_LEN, CtrlRecord, Side};
+use eff::ctrl::{CtrlRecord, Side};
 
 use crate::error::{Result, UpdateError};
 
 /// Name of the partition.
 pub const CTRL_PART: &str = "ctrl";
 
-/// How copies of the record are laid out within `ctrl`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Replication {
-    /// One copy in the first page of each good block (old family).
-    BlockStart,
-    /// A copy in every page of each good block (new family).
-    EveryPage,
+/// The layout of copies within `ctrl` for a family: one copy at the start
+/// of every good block (old family: D40, D45, D50, D70; four copies seen
+/// on a D40 and a D50), or a copy in every page of every good block (new
+/// family: D60, D62, D65; 256 identical pages seen in a D60 dump and on a
+/// live D60 after a stock update).
+pub const fn replication_for(family: Family) -> Replication {
+    match family {
+        Family::Old => Replication::BlockStart,
+        Family::New => Replication::EveryPage,
+    }
 }
 
-impl Replication {
-    pub const fn for_family(family: Family) -> Self {
-        match family {
-            Family::Old => Replication::BlockStart,
-            Family::New => Replication::EveryPage,
-        }
+/// An MTD partition as `dphone-ctrl` sees flash.
+struct Part<'a>(&'a mut dyn MtdPartition);
+
+impl Flash for Part<'_> {
+    type Error = HalError;
+    fn geometry(&self) -> dphone_ctrl::Geometry {
+        let info = self.0.info();
+        dphone_ctrl::Geometry { size: info.size, erase_size: info.erase_size, write_size: info.write_size }
+    }
+    fn is_bad(&mut self, offset: u64) -> std::result::Result<bool, HalError> {
+        self.0.is_bad(offset)
+    }
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> std::result::Result<(), HalError> {
+        self.0.read(offset, buf)
+    }
+    fn erase(&mut self, offset: u64) -> std::result::Result<(), HalError> {
+        self.0.erase(offset)
+    }
+    fn write(&mut self, offset: u64, data: &[u8]) -> std::result::Result<(), HalError> {
+        self.0.write(offset, data)
     }
 }
 
@@ -89,47 +91,17 @@ fn unchecked(b: &[u8]) -> CtrlRecord {
 
 /// Walks `ctrl` the way boot2 does.
 pub fn scan(part: &mut dyn MtdPartition) -> Result<CtrlScan> {
-    let info = part.info().clone();
-    let bs = info.erase_size as u64;
-    let mut out = CtrlScan {
-        record: None,
-        record_block: None,
-        good_blocks: 0,
-        bad_blocks: 0,
-        valid_copies: 0,
-        consistent: true,
-        fallback: None,
-    };
-    let mut page = [0u8; CTRL_RECORD_LEN];
-    let mut block = 0u32;
-    let mut off = 0u64;
-    while off + bs <= info.size {
-        if part.is_bad(off)? {
-            out.bad_blocks += 1;
-        } else {
-            out.good_blocks += 1;
-            part.read(off, &mut page)?;
-            match CtrlRecord::parse(&page) {
-                Ok(rec) => {
-                    out.valid_copies += 1;
-                    match &out.record {
-                        None => {
-                            out.record = Some(rec);
-                            out.record_block = Some(block);
-                        }
-                        Some(first) => out.consistent &= *first == rec,
-                    }
-                }
-                Err(_) => out.fallback = Some(unchecked(&page)),
-            }
-        }
-        off += bs;
-        block += 1;
-    }
-    if out.record.is_some() {
-        out.fallback = None;
-    }
-    Ok(out)
+    let raw = dphone_ctrl::scan(&mut Part(part))?;
+    Ok(CtrlScan {
+        // A copy the walk found valid parses.
+        record: raw.record.as_ref().and_then(|b| CtrlRecord::parse(b).ok()),
+        record_block: raw.record_block,
+        good_blocks: raw.good_blocks,
+        bad_blocks: raw.bad_blocks,
+        valid_copies: raw.valid_copies,
+        consistent: raw.consistent,
+        fallback: raw.fallback.as_ref().map(|b| unchecked(b)),
+    })
 }
 
 /// The record boot2 would use; an error when no copy is valid.
@@ -137,89 +109,32 @@ pub fn read(part: &mut dyn MtdPartition) -> Result<CtrlRecord> {
     scan(part)?.record.ok_or_else(|| UpdateError::Ctrl("no valid copy in the ctrl partition".into()))
 }
 
-/// The image of one erase block holding `record` in the given layout.
-fn block_image(record: &CtrlRecord, repl: Replication, page: usize, block: usize) -> Vec<u8> {
-    let mut img = vec![0xffu8; block];
-    let bytes = record.to_bytes();
-    let copies = match repl {
-        Replication::BlockStart => 1,
-        Replication::EveryPage => block / page,
-    };
-    for i in 0..copies {
-        img[i * page..i * page + CTRL_RECORD_LEN].copy_from_slice(&bytes);
-    }
-    img
-}
-
 /// Writes `record` to every good block of `ctrl`, one block at a time, and
-/// confirms that boot2's walk now yields exactly this record.
-///
-/// Blocks that already hold the wanted contents are left alone, so
-/// rewriting the same record costs no erase cycles.  A block that fails to
-/// erase, write, or read back is reported in the log and tolerated only if
-/// its first page does not hold some *other* valid record; the final check
-/// requires every valid first-page copy to be the new record.
+/// confirms that boot2's walk now yields exactly this record
+/// ([`dphone_ctrl::write`]).
 pub fn write(part: &mut dyn MtdPartition, record: &CtrlRecord, repl: Replication) -> Result<()> {
+    use dphone_ctrl::WriteError;
     let info = part.info().clone();
-    let (bs, page) = (info.erase_size as usize, info.write_size as usize);
-    if page < CTRL_RECORD_LEN || bs % page != 0 || bs == 0 {
-        return Err(UpdateError::Layout(format!(
-            "ctrl geometry (page {page}, block {bs}) cannot hold the record"
-        )));
-    }
-    if record.active > 1 {
-        return Err(UpdateError::Refused(format!("active side {} is not 0 or 1", record.active)));
-    }
-    let want = block_image(record, repl, page, bs);
-    // Bytes that must be programmed: up to the end of the last copy's page.
-    let used = match repl {
-        Replication::BlockStart => page,
-        Replication::EveryPage => bs,
-    };
-    let mut have = vec![0u8; bs];
-    let mut written = 0u32;
-    let mut failed = 0u32;
-    let mut off = 0u64;
-    while off + bs as u64 <= info.size {
-        if !part.is_bad(off)? {
-            let block_result = (|| -> Result<bool> {
-                part.read(off, &mut have)?;
-                if have == want {
-                    return Ok(false);
-                }
-                part.erase(off)?;
-                part.write(off, &want[..used])?;
-                part.read(off, &mut have)?;
-                if have != want {
-                    return Err(UpdateError::Verify(format!("ctrl block at {off:#x} reads back wrong")));
-                }
-                Ok(true)
-            })();
-            match block_result {
-                Ok(_) => written += 1,
-                Err(e) => {
-                    failed += 1;
-                    log::warn!("ctrl block at {off:#x}: {e}");
-                }
-            }
+    let mut scratch = vec![0u8; 2 * info.erase_size as usize];
+    match dphone_ctrl::write(&mut Part(part), &record.to_bytes(), repl, &mut scratch) {
+        Ok(0) => Ok(()),
+        Ok(failed) => {
+            log::warn!("ctrl: {failed} block(s) failed but hold no stale record");
+            Ok(())
         }
-        off += bs as u64;
+        Err(WriteError::Flash(e)) => Err(e.into()),
+        Err(WriteError::Geometry) => Err(UpdateError::Layout(format!(
+            "ctrl geometry (page {}, block {}) cannot hold the record",
+            info.write_size, info.erase_size
+        ))),
+        Err(WriteError::BadActive) => {
+            Err(UpdateError::Refused(format!("active side {} is not 0 or 1", record.active)))
+        }
+        Err(WriteError::NoBlockWritten) => Err(UpdateError::Ctrl("no ctrl block could be written".into())),
+        Err(WriteError::NotReadBack { failed, good }) => Err(UpdateError::Ctrl(format!(
+            "after writing, boot2 would not read the new record ({failed} of {good} good blocks failed)"
+        ))),
     }
-    if written == 0 {
-        return Err(UpdateError::Ctrl("no ctrl block could be written".into()));
-    }
-    // What will boot2 see?
-    let after = scan(part)?;
-    if after.record.as_ref() != Some(record) || !after.consistent {
-        return Err(UpdateError::Ctrl(format!(
-            "after writing, boot2 would not read the new record ({} of {} good blocks failed)",
-            failed, after.good_blocks
-        )));
-    }
-    if failed > 0 {
-        log::warn!("ctrl: {failed} block(s) failed but hold no stale record; {written} good copies");
-    }
-    Ok(())
 }
 
 /// Which side boot2 boots given what a scan found (boot2 `main`,

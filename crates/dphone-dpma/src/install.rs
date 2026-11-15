@@ -3,7 +3,7 @@
 use crate::firmware::{FirmwareInstaller, ImageSum, InstallError};
 use dphone_hal::Mtd;
 use dphone_state::{Model, Store};
-use dphone_update::{UpdateError, Updater, bank, ctrl, trial};
+use dphone_update::{UpdateError, Updater, bank, ctrl};
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -39,7 +39,9 @@ impl FirmwareInstaller for MtdInstaller {
 
     fn install(&self, image: &mut dyn Read) -> Result<(), InstallError> {
         let mut mtd = self.mtd.lock().map_err(|_| InstallError::Failed("flash lock poisoned".into()))?;
-        let installed = Updater::new(mtd.as_mut(), self.model, &self.cmdline)
+        // The download goes straight into the spare bank, one erase block
+        // at a time; the updater records the trial when it selects the bank.
+        let installed = Updater::new(mtd.as_mut(), self.model, &self.cmdline, &self.open_dir)
             .store(self.store.clone())
             .install_eff(image)
             .map_err(|e| match e {
@@ -47,9 +49,6 @@ impl FirmwareInstaller for MtdInstaller {
                 other => InstallError::Failed(other.to_string()),
             })?;
         log::info!("update: installed {} into bank {:?}", installed.version, installed.bank);
-        if let Err(e) = trial::begin(&self.open_dir, &installed) {
-            log::warn!("update: could not record the trial boot: {e}");
-        }
         Ok(())
     }
 }
