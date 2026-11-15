@@ -9,7 +9,7 @@ use dphone_state::{
     AccountId, AudioPath, BlfState, Call, CallId, CallState as StCallState, Command, Direction,
     Key, PresenceStatus, Reply, Store,
 };
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
@@ -112,8 +112,6 @@ pub(crate) struct Timer {
 /// Storage roots.
 #[derive(Clone, Debug)]
 pub struct Dirs {
-    /// The app's package directory (`app`).
-    pub package: PathBuf,
     /// `/nvdata/appdata`.
     pub nv_root: PathBuf,
     /// `/tmp/appdata`.
@@ -145,16 +143,18 @@ pub(crate) struct AppCtx {
     pub presence_subs: HashSet<String>,
     pub exit_after_background: bool,
     pub foreground: bool,
-    /// Picture names already looked for in the package, per window (idle
-    /// or not), so each file is read once.
+    /// The pictures the app defined (`ui.define-image`), by name.
+    pub pictures: HashMap<String, Arc<[u8]>>,
+    /// The pictures already handed to a window (idle or not), by name.
     pub images: HashSet<(bool, String)>,
     /// A sound file of this app is playing.
     pub playing: bool,
     pub limits: wasmtime::StoreLimits,
 }
 
-/// The largest picture file read from a package.
-const IMAGE_FILE_MAX: u64 = 512 * 1024;
+/// The largest picture an app may define, and the most pictures.
+const IMAGE_MAX: usize = 512 * 1024;
+const IMAGES_MAX: usize = 32;
 
 fn bad_name(name: &str) -> bool {
     name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0'])
@@ -330,8 +330,7 @@ impl AppCtx {
 
     fn location_dir(&self, loc: Location, write: bool) -> Result<PathBuf, Error> {
         Ok(match loc {
-            Location::App | Location::Data if write => return Err(Error::Denied),
-            Location::App => self.dirs.package.clone(),
+            Location::Data if write => return Err(Error::Denied),
             Location::Data => self.dirs.data.clone(),
             Location::Nv => self.dirs.nv_root.join(&self.name),
             Location::Nvshared => self.dirs.nv_root.join("@shared"),
@@ -340,23 +339,20 @@ impl AppCtx {
         })
     }
 
-    /// Hands the window the package's picture file called `name`, the
-    /// first time the app names it.  A name that is no file of the package
-    /// stays what it was: one of the phone's icons.
+    /// Hands the window the picture the app defined as `name`, the first
+    /// time the app names it there.  A name the app did not define stays
+    /// what it was: one of the phone's icons.
     fn load_image(&mut self, w: u32, name: &str) {
         let idle = w & IDLE_BIT != 0;
-        if bad_name(name) || !self.images.insert((idle, name.to_string())) {
+        let Some(png) = self.pictures.get(name).cloned() else {
+            return;
+        };
+        if !self.images.insert((idle, name.to_string())) {
             return;
         }
-        let path = self.dirs.package.join(name);
-        let usable = std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_file() && m.len() <= IMAGE_FILE_MAX);
-        if !usable {
-            return;
-        }
-        let Ok(bytes) = std::fs::read(&path) else { return };
         let app = self.name.clone();
         if let Some((win, _)) = self.win(w)
-            && !win.define_image(name, &bytes)
+            && !win.define_image(name, &png)
         {
             log::warn!("app {app}: {name} is not a usable picture");
         }
@@ -513,6 +509,26 @@ impl api::ui::Host for AppCtx {
     }
     fn set_max_length(&mut self, w: u32, max: u32) {
         self.on_widget(w, |win, id| win.set_max_length(id, max));
+    }
+    fn define_image(&mut self, name: String, png: Vec<u8>) -> Result<(), Error> {
+        if bad_name(&name) {
+            return Err(Error::Invalid("a picture needs a plain name".into()));
+        }
+        if png.len() > IMAGE_MAX {
+            return Err(Error::Invalid("a picture may be 512 KiB".into()));
+        }
+        if !self.pictures.contains_key(&name) && self.pictures.len() >= IMAGES_MAX {
+            return Err(Error::Invalid("an app may define 32 pictures".into()));
+        }
+        self.pictures.insert(name.clone(), png.into());
+        // Windows that have the old picture of this name get the new one
+        // now; the others when the app first uses the name there.
+        for (idle, w) in [(false, 0), (true, IDLE_BIT)] {
+            if self.images.remove(&(idle, name.clone())) {
+                self.load_image(w, &name);
+            }
+        }
+        Ok(())
     }
     fn set_image(&mut self, w: u32, name: String) {
         if !bad_name(&name) {
@@ -977,6 +993,18 @@ impl api::audio::Host for AppCtx {
         self.store
             .send(Command::PlayFile {
                 path: path.to_string_lossy().into_owned(),
+                start_secs: start,
+                app: self.name.clone(),
+            })
+            .wait_timeout(Duration::from_secs(5))
+            .map(|_| self.playing = true)
+            .map_err(|e| Error::Failed(e.to_string()))
+    }
+    fn play(&mut self, sound: Vec<u8>, start: u32) -> Result<(), Error> {
+        // The audio side decodes the sound before it answers.
+        self.store
+            .send(Command::PlayData {
+                sound: dphone_state::SoundData(sound),
                 start_secs: start,
                 app: self.name.clone(),
             })

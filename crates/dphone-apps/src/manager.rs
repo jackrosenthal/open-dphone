@@ -420,7 +420,9 @@ impl AppManager {
                 hidden: k.manifest.hidden,
                 builtin: k.builtin,
                 icon: k.manifest.icon.clone(),
-                icon_path: icon_file(&k.dir, &k.manifest.icon, self.store.model().name()),
+                icon_png: dphone_state::Picture(
+                    k.manifest.icon_for(self.store.model().name()).into(),
+                ),
                 running: self.running.contains_key(&k.manifest.name),
             })
             .partition(|a| !a.builtin || self.services.config.app_enabled(&a.name));
@@ -494,7 +496,6 @@ impl AppManager {
         let known = self.known.get(name).ok_or("no such app")?;
         let manifest = known.manifest.clone();
         let dirs = Dirs {
-            package: known.dir.clone(),
             nv_root: self.cfg.nv_root.clone(),
             tmp_root: self.cfg.tmp_root.clone(),
             data: self.cfg.data_dir.clone(),
@@ -532,6 +533,7 @@ impl AppManager {
             presence_subs: HashSet::new(),
             exit_after_background: true,
             foreground: false,
+            pictures: HashMap::new(),
             images: HashSet::new(),
             playing: false,
             limits: wasmtime::StoreLimitsBuilder::new()
@@ -1161,23 +1163,6 @@ impl AppManager {
             self.close(&name);
         }
     }
-}
-
-/// The path of a package's icon file, when the manifest's `iconFile` names
-/// a file in the package ("" otherwise: the name is then one of the
-/// phone's own icons).  As on stock, `<model>.<iconFile>` is preferred to
-/// `<iconFile>` (e.g., `D60.icon.png`).
-fn icon_file(dir: &Path, icon: &str, model: &str) -> String {
-    if icon.is_empty() || icon == "." || icon == ".." || icon.contains(['/', '\\', '\0']) {
-        return String::new();
-    }
-    for name in [format!("{model}.{icon}"), icon.to_string()] {
-        let path = dir.join(name);
-        if std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_file()) {
-            return path.to_string_lossy().into_owned();
-        }
-    }
-    String::new()
 }
 
 fn ticks(d: Duration) -> u64 {

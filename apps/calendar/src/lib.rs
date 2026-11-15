@@ -276,5 +276,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.calendar",
     display_name: "Calendar",
     description: "Month calendar",
-    icon: "calendar",
+    phone_icon: "calendar",
 }

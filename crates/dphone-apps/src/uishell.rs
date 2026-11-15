@@ -32,7 +32,7 @@ impl UiShell {
 struct UiWindow {
     view: AppView,
     events: AppEvents,
-    /// Pictures of the app's package, by name, no larger than the window.
+    /// The app's pictures, by name, no larger than the window.
     images: HashMap<String, dphone_ui::image::Image>,
 }
 
@@ -156,7 +156,7 @@ impl AppWindow for UiWindow {
                     cells.push(if i.icon.is_empty() {
                         tk::Cell::Empty
                     } else if let Some(img) = self.images.get(&i.icon) {
-                        // A package picture, reduced to the row.
+                        // A picture of the app's, reduced to the row.
                         tk::Cell::Image(img.fit(m.row_height, m.row_height))
                     } else {
                         tk::Cell::icon(i.icon.clone())
@@ -213,8 +213,8 @@ impl AppWindow for UiWindow {
         self.view.set_image(id(w), source);
     }
     fn define_image(&mut self, name: &str, file: &[u8]) -> bool {
-        // An app may name any number of files; keep a bounded set.
-        if self.images.len() >= 32 {
+        // A bounded set.
+        if !self.images.contains_key(name) && self.images.len() >= 32 {
             return false;
         }
         let m = self.view.metrics();

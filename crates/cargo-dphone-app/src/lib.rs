@@ -8,7 +8,7 @@
 
 pub mod manifest;
 
-pub use manifest::{AppType, Capability, Files, Manifest, ManifestError};
+pub use manifest::{AppType, Capability, Manifest, ManifestError};
 
 #[cfg(feature = "tool")]
 mod build;

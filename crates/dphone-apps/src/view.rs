@@ -79,9 +79,10 @@ pub trait AppWindow: Send {
     /// Shows the picture defined as `name`, else the phone's icon of that
     /// name.
     fn set_image(&mut self, w: u32, name: &str);
-    /// Makes a picture file of the app's package (`file` is its content)
-    /// known as `name` to [`AppWindow::set_image`] and to list icons.
-    /// Returns whether the file is a usable picture.
+    /// Makes a picture the app defined (`file` is a PNG file's content)
+    /// known as `name` to [`AppWindow::set_image`] and to list icons,
+    /// in place of an earlier one of that name.  Returns whether it is a
+    /// usable picture.
     fn define_image(&mut self, _name: &str, _file: &[u8]) -> bool {
         false
     }

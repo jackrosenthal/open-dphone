@@ -401,5 +401,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.boxpusher",
     display_name: "Box Pusher",
     description: "Push every box onto a target",
-    icon: "boxpusher",
+    phone_icon: "boxpusher",
 }

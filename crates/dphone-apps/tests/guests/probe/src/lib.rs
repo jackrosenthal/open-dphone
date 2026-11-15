@@ -1,10 +1,14 @@
 //! A test guest that calls host services on request and shows what came
-//! back: softkey 1 dials with headers, 2 plays a sound file of the
-//! package, 3 stops it, 4 resets the idle timer, 5 shows package pictures.
+//! back: softkey 1 dials with headers, 2 plays a sound it carries, 3 stops
+//! it, 4 resets the idle timer, 5 shows a picture it carries.
 //! Its idle window says whether the idle screen is showing.
 
 use dphone_app_sdk::prelude::*;
 use dphone_app_sdk::{Header, ListItem};
+
+/// The app's data is in its code.
+const PIC: &[u8] = include_bytes!("../data/pic.png");
+const TONE: &[u8] = include_bytes!("../data/tone.wav");
 
 #[derive(Default)]
 struct Probe {
@@ -42,7 +46,7 @@ impl App for Probe {
                 ];
                 format!("dial={:?}", calls::dial("8500", Some(1), &headers))
             }
-            Event::Softkey(2) => format!("play={:?}", audio::play_file(Location::App, "tone.wav", 3)),
+            Event::Softkey(2) => format!("play={:?}", audio::play(TONE, 3)),
             Event::Softkey(3) => {
                 audio::stop();
                 "stop".to_string()
@@ -52,6 +56,7 @@ impl App for Probe {
                 "awake".to_string()
             }
             Event::Softkey(5) => {
+                let defined = ui::define_image("pic.png", PIC);
                 let image = ui::create(WidgetKind::Image, ROOT, Rect::new(0, 20, 48, 48));
                 ui::set_image(image, "pic.png");
                 let list = ui::create(WidgetKind::TextList, ROOT, Rect::new(0, 70, 200, 60));
@@ -60,9 +65,9 @@ impl App for Probe {
                 let mut theirs = ListItem::new("theirs");
                 theirs.icon = "app-contacts".into();
                 ui::set_items(list, &[mine, theirs]);
-                "pics".to_string()
+                format!("pics={defined:?}")
             }
-            Event::Softkey(6) => format!("play={:?}", audio::play_file(Location::App, "missing.wav", 0)),
+            Event::Softkey(6) => format!("play={:?}", audio::play_file(Location::Tmp, "missing.wav", 0)),
             Event::PlaybackStopped(at) => format!("stopped={at}"),
             Event::IdleScreenShow => {
                 ui::set_text(self.idle, "idle=shown");
@@ -84,9 +89,5 @@ dphone_app_sdk::export_app! {
     id: "test.probe",
     display_name: "Probe",
     has_idle: true,
-    icon: "pic.png",
-    files: &[
-        ("pic.png", include_bytes!("../data/pic.png")),
-        ("tone.wav", include_bytes!("../data/tone.wav")),
-    ],
+    icon: PIC,
 }

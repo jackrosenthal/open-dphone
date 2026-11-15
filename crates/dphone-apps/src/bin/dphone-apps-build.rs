@@ -1,7 +1,7 @@
 //! Host tool for the firmware's build: turns the core WebAssembly modules
 //! cargo produces for the built-in apps into what the image carries of
-//! each (the phone's record of the app, the code compiled for the phone,
-//! and the app's data files).  The Nix derivations and the tests use it.
+//! each (the phone's record of the app and the code compiled for the
+//! phone).  The Nix derivations and the tests use it.
 //!
 //! The component and the manifest are made and read by `cargo-dphone-app`,
 //! the tool app makers use: there is one way from an app crate to an app.
@@ -30,7 +30,7 @@ enum Cli {
     },
     /// Lay out every app among the modules in a directory
     ///
-    /// Writes ROOT/<name>/{app.pb,<name>.wasm,<name>.cwasm,data files} for
+    /// Writes ROOT/<name>/{app.pb,<name>.wasm,<name>.cwasm} for
     /// every module that is an app (it has a manifest; see dphone-app-sdk).
     Stage {
         /// The directory of modules, as cargo leaves them
@@ -127,9 +127,6 @@ fn stage(wasm_dir: &Path, out: &Path, target: Target, keep_wasm: bool) -> Res<()
             write(&dest.join(&m.wasm), &app.component)?;
         }
         write(&dest.join(format!("{}.cwasm", m.name)), &code)?;
-        for (name, data) in &app.files {
-            write(&dest.join(name), data)?;
-        }
         let uses: Vec<&str> = m.capabilities.iter().map(|c| c.name()).collect();
         println!(
             "{}: module {} B, component {} B, compiled {} B; uses {}",

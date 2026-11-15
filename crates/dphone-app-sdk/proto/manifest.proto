@@ -2,7 +2,7 @@
 //
 // An app is one WebAssembly file.  What the phone has to know about it
 // before running it (its name, what to call it on screen, its kind, its
-// icon, its data files) is in the file itself: the custom section
+// icon) is in the file itself: the custom section
 // "dphone-app" of the app's WebAssembly module holds one `Manifest`
 // message in protobuf's binary form.  The macro `export_app!` of the crate
 // `dphone-app-sdk` writes the section when the app is compiled; the crate
@@ -12,7 +12,8 @@
 // each other.
 //
 // The interfaces of the phone an app uses are not in the manifest: the
-// phone takes them from the imports of the WebAssembly component.
+// phone takes them from the imports of the WebAssembly component.  Nor are
+// an app's data files: an app holds its data in its own code.
 
 syntax = "proto3";
 
@@ -35,19 +36,20 @@ message Manifest {
   bool has_idle = 7;
   // The app is marked as hidden.
   bool hidden = 8;
-  // The app's icon: the name of one of the phone's icons, or of one of
-  // `files` (the phone prefers the file "<model>.<icon>", e.g.,
-  // "D60.icon.png").
-  string icon = 9;
+  // The name of one of the phone's own icons, for an app that has no icon
+  // of its own (or whose icon the phone cannot show).
+  string phone_icon = 9;
   // The most memory the app may have, in KiB; 0 is the phone's default.
   uint32 memory_kib = 10;
-  // The app's data files: the phone puts them where the app's read-only
-  // files are (pictures, sounds).
-  repeated File files = 11;
+  // The app's icon: the content of a PNG file, at most 256 KiB.
+  bytes icon = 11;
+  // Icons for particular models of phone; a phone shows its model's, if
+  // there is one, else `icon`.
+  repeated ModelIcon icon_for = 12;
 
   // Not for an app's section, where the phone ignores it: in the record
-  // the phone keeps of an app ("app.pb" in the app's directory, a
-  // `Manifest` without the files' contents), the interfaces of the phone
+  // the phone keeps of an app ("app.pb" in the app's directory), the
+  // interfaces of the phone
   // the app's component imports, e.g., "ui".
   repeated string capabilities = 15;
 }
@@ -75,8 +77,9 @@ message LocalizedText {
   string text = 2;
 }
 
-message File {
-  // No path separators; not starting with '.'.
-  string name = 1;
-  bytes data = 2;
+message ModelIcon {
+  // "D40", "D45", "D50", "D60", "D62", "D65", or "D70".
+  string model = 1;
+  // The content of a PNG file, at most 256 KiB.
+  bytes icon = 2;
 }

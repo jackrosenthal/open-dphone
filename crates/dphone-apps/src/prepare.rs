@@ -19,9 +19,10 @@ use wasmtime::component::Linker;
 /// File holding code this phone compiled for an installed app.
 pub(crate) const CODE_CACHE: &str = ".code.cwasm";
 
-/// The largest component the phone compiles: about three minutes of
-/// compiling by the figures above.  The largest built-in app is about a
-/// tenth of this.
+/// The most code (the code sections of the component's modules) the phone
+/// compiles: about three minutes of compiling by the figures above.  The
+/// largest built-in app has about a tenth of this.  An app's data, which
+/// is in its file too, does not count: the compiler only copies it.
 pub const MAX_COMPONENT: u64 = 1 << 20;
 
 /// A compilation for the worker thread.

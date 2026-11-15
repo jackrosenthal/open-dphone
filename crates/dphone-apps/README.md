@@ -3,7 +3,7 @@
 The app runtime of Open DPhone: WebAssembly components run by Wasmtime's Pulley interpreter, the host side of the app interface, app packages, and the `AppManager` the main role runs.
 
 - The interface is defined once, in `crates/dphone-app-sdk/wit/app.wit`.  `dphone-app-sdk` is the guest crate generated from it, published to crates.io for app makers (its README tells how to write an app); this crate generates the host side from the same file.  The built-in apps are in `apps/`.
-- An app is one file: a WebAssembly component with its manifest and its data files in it (the custom section `dphone-app`, written by the SDK's `export_app!`; `crates/cargo-dphone-app` reads it, here and in the tool app makers build with).
+- An app is one file: a WebAssembly component with its manifest in it (the custom section `dphone-app`, written by the SDK's `export_app!`; `crates/cargo-dphone-app` reads it, here and in the tool app makers build with).  Its data is in its code (`include_bytes!`); nothing is unpacked on the phone.
 - An app gets the host interfaces its component imports, and no others: capabilities are not declared.  `hotdesk` and `diagnostics` are reserved for built-in apps: an app that imports one is not installed.
 - Each app has a memory cap (4 MiB by default, 16 MiB at most via `memory_kib`) and a time budget per event (2 s); going over either stops the app.
 
@@ -16,7 +16,7 @@ cd apps && cargo build --release                      # modules in <target>/wasm
 dphone-apps-build stage --wasm-dir <that dir> --out <root> [--no-wasm]
 ```
 
-`stage` writes `<root>/<name>/{app.pb,<name>.cwasm,<name>.wasm,data files}` for every module that is an app; `<root>` goes into the image as `/usr/share/dphone/apps`.  `--no-wasm` leaves the components out (the image has compiled code only).  `dphone-apps-build build --apps apps --out <root>` runs cargo itself.
+`stage` writes `<root>/<name>/{app.pb,<name>.cwasm,<name>.wasm}` for every module that is an app; `<root>` goes into the image as `/usr/share/dphone/apps`.  `--no-wasm` leaves the components out (the image has compiled code only).  `dphone-apps-build build --apps apps --out <root>` runs cargo itself.
 
 The `.cwasm` files are tied to the Wasmtime version and to the settings in `src/engine.rs`: build them with the same `dphone-apps` source the phone binary is built from.  A mismatch fails cleanly at load.
 
@@ -24,12 +24,12 @@ The `.cwasm` files are tied to the Wasmtime version and to the settings in `src/
 
 | Path | Contents |
 | --- | --- |
-| `/usr/share/dphone/apps/<name>/` | Built-in apps: `app.pb`, `<name>.cwasm`, data files |
-| `/nvdata/wasmapps/<name>/` | Installed apps (beside the stock `/nvdata/jsapps`, which is left alone): `app.pb`, `<name>.wasm`, `.code.cwasm`, data files |
+| `/usr/share/dphone/apps/<name>/` | Built-in apps: `app.pb`, `<name>.cwasm` |
+| `/nvdata/wasmapps/<name>/` | Installed apps (beside the stock `/nvdata/jsapps`, which is left alone): `app.pb`, `<name>.wasm`, `.code.cwasm` |
 | `/nvdata/appdata/<name>/`, `/nvdata/appdata/@shared/` | `nv`, `nvshared` |
 | `/tmp/appdata/<name>/`, `/tmp/appdata/@shared/` | `tmp`, `tmpshared` |
 
-`app.pb` is the phone's record of an app: its manifest (the message `dphone.app.v1.Manifest` of `crates/dphone-app-sdk/proto/manifest.proto`, without the files' contents) with the interfaces its component imports.  `<name>.wasm` is the component as it was installed, without its data files, which are unpacked beside it.
+`app.pb` is the phone's record of an app: its manifest (the message `dphone.app.v1.Manifest` of `crates/dphone-app-sdk/proto/manifest.proto`, icons included) with the interfaces its component imports.  The launcher's icon comes from there: the one for the phone's model if the manifest has one, else the app's, else one of the phone's own by the name the manifest gives.  `<name>.wasm` is the component as it was installed.
 
 ## Installing
 
@@ -43,7 +43,7 @@ Measured on a D60 (ARM1176, 2026-11-15; the web interface's "Install App", a dia
 | Status | 50 KiB | 7.9 s | 2.3 MB | 100 |
 | Light Up | 119 KiB | 16.4 s | 6.2 MB | 100 |
 
-So a compilation takes about 2 s and 0.12 s for every KiB, far too long for the manager's thread (the running apps would stand still, and the liveness check would report the subsystem dead).  A worker thread (`src/prepare.rs`) does it, at the lowest priority (nice 19; the audio thread is `SCHED_FIFO`), one app at a time; the command `InstallApp` is answered when it is done, and the web interface waits up to ten minutes.  A component may be 1 MiB (`MAX_COMPONENT`): about three minutes by these figures (the phone's own binary under `qemu-arm` takes 11 times as long for a 1,011 KiB component as for Light Up; such a component has not been timed on a phone).
+So a compilation takes about 2 s and 0.12 s for every KiB, far too long for the manager's thread (the running apps would stand still, and the liveness check would report the subsystem dead).  A worker thread (`src/prepare.rs`) does it, at the lowest priority (nice 19; the audio thread is `SCHED_FIFO`), one app at a time; the command `InstallApp` is answered when it is done, and the web interface waits up to ten minutes.  An app file may be 8 MiB with 1 MiB of code in it (`MAX_COMPONENT`; the code sections, since the compiler only copies data): about three minutes by these figures (the phone's own binary under `qemu-arm` takes 11 times as long for a 1,011 KiB component as for Light Up; such a component has not been timed on a phone).
 
 After a firmware update that changes the engine, the compiled code of the installed apps no longer loads.  The manager finds that when it starts and has the worker compile each such app again; until an app's turn is over, opening it fails with a message that says so.
 

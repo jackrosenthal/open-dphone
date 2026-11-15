@@ -128,5 +128,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.hotdesking",
     display_name: "Hot Desking",
     description: "Log in to or out of this phone",
-    icon: "hotdesking",
+    phone_icon: "hotdesking",
 }

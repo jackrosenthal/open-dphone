@@ -47,8 +47,8 @@ interface types {
     text: string,
     /// Secondary text at the right edge (may be empty).
     detail: string,
-    /// A picture file (PNG) of the app package, or the name of one of
-    /// the phone's icons (may be empty).
+    /// The name of a picture the app defined (`ui.define-image`), or of
+    /// one of the phone's icons (may be empty).
     icon: string,
   }
 
@@ -71,8 +71,6 @@ interface types {
 
   /// Storage locations, with the stock names and rules.
   enum location {
-    /// Read-only files of the app package.
-    app,
     /// `/nvdata/appdata/<name>`.
     nv,
     /// `/nvdata/appdata/@shared`.
@@ -235,7 +233,7 @@ interface runtime {
 
 /// Widgets and softkeys.  Capability `ui`.
 interface ui {
-  use types.{widget, widget-kind, rect, size, metrics, align, font, input-mode, list-item, softkey};
+  use types.{widget, widget-kind, rect, size, metrics, align, font, input-mode, list-item, softkey, error};
 
   get-metrics: func() -> metrics;
   /// Size of the idle-screen area offered to apps with `hasIdle`.
@@ -270,8 +268,15 @@ interface ui {
   set-input-mode: func(w: widget, mode: input-mode);
   set-max-length: func(w: widget, max: u32);
 
-  /// Image by name: a picture file (PNG) of the app package, else an
-  /// icon of the phone's icon set.
+  /// Gives a picture of the app's a name, for `set-image` and for the
+  /// icons of list items: `png` is a PNG file's content, which the app
+  /// holds in its own data (e.g., with `include_bytes!`).  At most 512 KiB
+  /// a picture, and 32 pictures.  Defining a name again replaces the
+  /// picture.
+  define-image: func(name: string, png: list<u8>) -> result<_, error>;
+
+  /// Image by name: a picture the app defined, else an icon of the
+  /// phone's icon set.
   set-image: func(w: widget, name: string);
 
   /// Keys this widget wants as `event.key` instead of the built-in
@@ -400,6 +405,9 @@ interface audio {
   /// minutes.  One sound plays at a time; `event.playback-stopped`
   /// follows when it is over.
   play-file: func(loc: location, name: string, start: u32) -> result<_, error>;
+  /// The same for a sound the app holds in its own data (e.g., with
+  /// `include_bytes!`): `sound` is such a file's content.
+  play: func(sound: list<u8>, start: u32) -> result<_, error>;
   stop: func();
 }
 
@@ -417,7 +425,7 @@ interface l10n {
 }
 
 /// Capability `hotdesk`: change which user this phone is provisioned
-/// for.  Built-in apps only; a package declaring it is refused.
+/// for.  Built-in apps only; an app that uses it is not installed.
 interface hotdesk {
   use types.{error};
   /// Log a user in with their extension and PIN; the phone reprovisions.
@@ -429,7 +437,7 @@ interface hotdesk {
 }
 
 /// Capability `diagnostics`: the phone's hardware tests and its own
-/// state.  Built-in apps only; a package declaring it is refused.
+/// state.  Built-in apps only; an app that uses it is not installed.
 interface diagnostics {
   enum hardware-test {
     /// Full-screen patterns; any key shows the next one.

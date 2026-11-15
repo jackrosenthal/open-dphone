@@ -145,15 +145,12 @@ fn app_file(module: &[u8], out: impl FnOnce(&Manifest) -> PathBuf) -> Res<String
     write(&path, &app.component)?;
     let uses: Vec<&str> = app.manifest.capabilities.iter().map(|c| c.name()).collect();
     Ok(format!(
-        "{} ({:?}): {} ({} bytes{}; uses {})",
+        "{} ({:?}): {} ({} bytes, {} of code; uses {})",
         app.manifest.name,
         app.manifest.display_name,
         path.display(),
         app.component.len(),
-        match app.files.len() {
-            0 => String::new(),
-            n => format!(", {n} data files"),
-        },
+        cargo_dphone_app::manifest::code_size(&app.component),
         if uses.is_empty() {
             "no interface of the phone".to_string()
         } else {
@@ -232,18 +229,27 @@ mod tests {
     use clap::error::ErrorKind;
 
     fn parse(words: &[&str]) -> Result<Cli, clap::Error> {
-        Cargo::try_parse_from(["cargo", "dphone-app"].iter().chain(words)).map(|Cargo::DphoneApp(cli)| cli)
+        Cargo::try_parse_from(["cargo", "dphone-app"].iter().chain(words))
+            .map(|Cargo::DphoneApp(cli)| cli)
     }
 
     #[test]
     fn the_command_line() {
         Cargo::command().debug_assert();
-        for words in [&["--help"][..], &["build", "--help"], &["componentize", "--help"], &["help"]] {
+        for words in [
+            &["--help"][..],
+            &["build", "--help"],
+            &["componentize", "--help"],
+            &["help"],
+        ] {
             let e = parse(words).unwrap_err();
             assert_eq!(e.kind(), ErrorKind::DisplayHelp, "{words:?}");
             assert!(e.to_string().contains("Usage: cargo dphone-app"), "{e}");
         }
-        assert_eq!(parse(&["--version"]).unwrap_err().kind(), ErrorKind::DisplayVersion);
+        assert_eq!(
+            parse(&["--version"]).unwrap_err().kind(),
+            ErrorKind::DisplayVersion
+        );
     }
 
     /// Build is what happens without a subcommand, and takes the same
@@ -251,10 +257,35 @@ mod tests {
     #[test]
     fn build() {
         let cli = parse(&[]).unwrap();
-        assert!(cli.command.is_none() && cli.build.output.is_none() && cli.build.cargo_options().is_empty());
+        assert!(
+            cli.command.is_none()
+                && cli.build.output.is_none()
+                && cli.build.cargo_options().is_empty()
+        );
         for words in [
-            &["-o", "a.wasm", "-p", "one", "--manifest-path", "x/Cargo.toml", "--", "--offline", "-v"][..],
-            &["build", "-o", "a.wasm", "-p", "one", "--manifest-path", "x/Cargo.toml", "--", "--offline", "-v"],
+            &[
+                "-o",
+                "a.wasm",
+                "-p",
+                "one",
+                "--manifest-path",
+                "x/Cargo.toml",
+                "--",
+                "--offline",
+                "-v",
+            ][..],
+            &[
+                "build",
+                "-o",
+                "a.wasm",
+                "-p",
+                "one",
+                "--manifest-path",
+                "x/Cargo.toml",
+                "--",
+                "--offline",
+                "-v",
+            ],
         ] {
             let cli = parse(words).unwrap();
             let build = match cli.command {
@@ -263,7 +294,17 @@ mod tests {
                 other => panic!("{other:?}"),
             };
             assert_eq!(build.output.as_deref(), Some(Path::new("a.wasm")));
-            assert_eq!(build.cargo_options(), ["--package", "one", "--manifest-path", "x/Cargo.toml", "--offline", "-v"]);
+            assert_eq!(
+                build.cargo_options(),
+                [
+                    "--package",
+                    "one",
+                    "--manifest-path",
+                    "x/Cargo.toml",
+                    "--offline",
+                    "-v"
+                ]
+            );
         }
         // An option of cargo's that is not one of ours goes after `--`.
         assert!(parse(&["--offline"]).is_err());
@@ -272,11 +313,17 @@ mod tests {
 
     #[test]
     fn componentize_arguments() {
-        let Ok(Cli { command: Some(Cmd::Componentize { module, output }), .. }) = parse(&["componentize", "m.wasm", "-o", "app.wasm"])
+        let Ok(Cli {
+            command: Some(Cmd::Componentize { module, output }),
+            ..
+        }) = parse(&["componentize", "m.wasm", "-o", "app.wasm"])
         else {
             panic!("componentize does not parse")
         };
-        assert_eq!((module.as_path(), output.as_path()), (Path::new("m.wasm"), Path::new("app.wasm")));
+        assert_eq!(
+            (module.as_path(), output.as_path()),
+            (Path::new("m.wasm"), Path::new("app.wasm"))
+        );
         assert!(parse(&["componentize", "m.wasm"]).is_err());
         assert!(parse(&["componentize", "-o", "app.wasm"]).is_err());
         assert!(parse(&["componentize", "a.wasm", "b.wasm", "-o", "app.wasm"]).is_err());

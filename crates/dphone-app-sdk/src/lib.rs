@@ -184,7 +184,8 @@ pub mod prelude {
 ///
 /// `app` comes first; `name` and `display_name` must be given; the other
 /// fields may be: `id`, `display_name_in`, `description`, `description_in`,
-/// `kind`, `has_idle`, `hidden`, `icon`, `memory_kib`, and `files`.  A
+/// `kind`, `has_idle`, `hidden`, `icon`, `icon_for`, `phone_icon`, and
+/// `memory_kib`.  A
 /// field the phone would refuse does not compile.
 #[macro_export]
 macro_rules! export_app {

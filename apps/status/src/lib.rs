@@ -255,5 +255,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.status",
     display_name: "Status",
     description: "Set your presence status",
-    icon: "status",
+    phone_icon: "status",
 }

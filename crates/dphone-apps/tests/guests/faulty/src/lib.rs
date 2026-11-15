@@ -38,11 +38,7 @@ fn storage_report() -> String {
     ));
     r.push(format!(
         "rofs={}",
-        storage::write(Location::App, "c.txt", b"x").is_ok()
-    ));
-    r.push(format!(
-        "pkg={}",
-        storage::exists(Location::App, "app.pb")
+        storage::write(Location::Data, "c.txt", b"x").is_ok()
     ));
     r.push(format!(
         "shared={}",

@@ -70,7 +70,7 @@ mod wallpapers;
 
 pub use command::{
     Command, CommandError, CommandReceiver, CommandResult, Domain, Envelope, ForwardKind,
-    Pending, Reply, Responder,
+    Pending, Reply, Responder, SoundData,
 };
 pub use event::{Event, InputSource};
 pub use key::Key;

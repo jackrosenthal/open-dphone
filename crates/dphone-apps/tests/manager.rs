@@ -18,16 +18,21 @@ fn rig() -> Rig {
 /// edited: the component, with another manifest section.
 fn variant(root: &Path, from: &str, name: &str, edit: impl Fn(&mut Manifest)) -> PathBuf {
     let component = std::fs::read(staged().join(from).join(format!("{from}.wasm"))).unwrap();
-    let (mut m, files) = Manifest::from_wasm(&component).unwrap();
+    let mut m = Manifest::from_wasm(&component).unwrap();
     m.name = name.into();
     edit(&mut m);
     let out = root.join(format!("{name}.wasm"));
     std::fs::write(
         &out,
-        manifest::with_section(&component, &m.section(&files)).unwrap(),
+        manifest::with_section(&component, &m.section()).unwrap(),
     )
     .unwrap();
     out
+}
+
+/// A data file the test guest `probe` has in its code.
+fn probe_data(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/guests/probe/data").join(name)
 }
 
 /// A module that holds nothing but this manifest section.
@@ -212,7 +217,7 @@ fn storage_follows_the_stock_rules() {
     assert_eq!(
         r.ui.texts("faulty"),
         [
-            "write=true read=true list=a.txt escape=false slash=false rofs=false pkg=true shared=true remove=true gone=true"
+            "write=true read=true list=a.txt escape=false slash=false rofs=false shared=true remove=true gone=true"
         ]
     );
     assert!(r.tmp.join("appdata/@shared/s.txt").is_file());
@@ -248,17 +253,18 @@ fn dial_passes_its_headers() {
 }
 
 #[test]
-fn a_sound_file_plays_and_reports_where_it_stopped() {
+fn a_sound_plays_and_reports_where_it_stopped() {
     let mut r = rig();
     let log = audio_and_ui(&r);
     r.launch("probe");
     r.softkey("probe", "Play");
     assert_eq!(r.ui.texts("probe"), ["play=Ok(())"]);
     let played = log.lock().unwrap().clone();
-    let [Command::PlayFile { path, start_secs: 3, app }] = &played[..] else { panic!("{played:?}") };
+    // The sound is the app's own data, handed over as it is.
+    let [Command::PlayData { sound, start_secs: 3, app }] = &played[..] else { panic!("{played:?}") };
     assert_eq!(app, "probe");
-    assert_eq!(Path::new(path), staged().join("probe/tone.wav"));
-    assert!(std::fs::read(path).unwrap().starts_with(b"RIFF"));
+    assert_eq!(sound.0, std::fs::read(probe_data("tone.wav")).unwrap());
+    assert!(sound.0.starts_with(b"RIFF"));
 
     // The audio side says where it ended: the app hears about its own
     // file, and not about another app's.
@@ -283,7 +289,7 @@ fn a_sound_file_plays_and_reports_where_it_stopped() {
     r.mgr.close("probe");
     std::thread::sleep(std::time::Duration::from_millis(20));
     let tail: Vec<Command> = log.lock().unwrap()[1..].to_vec();
-    assert!(matches!(&tail[..], [Command::StopSound, Command::PlayFile { .. }, Command::StopSound]), "{tail:?}");
+    assert!(matches!(&tail[..], [Command::StopSound, Command::PlayData { .. }, Command::StopSound]), "{tail:?}");
 }
 
 #[test]
@@ -314,23 +320,36 @@ fn idle_screen_events_and_the_idle_timer() {
 }
 
 #[test]
-fn package_pictures_reach_the_window_and_the_launcher() {
+fn an_apps_pictures_reach_the_window_and_the_launcher() {
     let mut r = rig();
-    // The manifest's icon is a file of the package: the launcher gets its path.
+    let pic = std::fs::read(probe_data("pic.png")).unwrap();
+    // The manifest's icon is in the phone's record of the app, and the
+    // launcher gets it from there.
     let apps = r.store.get::<dphone_state::Apps>();
     let probe = apps.installed.iter().find(|a| a.name == "probe").unwrap();
-    assert_eq!(probe.icon, "pic.png");
-    assert_eq!(Path::new(&probe.icon_path), staged().join("probe/pic.png"));
-    // A built-in's icon is one of the phone's own: no file.
+    assert_eq!(probe.icon, "");
+    assert_eq!(&probe.icon_png.0[..], &pic[..]);
+    // A built-in's icon is one of the phone's own, by name.
     let contacts = apps.installed.iter().find(|a| a.name == "contacts").unwrap();
-    assert_eq!(contacts.icon_path, "");
+    assert_eq!(contacts.icon, "contacts");
+    assert!(contacts.icon_png.is_empty());
+    // Nothing of an app's is unpacked: its directory holds the phone's
+    // record of it and its code.
+    let mut files: Vec<String> = std::fs::read_dir(staged().join("probe"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    files.sort();
+    assert_eq!(files, ["app.pb", "probe.cwasm", "probe.wasm"]);
 
     r.launch("probe");
     r.softkey("probe", "Pics");
-    let size = std::fs::metadata(staged().join("probe/pic.png")).unwrap().len() as usize;
-    // Read once, although an image widget and a list row both name it; the
-    // name that is no file stays an icon of the phone.
-    assert_eq!(r.ui.images("probe"), [("pic.png".to_string(), size)]);
+    assert_eq!(r.ui.texts("probe"), ["pics=Ok(())"]);
+    // The app defined the picture once, from its own data; an image widget
+    // and a list row both name it, and the name the app did not define
+    // stays an icon of the phone.
+    assert_eq!(r.ui.images("probe"), [("pic.png".to_string(), pic.len())]);
     assert_eq!(r.ui.image_names("probe"), ["pic.png"]);
 }
 
@@ -452,19 +471,17 @@ fn install_refuses_shadowing_javascript_and_what_is_not_an_app() {
     assert!(matches!(err, InstallError::Manifest(ManifestError::NoManifest)), "{err}");
     assert_eq!(err.stock_status(), -101);
 
-    // A manifest for a newer firmware, a bad name, and a data file that
-    // would leave the app's directory or take the place of the phone's
-    // own files: refused from the manifest alone, before anything is
+    // A manifest for a newer firmware, a bad name, and an icon that is no
+    // picture: refused from the manifest alone, before anything is
     // compiled or written.
     let err = install(&bare_module(&[8, 9, 0x12, 1, b'x']));
     assert!(matches!(err, InstallError::Manifest(ManifestError::Format(9))), "{err}");
     let err = install(&bare_module(&[8, 1, 0x12, 3, b'a', b'/', b'b']));
     assert_eq!(err.stock_status(), -102, "{err}");
-    let (m, _) = Manifest::from_wasm(&bare_module(&[8, 1, 0x12, 1, b'x'])).unwrap();
-    for name in ["../evil", ".code.cwasm", "app.pb", "x.wasm"] {
-        let err = install(&bare_module(&m.section(&[(name.to_string(), vec![1])])));
-        assert!(matches!(err, InstallError::Manifest(ManifestError::BadFile(_))), "{name}: {err}");
-    }
+    let mut m = Manifest::from_wasm(&bare_module(&[8, 1, 0x12, 1, b'x'])).unwrap();
+    m.icon_png = b"GIF89a".to_vec();
+    let err = install(&bare_module(&m.section()));
+    assert!(matches!(err, InstallError::Manifest(ManifestError::BadIcon(_))), "{err}");
     assert!(
         std::fs::read_dir(r.nvdata.join("wasmapps"))
             .map(|d| d.count())
@@ -473,30 +490,35 @@ fn install_refuses_shadowing_javascript_and_what_is_not_an_app() {
     );
 }
 
-/// An app's data files travel in its file and are unpacked beside the
-/// component, where the app's read-only files, pictures, and sounds are.
+/// An installed app is its file and the phone's record of it: its icon is
+/// in the record, its other data in its code, and nothing is unpacked.
 #[test]
-fn an_installed_app_brings_its_data_files() {
+fn an_installed_app_carries_its_icon_and_its_data() {
     let dir = temp_dir("files");
     let mut r = rig();
-    let pkg = variant(&dir.0, "probe", "myprobe", |_| {});
+    let pic = std::fs::read(probe_data("pic.png")).unwrap();
+    // An icon for this model of phone (the rig is a D60) and another.
+    let color = [&pic[..], b"for the color display"].concat();
+    let pkg = variant(&dir.0, "probe", "myprobe", |m| {
+        m.icons_for = vec![("D40".into(), pic.clone()), ("D60".into(), color.clone())];
+    });
     r.mgr.install(&pkg, None).unwrap();
     let installed = r.nvdata.join("wasmapps/myprobe");
-    for f in ["pic.png", "tone.wav"] {
-        assert_eq!(
-            std::fs::read(installed.join(f)).unwrap(),
-            std::fs::read(staged().join("probe").join(f)).unwrap()
-        );
-    }
-    // The component is kept without the files it carried.
-    let kept = std::fs::read(installed.join("myprobe.wasm")).unwrap();
-    let (m, files) = Manifest::from_wasm(&kept).unwrap();
-    assert_eq!((m.name.as_str(), files.len()), ("myprobe", 0));
-    assert!(kept.len() < std::fs::metadata(&pkg).unwrap().len() as usize);
+    let mut files: Vec<String> = std::fs::read_dir(&installed)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    files.sort();
+    assert_eq!(files, [".code.cwasm", "app.pb", "myprobe.wasm"]);
+    assert_eq!(
+        std::fs::read(installed.join("myprobe.wasm")).unwrap(),
+        std::fs::read(&pkg).unwrap()
+    );
 
     let apps = r.store.get::<dphone_state::Apps>();
     let info = apps.installed.iter().find(|a| a.name == "myprobe").unwrap();
-    assert_eq!(Path::new(&info.icon_path), installed.join("pic.png"));
+    assert_eq!(&info.icon_png.0[..], &color[..]);
     r.launch("myprobe");
     r.softkey("myprobe", "Pics");
     assert_eq!(r.ui.image_names("myprobe"), ["pic.png"]);
@@ -563,18 +585,25 @@ fn installing_compiles_off_the_manager_thread() {
 fn install_refuses_a_component_too_large_to_compile() {
     let dir = temp_dir("large");
     let pkg = variant(&dir.0, "status", "large", |_| {});
-    // More code than the phone compiles: here, a section of padding.
-    let mut component = std::fs::read(&pkg).unwrap();
-    let padding = dphone_apps::MAX_COMPONENT as usize;
-    component.push(0);
-    let mut len = padding + 4;
-    while len >= 0x80 {
-        component.push(len as u8 & 0x7f | 0x80);
-        len >>= 7;
+    // More code than the phone compiles: here, one more module in the
+    // component, with a code section of that size.
+    fn leb(mut n: usize) -> Vec<u8> {
+        let mut out = Vec::new();
+        while n >= 0x80 {
+            out.push(n as u8 & 0x7f | 0x80);
+            n >>= 7;
+        }
+        out.push(n as u8);
+        out
     }
-    component.push(len as u8);
-    component.extend_from_slice(b"\x03pad");
-    component.resize(component.len() + padding, 0);
+    let code = dphone_apps::MAX_COMPONENT as usize + 1;
+    let mut module = b"\0asm\x01\0\0\0\x0a".to_vec();
+    module.extend(leb(code));
+    module.resize(module.len() + code, 0);
+    let mut component = std::fs::read(&pkg).unwrap();
+    component.push(1);
+    component.extend(leb(module.len()));
+    component.extend(module);
     std::fs::write(&pkg, component).unwrap();
     let mut r = rig();
     let err = r.mgr.install(&pkg, None).unwrap_err();

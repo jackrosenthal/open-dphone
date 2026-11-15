@@ -7,20 +7,20 @@
 //! flash back to stock finds its own apps as it left them.
 //!
 //! An app arrives as one file, a WebAssembly component with its manifest
-//! and its data files in it ([`AppFile`]).  In its directory on the phone
-//! it is the phone's record of it ([`RECORD`]: the manifest, with the
-//! interfaces the component imports), the component (`<name>.wasm`, kept
-//! to compile again after a firmware update), the code this phone compiled
-//! of it (`.code.cwasm`), and the data files, unpacked.  A built-in app has
-//! the same in the image, with `<name>.cwasm` compiled at build time and no
-//! component.
+//! in it ([`AppFile`]); its data is in its own code.  In its directory on
+//! the phone it is the phone's record of it ([`RECORD`]: the manifest,
+//! with the icons and with the interfaces the component imports), the
+//! component (`<name>.wasm`, kept to compile again after a firmware
+//! update), and the code this phone compiled of it (`.code.cwasm`).  A
+//! built-in app has the record and `<name>.cwasm`, compiled at build time,
+//! and no component.  Nothing is unpacked.
 //!
 //! Unlike stock, replacement is atomic: the new app is staged in a
 //! sibling directory and swapped in with renames, and the old one is
 //! removed only afterwards.
 
 use crate::host::usable_space;
-use crate::manifest::{self, Files, Manifest, ManifestError, RECORD};
+use crate::manifest::{self, Manifest, ManifestError, RECORD};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -45,7 +45,7 @@ pub enum InstallError {
         needed: u64,
         available: u64,
     },
-    /// The component is larger than the phone compiles.
+    /// The component holds more code than the phone compiles.
     ComponentTooLarge {
         size: u64,
         max: u64,
@@ -94,7 +94,7 @@ impl fmt::Display for InstallError {
             }
             InstallError::ComponentTooLarge { size, max } => write!(
                 f,
-                "the app's WebAssembly component is too large: {size} bytes, and the phone takes {max}"
+                "the app has too much code: {size} bytes, and the phone compiles {max}"
             ),
             InstallError::Unloadable(e) => write!(f, "the app cannot be loaded: {e}"),
             InstallError::Io(e) => write!(f, "{e}"),
@@ -116,9 +116,11 @@ impl From<ManifestError> for InstallError {
     }
 }
 
-/// The largest app file read at all: the largest component the phone
-/// compiles, the most data files may hold, and room for the rest.
-pub const MAX_APP_FILE: u64 = crate::prepare::MAX_COMPONENT + manifest::MAX_FILE_BYTES + (64 << 10);
+/// The largest app file read at all.  The compiler works through the code
+/// alone, which has its own limit ([`crate::MAX_COMPONENT`]); the rest of a
+/// file is the app's data, which goes into the app's memory when it starts
+/// (16 MiB at most).
+pub const MAX_APP_FILE: u64 = 8 << 20;
 
 /// An app file, read into memory and checked as far as its manifest goes.
 #[derive(Clone, Debug)]
@@ -126,8 +128,6 @@ pub struct AppFile {
     /// The manifest.  Its capabilities are empty until the component has
     /// been compiled (they are the component's imports).
     pub manifest: Manifest,
-    /// The data files the app carries.
-    pub files: Files,
     /// The component, as it came.
     pub component: Vec<u8>,
 }
@@ -145,37 +145,22 @@ impl AppFile {
     }
 
     pub fn read(component: Vec<u8>) -> Result<AppFile, InstallError> {
-        let (manifest, files) = Manifest::from_wasm(&component)?;
+        let manifest = Manifest::from_wasm(&component)?;
         Ok(AppFile {
             manifest,
-            files,
             component,
         })
     }
 
-    fn files_size(&self) -> u64 {
-        self.files.iter().map(|(_, d)| d.len() as u64).sum()
-    }
-
-    /// The size of the component without the data files it carries: what
-    /// the compiler has to work through.
+    /// The bytes of code in the component: what the compiler has to work
+    /// through.
     pub fn code_size(&self) -> u64 {
-        (self.component.len() as u64).saturating_sub(self.files_size())
-    }
-
-    /// The component as the phone keeps it: without the data files, which
-    /// are unpacked beside it.
-    fn stored_component(&self) -> Vec<u8> {
-        if self.files.is_empty() {
-            return self.component.clone();
-        }
-        manifest::with_section(&self.component, &self.manifest.section(&[]))
-            .unwrap_or_else(|_| self.component.clone())
+        manifest::code_size(&self.component)
     }
 
     /// What the app takes on the flash, without its compiled code.
     pub fn unpacked_size(&self) -> u64 {
-        self.code_size() + self.files_size() + self.manifest.record().len() as u64
+        (self.component.len() + self.manifest.record().len()) as u64
     }
 }
 
@@ -263,9 +248,9 @@ impl Installer {
             std::fs::create_dir_all(&stage)?;
             let own = [
                 (RECORD.to_string(), package.manifest.record()),
-                (package.manifest.wasm.clone(), package.stored_component()),
+                (package.manifest.wasm.clone(), package.component.clone()),
             ];
-            for (n, data) in own.iter().chain(&package.files).chain(extra) {
+            for (n, data) in own.iter().chain(extra) {
                 let mut f = std::fs::File::create(stage.join(n))?;
                 f.write_all(data)?;
                 f.sync_all()?;

@@ -483,5 +483,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.contacts",
     display_name: "Contacts",
     description: "Browse, search, and call your contacts",
-    icon: "contacts",
+    phone_icon: "contacts",
 }

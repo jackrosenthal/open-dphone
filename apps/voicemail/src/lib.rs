@@ -535,5 +535,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.voicemail",
     display_name: "Voicemail",
     description: "Listen to and manage voicemail messages",
-    icon: "voicemail",
+    phone_icon: "voicemail",
 }

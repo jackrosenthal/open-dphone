@@ -180,5 +180,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.parking",
     display_name: "Parking",
     description: "See and retrieve parked calls",
-    icon: "parking",
+    phone_icon: "parking",
 }

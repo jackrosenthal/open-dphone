@@ -251,5 +251,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.diagnostics",
     display_name: "Diagnostics",
     description: "Hardware tests, subsystems, and the log",
-    icon: "diagnostics",
+    phone_icon: "diagnostics",
 }

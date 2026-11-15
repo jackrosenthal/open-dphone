@@ -48,23 +48,61 @@ pub struct Manifest {
     pub has_idle: bool,
     /// The app is marked as hidden.
     pub hidden: bool,
-    /// The app's icon: the name of one of the phone's icons, or of one of
-    /// `files`.  The phone prefers a file with its model before the name
-    /// (e.g., `D60.icon.png` to `icon.png`).
-    pub icon: &'static str,
+    /// The app's icon: the content of a PNG file, e.g.,
+    /// `include_bytes!("hello.png")`.  At most 256 KiB.
+    pub icon: &'static [u8],
+    /// Icons for particular models of phone, each a PNG file's content:
+    /// (model, icon), e.g., `&[("D60", include_bytes!("color.png"))]`.  A
+    /// phone shows its model's icon if there is one, else `icon`.  The
+    /// models are D40, D45, D50, D60, D62, D65, and D70.
+    pub icon_for: &'static [(&'static str, &'static [u8])],
+    /// The name of one of the phone's own icons, for an app without an
+    /// icon of its own.
+    pub phone_icon: &'static str,
     /// The most memory the app may have, in KiB.  The default (0) is
     /// 4 MiB, and the phone gives no app more than 16 MiB.
     pub memory_kib: u32,
-    /// The app's data files, (name, contents), e.g.,
-    /// `&[("logo.png", include_bytes!("logo.png"))]`: the phone puts them
-    /// where `Location::Package` and the pictures and sounds of `ui` and
-    /// `audio` are read from.
-    pub files: &'static [(&'static str, &'static [u8])],
 }
 
-/// The most files an app may carry, and the most bytes in all of them.
-pub const MAX_FILES: usize = 64;
-pub const MAX_FILE_BYTES: usize = 8 << 20;
+/// The largest icon.
+pub const MAX_ICON_BYTES: usize = 256 << 10;
+
+/// The models of phone, as `icon_for` names them.
+pub const MODELS: [&str; 7] = ["D40", "D45", "D50", "D60", "D62", "D65", "D70"];
+
+const fn same(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+const fn model_ok(model: &str) -> bool {
+    let mut i = 0;
+    while i < MODELS.len() {
+        if same(MODELS[i], model) {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
+const fn png_ok(icon: &[u8]) -> bool {
+    icon.len() > 8 && icon[0] == 0x89 && icon[1] == b'P' && icon[2] == b'N' && icon[3] == b'G'
+}
+
+const fn model_icon_len(i: &(&str, &[u8])) -> usize {
+    string_len(i.0) + delimited_len(i.1.len())
+}
 
 const fn varint_len(mut v: u64) -> usize {
     let mut n = 1;
@@ -100,10 +138,6 @@ const fn text_len(text: &str, localized: &[(&str, &str)]) -> usize {
         i += 1;
     }
     n
-}
-
-const fn file_len(f: &(&str, &[u8])) -> usize {
-    string_len(f.0) + delimited_len(f.1.len())
 }
 
 /// A cursor over the section being written.
@@ -185,36 +219,6 @@ const fn name_ok(name: &str) -> bool {
     true
 }
 
-const fn file_name_ok(name: &str) -> bool {
-    let b = name.as_bytes();
-    if b.is_empty() || b.len() > 255 || b[0] == b'.' {
-        return false;
-    }
-    let mut i = 0;
-    while i < b.len() {
-        if matches!(b[i], b'/' | b'\\' | 0) {
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
-
-const fn same(a: &str, b: &str) -> bool {
-    let (a, b) = (a.as_bytes(), b.as_bytes());
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut i = 0;
-    while i < a.len() {
-        if a[i] != b[i] {
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
-
 const fn locales_ok(localized: &[(&str, &str)]) -> bool {
     let mut i = 0;
     while i < localized.len() {
@@ -238,9 +242,10 @@ impl Manifest {
         kind: AppKind::Foreground,
         has_idle: false,
         hidden: false,
-        icon: "",
+        icon: &[],
+        icon_for: &[],
+        phone_icon: "",
         memory_kib: 0,
-        files: &[],
     };
 
     /// The manifest, if the phone will take it; otherwise the compilation
@@ -264,31 +269,34 @@ impl Manifest {
             "export_app!: `memory_kib` is more than the phone gives any app (16384)"
         );
         assert!(
-            self.files.len() <= MAX_FILES,
-            "export_app!: more than 64 `files`"
+            self.icon.len() <= MAX_ICON_BYTES,
+            "export_app!: `icon` is larger than 256 KiB"
         );
-        let mut total = 0;
+        assert!(
+            self.icon.is_empty() || png_ok(self.icon),
+            "export_app!: `icon` is not a PNG file's content (for one of the phone's own icons, give its name as `phone_icon`)"
+        );
         let mut i = 0;
-        while i < self.files.len() {
+        while i < self.icon_for.len() {
+            let (model, icon) = self.icon_for[i];
             assert!(
-                file_name_ok(self.files[i].0),
-                "export_app!: a name in `files` is empty, starts with '.', or has a path separator"
+                model_ok(model),
+                "export_app!: a model in `icon_for` is not one of D40, D45, D50, D60, D62, D65, D70"
+            );
+            assert!(
+                icon.len() <= MAX_ICON_BYTES && png_ok(icon),
+                "export_app!: an icon in `icon_for` is not a PNG file's content of at most 256 KiB"
             );
             let mut j = 0;
             while j < i {
                 assert!(
-                    !same(self.files[i].0, self.files[j].0),
-                    "export_app!: two of `files` have the same name"
+                    !same(self.icon_for[j].0, model),
+                    "export_app!: `icon_for` names a model twice"
                 );
                 j += 1;
             }
-            total += self.files[i].1.len();
             i += 1;
         }
-        assert!(
-            total <= MAX_FILE_BYTES,
-            "export_app!: `files` hold more than 8 MiB"
-        );
         self
     }
 
@@ -307,13 +315,16 @@ impl Manifest {
         // `kind` is always written; the flags only when set.
         n += 2;
         n += self.has_idle as usize * 2 + self.hidden as usize * 2;
-        n += string_len(self.icon);
+        n += string_len(self.phone_icon);
         if self.memory_kib > 0 {
             n += 1 + varint_len(self.memory_kib as u64);
         }
+        if !self.icon.is_empty() {
+            n += delimited_len(self.icon.len());
+        }
         let mut i = 0;
-        while i < self.files.len() {
-            n += delimited_len(file_len(&self.files[i]));
+        while i < self.icon_for.len() {
+            n += delimited_len(model_icon_len(&self.icon_for[i]));
             i += 1;
         }
         n
@@ -338,12 +349,15 @@ impl Manifest {
         .number(6, kind)
         .number(7, self.has_idle as u64)
         .number(8, self.hidden as u64)
-        .string(9, self.icon)
+        .string(9, self.phone_icon)
         .number(10, self.memory_kib as u64);
+        if !self.icon.is_empty() {
+            out = out.bytes(11, self.icon);
+        }
         let mut i = 0;
-        while i < self.files.len() {
-            let f = &self.files[i];
-            out = out.open(11, file_len(f)).string(1, f.0).bytes(2, f.1);
+        while i < self.icon_for.len() {
+            let m = &self.icon_for[i];
+            out = out.open(12, model_icon_len(m)).string(1, m.0).bytes(2, m.1);
             i += 1;
         }
         assert!(out.at == N, "the manifest's section has another length");

@@ -63,7 +63,7 @@ dphone_app_sdk::export_app! {
 }
 ```
 
-That is the whole app: there is no other file.  An app implements `App` (`start` and `handle`) for a type that has a `Default`, and registers the type, with the app's manifest, in `export_app!`.  The phone makes one instance of it.
+That is the whole app: there is no other file, and no file beside the app on the phone.  An app implements `App` (`start` and `handle`) for a type that has a `Default`, and registers the type, with the app's manifest, in `export_app!`.  The phone makes one instance of it.
 
 The release profile builds for size, as the built-in apps are built: the phone has little memory and little flash, and it compiles the app when it is installed.
 
@@ -81,9 +81,10 @@ The manifest is what the phone has to know about an app before it runs it.  It i
 | `kind` | `AppKind::Foreground` (the default): the app runs while it is on screen.  `AppKind::Background`: it starts with the phone and runs without being on screen.  `AppKind::Idle`: it provides the idle screen. |
 | `has_idle` | `true` if the app draws on the idle screen. |
 | `hidden` | `true` marks the app as hidden. |
-| `icon` | The app's icon: the name of one of the phone's icons, or of one of `files`.  The phone prefers the file with its model before the name (`D60.icon.png` to `icon.png`). |
+| `icon` | The app's icon: the content of a PNG file, `include_bytes!("hello.png")`.  At most 256 KiB. |
+| `icon_for` | Icons for particular models of phone, each as `icon` is: `&[("D60", include_bytes!("color.png"))]`.  A phone shows its model's icon if there is one, else `icon`.  The models are D40, D45, D50, D60, D62, D65, and D70. |
+| `phone_icon` | The name of one of the phone's own icons, for an app without an icon of its own. |
 | `memory_kib` | The most memory the app may have, in KiB.  The default is 4 MiB, and the phone gives no app more than 16 MiB. |
-| `files` | The app's data files (e.g., PNG pictures, sounds), by name: `&[("logo.png", include_bytes!("logo.png"))]`.  At most 64 files and 8 MiB in all.  The phone unpacks them where the app's read-only files are (`Location::App`), and where the pictures and sounds that `ui` and `audio` take by name are looked for. |
 
 A manifest with everything:
 
@@ -98,16 +99,24 @@ dphone_app_sdk::export_app! {
     description_in: &[("de_de", "Das Wetter am Ort des Telefons")],
     kind: AppKind::Background,
     has_idle: true,
-    icon: "weather.png",
-    memory_kib: 8192,
-    files: &[
-        ("weather.png", include_bytes!("../data/weather.png")),
-        ("D60.weather.png", include_bytes!("../data/weather-color.png")),
+    icon: include_bytes!("weather.png"),
+    icon_for: &[
+        ("D60", include_bytes!("weather-color.png")),
+        ("D65", include_bytes!("weather-color.png")),
     ],
+    memory_kib: 8192,
 }
 ```
 
 The manifest travels in the app's file: `export_app!` writes it, when the app is compiled, into the custom section `dphone-app` of the WebAssembly module, as the protobuf message `dphone.app.v1.Manifest` (`proto/manifest.proto` in this crate).  The phone reads it from there before it installs the app.
+
+## Data
+
+An app's data (pictures, sounds, tables) is in its code: `include_bytes!` and `include_str!`, as in any Rust program.  The phone unpacks nothing.
+
+- A picture: `ui::define_image("logo", include_bytes!("logo.png"))` gives a PNG a name, once; `ui::set_image` and the `icon` of a list item then take that name.  A name the app did not define is one of the phone's own icons.  At most 512 KiB a picture, and 32 pictures.  An app that wants another picture on another model of phone chooses by `ui::metrics()`.
+- A sound: `audio::play(include_bytes!("tone.wav"), 0)`.  (`audio::play_file` plays a file from storage, e.g., one the app downloaded.)
+- The data counts toward the app's memory (`memory_kib`), since it is part of the program.
 
 ## Capabilities
 
@@ -147,13 +156,13 @@ Then, in the app's directory:
 cargo dphone-app
 ```
 
-This builds the crate in release mode for `wasm32-unknown-unknown`, makes a WebAssembly component of the module, and writes the app: one file, `target/dphone-app/hello.wasm` (named after the manifest's `name`), with the manifest and the data files in it.  The tool reads the file as the phone will and refuses what the phone would refuse; it prints the app's name and the capabilities it uses.
+This builds the crate in release mode for `wasm32-unknown-unknown`, makes a WebAssembly component of the module, and writes the app: one file, `target/dphone-app/hello.wasm` (named after the manifest's `name`), with the manifest and all of the app's data in it.  The tool reads the file as the phone will and refuses what the phone would refuse; it prints the app's name and the capabilities it uses.
 
-The phone compiles the app's code when the app is installed, which takes it about 2 seconds and another 0.12 seconds for every KiB of the file (without the data files).  It takes a file with up to 1 MiB of code.
+The phone compiles the app's code when the app is installed, which takes it about 2 seconds and another 0.12 seconds for every KiB of code.  It takes a file of up to 8 MiB with up to 1 MiB of code in it (the tool prints both).
 
 ## Installing
 
-In the phone's web interface, the page "Apps" has the button "Install App", which uploads the file.  The phone reads the manifest, compiles the component (calls are not disturbed, and the phone can be used meanwhile), and lists the app with the others; installing an app whose `name` is already installed replaces that app.  "Remove" on the same page removes an installed app with its files.
+In the phone's web interface, the page "Apps" has the button "Install App", which uploads the file.  The phone reads the manifest, compiles the component (calls are not disturbed, and the phone can be used meanwhile), and lists the app with the others; installing an app whose `name` is already installed replaces that app.  "Remove" on the same page removes an installed app with what it stored.
 
 After a firmware update that changes the phone's WebAssembly engine, the phone compiles the installed apps again by itself, one after the other, when it starts.
 

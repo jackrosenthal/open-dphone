@@ -611,5 +611,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.desksparrow",
     display_name: "Desk Sparrow",
     description: "A one-key flying game",
-    icon: "desksparrow",
+    phone_icon: "desksparrow",
 }

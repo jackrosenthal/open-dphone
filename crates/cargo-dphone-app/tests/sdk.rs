@@ -23,6 +23,9 @@ fn module(section: &[u8]) -> Vec<u8> {
     m
 }
 
+const PNG: &[u8] = b"\x89PNG\r\n\x1a\nthe rest of a picture";
+const COLOR: &[u8] = b"\x89PNG\r\n\x1a\na picture in color";
+
 #[test]
 fn every_field_arrives() {
     const W: Written = Written {
@@ -35,15 +38,16 @@ fn every_field_arrives() {
         kind: AppKind::Background,
         has_idle: true,
         hidden: true,
-        icon: "pic.png",
+        icon: PNG,
+        icon_for: &[("D60", COLOR), ("D65", COLOR)],
+        phone_icon: "status",
         memory_kib: 8192,
-        files: &[("pic.png", &[1, 2, 3]), ("tone.wav", &[0; 300])],
     }
     .checked();
     const LEN: usize = W.encoded_len();
     const SECTION: [u8; LEN] = W.encode::<LEN>();
 
-    let (m, files) = Manifest::from_wasm(&module(&SECTION)).unwrap();
+    let m = Manifest::from_wasm(&module(&SECTION)).unwrap();
     assert_eq!(m.name, "probe");
     assert_eq!(m.id, "org.example.probe");
     // As stock: the `en_us` text before the unlocalized one.
@@ -57,15 +61,19 @@ fn every_field_arrives() {
     assert_eq!(m.descriptions.localized.len(), 1);
     assert_eq!(m.kind, AppType::Background);
     assert!(m.has_idle && m.hidden);
-    assert_eq!(m.icon, "pic.png");
+    assert_eq!(m.icon, "status");
+    assert_eq!(m.icon_for("D60"), COLOR);
+    assert_eq!(m.icon_for("D65"), COLOR);
+    assert_eq!(m.icon_for("D40"), PNG);
     assert_eq!(m.memory_kib, 8192);
     assert_eq!(m.wasm, "probe.wasm");
     assert!(m.capabilities.is_empty());
-    assert_eq!(files.len(), 2);
-    assert_eq!(files[0], ("pic.png".to_string(), vec![1, 2, 3]));
-    assert_eq!(files[1].1.len(), 300);
     // What this crate writes for the same manifest is the same bytes.
-    assert_eq!(m.section(&files), SECTION);
+    assert_eq!(m.section(), SECTION);
+    assert_eq!(
+        dphone_app_sdk::manifest::MODELS,
+        cargo_dphone_app::manifest::MODELS
+    );
 }
 
 #[test]
@@ -77,11 +85,12 @@ fn the_least_manifest() {
     }
     .checked();
     const LEN: usize = W.encoded_len();
-    let (m, files) = Manifest::from_wasm(&module(&W.encode::<LEN>())).unwrap();
+    let m = Manifest::from_wasm(&module(&W.encode::<LEN>())).unwrap();
     assert_eq!(
         (m.name.as_str(), m.display_name.as_str()),
         ("hello", "Hello")
     );
     assert_eq!(m.kind, AppType::Foreground);
-    assert!(!m.has_idle && !m.hidden && files.is_empty());
+    assert!(!m.has_idle && !m.hidden);
+    assert!(m.icon.is_empty() && m.icon_for("D60").is_empty());
 }

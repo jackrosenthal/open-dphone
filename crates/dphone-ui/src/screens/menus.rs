@@ -182,16 +182,17 @@ impl Screen for CallLogScreen {
 
 struct Launcher {
     st: ListState,
-    /// Package icon files already read, by path (`None`: unusable).
-    files: std::collections::HashMap<String, Option<crate::image::Image>>,
+    /// Apps' own icons already decoded, by app, with the picture each was
+    /// decoded from (`None`: unusable).
+    files: std::collections::HashMap<String, (dphone_state::Picture, Option<crate::image::Image>)>,
 }
 
 pub(crate) fn launcher() -> Box<dyn Screen> {
     Box::new(Launcher { st: ListState::default(), files: std::collections::HashMap::new() })
 }
 
-/// The largest icon file read for the launcher.
-const ICON_FILE_MAX: u64 = 256 * 1024;
+/// The largest icon decoded for the launcher.
+const ICON_FILE_MAX: usize = 256 * 1024;
 
 /// What the launcher draws for an app.
 enum AppIcon<'a> {
@@ -227,26 +228,27 @@ fn builtin_app_icon(th: &Theme, app: &dphone_state::AppInfo) -> Option<crate::ic
 }
 
 impl Launcher {
-    /// The icon for an app: the icon file of its package (reduced to the
-    /// size of the phone's own app icons), else one of the phone's own.
+    /// The icon for an app: its own (reduced to the size of the phone's
+    /// own app icons), else one of the phone's.
     fn app_icon(&mut self, th: &Theme, app: &dphone_state::AppInfo) -> Option<AppIcon<'_>> {
-        if !app.icon_path.is_empty() {
+        if !app.icon_png.is_empty() {
             let (w, h) = th.icon("app-app").map(|i| (i.width() as u16, i.height() as u16)).unwrap_or((48, 48));
-            let loaded = self.files.entry(app.icon_path.clone()).or_insert_with(|| {
-                let path = std::path::Path::new(&app.icon_path);
-                let small = std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.len() <= ICON_FILE_MAX);
-                let image = small.then(|| std::fs::read(path).ok()).flatten().map(|b| crate::image::decode_png(&b));
-                match image {
+            // Decoded once, and again when the app is replaced by one with
+            // another icon.
+            if self.files.get(&app.name).is_none_or(|(of, _)| *of != app.icon_png) {
+                let image = (app.icon_png.0.len() <= ICON_FILE_MAX).then(|| crate::image::decode_png(&app.icon_png.0));
+                let image = match image {
                     Some(Ok(i)) => Some(i.fit(w, h)),
                     Some(Err(e)) => {
-                        log::warn!("ui: the icon {} is unusable: {e}", app.icon_path);
+                        log::warn!("ui: the icon of the app {} is unusable: {e}", app.name);
                         None
                     }
                     None => None,
-                }
-            });
-            if loaded.is_some() {
-                return self.files.get(&app.icon_path).and_then(|i| i.as_ref()).map(AppIcon::File);
+                };
+                self.files.insert(app.name.clone(), (app.icon_png.clone(), image));
+            }
+            if self.files.get(&app.name).is_some_and(|(_, i)| i.is_some()) {
+                return self.files.get(&app.name).and_then(|(_, i)| i.as_ref()).map(AppIcon::File);
             }
         }
         builtin_app_icon(th, app).map(AppIcon::Builtin)

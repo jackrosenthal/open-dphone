@@ -796,5 +796,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.lightup",
     display_name: "Light Up",
     description: "Light every cell of the grid",
-    icon: "lightup",
+    phone_icon: "lightup",
 }

@@ -2,7 +2,7 @@
 //!
 //! An app is one WebAssembly component.  Its manifest (the stock fields
 //! `name`, `id`, `displayName`, `description`, `type`, `hasIdle`, `hidden`,
-//! and the icon, plus a memory limit and the app's data files) is the
+//! and the icon, plus a memory limit) is the
 //! protobuf message `dphone.app.v1.Manifest` in the custom section
 //! `dphone-app` of the app's module, which the macro `export_app!` of
 //! `dphone-app-sdk` writes (the format is `proto/manifest.proto` of that
@@ -10,9 +10,8 @@
 //! reads it, without compiling anything.
 //!
 //! The phone keeps a record of each app in the app's directory
-//! ([`RECORD`]): the manifest without the files' contents, with the
-//! interfaces the component imports ([`Capability`]), which are not the
-//! app's to declare.
+//! ([`RECORD`]): the manifest, with the interfaces the component imports
+//! ([`Capability`]), which are not the app's to declare.
 //!
 //! A stock app package (a ZIP archive with `app.json` and JavaScript) is
 //! recognized only to say that it cannot run.
@@ -25,13 +24,10 @@ pub const SECTION: &str = "dphone-app";
 pub const FORMAT: u32 = 1;
 /// The phone's record of an app, in the app's directory.
 pub const RECORD: &str = "app.pb";
-/// Most data files an app may carry.
-pub const MAX_FILES: usize = 64;
-/// Most bytes in all of an app's data files.
-pub const MAX_FILE_BYTES: u64 = 8 << 20;
-
-/// The data files of an app: (file name, contents).
-pub type Files = Vec<(String, Vec<u8>)>;
+/// The largest icon.
+pub const MAX_ICON_BYTES: usize = 256 << 10;
+/// The models of phone an icon can be for.
+pub const MODELS: [&str; 7] = ["D40", "D45", "D50", "D60", "D62", "D65", "D70"];
 
 /// A host interface an app may be granted.  `runtime` is always granted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -149,10 +145,9 @@ pub enum ManifestError {
     BadName(&'static str),
     /// An unknown `kind`.
     BadKind(u64),
-    /// A data file with a name the phone does not take.
-    BadFile(String),
-    /// Too many data files, or too many bytes in them.
-    TooLarge,
+    /// An icon that is too large or not a PNG file, or one for a model
+    /// that is none.
+    BadIcon(&'static str),
     /// The component imports something that is not an interface of the
     /// phone.
     UnknownImport(String),
@@ -180,11 +175,7 @@ impl fmt::Display for ManifestError {
             ),
             ManifestError::BadName(why) => write!(f, "bad app name: {why}"),
             ManifestError::BadKind(k) => write!(f, "bad app kind {k}"),
-            ManifestError::BadFile(n) => write!(f, "bad data file name {n:?}"),
-            ManifestError::TooLarge => write!(
-                f,
-                "the app carries too much: at most {MAX_FILES} data files and {MAX_FILE_BYTES} bytes in them"
-            ),
+            ManifestError::BadIcon(why) => write!(f, "bad app icon: {why}"),
             ManifestError::UnknownImport(i) => write!(
                 f,
                 "the app imports {i:?}, which is not an interface of this firmware"
@@ -209,8 +200,13 @@ pub struct Manifest {
     pub kind: AppType,
     pub has_idle: bool,
     pub hidden: bool,
-    /// The icon: one of the phone's, or a data file.
+    /// The name of one of the phone's own icons, for an app without an
+    /// icon of its own.
     pub icon: String,
+    /// The app's icon, a PNG file's content (empty: none), and its icons
+    /// for particular models: (model, PNG).
+    pub icon_png: Vec<u8>,
+    pub icons_for: Vec<(String, Vec<u8>)>,
     /// The component's file name in the app's directory: `<name>.wasm`.
     pub wasm: String,
     /// The interfaces the component imports.  Not part of an app's own
@@ -220,8 +216,6 @@ pub struct Manifest {
     /// Requested linear-memory cap in KiB (0: the default); never above
     /// the manager's hard cap.
     pub memory_kib: u32,
-    /// The names of the app's data files.
-    pub files: Vec<String>,
 }
 
 /// A text with its translations.
@@ -263,20 +257,14 @@ pub fn validate_name(name: &str) -> Result<(), ManifestError> {
     Ok(())
 }
 
-fn validate_file_name(name: &str, app: &str) -> Result<(), ManifestError> {
-    let bad = name.is_empty()
-        || name.len() > 255
-        || name.starts_with('.')
-        || name.contains(['/', '\\', '\0'])
-        // The phone's own files in an app's directory.
-        || name == RECORD
-        || name.ends_with(".cwasm")
-        || name == format!("{app}.wasm");
-    if bad {
-        Err(ManifestError::BadFile(name.to_string()))
-    } else {
-        Ok(())
+fn validate_icon(png: &[u8]) -> Result<(), ManifestError> {
+    if png.len() > MAX_ICON_BYTES {
+        return Err(ManifestError::BadIcon("larger than 256 KiB"));
     }
+    if !png.starts_with(b"\x89PNG") {
+        return Err(ManifestError::BadIcon("not a PNG file"));
+    }
+    Ok(())
 }
 
 // ------------------------------------------------------------- protobuf
@@ -472,15 +460,42 @@ fn sections(wasm: &[u8], depth: u32, found: &mut Vec<u8>) -> Result<(), Manifest
     Ok(())
 }
 
+/// The bytes of code in `wasm` (a module, or a component with the modules
+/// in it): the code sections, which are what a compiler has to work
+/// through.  The rest of an app file is mostly its data.
+pub fn code_size(wasm: &[u8]) -> u64 {
+    fn walk(wasm: &[u8], depth: u32) -> Option<u64> {
+        if wasm.len() < 8 || &wasm[..4] != WASM_MAGIC {
+            return None;
+        }
+        let component = &wasm[4..8] == COMPONENT;
+        let (mut at, mut code) = (8, 0);
+        while at < wasm.len() {
+            let id = wasm[at];
+            at += 1;
+            let len = varint(wasm, &mut at).ok()?;
+            let body = take(wasm, &mut at, len).ok()?;
+            match id {
+                10 if !component => code += len,
+                1 | 4 if component && depth < 4 => code += walk(body, depth + 1)?,
+                _ => {}
+            }
+        }
+        Some(code)
+    }
+    // What cannot be walked is counted whole.
+    walk(wasm, 0).unwrap_or(wasm.len() as u64)
+}
+
 /// True for a ZIP archive that holds an `app.json`: a stock app package.
 fn is_stock_package(file: &[u8]) -> bool {
     file.starts_with(b"PK") && file.windows(8).any(|w| w == b"app.json")
 }
 
 impl Manifest {
-    /// The manifest and the data files of an app file (a component, or the
-    /// module it is made of).
-    pub fn from_wasm(wasm: &[u8]) -> Result<(Manifest, Files), ManifestError> {
+    /// The manifest of an app file (a component, or the module it is made
+    /// of).
+    pub fn from_wasm(wasm: &[u8]) -> Result<Manifest, ManifestError> {
         let mut found = Vec::new();
         match sections(wasm, 0, &mut found) {
             Err(ManifestError::NotWasm) if is_stock_package(wasm) => {
@@ -496,10 +511,20 @@ impl Manifest {
 
     /// The phone's record of an app ([`RECORD`]).
     pub fn from_record(record: &[u8]) -> Result<Manifest, ManifestError> {
-        Manifest::decode(record, true).map(|(m, _)| m)
+        Manifest::decode(record, true)
     }
 
-    fn decode(bytes: &[u8], record: bool) -> Result<(Manifest, Files), ManifestError> {
+    /// The icon a phone of `model` (e.g., `D60`) shows for the app: the
+    /// one for its model, else the app's icon; empty if it has neither.
+    pub fn icon_for(&self, model: &str) -> &[u8] {
+        self.icons_for
+            .iter()
+            .find(|(m, _)| m.eq_ignore_ascii_case(model))
+            .map(|(_, png)| &png[..])
+            .unwrap_or(&self.icon_png)
+    }
+
+    fn decode(bytes: &[u8], record: bool) -> Result<Manifest, ManifestError> {
         let mut m = Manifest {
             name: String::new(),
             id: String::new(),
@@ -511,13 +536,13 @@ impl Manifest {
             has_idle: false,
             hidden: false,
             icon: String::new(),
+            icon_png: Vec::new(),
+            icons_for: Vec::new(),
             wasm: String::new(),
             capabilities: Vec::new(),
             memory_kib: 0,
-            files: Vec::new(),
         };
         let mut format = 0;
-        let mut files = Files::new();
         fields(bytes, |n, v| {
             match n {
                 1 => format = number(v)?,
@@ -537,17 +562,18 @@ impl Manifest {
                 8 => m.hidden = number(v)? != 0,
                 9 => m.icon = string(v)?,
                 10 => m.memory_kib = number(v)?.min(u64::from(u32::MAX)) as u32,
-                11 => {
-                    let mut file = (String::new(), Vec::new());
+                11 => m.icon_png = message(v)?.to_vec(),
+                12 => {
+                    let mut icon = (String::new(), Vec::new());
                     fields(message(v)?, |n, v| {
                         match n {
-                            1 => file.0 = string(v)?,
-                            2 => file.1 = message(v)?.to_vec(),
+                            1 => icon.0 = string(v)?,
+                            2 => icon.1 = message(v)?.to_vec(),
                             _ => {}
                         }
                         Ok(())
                     })?;
-                    files.push(file);
+                    m.icons_for.push(icon);
                 }
                 // Only the phone's own record says what the app may use.
                 15 if record => {
@@ -566,18 +592,18 @@ impl Manifest {
             return Err(ManifestError::Format(format.min(u64::from(u32::MAX)) as u32));
         }
         validate_name(&m.name)?;
-        if files.len() > MAX_FILES
-            || files.iter().map(|(_, d)| d.len() as u64).sum::<u64>() > MAX_FILE_BYTES
-        {
-            return Err(ManifestError::TooLarge);
+        if !m.icon_png.is_empty() {
+            validate_icon(&m.icon_png)?;
         }
-        for (i, (name, _)) in files.iter().enumerate() {
-            validate_file_name(name, &m.name)?;
-            if files[..i].iter().any(|(n, _)| n == name) {
-                return Err(ManifestError::BadFile(name.clone()));
+        for (i, (model, png)) in m.icons_for.iter().enumerate() {
+            if !MODELS.contains(&model.as_str()) {
+                return Err(ManifestError::BadIcon("for a model that is none"));
             }
+            if m.icons_for[..i].iter().any(|(other, _)| other == model) {
+                return Err(ManifestError::BadIcon("two for one model"));
+            }
+            validate_icon(png)?;
         }
-        m.files = files.iter().map(|(n, _)| n.clone()).collect();
         m.has_idle |= m.kind == AppType::Idle;
         m.display_name = match m.display_names.shown() {
             "" => m.name.clone(),
@@ -585,11 +611,10 @@ impl Manifest {
         };
         m.description = m.descriptions.shown().to_string();
         m.wasm = format!("{}.wasm", m.name);
-        Ok((m, files))
+        Ok(m)
     }
 
-    /// The phone's record of the app: the manifest with the capabilities
-    /// and the names of the data files, without their contents.
+    /// The phone's record of the app: the manifest with the capabilities.
     pub fn record(&self) -> Vec<u8> {
         let mut out = Vec::new();
         put_number(&mut out, 1, u64::from(FORMAT));
@@ -610,10 +635,14 @@ impl Manifest {
         put_number(&mut out, 8, u64::from(self.hidden));
         put_string(&mut out, 9, &self.icon);
         put_number(&mut out, 10, u64::from(self.memory_kib));
-        for name in &self.files {
-            let mut f = Vec::new();
-            put_string(&mut f, 1, name);
-            put_bytes(&mut out, 11, &f);
+        if !self.icon_png.is_empty() {
+            put_bytes(&mut out, 11, &self.icon_png);
+        }
+        for (model, png) in &self.icons_for {
+            let mut i = Vec::new();
+            put_string(&mut i, 1, model);
+            put_bytes(&mut i, 2, png);
+            put_bytes(&mut out, 12, &i);
         }
         for c in &self.capabilities {
             put_string(&mut out, 15, c.name());
@@ -621,21 +650,12 @@ impl Manifest {
         out
     }
 
-    /// A manifest section with these fields and these data files: what
-    /// `export_app!` writes.  For tools and tests that make one app file
-    /// from another.
-    pub fn section(&self, files: &[(String, Vec<u8>)]) -> Vec<u8> {
+    /// A manifest section with these fields: what `export_app!` writes.
+    /// For tools and tests that make one app file from another.
+    pub fn section(&self) -> Vec<u8> {
         let mut plain = self.clone();
         plain.capabilities.clear();
-        plain.files.clear();
-        let mut out = plain.record();
-        for (name, data) in files {
-            let mut f = Vec::new();
-            put_string(&mut f, 1, name);
-            put_bytes(&mut f, 2, data);
-            put_bytes(&mut out, 11, &f);
-        }
-        out
+        plain.record()
     }
 
     pub fn has(&self, cap: Capability) -> bool {
@@ -707,9 +727,10 @@ mod tests {
     }
 
     fn sample() -> Manifest {
-        let (m, _) = Manifest::decode(&[8, 1, 0x12, 2, b'v', b'm'], false).unwrap();
-        m
+        Manifest::decode(&[8, 1, 0x12, 2, b'v', b'm'], false).unwrap()
     }
+
+    const PNG: &[u8] = b"\x89PNG\r\n\x1a\nrest";
 
     #[test]
     fn a_record_round_trips_and_only_a_record_carries_capabilities() {
@@ -719,39 +740,45 @@ mod tests {
             localized: vec![("de_de".into(), "VM".into())],
         };
         m.kind = AppType::Idle;
-        m.icon = "i.png".into();
+        m.icon = "voicemail".into();
+        m.icon_png = PNG.to_vec();
+        m.icons_for = vec![("D60".into(), [PNG, b"color"].concat())];
         m.capabilities = vec![Capability::Ui, Capability::Pbx];
-        m.files = vec!["i.png".into()];
         let back = Manifest::from_record(&m.record()).unwrap();
         assert_eq!(back.display_name, "Voicemail");
         assert!(back.has_idle);
         assert!(back.has(Capability::Pbx) && !back.has(Capability::Calls));
-        assert_eq!(back.files, ["i.png"]);
+        assert_eq!(back.icon, "voicemail");
+        // A phone shows its model's icon, else the app's.
+        assert_eq!(back.icon_for("D60"), [PNG, b"color"].concat());
+        assert_eq!(back.icon_for("D40"), PNG);
         // The same bytes as an app's own section: the capabilities are not
         // the app's to declare.
-        let (own, _) = Manifest::from_wasm(&module_with(&m.record())).unwrap();
+        let own = Manifest::from_wasm(&module_with(&m.record())).unwrap();
         assert!(own.capabilities.is_empty());
     }
 
     #[test]
     fn the_section_is_found_and_replaced_in_a_component_too() {
         let m = sample();
-        let files = vec![("pic.png".to_string(), vec![1, 2, 3])];
-        let module = module_with(&m.section(&files));
+        let mut module = module_with(&m.section());
+        // A code section of five bytes.
+        module.extend([10, 5, 1, 2, 3, 4, 5]);
         let mut component = b"\0asm\x0d\0\x01\0".to_vec();
         component.push(1);
         put_varint(&mut component, module.len() as u64);
         component.extend(&module);
-        let (found, data) = Manifest::from_wasm(&component).unwrap();
+        let found = Manifest::from_wasm(&component).unwrap();
         assert_eq!(found.name, "vm");
         assert_eq!(found.wasm, "vm.wasm");
-        assert_eq!(data, files);
+        assert_eq!(code_size(&component), 5);
+        assert_eq!(code_size(b"not WebAssembly"), 15);
 
         let mut other = found.clone();
         other.name = "other".into();
-        let renamed = with_section(&component, &other.section(&[])).unwrap();
-        let (found, data) = Manifest::from_wasm(&renamed).unwrap();
-        assert_eq!((found.name.as_str(), data.len()), ("other", 0));
+        let renamed = with_section(&component, &other.section()).unwrap();
+        assert_eq!(Manifest::from_wasm(&renamed).unwrap().name, "other");
+        assert_eq!(code_size(&renamed), 5);
     }
 
     #[test]
@@ -773,17 +800,18 @@ mod tests {
             Manifest::from_wasm(&module_with(&[8, 1, 0x12, 1, b'-'])),
             Err(ManifestError::BadName(_))
         ));
-        let m = sample();
-        for bad in ["../x", ".hidden", "app.pb", "vm.wasm", "x.cwasm", ""] {
-            let files = vec![(bad.to_string(), vec![])];
-            assert!(
-                matches!(
-                    Manifest::from_wasm(&module_with(&m.section(&files))),
-                    Err(ManifestError::BadFile(_))
-                ),
-                "{bad:?}"
-            );
-        }
+        let mut m = sample();
+        m.icon_png = b"GIF89a".to_vec();
+        assert!(matches!(
+            Manifest::from_wasm(&module_with(&m.section())),
+            Err(ManifestError::BadIcon(_))
+        ));
+        let mut m = sample();
+        m.icons_for = vec![("D99".into(), PNG.to_vec())];
+        assert!(matches!(
+            Manifest::from_wasm(&module_with(&m.section())),
+            Err(ManifestError::BadIcon(_))
+        ));
     }
 
     #[test]

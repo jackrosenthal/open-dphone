@@ -1387,6 +1387,23 @@ pub struct Update {
 
 // ------------------------------------------------------------------ Apps
 
+/// A picture: the content of a PNG file.  It prints as its length, and is
+/// not part of what is written out of the state.
+#[derive(Clone, PartialEq, Eq, Default)]
+pub struct Picture(pub Arc<[u8]>);
+
+impl Picture {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl std::fmt::Debug for Picture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Picture({} bytes)", self.0.len())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct AppInfo {
     /// Package name (stock manifest `name`); the key for commands.
@@ -1400,13 +1417,13 @@ pub struct AppInfo {
     pub has_idle: bool,
     pub hidden: bool,
     pub builtin: bool,
-    /// The manifest's `iconFile`: a file of the package, or the name of
-    /// one of the phone's own app icons.
+    /// The name of one of the phone's own app icons the app asks for, if
+    /// it has no icon of its own (the manifest's `phone_icon`).
     pub icon: String,
-    /// Path of the package's icon file when `icon` names one that exists
-    /// (empty otherwise).
-    #[serde(default)]
-    pub icon_path: String,
+    /// The app's own icon for this model of phone, from its manifest
+    /// (empty: it has none).
+    #[serde(skip)]
+    pub icon_png: Picture,
     pub running: bool,
 }
 

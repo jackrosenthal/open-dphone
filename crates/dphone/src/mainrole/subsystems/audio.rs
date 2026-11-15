@@ -94,7 +94,7 @@ struct Playback {
 
 /// The longest sound file played, in 16 kHz samples (five minutes).
 const SOUND_MAX_SAMPLES: usize = 5 * 60 * dphone_media::ring::RING_RATE as usize;
-/// The largest sound file read (the largest file an app package may hold).
+/// The largest sound read.
 const SOUND_MAX_BYTES: u64 = 8 << 20;
 
 struct Sockets {
@@ -1151,6 +1151,17 @@ async fn commands(service: AudioService, store: Store) {
                     responder.reply(result.map(|()| Reply::Done).map_err(CommandError::Failed));
                 });
             }
+            Command::PlayData { sound, start_secs, app } => {
+                // Nor is decoding what an app hands over.
+                let service = service.clone();
+                tokio::spawn(async move {
+                    let loaded = tokio::task::spawn_blocking(move || decode_checked(&sound.0))
+                        .await
+                        .unwrap_or_else(|e| Err(format!("decoding the sound failed: {e}")));
+                    let result = loaded.and_then(|samples| service.play_file(samples, start_secs, app));
+                    responder.reply(result.map(|()| Reply::Done).map_err(CommandError::Failed));
+                });
+            }
             cmd => responder.reply(service.command(cmd)),
         }
     }
@@ -1163,7 +1174,15 @@ fn load_sound(path: &std::path::Path) -> Result<Vec<i16>, String> {
         return Err("not a regular file of at most 8 MiB".into());
     }
     let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let samples = decode_sound(&bytes)?;
+    decode_checked(&bytes)
+}
+
+/// The content of a sound file as 16 kHz mono samples.
+fn decode_checked(bytes: &[u8]) -> Result<Vec<i16>, String> {
+    if bytes.len() as u64 > SOUND_MAX_BYTES {
+        return Err("the sound is larger than 8 MiB".into());
+    }
+    let samples = decode_sound(bytes)?;
     if samples.len() > SOUND_MAX_SAMPLES {
         return Err("the sound is longer than five minutes".into());
     }

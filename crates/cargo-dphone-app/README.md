@@ -17,7 +17,7 @@ In the directory of an app (a `cdylib` crate that registers itself with `export_
 cargo dphone-app
 ```
 
-This runs `cargo build --release --target wasm32-unknown-unknown`, makes a WebAssembly component of the module cargo built, and writes the app, `target/dphone-app/<name>.wasm`, where `<name>` is the app's name in its manifest.  The manifest and the app's data files are in the file: `export_app!` put them into the module, and they stay in the component.
+This runs `cargo build --release --target wasm32-unknown-unknown`, makes a WebAssembly component of the module cargo built, and writes the app, `target/dphone-app/<name>.wasm`, where `<name>` is the app's name in its manifest.  The manifest is in the file (`export_app!` put it into the module, and it stays in the component), and so is the app's data, which is part of its code.
 
 - `-o <file>` writes the app there instead.
 - `-p <crate>` builds one app in a workspace of several (without `-p`, every app of the workspace is built), and `--manifest-path <path>` names the `Cargo.toml`.
@@ -25,7 +25,7 @@ This runs `cargo build --release --target wasm32-unknown-unknown`, makes a WebAs
 
 `cargo dphone-app build` is the same, spelled out, and `cargo dphone-app --help` lists everything.
 
-The tool reads the file as the phone will and refuses what the phone would refuse: a manifest the phone cannot read, or an app that uses an interface reserved for the firmware's built-in apps.  It prints the app's name and the interfaces of the phone the app uses (its capabilities, which the phone takes from the component's imports).
+The tool reads the file as the phone will and refuses what the phone would refuse: a manifest the phone cannot read, or an app that uses an interface reserved for the firmware's built-in apps.  It prints the app's name, its size and how much of that is code (the phone takes 8 MiB with 1 MiB of code), and the interfaces of the phone the app uses (its capabilities, which the phone takes from the component's imports).
 
 Install the file in the phone's web interface: the page "Apps", the button "Install App".
 

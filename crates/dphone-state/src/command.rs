@@ -55,6 +55,16 @@ pub enum ForwardKind {
     NoAnswer,
 }
 
+/// The content of a sound file.  It prints as its length.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SoundData(pub Vec<u8>);
+
+impl std::fmt::Debug for SoundData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SoundData({} bytes)", self.0.len())
+    }
+}
+
 /// A request.  See [`Command::domain`] for who handles each.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Command {
@@ -129,6 +139,9 @@ pub enum Command {
     /// [`crate::Event::PlaybackStopped`] follows when it ends, is stopped,
     /// or is cut off by the ringer.
     PlayFile { path: String, start_secs: u32, app: String },
+    /// The same for a sound an app holds in its own data: `sound` is the
+    /// content of such a file.
+    PlayData { sound: SoundData, start_secs: u32, app: String },
     /// Stop a ringtone preview or a sound file.
     StopSound,
 
@@ -244,7 +257,7 @@ impl Command {
             }
             SetAudioPath { .. } | SetMute { .. } | SetVolume { .. } | AdjustVolume { .. }
             | SetHeadsetMode { .. } | PlayTone { .. } | StopTone | PlaySound { .. }
-            | PlayFile { .. } | StopSound => Domain::Audio,
+            | PlayFile { .. } | PlayData { .. } | StopSound => Domain::Audio,
             InjectKey { .. } | InjectHook { .. } | Notify { .. } | DismissNotice { .. }
             | SetBacklight { .. } | SetContrast { .. } | ShowScreen { .. } | ResetIdleTimer => Domain::Ui,
             ReloadConfig | SetSettings { .. } | SetWallpaper { .. } | ReloadContacts => Domain::Config,

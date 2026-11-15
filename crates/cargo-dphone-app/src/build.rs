@@ -1,6 +1,6 @@
 //! From the module cargo builds to the app file: a component.
 
-use crate::manifest::{Capability, Files, Manifest};
+use crate::manifest::{Capability, Manifest};
 
 /// Wraps a core WebAssembly module built with `dphone-app-sdk` into a
 /// component.  The module carries the interface it was built against, and
@@ -37,8 +37,6 @@ pub struct BuiltApp {
     /// The manifest, with the capabilities: the interfaces the component
     /// imports.
     pub manifest: Manifest,
-    /// The app's data files.
-    pub files: Files,
     /// The app file: the component.
     pub component: Vec<u8>,
 }
@@ -47,11 +45,10 @@ pub struct BuiltApp {
 /// will.
 pub fn build(module: &[u8]) -> Result<BuiltApp, String> {
     let component = componentize(module)?;
-    let (mut manifest, files) = Manifest::from_wasm(&component).map_err(|e| e.to_string())?;
+    let mut manifest = Manifest::from_wasm(&component).map_err(|e| e.to_string())?;
     manifest.capabilities = capabilities(&component)?;
     Ok(BuiltApp {
         manifest,
-        files,
         component,
     })
 }

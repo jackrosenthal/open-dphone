@@ -318,5 +318,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.queues",
     display_name: "Queues",
     description: "Log in to call queues and see how they are doing",
-    icon: "queues",
+    phone_icon: "queues",
 }
