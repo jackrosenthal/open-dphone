@@ -8,6 +8,7 @@
   stdenv,
   rustToolchain,
   rustPlatform,
+  removeReferencesTo,
 }:
 rec {
   armTarget = "arm-unknown-linux-musleabi";
@@ -73,6 +74,7 @@ rec {
         nativeBuildInputs = [
           rustToolchain
           rustPlatform.cargoSetupHook
+          removeReferencesTo
         ]
         ++ nativeBuildInputs;
         env = (lib.optionalAttrs (target == armTarget) armEnv) // env;
@@ -94,6 +96,12 @@ rec {
           mkdir -p $out
           ${lib.concatMapStringsSep "\n" (b: "install -D -m 0755 ${outDir}/${b} $out/bin/${b}") bins}
           ${lib.concatMapStringsSep "\n" (a: "install -m 0644 ${outDir}/${a} $out/") artifacts}
+          # Panic messages from the standard library's generic code name its
+          # source files under the toolchain's store path, which would make
+          # the output, and the image it goes into, depend on the toolchain.
+          # The hash in those paths is overwritten, as crane does for the
+          # workspace's own binaries; nothing changes size.
+          find $out -type f -exec remove-references-to -t ${rustToolchain} {} +
           runHook postInstall
         '';
       }
