@@ -1,12 +1,18 @@
 # Builds the firmware image of every model with Nix and runs the flake's
-# checks, the same commands as locally:
+# checks.  The work is split into jobs that run at once, each building some
+# of the flake's outputs (.github/actions/nix-build):
 #
-#   nix build .#all
-#   nix flake check
+#   kernel, web, apps, brush, coreutils, sed, workspace,
+#   checks-deps                                           (nothing before them)
+#   rootfs, tests, clippy                                 (from those)
+#   one image per model, jffs2-mount                      (from rootfs)
+#   checks                                                (`nix flake check`)
+#   cache                                                 (for the next run)
 #
-# The images are uploaded as the workflow artifact `firmware`.  A pushed tag
-# vX.Y.Z (the workspace version in Cargo.toml) also publishes them as a
-# GitHub Release, with SHA256SUMS.
+# Each image is uploaded as a workflow artifact, `firmware-<model>`.  A
+# pushed tag vX.Y.Z (the workspace version in Cargo.toml) also publishes the
+# seven images as a GitHub Release, with SHA256SUMS, and then publishes
+# dphone-app-sdk to crates.io (trusted publishing).
 name: CI
 
 on:
@@ -24,92 +30,201 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
+  # The pieces that depend on nothing else in the repository.  The Rust
+  # jobs link for the phone with rust-lld; only the kernel uses the ARM C
+  # toolchain, which comes from the public binary cache.
   build:
-    name: Images and checks
+    name: ${{ matrix.name }}
     runs-on: ubuntu-24.04
-    # With an empty cache the job compiles the cross toolchain, the kernel,
-    # and the workspace.
-    timeout-minutes: 300
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: kernel
+            installables: .#kernel
+          - name: web
+            installables: .#web
+          - name: apps
+            installables: .#apps
+          - name: brush
+            installables: .#brush
+          - name: coreutils
+            installables: .#coreutils
+          - name: sed
+            installables: .#sed
+          # The image tool, and the dependencies of the firmware binary;
+          # the binary itself embeds the web frontend, so it is built in
+          # `rootfs`.
+          - name: workspace
+            installables: .#dphone-image .#dphone.cargoArtifacts
+          # The dependencies of the tests and of clippy.
+          - name: checks-deps
+            installables: .#checks.x86_64-linux.tests.cargoArtifacts
     steps:
       - uses: actions/checkout@v7
 
-      # A multi-user installation with the sandbox on, and /dev/kvm opened
-      # for the jffs2-mount check, which runs in a virtual machine.
-      # keep-outputs makes what a build needed (the toolchain, the stock
-      # images) live for as long as its result is, so that the garbage
-      # collection before a cache is saved leaves it in the store.
-      - uses: cachix/install-nix-action@v31
+      - uses: ./.github/actions/nix-build
         with:
-          extra_nix_config: |
-            keep-outputs = true
-            keep-derivations = true
+          name: ${{ matrix.name }}
+          installables: ${{ matrix.installables }}
+          cache: true
 
-      # The Nix store, in the GitHub Actions cache.  The key covers what
-      # decides the slow derivations (the toolchains, the dependencies, and
-      # the kernel); a change elsewhere rebuilds only the workspace's own
-      # crates and what follows from them.  On a miss, the store of an
-      # unfinished run with the same key is restored, or else the newest
-      # store of any key.
-      - name: Restore the Nix store
-        id: store
-        uses: nix-community/cache-nix-action/restore@v7
+  # The firmware binary and the root file system, which all models share.
+  # This job downloads the vendor's two stock images for the DSP firmware;
+  # the cache keeps what it takes from them.
+  rootfs:
+    name: rootfs
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/nix-build
         with:
-          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock', 'nix/**', 'kernel/**', 'Cargo.lock', 'apps/Cargo.lock', 'web/pnpm-lock.yaml') }}
-          restore-prefixes-first-match: |
-            nix-${{ runner.os }}-${{ hashFiles('flake.lock', 'nix/**', 'kernel/**', 'Cargo.lock', 'apps/Cargo.lock', 'web/pnpm-lock.yaml') }}-partial-
-            nix-${{ runner.os }}-
+          name: rootfs
+          installables: .#rootfs .#rootfs-tree .#dphone .#dphone-image .#kernel
+          cache: true
+          stores: nix-new-*
+          results: true
 
-      # Before the long build, and against the version the build itself uses
-      # (the name of the `all` output is open-dphone-X.Y.Z).
-      - name: The tag names the workspace version
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: test "$GITHUB_REF_NAME" = "v$(nix eval --raw .#all.name | sed 's/^open-dphone-//')"
+  model:
+    name: ${{ matrix.model }}
+    needs: rootfs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [d40, d45, d50, d60, d62, d65, d70]
+    steps:
+      - uses: actions/checkout@v7
 
-      - name: Build the images of all models
-        run: nix build .#all --print-build-logs --out-link result
+      - uses: ./.github/actions/nix-build
+        with:
+          installables: .#eff-${{ matrix.model }}
+          stores: nix-results-rootfs
 
-      - name: SHA256SUMS
+      # The out-link is the image itself, under its own name in the store.
+      - name: Copy the image out of the store
         run: |
+          image="$(readlink "$RUNNER_TEMP/nix/result")"
           mkdir dist
-          cp --dereference result/*.eff dist/
-          cd dist && sha256sum -- *.eff > SHA256SUMS && cat SHA256SUMS
+          cp "$image" "dist/${image#/nix/store/*-}"
+          ls -l dist
 
-      - name: Upload the images
+      - name: Upload the image
         uses: actions/upload-artifact@v7
         with:
-          name: firmware
+          name: firmware-${{ matrix.model }}
           path: dist
           if-no-files-found: error
 
-      - name: Run the checks
-        run: nix flake check --print-build-logs
+  # The tests download the vendor's stock images too, and build Asterisk
+  # with res_dpma_rs; the cache keeps both.
+  tests:
+    name: tests
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
 
-      # `nix flake check` leaves no garbage-collector roots; this builds
-      # nothing more, and makes the checks' results (and so what they
-      # needed) live, like the images under `result`.
-      - name: Keep the checks in the store
+      - uses: ./.github/actions/nix-build
+        with:
+          name: tests
+          installables: .#checks.x86_64-linux.tests
+          cache: true
+          stores: nix-new-*
+
+  clippy:
+    name: clippy
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/nix-build
+        with:
+          name: clippy
+          installables: .#checks.x86_64-linux.clippy
+          cache: true
+          stores: nix-new-*
+
+  # Runs in a virtual machine, with the runner's /dev/kvm.
+  jffs2-mount:
+    name: jffs2-mount
+    needs: rootfs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/nix-build
+        with:
+          name: jffs2-mount
+          installables: .#checks.x86_64-linux.jffs2-mount
+          stores: nix-results-rootfs
+
+  # Every check the flake defines.  The jobs above have built them all, so
+  # this builds nothing unless a check has been added without a job.
+  checks:
+    name: checks
+    needs: [rootfs, tests, clippy, jffs2-mount]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/nix-build
+        with:
+          cache: true
+          stores: nix-new-*
+
+      - run: nix flake check --print-build-logs
+
+  # What the jobs of this run added, joined to the cache that they started
+  # from, for the next run.  It runs after failures too, so that what did
+  # build is not built again.  The cache holds what the build of the images
+  # and the checks needs and the public binary cache does not have; that
+  # includes the vendor's stock images, so only a run that starts with no
+  # cache needs the vendor's server.
+  cache:
+    name: cache
+    needs: [build, rootfs, tests, clippy, jffs2-mount]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: nix
+        uses: ./.github/actions/nix-build
+        with:
+          cache: true
+          stores: nix-new-*
+
+      - name: Join and prune
+        id: joined
         run: |
+          cp --recursive "$RUNNER_TEMP/nix/in/." "$RUNNER_TEMP/nix/cache/"
           # shellcheck disable=SC2016 # the ${n} is Nix's
           checks="$(nix eval --raw .#checks.x86_64-linux --apply 'c: builtins.concatStringsSep " " (map (n: ".#checks.x86_64-linux.${n}") (builtins.attrNames c))')"
           # shellcheck disable=SC2086 # one argument per check
-          nix build --out-link result-check $checks
+          echo "key=nix-store-$(.github/actions/nix-build/store.sh prune "$RUNNER_TEMP/nix/cache" .#all $checks)" >> "$GITHUB_OUTPUT"
+          du --summarize --human-readable "$RUNNER_TEMP/nix/cache"
 
-      # Saved once per key by the first run that succeeds.  Until then, a
-      # failed run saves what it built under a key of its own, so that the
-      # next run does not start from nothing.  Garbage is collected only
-      # down to the given size, which is about what one build's closure
-      # takes, so a store restored from an older key does not grow without
-      # bound.
-      - name: Save the Nix store
-        if: ${{ !cancelled() && steps.store.outputs.hit-primary-key != 'true' }}
-        uses: nix-community/cache-nix-action/save@v7
+      - if: steps.joined.outputs.key != steps.nix.outputs.cache-key
+        uses: actions/cache/save@v6
         with:
-          primary-key: ${{ steps.store.outputs.primary-key }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
-          gc-max-store-size-linux: 12G
+          path: ${{ runner.temp }}/nix/cache
+          key: ${{ steps.joined.outputs.key }}
 
   release:
     name: GitHub Release
-    needs: build
+    needs: [model, checks]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -118,23 +233,81 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: firmware
+          pattern: firmware-*
           path: dist
+          merge-multiple: true
 
       # The images are named <X_Y_Z>_<MODEL>_firmware.eff after the version
-      # they were built with: exactly the seven of the tag's version, and
-      # the sums the build made of them.
+      # they were built with: exactly the seven of the tag's version.
       - name: The tag names the version of every image
         working-directory: dist
         run: |
           version="$(echo "${GITHUB_REF_NAME#v}" | tr . _)"
           expected="$(printf '%s\n' "$version"_D{40,45,50,60,62,65,70}_firmware.eff)"
-          test "$(printf '%s\n' *.eff | LC_ALL=C sort)" = "$expected"
-          sha256sum --check --strict SHA256SUMS
-          test "$(wc -l < SHA256SUMS)" -eq 7
+          test "$(printf '%s\n' * | LC_ALL=C sort)" = "$expected"
 
+      - name: SHA256SUMS
+        working-directory: dist
+        run: sha256sum -- *.eff > SHA256SUMS && cat SHA256SUMS
+
+      # Running the job again replaces the files of the release it made.
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.eff dist/SHA256SUMS --verify-tag --generate-notes
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/*.eff dist/SHA256SUMS --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.eff dist/SHA256SUMS --verify-tag --generate-notes
+          fi
+
+  # Last, because a version on crates.io cannot be replaced: everything
+  # before it can be run again.  Running this job again after it has
+  # published does nothing.
+  publish:
+    name: Publish to crates.io
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown && rustup default stable
+
+      # The SDK has the firmware's version.
+      - name: The tag names the SDK's version
+        id: version
+        run: |
+          version="$(cargo metadata --locked --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.name == "dphone-app-sdk") | .version')"
+          test "$GITHUB_REF_NAME" = "v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Whether crates.io has this version already
+        id: published
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' --user-agent 'open-dphone-ci' "https://crates.io/api/v1/crates/dphone-app-sdk/$VERSION")"
+          case "$status" in
+            200) echo "yes=true" >> "$GITHUB_OUTPUT" ;;
+            404) echo "yes=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "crates.io answered $status" >&2; exit 1 ;;
+          esac
+
+      # Exchanges the job's OIDC token for a short-lived crates.io token;
+      # the crate's trusted publisher is configured on crates.io.
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+        if: steps.published.outputs.yes == 'false'
+
+      - name: Publish
+        if: steps.published.outputs.yes == 'false'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish --locked -p dphone-app-sdk

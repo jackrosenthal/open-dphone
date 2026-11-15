@@ -1,0 +1,107 @@
+# One job's share of the Nix build: install Nix, take what earlier jobs of
+# the run and earlier runs have built, build, and pass on what is new.
+# store.sh has the details of what is kept.
+name: Nix build
+description: Build flake outputs with what other jobs and earlier runs have built
+
+inputs:
+  installables:
+    description: What `nix build` builds; nothing is built when empty
+    default: ''
+  cache:
+    description: Whether to take what earlier runs built (the cache that the job `cache` saves)
+    default: 'false'
+  stores:
+    description: What to take of earlier jobs of this run, as an artifact name pattern
+    default: ''
+  name:
+    description: >-
+      Uploads what the job added to the store as the artifact nix-new-<name>,
+      for the jobs after it and for the cache
+    default: ''
+  results:
+    description: >-
+      Whether to upload the built results by themselves as the artifact
+      nix-results-<name>, for jobs that need nothing else
+    default: 'false'
+
+outputs:
+  cache-key:
+    description: The key of the cache that was restored, if one was
+    value: ${{ steps.restore.outputs.cache-matched-key }}
+
+runs:
+  using: composite
+  steps:
+    # Made here, by the runner's user: Nix would make a missing directory
+    # itself, as root.
+    - shell: bash
+      run: mkdir -p "$RUNNER_TEMP"/nix/{cache,in,new,results}
+
+    # A multi-user installation with the sandbox on, and with /dev/kvm
+    # opened.  The installer sets `max-jobs = auto`, and `cores` is left at
+    # 0, so Nix builds as many derivations at once as the runner has cores,
+    # and each may use all of them.  The two directories are binary caches
+    # of unsigned paths: earlier jobs' and earlier runs'.
+    - uses: cachix/install-nix-action@v31
+      with:
+        extra_nix_config: |
+          extra-substituters = file://${{ runner.temp }}/nix/in?trusted=1 file://${{ runner.temp }}/nix/cache?trusted=1
+
+    - if: inputs.stores != ''
+      uses: actions/download-artifact@v8
+      with:
+        pattern: ${{ inputs.stores }}
+        path: ${{ runner.temp }}/nix/in
+        merge-multiple: true
+
+    # The newest cache, from this branch or else the default branch.  Its
+    # key names its contents, so only a prefix is known here.
+    - id: restore
+      if: inputs.cache == 'true'
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ runner.temp }}/nix/cache
+        key: nix-store-${{ github.run_id }}
+        restore-keys: nix-store-
+
+    - if: inputs.installables != ''
+      shell: bash
+      run: |
+        # shellcheck disable=SC2086 # one argument per installable
+        nix build --print-build-logs --out-link "$RUNNER_TEMP/nix/result" $INSTALLABLES
+      env:
+        INSTALLABLES: ${{ inputs.installables }}
+
+    # Also after a failed build, for what did build before the failure.
+    - if: ${{ !cancelled() && inputs.name != '' && inputs.installables != '' }}
+      shell: bash
+      run: |
+        # shellcheck disable=SC2086 # one argument per installable
+        "$GITHUB_ACTION_PATH/store.sh" new "$RUNNER_TEMP/nix/new" $INSTALLABLES
+        du --summarize --human-readable "$RUNNER_TEMP/nix/new"
+      env:
+        KNOWN: ${{ runner.temp }}/nix/cache ${{ runner.temp }}/nix/in
+        INSTALLABLES: ${{ inputs.installables }}
+
+    - if: ${{ !cancelled() && inputs.name != '' && inputs.installables != '' }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: nix-new-${{ inputs.name }}
+        path: ${{ runner.temp }}/nix/new
+        if-no-files-found: ignore
+        retention-days: 1
+
+    - if: inputs.results == 'true'
+      shell: bash
+      run: |
+        "$GITHUB_ACTION_PATH/store.sh" results "$RUNNER_TEMP/nix/results" "$RUNNER_TEMP"/nix/result*
+        du --summarize --human-readable "$RUNNER_TEMP/nix/results"
+
+    - if: inputs.results == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: nix-results-${{ inputs.name }}
+        path: ${{ runner.temp }}/nix/results
+        if-no-files-found: error
+        retention-days: 1
