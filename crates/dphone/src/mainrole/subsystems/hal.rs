@@ -122,7 +122,7 @@ pub async fn start(ctx: &Context) -> Option<SharedHal> {
     Some(shared)
 }
 
-/// Backlight on and a test pattern, best effort.
+/// Backlight on and a black screen until the UI draws the boot screen, best effort.
 fn splash(hal: &mut Hal) {
     for screen in hal.display.screens() {
         let max = hal.backlight.max_brightness(screen);
@@ -130,7 +130,7 @@ fn splash(hal: &mut Hal) {
             let _ = hal.backlight.set_brightness(screen, max);
         }
         let _ = hal.display.set_power(screen, true);
-        if let Err(e) = pattern(hal, screen, "bars") {
+        if let Err(e) = pattern(hal, screen, "black") {
             warn!("hal: display {screen:?}: {e}");
         }
     }
