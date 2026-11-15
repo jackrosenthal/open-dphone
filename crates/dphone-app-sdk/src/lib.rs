@@ -1,10 +1,11 @@
-//! Guest-side SDK for Open DPhone apps.
+//! The SDK for Open DPhone apps (the README tells how to build, package,
+//! and install one).
 //!
 //! An app is a `cdylib` built for `wasm32-unknown-unknown` that implements
 //! [`App`] and registers it with [`export_app!`]:
 //!
 //! ```ignore
-//! use app_sdk::prelude::*;
+//! use dphone_app_sdk::prelude::*;
 //!
 //! #[derive(Default)]
 //! struct Hello;
@@ -17,10 +18,10 @@
 //!     fn handle(&mut self, _e: Event) {}
 //! }
 //!
-//! app_sdk::export_app!(Hello);
+//! dphone_app_sdk::export_app!(Hello);
 //! ```
 //!
-//! The interface is defined once, in `crates/dphone-apps/wit/app.wit`; the
+//! The interface is defined once, in `wit/app.wit` in this crate; the
 //! modules re-exported here ([`ui`], [`pbx`], [`calls`], ...) are generated
 //! from it.  An app gets only the interfaces its manifest lists under
 //! `capabilities`; using another one makes the app fail to load.
@@ -30,10 +31,10 @@
 #[doc(hidden)]
 pub mod bindings {
     wit_bindgen::generate!({
-        path: "../dphone-apps/wit",
+        path: "wit",
         world: "app",
         pub_export_macro: true,
-        default_bindings_module: "app_sdk::bindings",
+        default_bindings_module: "dphone_app_sdk::bindings",
         generate_all,
     });
 }

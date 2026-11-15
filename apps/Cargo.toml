@@ -6,9 +6,10 @@ members = ["contacts", "voicemail", "status", "parking", "queues", "hotdesking",
 version = "3.0.0"
 edition = "2024"
 license = "GPL-2.0-or-later"
+authors = ["Jack Rosenthal <jack@rosenth.al>"]
 
 [workspace.dependencies]
-app-sdk = { path = "../crates/app-sdk" }
+dphone-app-sdk = { path = "../crates/dphone-app-sdk" }
 
 [profile.release]
 opt-level = "s"

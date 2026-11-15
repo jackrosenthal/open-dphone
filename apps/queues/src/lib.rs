@@ -1,8 +1,8 @@
 //! Queues: the user's call queues with their login state; log in and out,
 //! pause and resume, and view a queue's numbers for today.
 
-use app_sdk::prelude::*;
-use app_sdk::{InputMode, pbx_error_text, pbx_request};
+use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::{InputMode, pbx_error_text, pbx_request};
 
 const SK_LOGIN: u32 = 1;
 const SK_LOGOUT: u32 = 2;
@@ -312,4 +312,4 @@ impl App for Queues {
     }
 }
 
-app_sdk::export_app!(Queues);
+dphone_app_sdk::export_app!(Queues);

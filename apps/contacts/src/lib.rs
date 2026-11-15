@@ -2,9 +2,9 @@
 //! `/nvdata/contact_lists/`), by group, with search, presence, details,
 //! and dialing.
 
-use app_sdk::prelude::*;
-use app_sdk::xml;
-use app_sdk::{InputMode, Presence};
+use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::xml;
+use dphone_app_sdk::{InputMode, Presence};
 
 const SK_DIAL: u32 = 1;
 const SK_DETAILS: u32 = 2;
@@ -477,4 +477,4 @@ impl App for Contacts {
     }
 }
 
-app_sdk::export_app!(Contacts);
+dphone_app_sdk::export_app!(Contacts);

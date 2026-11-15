@@ -6,8 +6,8 @@
 //! is on screen (and rejects it otherwise), and sends `*`, `#`, and `0` as
 //! DTMF for rewind, skip, and pause.
 
-use app_sdk::prelude::*;
-use app_sdk::{pbx_error_text, pbx_request};
+use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::{pbx_error_text, pbx_request};
 
 const SK_PLAY: u32 = 1;
 const SK_DELETE: u32 = 2;
@@ -413,7 +413,7 @@ impl App for Voicemail {
                 }
             }
             Event::Call(c) => {
-                if self.call == Some(c.id) && c.state == app_sdk::CallState::Ended {
+                if self.call == Some(c.id) && c.state == dphone_app_sdk::CallState::Ended {
                     self.after_playing();
                 }
             }
@@ -529,4 +529,4 @@ impl App for Voicemail {
     }
 }
 
-app_sdk::export_app!(Voicemail);
+dphone_app_sdk::export_app!(Voicemail);

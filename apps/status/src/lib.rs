@@ -1,8 +1,8 @@
 //! Status: choose the user's presence from the options the PBX offers and
 //! set an optional message.
 
-use app_sdk::prelude::*;
-use app_sdk::{InputMode, pbx_error_text, pbx_request};
+use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::{InputMode, pbx_error_text, pbx_request};
 
 const SK_SELECT: u32 = 1;
 const SK_MESSAGE: u32 = 2;
@@ -249,4 +249,4 @@ impl App for Status {
     }
 }
 
-app_sdk::export_app!(Status);
+dphone_app_sdk::export_app!(Status);

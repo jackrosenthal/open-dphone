@@ -1,8 +1,8 @@
 //! Parking: lists the calls parked in the user's parking lots and
 //! retrieves one by dialing its space.
 
-use app_sdk::prelude::*;
-use app_sdk::{pbx_error_text, pbx_request};
+use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::{pbx_error_text, pbx_request};
 
 const SK_RETRIEVE: u32 = 1;
 const SK_REFRESH: u32 = 2;
@@ -174,4 +174,4 @@ impl App for Parking {
     }
 }
 
-app_sdk::export_app!(Parking);
+dphone_app_sdk::export_app!(Parking);

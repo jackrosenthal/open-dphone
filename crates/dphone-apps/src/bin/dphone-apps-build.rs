@@ -53,7 +53,7 @@ fn write(p: &Path, data: &[u8]) -> Res<()> {
     std::fs::write(p, data).map_err(|e| format!("{}: {e}", p.display()))
 }
 
-/// Wraps a core module built with `app-sdk` into a component.
+/// Wraps a core module built with `dphone-app-sdk` into a component.
 fn componentize(module: &[u8]) -> Res<Vec<u8>> {
     wit_component::ComponentEncoder::default()
         .module(module)

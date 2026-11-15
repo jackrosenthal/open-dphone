@@ -16,9 +16,9 @@
 
 mod game;
 
-use app_sdk::canvas::{self, Bitmap, Color, Op, Role};
-use app_sdk::prelude::*;
-use app_sdk::{Align, Font};
+use dphone_app_sdk::canvas::{self, Bitmap, Color, Op, Role};
+use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::{Align, Font};
 use game::{Game, Pipe, Rules};
 
 /// The keys that start a game and flap: Select and the keypad.  Claimed,
@@ -469,7 +469,7 @@ impl Screen {
             }
         }
         if let Err(e) = canvas::draw(self.canvas, &ops) {
-            app_sdk::log_warn(&format!("drawing refused: {e}"));
+            dphone_app_sdk::log_warn(&format!("drawing refused: {e}"));
         }
     }
 }
@@ -520,7 +520,7 @@ impl Sparrow {
     }
 
     fn seed(&self) -> u32 {
-        app_sdk::read_string(Location::Nv, SEED_FILE)
+        dphone_app_sdk::read_string(Location::Nv, SEED_FILE)
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or_else(|| (timers::now_ms() as u32) ^ self.games.wrapping_mul(0x9E37_79B9))
     }
@@ -533,7 +533,7 @@ impl Sparrow {
             if let Err(e) =
                 storage::write(Location::Nv, BEST_FILE, self.best.to_string().as_bytes())
             {
-                app_sdk::log_warn(&format!("the best score was not saved: {e:?}"));
+                dphone_app_sdk::log_warn(&format!("the best score was not saved: {e:?}"));
             }
         }
     }
@@ -589,7 +589,7 @@ impl App for Sparrow {
     fn start(&mut self) {
         // The whole display, from the first frame.
         ui::set_full_screen(true);
-        self.best = app_sdk::read_string(Location::Nv, BEST_FILE)
+        self.best = dphone_app_sdk::read_string(Location::Nv, BEST_FILE)
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or(0);
     }
@@ -605,4 +605,4 @@ impl App for Sparrow {
     }
 }
 
-app_sdk::export_app!(Sparrow);
+dphone_app_sdk::export_app!(Sparrow);

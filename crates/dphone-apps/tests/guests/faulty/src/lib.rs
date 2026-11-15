@@ -2,7 +2,7 @@
 //! softkey 2 allocates without bound, softkey 3 exercises storage and
 //! reports what happened, softkey 4 sets a timer.
 
-use app_sdk::prelude::*;
+use dphone_app_sdk::prelude::*;
 
 #[derive(Default)]
 struct Faulty {
@@ -99,4 +99,4 @@ impl App for Faulty {
     }
 }
 
-app_sdk::export_app!(Faulty);
+dphone_app_sdk::export_app!(Faulty);

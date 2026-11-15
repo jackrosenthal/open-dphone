@@ -4,6 +4,7 @@ description = "Open DPhone: UI toolkit, skins, native screens, and the app view 
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 publish = false
 
 [dependencies]

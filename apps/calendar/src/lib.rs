@@ -3,8 +3,8 @@
 //! time; the phones have no clock chip, so until the time has been set
 //! there is no calendar to show.
 
-use app_sdk::prelude::*;
-use app_sdk::{Align, Font};
+use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::{Align, Font};
 
 const SK_PREV: u32 = 1;
 const SK_TODAY: u32 = 2;
@@ -270,4 +270,4 @@ impl App for Calendar {
     }
 }
 
-app_sdk::export_app!(Calendar);
+dphone_app_sdk::export_app!(Calendar);

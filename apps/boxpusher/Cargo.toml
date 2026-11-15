@@ -3,11 +3,12 @@ name = "boxpusher"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 publish = false
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-app-sdk.workspace = true
+dphone-app-sdk.workspace = true
 boxpusher-game = { path = "game" }

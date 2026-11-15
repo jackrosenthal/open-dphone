@@ -1,6 +1,6 @@
 //! The Open DPhone app runtime: WebAssembly components interpreted by
 //! Wasmtime's Pulley interpreter, the host side of the WIT interface in
-//! `wit/app.wit`, app packages, and the [`AppManager`] the main role runs.
+//! `crates/dphone-app-sdk/wit/app.wit`, app packages, and the [`AppManager`] the main role runs.
 //!
 //! # For the integrator
 //!

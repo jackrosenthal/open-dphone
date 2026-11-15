@@ -9,8 +9,8 @@
 //! after a step.  The app makes no sound and uses no timer, and like any
 //! app it leaves the screen to a call.
 
-use app_sdk::prelude::*;
-use app_sdk::{Align, Font, canvas, read_string};
+use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::{Align, Font, canvas, read_string};
 use boxpusher_game::draw::{Layout, Op, Painter, Palette, Rgb};
 use boxpusher_game::{Dir, Game, LEVELS, Level, Step};
 
@@ -101,7 +101,7 @@ fn draw(w: Widget, ops: Vec<Op>) {
         })
         .collect();
     if let Err(e) = canvas::draw(w, &ops) {
-        app_sdk::log_error(&format!("draw: {e}"));
+        dphone_app_sdk::log_error(&format!("draw: {e}"));
     }
 }
 
@@ -395,4 +395,4 @@ impl App for BoxPusher {
     }
 }
 
-app_sdk::export_app!(BoxPusher);
+dphone_app_sdk::export_app!(BoxPusher);

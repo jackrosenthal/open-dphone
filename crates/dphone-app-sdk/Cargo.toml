@@ -1,0 +1,16 @@
+[package]
+name = "dphone-app-sdk"
+description = "SDK for writing apps for Open DPhone, the open firmware for Digium D-series desk phones: WebAssembly components that draw on the phone's screen, read its keys, and talk to the PBX"
+# The firmware's version: the SDK of a release is the interface of that
+# release's firmware, and is published with it.
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["digium", "voip", "phone", "wasm", "sdk"]
+categories = ["wasm", "embedded"]
+
+[dependencies]
+wit-bindgen = { version = "0.63", default-features = false, features = ["macros", "realloc"] }

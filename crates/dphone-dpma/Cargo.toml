@@ -4,6 +4,7 @@ description = "Open DPhone: DPMA provisioning client and app-request transport o
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 publish = false
 
 [features]

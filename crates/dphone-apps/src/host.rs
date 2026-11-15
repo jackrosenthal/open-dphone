@@ -1,5 +1,6 @@
-//! The host side of `wit/app.wit`: per-app context and the implementation
-//! of every imported interface.
+//! The host side of the app interface
+//! (`crates/dphone-app-sdk/wit/app.wit`): per-app context and the
+//! implementation of every imported interface.
 
 use crate::manifest::{Capability, Manifest};
 use crate::services::{APP_VISIBLE_SETTINGS, Completion, HttpRequest, PbxRequest, Services};
@@ -15,7 +16,9 @@ use std::time::Duration;
 
 pub(crate) mod bindings {
     wasmtime::component::bindgen!({
-        path: "wit",
+        // The interface is defined once, in the SDK crate, which carries
+        // it to crates.io.
+        path: "../dphone-app-sdk/wit",
         world: "app",
     });
 }

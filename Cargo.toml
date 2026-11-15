@@ -4,7 +4,7 @@ resolver = "3"
 # being created (no manifest, or one that does not parse yet) must not break
 # cargo for every other crate.  Add a crate here when it builds.
 members = [
-    "crates/app-sdk",
+    "crates/dphone-app-sdk",
     "crates/dphone",
     "crates/dphone-apps",
     "crates/dphone-bt",
@@ -34,7 +34,8 @@ exclude = ["apps"]
 version = "3.0.0"
 edition = "2024"
 license = "GPL-2.0-or-later"
-repository = "https://github.com/open-dphone/open-dphones"
+authors = ["Jack Rosenthal <jack@rosenth.al>"]
+repository = "https://github.com/jackrosenthal/open-dphone"
 
 [profile.dev]
 debug = 0

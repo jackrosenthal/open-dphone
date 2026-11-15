@@ -26,10 +26,10 @@ let
       inherit root;
       fileset = lib.fileset.unions [
         (root + "/${dir}")
-        # app-sdk inherits its package fields from the firmware workspace.
+        # The SDK (with the interface definition) inherits its package
+        # fields from the firmware workspace.
         (root + "/Cargo.toml")
-        (root + "/crates/app-sdk")
-        (root + "/crates/dphone-apps/wit")
+        (root + "/crates/dphone-app-sdk")
       ];
     };
     cargoRoot = dir;

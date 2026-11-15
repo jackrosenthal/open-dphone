@@ -17,8 +17,8 @@
 //! a key draws again only the rows it changed.  The app makes no sound,
 //! and like any app it leaves the screen to a call.
 
-use app_sdk::prelude::*;
-use app_sdk::{Align, Font, canvas, read_string};
+use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::{Align, Font, canvas, read_string};
 use lightup_game::draw::{Layout, Look, Op, Painter, Palette, Rgb};
 use lightup_game::generate::{Difficulty, Generator, Params, Progress, SIZES};
 use lightup_game::{Act, Game, Grid};
@@ -157,7 +157,7 @@ fn draw(w: Widget, ops: Vec<Op>) {
         })
         .collect();
     if let Err(e) = canvas::draw(w, &ops) {
-        app_sdk::log_error(&format!("draw: {e}"));
+        dphone_app_sdk::log_error(&format!("draw: {e}"));
     }
 }
 
@@ -386,7 +386,7 @@ impl LightUp {
         match progress {
             Progress::Working => making.timer = Some(timers::set(PAUSE_MS, false)),
             Progress::Done | Progress::Failed => {
-                app_sdk::log_info(&format!(
+                dphone_app_sdk::log_info(&format!(
                     "{} {}: {} after {} ms, {} grids, {} steps",
                     size_name(making.side),
                     making.difficulty.name(),
@@ -615,4 +615,4 @@ impl App for LightUp {
     }
 }
 
-app_sdk::export_app!(LightUp);
+dphone_app_sdk::export_app!(LightUp);

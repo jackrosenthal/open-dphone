@@ -3,9 +3,9 @@
 //! phone's own screens, which have the whole display and every key; this
 //! app is the menu that leads to them, and the two status pages.
 
-use app_sdk::Align;
-use app_sdk::diagnostics::{self, HardwareTest};
-use app_sdk::prelude::*;
+use dphone_app_sdk::Align;
+use dphone_app_sdk::diagnostics::{self, HardwareTest};
+use dphone_app_sdk::prelude::*;
 
 const SK_SELECT: u32 = 1;
 const SK_BACK: u32 = 4;
@@ -245,4 +245,4 @@ impl App for Diagnostics {
     }
 }
 
-app_sdk::export_app!(Diagnostics);
+dphone_app_sdk::export_app!(Diagnostics);

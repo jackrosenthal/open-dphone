@@ -1,8 +1,8 @@
 //! Hot desking: log a user in to this phone with an extension and PIN, or
 //! log the current user out.  The phone reprovisions for the new user.
 
-use app_sdk::prelude::*;
-use app_sdk::{InputMode, hotdesk};
+use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::{InputMode, hotdesk};
 
 const SK_LOGIN: u32 = 1;
 const SK_LOGOUT: u32 = 2;
@@ -122,4 +122,4 @@ impl App for HotDesk {
     }
 }
 
-app_sdk::export_app!(HotDesk);
+dphone_app_sdk::export_app!(HotDesk);

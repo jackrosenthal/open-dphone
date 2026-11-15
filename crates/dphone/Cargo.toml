@@ -4,6 +4,7 @@ description = "Open DPhone: the one userspace binary (init role, main role, diag
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 publish = false
 
 [lib]

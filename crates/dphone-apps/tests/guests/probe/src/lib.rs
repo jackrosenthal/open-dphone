@@ -3,8 +3,8 @@
 //! package, 3 stops it, 4 resets the idle timer, 5 shows package pictures.
 //! Its idle window says whether the idle screen is showing.
 
-use app_sdk::prelude::*;
-use app_sdk::{Header, ListItem};
+use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::{Header, ListItem};
 
 #[derive(Default)]
 struct Probe {
@@ -78,4 +78,4 @@ impl App for Probe {
     }
 }
 
-app_sdk::export_app!(Probe);
+dphone_app_sdk::export_app!(Probe);
