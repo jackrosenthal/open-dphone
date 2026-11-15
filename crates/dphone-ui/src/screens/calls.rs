@@ -62,6 +62,43 @@ impl Dialer {
         }
     }
 
+    /// The dial plan of the account the call would go out on.
+    fn plan<'a>(&self, cx: &'a Cx) -> Option<&'a crate::dialplan::DialPlan> {
+        let acct = self
+            .account
+            .or(cx.st.accounts.default_account)
+            .and_then(|id| cx.st.accounts.get(id))
+            .or(cx.st.accounts.accounts.first());
+        match acct.and_then(|a| cx.cfg.dial_plans.iter().find(|(id, _)| *id == a.config_id)) {
+            Some((_, plan)) => plan.as_ref(),
+            None => cx.cfg.default_dial_plan.as_ref(),
+        }
+    }
+
+    /// Whether the digits are dialed with no key press: an off-hook
+    /// dialer for a new call with something entered.
+    fn dials_by_itself(&self) -> bool {
+        self.live.is_some() && !self.text.is_empty() && self.purpose == Purpose::Call
+    }
+
+    /// When the digits entered are dialed if no further key comes: when
+    /// the dial plan says so (stock), and at the latest after the
+    /// inter-digit timeout (not stock: there, digits that could still
+    /// become a match wait for a key, and without a plan nothing is
+    /// dialed).
+    fn dial_at(&self, cx: &Cx) -> Option<u64> {
+        if !self.dials_by_itself() {
+            return None;
+        }
+        let timeout = self.last_key_ms + cx.cfg.dial_timeout_ms as u64;
+        let elapsed = (cx.now_ms.saturating_sub(self.last_key_ms) / 1000) as u32;
+        let by_plan = self
+            .plan(cx)
+            .and_then(|plan| plan.dial_after(&self.text, elapsed))
+            .map(|secs| self.last_key_ms + u64::from(secs) * 1000);
+        Some(by_plan.map_or(timeout, |at| at.min(timeout)))
+    }
+
     fn dial(&mut self, cx: &Cx, path: Option<AudioPath>) -> Nav {
         let target = self.text.trim().to_string();
         if target.is_empty() {
@@ -135,6 +172,11 @@ impl Screen for Dialer {
         match key {
             Key::Digit(_) | Key::Star | Key::Pound => {
                 self.type_char(cx, key.dial_char().unwrap_or('0'));
+                // Stock: the call starts by itself once the dial plan
+                // says the number is complete.
+                if self.dial_at(cx).is_some_and(|at| cx.now_ms >= at) {
+                    return self.dial(cx, None);
+                }
                 Nav::Stay
             }
             Key::Select => self.dial(cx, None),
@@ -229,17 +271,10 @@ impl Screen for Dialer {
         call_card(cx, c, 0, &card);
     }
     fn deadline(&self, cx: &Cx) -> Option<u64> {
-        if self.live.is_some() && !self.text.is_empty() && self.purpose == Purpose::Call {
-            Some(self.last_key_ms + cx.cfg.dial_timeout_ms as u64)
-        } else {
-            None
-        }
+        self.dial_at(cx)
     }
     fn tick(&mut self, cx: &Cx) -> Nav {
-        if self.live.is_some()
-            && !self.text.is_empty()
-            && cx.now_ms >= self.last_key_ms + cx.cfg.dial_timeout_ms as u64
-        {
+        if self.dial_at(cx).is_some_and(|at| cx.now_ms >= at) {
             return self.dial(cx, None);
         }
         Nav::Stay

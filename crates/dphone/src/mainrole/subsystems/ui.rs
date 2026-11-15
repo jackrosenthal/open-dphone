@@ -11,6 +11,7 @@ use std::time::Duration;
 use dphone_config::Config;
 use dphone_hal::{Display, Frame, FrameInfo, Rect, Screen};
 use dphone_state::{HealthStatus, Subsystem};
+use dphone_ui::dialplan::DialPlan;
 use dphone_ui::{Ui, UiConfig, UiHandle};
 use log::{error, info};
 
@@ -108,7 +109,37 @@ fn ui_config(ctx: &Context, cfg: Option<&Config>) -> UiConfig {
     if let Some(name) = out.ringtones.iter().find(|n| n.eq_ignore_ascii_case(&active)) {
         out.ringtone = name.clone();
     }
+    // Stock: an account's `dial_plan`, else `default_dial_plan`; a plan
+    // that does not compile is no plan.
+    let default_plan = cfg.sip().default_dial_plan;
+    out.default_dial_plan = dial_plan(&default_plan);
+    out.dial_plans = cfg
+        .accounts()
+        .iter()
+        .map(|a| {
+            let plan = match a.dial_plan.as_deref() {
+                None | Some("default") => out.default_dial_plan.clone(),
+                Some(own) => dial_plan(own),
+            };
+            (a.account_id.clone(), plan)
+        })
+        .collect();
     out
+}
+
+fn dial_plan(plan: &str) -> Option<DialPlan> {
+    // This runs every minute; one warning per plan is enough.
+    static WARNED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    DialPlan::compile(plan)
+        .map_err(|e| {
+            let mut warned = WARNED.lock().unwrap();
+            if !warned.iter().any(|w| w == plan) {
+                warned.truncate(15);
+                warned.push(plan.to_string());
+                log::warn!("dial plan {plan:?} is not used: {e}");
+            }
+        })
+        .ok()
 }
 
 pub struct UiParts {

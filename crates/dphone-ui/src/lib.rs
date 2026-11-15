@@ -24,6 +24,7 @@
 
 pub mod appview;
 mod appview_impl;
+pub mod dialplan;
 pub mod font;
 pub mod gfx;
 pub mod icons;

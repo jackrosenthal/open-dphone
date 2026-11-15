@@ -19,6 +19,8 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::dialplan::DialPlan;
+
 /// Settings the integrator maps from the merged configuration.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UiConfig {
@@ -46,8 +48,15 @@ pub struct UiConfig {
     pub ringtone: String,
     pub ringtones: Vec<String>,
     /// Off-hook dialing: milliseconds after the last digit before the
-    /// number is dialed.
+    /// number is dialed when the dial plan has not dialed it.
     pub dial_timeout_ms: u32,
+    /// Off-hook dialing: each account's dial plan, by the account's
+    /// configuration id (stock `dial_plan`, or `default_dial_plan` for an
+    /// account without one); `None` when it does not compile.
+    pub dial_plans: Vec<(String, Option<DialPlan>)>,
+    /// The dial plan when the dialer has no account (stock
+    /// `default_dial_plan`).
+    pub default_dial_plan: Option<DialPlan>,
     /// Seconds each app's idle view shows before the next takes its turn
     /// (stock `idle_cycle_seconds`: 10 by default); 0 shows none.
     pub idle_cycle_secs: u32,
@@ -67,6 +76,8 @@ impl Default for UiConfig {
             ringtone: String::new(),
             ringtones: Vec::new(),
             dial_timeout_ms: 4000,
+            dial_plans: Vec::new(),
+            default_dial_plan: None,
             idle_cycle_secs: 10,
         }
     }

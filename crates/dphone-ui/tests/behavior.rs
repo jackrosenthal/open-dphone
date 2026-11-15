@@ -119,6 +119,127 @@ fn off_hook_dialing_times_out_into_a_call() {
     assert_eq!(r.screen(), "idle");
 }
 
+/// A D40 off-hook with one account (`021`) whose dial plan is `plan`,
+/// at a fixed time; returns the rig and that time in milliseconds.
+fn off_hook_with_plan(plan: &str) -> (Rig, u64) {
+    use dphone_ui::dialplan::DialPlan;
+    let mut r = Rig::new(Model::D40);
+    r.store.update::<Accounts, _>(|a| {
+        let mut acct = Account::new(AccountId(0));
+        acct.config_id = "021".into();
+        acct.user = "021".into();
+        a.accounts = vec![acct];
+        a.default_account = Some(AccountId(0));
+    });
+    r.ui.handle().set_config(UiConfig {
+        backlight_timeout_secs: 0,
+        dial_plans: vec![("021".into(), Some(DialPlan::compile(plan).unwrap()))],
+        // Another plan: the account's own is the one that counts.
+        default_dial_plan: Some(DialPlan::compile("x").unwrap()),
+        ..Default::default()
+    });
+    let t0 = 2_000_000;
+    r.ui.set_fixed_time(Some((t0, 1_794_607_087)));
+    r.ui.pump();
+    r.hook(true);
+    assert_eq!(r.screen(), "dialer");
+    (r, t0)
+}
+
+fn type_digits(r: &mut Rig, digits: &str) {
+    for d in digits.bytes() {
+        r.tap(Key::Digit(d - b'0'));
+    }
+}
+
+/// The dial plan the PBX provisions (`digit_map` of the line).
+const PBX_DIAL_PLAN: &str = "0xx|[2-9]xxxxxxxxx|1[2-9]xxxxxxxxxx";
+
+#[test]
+fn the_dial_plan_starts_the_call_at_the_last_digit() {
+    // An extension and a ten-digit number: complete matches.
+    for number in ["021", "2565551234"] {
+        let (mut r, _) = off_hook_with_plan(PBX_DIAL_PLAN);
+        type_digits(&mut r, &number[..number.len() - 1]);
+        assert!(r.call_cmds().is_empty(), "{number} dialed early");
+        assert_eq!(r.screen(), "dialer");
+        type_digits(&mut r, &number[number.len() - 1..]);
+        assert_eq!(
+            r.call_cmds(),
+            vec![Command::Dial { target: number.into(), account: None, path: Some(AudioPath::Handset) }],
+            "{number}"
+        );
+        assert_eq!(r.screen(), "idle");
+    }
+    // Digits no alternative can match are dialed at once (stock).
+    let (mut r, _) = off_hook_with_plan(PBX_DIAL_PLAN);
+    type_digits(&mut r, "11");
+    assert_eq!(r.call_cmds(), vec![Command::Dial { target: "11".into(), account: None, path: Some(AudioPath::Handset) }]);
+}
+
+#[test]
+fn eleven_digits_with_the_provisioned_plan() {
+    // The provisioned `1[2-9]xxxxxxxxxx` is twelve digits long, so
+    // 18004377950 is not a complete match: it is dialed by the inter-digit
+    // timeout, not at its last digit.
+    let (mut r, t0) = off_hook_with_plan(PBX_DIAL_PLAN);
+    type_digits(&mut r, "18004377950");
+    assert!(r.call_cmds().is_empty());
+    assert_eq!(r.screen(), "dialer");
+    r.ui.set_fixed_time(Some((t0 + 3_900, 1_794_607_090)));
+    r.ui.pump();
+    assert!(r.call_cmds().is_empty());
+    r.ui.set_fixed_time(Some((t0 + 4_000, 1_794_607_091)));
+    r.ui.pump();
+    assert_eq!(
+        r.call_cmds(),
+        vec![Command::Dial { target: "18004377950".into(), account: None, path: Some(AudioPath::Handset) }]
+    );
+    assert_eq!(r.screen(), "idle");
+
+    // With the eleven-digit alternative the call starts at the last digit.
+    let (mut r, _) = off_hook_with_plan("0xx|[2-9]xxxxxxxxx|1[2-9]xxxxxxxxx");
+    type_digits(&mut r, "1800437795");
+    assert!(r.call_cmds().is_empty());
+    type_digits(&mut r, "0");
+    assert_eq!(
+        r.call_cmds(),
+        vec![Command::Dial { target: "18004377950".into(), account: None, path: Some(AudioPath::Handset) }]
+    );
+}
+
+#[test]
+fn dial_plan_timers_dial_after_their_seconds() {
+    // `*xx.T3`: 3 seconds after the last key; a complete match that could
+    // still grow (`1xx` against `1xxx`): 2 seconds.
+    for (digits, secs) in [("172", 3u64), ("123", 2)] {
+        let (mut r, t0) = off_hook_with_plan("7xx|17x.T3|12xx|123");
+        type_digits(&mut r, digits);
+        assert!(r.call_cmds().is_empty(), "{digits}");
+        r.ui.set_fixed_time(Some((t0 + secs * 1000 - 100, 1_794_607_090)));
+        r.ui.pump();
+        assert!(r.call_cmds().is_empty(), "{digits}");
+        r.ui.set_fixed_time(Some((t0 + secs * 1000, 1_794_607_091)));
+        r.ui.pump();
+        assert_eq!(
+            r.call_cmds(),
+            vec![Command::Dial { target: digits.into(), account: None, path: Some(AudioPath::Handset) }],
+            "{digits}"
+        );
+    }
+}
+
+#[test]
+fn the_dial_plan_does_not_dial_on_hook_digits() {
+    let (mut r, _) = off_hook_with_plan(PBX_DIAL_PLAN);
+    r.hook(false);
+    assert_eq!(r.screen(), "idle");
+    let _ = r.call_cmds();
+    type_digits(&mut r, "021");
+    assert_eq!(r.screen(), "dialer");
+    assert!(r.call_cmds().is_empty());
+}
+
 #[test]
 fn speaker_and_headset_keys_go_off_hook_on_their_path() {
     for (key, path) in [(Key::Speaker, AudioPath::Speaker), (Key::Headset, AudioPath::Headset)] {
