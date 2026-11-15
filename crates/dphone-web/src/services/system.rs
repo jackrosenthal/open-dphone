@@ -60,7 +60,11 @@ pub async fn remove_app(ctx: Ctx, req: pb::RemoveAppRequest) -> Result<pb::Remov
 }
 
 fn disabled_apps(r: dphone_config::Resolved<Vec<String>>) -> pb::DisabledApps {
-    pb::DisabledApps { names: r.value, source: setting_source(r.source).into(), locked: r.locked }
+    pb::DisabledApps {
+        apps: r.value.into_iter().map(|name| crate::proto::dphone::settings::v1::App { name }).collect(),
+        source: setting_source(r.source).into(),
+        locked: r.locked,
+    }
 }
 
 pub async fn get_disabled_apps(
@@ -94,8 +98,8 @@ pub async fn set_app_enabled(
         // goes back to its default; an empty list overrides a provisioned
         // one.
         let provisioned = c.config().setting(dphone_config::settings::PROVISIONED_DISABLED_APPS).is_some();
-        let list = (!names.is_empty() || provisioned).then(|| names.join(","));
-        let config = c.update_dphone_settings(|s| s.disabled_apps = list).map_err(config_error)?;
+        let list = (!names.is_empty() || provisioned).then_some(names);
+        let config = c.update_dphone_settings(|s| s.set_disabled_apps(list.as_deref())).map_err(config_error)?;
         Ok(disabled_apps(config.disabled_apps()))
     })
     .await?;
@@ -264,7 +268,7 @@ pub async fn tail_logs(
 // ---------------------------------------------------------------- screen
 
 /// The keys a model has, by stock key name.
-fn model_keys(model: st::Model) -> Vec<String> {
+fn model_keys(model: st::Model) -> Vec<pb::Key> {
     let mut keys: Vec<Key> = (1..=model.line_keys()).map(Key::Line).collect();
     keys.extend((1..=4).map(Key::Soft));
     keys.extend([Key::Up, Key::Down, Key::Left, Key::Right, Key::Select, Key::Cancel]);
@@ -292,7 +296,7 @@ fn model_keys(model: st::Model) -> Vec<String> {
         st::Model::D65 => keys.push(Key::BlfPageRight),
         _ => {}
     }
-    keys.into_iter().map(Key::name).collect()
+    keys.into_iter().map(|key| pb::Key { name: key.name() }).collect()
 }
 
 pub async fn get_screen_layout(

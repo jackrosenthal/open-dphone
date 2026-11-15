@@ -15,6 +15,7 @@
 
 use std::io;
 
+use buffa::Enumeration as _;
 use buffa::text::{TextDecoder, TextFormat, encode_to_string_pretty};
 
 use crate::nvdata::Nvdata;
@@ -24,7 +25,7 @@ mod pb {
     include!(concat!(env!("OUT_DIR"), "/dphone.settings.v1.rs"));
 }
 
-pub use pb::DphoneSettings;
+pub use pb::{App, DisabledApps, DphoneSettings};
 
 /// The settings file, relative to the nvdata root.
 pub const SETTINGS_FILE: &str = "dphone_settings.txtpb";
@@ -79,8 +80,9 @@ pub const PROVISIONED_METRICS_ENABLED: &str = "dphone_metrics_enabled";
 pub const PROVISIONED_IDLE_SOFTKEYS: &str = "dphone_idle_softkeys";
 pub const PROVISIONED_DISABLED_APPS: &str = "dphone_disabled_apps";
 
-/// Parse a list of app names (`calendar,parking`).  Blank items are
-/// skipped, and a name is kept once.
+/// Parse the provisioned list of app names, which is the XML
+/// configuration's comma-separated value (`calendar,parking`).  Blank
+/// items are skipped, and a name is kept once.
 pub fn parse_app_list(list: &str) -> Vec<String> {
     let mut names: Vec<String> = Vec::new();
     for name in list.split(',').map(str::trim).filter(|n| !n.is_empty()) {
@@ -91,34 +93,174 @@ pub fn parse_app_list(list: &str) -> Vec<String> {
     names
 }
 
-/// The names an idle softkey list may hold, besides `app:<name>`.
-pub const IDLE_SOFTKEY_NAMES: &[&str] = &["call_log", "contacts", "status", "menu", "apps", "dnd", "forward", "redial"];
+/// A function an idle softkey can have.  The discriminants are the values
+/// of the `IdleSoftkey.Function` enum of `settings.proto`, which the web
+/// interface's messages use too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IdleFunction {
+    /// The call log; labeled "Missed Calls" while there are unseen ones.
+    CallLog = 1,
+    Contacts = 2,
+    /// Phone information.
+    Status = 3,
+    Menu = 4,
+    /// The app launcher.
+    Apps = 5,
+    /// Switches Do Not Disturb.
+    Dnd = 6,
+    /// The call forwarding menu.
+    Forward = 7,
+    Redial = 8,
+}
 
-/// The idle softkeys when no list is set.
-pub const DEFAULT_IDLE_SOFTKEYS: &str = "call_log,contacts,status,menu,apps,dnd,forward";
+impl IdleFunction {
+    pub const ALL: [IdleFunction; 8] = {
+        use IdleFunction::*;
+        [CallLog, Contacts, Status, Menu, Apps, Dnd, Forward, Redial]
+    };
+
+    /// The function's name in the provisioned (XML) list.
+    pub fn name(self) -> &'static str {
+        match self {
+            IdleFunction::CallLog => "call_log",
+            IdleFunction::Contacts => "contacts",
+            IdleFunction::Status => "status",
+            IdleFunction::Menu => "menu",
+            IdleFunction::Apps => "apps",
+            IdleFunction::Dnd => "dnd",
+            IdleFunction::Forward => "forward",
+            IdleFunction::Redial => "redial",
+        }
+    }
+
+    /// The value of the protobuf `IdleSoftkey.Function` enum.
+    pub fn number(self) -> i32 {
+        self as i32
+    }
+
+    /// The function a protobuf `IdleSoftkey.Function` value stands for.
+    pub fn from_number(number: i32) -> Option<IdleFunction> {
+        Self::ALL.into_iter().find(|f| f.number() == number)
+    }
+}
+
+/// A softkey of the idle screen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IdleSoftkey {
+    Function(IdleFunction),
+    /// Opens the app of this name.
+    App(String),
+}
+
+/// True for a name an app softkey can carry.
+pub fn valid_app_name(name: &str) -> bool {
+    !name.is_empty() && name.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'.'))
+}
+
+impl IdleSoftkey {
+    /// The entry of the settings file for this softkey.
+    pub fn to_setting(&self) -> pb::IdleSoftkey {
+        use pb::idle_softkey::{Action, Function};
+        let action = match self {
+            IdleSoftkey::Function(f) => {
+                Action::Function(Function::from_i32(f.number()).expect("the proto enum has every function").into())
+            }
+            IdleSoftkey::App(name) => Action::App(Box::new(App { name: name.clone() })),
+        };
+        pb::IdleSoftkey { action: Some(action) }
+    }
+
+    /// The softkey an entry of the settings file stands for; `None` for
+    /// an entry that is empty, or names no app.
+    pub fn from_setting(entry: &pb::IdleSoftkey) -> Option<IdleSoftkey> {
+        use pb::idle_softkey::Action;
+        match entry.action.as_ref()? {
+            Action::Function(f) => IdleFunction::from_number(f.to_i32()).map(IdleSoftkey::Function),
+            Action::App(app) => valid_app_name(&app.name).then(|| IdleSoftkey::App(app.name.clone())),
+        }
+    }
+}
+
+impl DphoneSettings {
+    /// True when the two say the same.  Not `==`: to the generated
+    /// message type a message field that is present and empty
+    /// (`disabled_apps {}`) equals an absent one, and those are different
+    /// settings.
+    pub fn same_as(&self, other: &DphoneSettings) -> bool {
+        self == other && self.disabled_apps.is_set() == other.disabled_apps.is_set()
+    }
+
+    /// The idle softkeys set in the file; entries that say nothing are
+    /// skipped.
+    pub fn local_idle_softkeys(&self) -> Vec<IdleSoftkey> {
+        self.idle_softkeys.iter().filter_map(IdleSoftkey::from_setting).collect()
+    }
+
+    /// Set the idle softkeys; none puts the provisioned or default ones
+    /// back.
+    pub fn set_idle_softkeys(&mut self, keys: &[IdleSoftkey]) {
+        self.idle_softkeys = keys.iter().map(IdleSoftkey::to_setting).collect();
+    }
+
+    /// The apps the file switches off, each name once; `None` when the
+    /// file does not say.
+    pub fn local_disabled_apps(&self) -> Option<Vec<String>> {
+        let list = self.disabled_apps.as_option()?;
+        let mut names: Vec<String> = Vec::new();
+        for name in list.apps.iter().map(|a| a.name.trim()).filter(|n| !n.is_empty()) {
+            if !names.iter().any(|n| n == name) {
+                names.push(name.to_owned());
+            }
+        }
+        Some(names)
+    }
+
+    /// Set the apps that are switched off.  An empty list switches every
+    /// app on, whatever the provisioning server said; `None` leaves it to
+    /// the server.
+    pub fn set_disabled_apps(&mut self, names: Option<&[String]>) {
+        self.disabled_apps = names
+            .map(|names| DisabledApps { apps: names.iter().map(|name| App { name: name.clone() }).collect() })
+            .into();
+    }
+}
+
+/// The idle softkeys when none are set.
+pub const DEFAULT_IDLE_SOFTKEYS: [IdleSoftkey; 7] = {
+    use IdleFunction::*;
+    [
+        IdleSoftkey::Function(CallLog),
+        IdleSoftkey::Function(Contacts),
+        IdleSoftkey::Function(Status),
+        IdleSoftkey::Function(Menu),
+        IdleSoftkey::Function(Apps),
+        IdleSoftkey::Function(Dnd),
+        IdleSoftkey::Function(Forward),
+    ]
+};
 
 /// The idle screen's softkeys in effect, where they came from, and whether
 /// the provisioning server froze them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IdleSoftkeys {
-    /// Each one of [`IDLE_SOFTKEY_NAMES`], or `app:<name>`.
-    pub keys: Vec<String>,
+    pub keys: Vec<IdleSoftkey>,
     pub source: SettingSource,
     pub locked: bool,
 }
 
-/// Parse an idle softkey list (`call_log,contacts,app:parking`).  Blank
-/// items are skipped; an unknown name is an error that names it.
-pub fn parse_idle_softkeys(list: &str) -> Result<Vec<String>, String> {
+/// Parse the provisioned idle softkey list, which is the XML
+/// configuration's comma-separated value (`call_log,contacts,app:parking`):
+/// function names ([`IdleFunction::name`]) and `app:<name>`.  Blank items
+/// are skipped; an unknown name is an error that names it.
+pub fn parse_idle_softkeys(list: &str) -> Result<Vec<IdleSoftkey>, String> {
     list.split(',')
         .map(str::trim)
         .filter(|item| !item.is_empty())
         .map(|item| {
-            let app = item.strip_prefix("app:").is_some_and(|name| {
-                !name.is_empty() && name.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'.'))
-            });
-            if app || IDLE_SOFTKEY_NAMES.contains(&item) {
-                Ok(item.to_owned())
+            if let Some(f) = IdleFunction::ALL.into_iter().find(|f| f.name() == item) {
+                Ok(IdleSoftkey::Function(f))
+            } else if let Some(app) = item.strip_prefix("app:").filter(|name| valid_app_name(name)) {
+                Ok(IdleSoftkey::App(app.to_owned()))
             } else {
                 Err(format!("unknown softkey {item:?}"))
             }
@@ -241,12 +383,21 @@ mod tests {
             ignore_provisioned_firmware: Some(true),
             serial_console: Some(true),
             metrics_enabled: Some(true),
-            idle_softkeys: Some("menu".into()),
-            disabled_apps: Some("calendar".into()),
+            idle_softkeys: vec![IdleSoftkey::Function(IdleFunction::Menu).to_setting()],
+            disabled_apps: Some(DisabledApps::default()).into(),
         };
         let text = encode_to_string_pretty(&all);
-        let names: Vec<&str> = text.lines().map(|l| l.split(':').next().unwrap()).collect();
-        assert_eq!(names, KNOWN_FIELDS);
+        // The top-level lines, `name: value` and `name {`; the encoder
+        // writes the repeated fields last.
+        let mut names: Vec<&str> = text
+            .lines()
+            .filter(|l| !l.starts_with([' ', '}']))
+            .map(|l| l.split([':', ' ']).next().unwrap())
+            .collect();
+        let mut known = KNOWN_FIELDS.to_vec();
+        names.sort();
+        known.sort();
+        assert_eq!(names, known);
     }
 
     #[test]
@@ -288,21 +439,76 @@ mod tests {
     }
 
     #[test]
-    fn idle_softkey_lists() {
+    fn provisioned_idle_softkey_lists() {
+        use IdleFunction::*;
+        let f = IdleSoftkey::Function;
+        let app = |name: &str| IdleSoftkey::App(name.to_owned());
         let names = parse_idle_softkeys;
-        assert_eq!(names("call_log, contacts,,app:parking ,dnd").unwrap(), ["call_log", "contacts", "app:parking", "dnd"]);
-        assert_eq!(names("").unwrap(), Vec::<String>::new());
+        assert_eq!(names("call_log, contacts,,app:parking ,dnd").unwrap(), [f(CallLog), f(Contacts), app("parking"), f(Dnd)]);
+        assert_eq!(names("").unwrap(), []);
         assert_eq!(names("menu,lunch").unwrap_err(), "unknown softkey \"lunch\"");
         assert!(names("app:").is_err() && names("app:a b").is_err());
         // Stock's keymap actions are not softkey names.
         assert!(names("info").is_err() && names("missed_or_call_log").is_err());
-        assert!(names(DEFAULT_IDLE_SOFTKEYS).is_ok());
+        let all = IdleFunction::ALL.map(IdleFunction::name).join(",");
+        assert_eq!(names(&all).unwrap(), IdleFunction::ALL.map(f));
     }
 
     #[test]
-    fn app_lists() {
+    fn provisioned_app_lists() {
         assert_eq!(parse_app_list(" calendar,,parking , calendar"), ["calendar", "parking"]);
         assert!(parse_app_list(" , ").is_empty());
+    }
+
+    /// The lists as the file has them: one entry per item, written and
+    /// read back, and written by hand.
+    #[test]
+    fn lists_in_the_file() {
+        use IdleFunction::*;
+        let keys = [IdleSoftkey::Function(CallLog), IdleSoftkey::App("parking".into()), IdleSoftkey::Function(Redial)];
+        let mut d = SettingsDocument::default();
+        d.settings.set_idle_softkeys(&keys);
+        d.settings.set_disabled_apps(Some(&["calendar".to_owned(), "parking".to_owned()]));
+        let text = d.to_text();
+        assert_eq!(
+            text,
+            format!(
+                "{HEADER}disabled_apps {{\n  apps {{\n    name: \"calendar\"\n  }}\n  apps {{\n    name: \"parking\"\n  }}\n}}\n\
+                 idle_softkeys {{\n  function: FUNCTION_CALL_LOG\n}}\nidle_softkeys {{\n  app {{\n    name: \"parking\"\n  }}\n}}\n\
+                 idle_softkeys {{\n  function: FUNCTION_REDIAL\n}}\n"
+            )
+        );
+        let again = SettingsDocument::parse(&text).unwrap();
+        assert_eq!(again, d);
+        assert_eq!(again.settings.local_idle_softkeys(), keys);
+        assert_eq!(again.settings.local_disabled_apps().unwrap(), ["calendar", "parking"]);
+
+        // Every function has a value in the proto enum.
+        for f in IdleFunction::ALL {
+            let entry = IdleSoftkey::Function(f).to_setting();
+            assert_eq!(IdleSoftkey::from_setting(&entry), Some(IdleSoftkey::Function(f)));
+        }
+
+        // By hand, on one line each; an empty entry and an app without a
+        // name say nothing, and a name is kept once.
+        let hand = "idle_softkeys { function: FUNCTION_MENU }\nidle_softkeys {}\nidle_softkeys { app {} }\n\
+                    idle_softkeys { app { name: \"queues\" } }\ndisabled_apps { apps { name: \"status\" } apps { name: \"status\" } }\n";
+        let d = SettingsDocument::parse(hand).unwrap();
+        assert_eq!(d.settings.local_idle_softkeys(), [IdleSoftkey::Function(Menu), IdleSoftkey::App("queues".into())]);
+        assert_eq!(d.settings.local_disabled_apps().unwrap(), ["status"]);
+
+        // Present and empty is not absent.
+        let d = SettingsDocument::parse("disabled_apps {}\n").unwrap();
+        assert_eq!(d.settings.local_disabled_apps(), Some(vec![]));
+        assert_eq!(d.to_text(), format!("{HEADER}disabled_apps {{}}\n"));
+        let absent = SettingsDocument::parse("").unwrap().settings;
+        assert_eq!(absent.local_disabled_apps(), None);
+        assert!(!absent.same_as(&d.settings) && absent.same_as(&absent.clone()) && d.settings.same_as(&d.settings.clone()));
+
+        // A function this firmware does not know, and a list as a string,
+        // do not parse.
+        assert!(SettingsDocument::parse("idle_softkeys { function: FUNCTION_LUNCH }").is_err());
+        assert!(SettingsDocument::parse("idle_softkeys: \"menu,dnd\"").is_err());
     }
 
     #[test]

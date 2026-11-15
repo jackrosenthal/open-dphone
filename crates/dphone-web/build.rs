@@ -1,8 +1,9 @@
 //! Build script, Rust only:
 //!
-//! 1. Compiles `proto/dphone/v1/*.proto` with protox (a pure-Rust protobuf
-//!    compiler, so no `protoc` is needed), and generates buffa message types and the
-//!    Connect service traits with connectrpc-build.
+//! 1. Compiles `proto/dphone/v1/*.proto`, and the settings file's types
+//!    they use, with protox (a pure-Rust protobuf compiler, so no `protoc`
+//!    is needed), and generates buffa message types and the Connect
+//!    service traits with connectrpc-build.
 //! 2. Embeds the built frontend (`web/dist`) precompressed with gzip and
 //!    brotli.  Without `web/dist`, a placeholder page is embedded, so the
 //!    crate builds on machines without node.
@@ -29,12 +30,17 @@ fn main() {
 fn protos(root: &Path, out: &Path) {
     let dir = root.join("dphone/v1");
     println!("cargo:rerun-if-changed={}", dir.display());
+    // The settings file's message types (`dphone.settings.v1`), which the
+    // service messages share.
+    let settings = root.join("dphone/settings/v1/settings.proto");
+    println!("cargo:rerun-if-changed={}", settings.display());
     let mut files: Vec<PathBuf> = fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
         .map(|e| e.unwrap().path())
         .filter(|p| p.extension().is_some_and(|x| x == "proto"))
         .collect();
     files.sort();
+    files.push(settings);
     // protox (pure Rust) produces the descriptor set, so the build needs no
     // `protoc`; connectrpc-build generates buffa message types and the
     // Connect service traits from it.

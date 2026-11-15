@@ -144,8 +144,21 @@ fn dial_plan(plan: &str) -> Option<DialPlan> {
 }
 
 /// The configured idle softkeys as the UI's.
-fn idle_softkeys(keys: &[String]) -> Vec<dphone_ui::IdleSoftkey> {
-    keys.iter().filter_map(|k| dphone_ui::IdleSoftkey::from_name(k)).collect()
+fn idle_softkeys(keys: &[dphone_config::IdleSoftkey]) -> Vec<dphone_ui::IdleSoftkey> {
+    use dphone_config::{IdleFunction, IdleSoftkey};
+    keys.iter()
+        .map(|key| match key {
+            IdleSoftkey::Function(IdleFunction::CallLog) => dphone_ui::IdleSoftkey::CallLog,
+            IdleSoftkey::Function(IdleFunction::Contacts) => dphone_ui::IdleSoftkey::Contacts,
+            IdleSoftkey::Function(IdleFunction::Status) => dphone_ui::IdleSoftkey::Status,
+            IdleSoftkey::Function(IdleFunction::Menu) => dphone_ui::IdleSoftkey::Menu,
+            IdleSoftkey::Function(IdleFunction::Apps) => dphone_ui::IdleSoftkey::Apps,
+            IdleSoftkey::Function(IdleFunction::Dnd) => dphone_ui::IdleSoftkey::Dnd,
+            IdleSoftkey::Function(IdleFunction::Forward) => dphone_ui::IdleSoftkey::Forward,
+            IdleSoftkey::Function(IdleFunction::Redial) => dphone_ui::IdleSoftkey::Redial,
+            IdleSoftkey::App(name) => dphone_ui::IdleSoftkey::App(name.clone()),
+        })
+        .collect()
 }
 
 pub struct UiParts {

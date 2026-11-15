@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/v1/screen.proto.
  */
 export const file_dphone_v1_screen: GenFile = /*@__PURE__*/
-  fileDesc("ChZkcGhvbmUvdjEvc2NyZWVuLnByb3RvEglkcGhvbmUudjEiWwoKU2NyZWVuSW5mbxIfCgJpZBgBIAEoDjITLmRwaG9uZS52MS5TY3JlZW5JZBINCgV3aWR0aBgCIAEoDRIOCgZoZWlnaHQYAyABKA0SDQoFY29sb3IYBCABKAgiMQoETGFtcBILCgNrZXkYASABKAkSDQoFY29sb3IYAiABKAkSDQoFYmxpbmsYAyABKAkiGAoWR2V0U2NyZWVuTGF5b3V0UmVxdWVzdCKiAQoXR2V0U2NyZWVuTGF5b3V0UmVzcG9uc2USDQoFbW9kZWwYASABKAkSDAoEc2tpbhgCIAEoCRImCgdzY3JlZW5zGAMgAygLMhUuZHBob25lLnYxLlNjcmVlbkluZm8SDAoEa2V5cxgEIAMoCRIaChJzb2Z0a2V5X2Jhcl9oZWlnaHQYBSABKA0SGAoQbWlycm9yX2F2YWlsYWJsZRgGIAEoCCJKChJXYXRjaFNjcmVlblJlcXVlc3QSIwoGc2NyZWVuGAEgASgOMhMuZHBob25lLnYxLlNjcmVlbklkEg8KB21heF9mcHMYAiABKA0iiQEKE1dhdGNoU2NyZWVuUmVzcG9uc2USCwoDcG5nGAEgASgMEg0KBXdpZHRoGAIgASgNEg4KBmhlaWdodBgDIAEoDRIeCgVsYW1wcxgEIAMoCzIPLmRwaG9uZS52MS5MYW1wEhQKDGJhY2tsaWdodF9vbhgFIAEoCBIQCghvZmZfaG9vaxgGIAEoCCJECg9QcmVzc0tleVJlcXVlc3QSCwoDa2V5GAEgASgJEiQKBmFjdGlvbhgCIAEoDjIULmRwaG9uZS52MS5LZXlBY3Rpb24iEgoQUHJlc3NLZXlSZXNwb25zZSIiCg5TZXRIb29rUmVxdWVzdBIQCghvZmZfaG9vaxgBIAEoCCIRCg9TZXRIb29rUmVzcG9uc2UqTQoIU2NyZWVuSWQSGQoVU0NSRUVOX0lEX1VOU1BFQ0lGSUVEEAASEgoOU0NSRUVOX0lEX01BSU4QARISCg5TQ1JFRU5fSURfU0lERRACKmMKCUtleUFjdGlvbhIaChZLRVlfQUNUSU9OX1VOU1BFQ0lGSUVEEAASEgoOS0VZX0FDVElPTl9UQVAQARITCg9LRVlfQUNUSU9OX0RPV04QAhIRCg1LRVlfQUNUSU9OX1VQEAMywAIKDVNjcmVlblNlcnZpY2USWAoPR2V0U2NyZWVuTGF5b3V0EiEuZHBob25lLnYxLkdldFNjcmVlbkxheW91dFJlcXVlc3QaIi5kcGhvbmUudjEuR2V0U2NyZWVuTGF5b3V0UmVzcG9uc2USTgoLV2F0Y2hTY3JlZW4SHS5kcGhvbmUudjEuV2F0Y2hTY3JlZW5SZXF1ZXN0Gh4uZHBob25lLnYxLldhdGNoU2NyZWVuUmVzcG9uc2UwARJDCghQcmVzc0tleRIaLmRwaG9uZS52MS5QcmVzc0tleVJlcXVlc3QaGy5kcGhvbmUudjEuUHJlc3NLZXlSZXNwb25zZRJACgdTZXRIb29rEhkuZHBob25lLnYxLlNldEhvb2tSZXF1ZXN0GhouZHBob25lLnYxLlNldEhvb2tSZXNwb25zZWIGcHJvdG8z");
+  fileDesc("ChZkcGhvbmUvdjEvc2NyZWVuLnByb3RvEglkcGhvbmUudjEiWwoKU2NyZWVuSW5mbxIfCgJpZBgBIAEoDjITLmRwaG9uZS52MS5TY3JlZW5JZBINCgV3aWR0aBgCIAEoDRIOCgZoZWlnaHQYAyABKA0SDQoFY29sb3IYBCABKAgiMQoETGFtcBILCgNrZXkYASABKAkSDQoFY29sb3IYAiABKAkSDQoFYmxpbmsYAyABKAkiEwoDS2V5EgwKBG5hbWUYASABKAkiGAoWR2V0U2NyZWVuTGF5b3V0UmVxdWVzdCKyAQoXR2V0U2NyZWVuTGF5b3V0UmVzcG9uc2USDQoFbW9kZWwYASABKAkSDAoEc2tpbhgCIAEoCRImCgdzY3JlZW5zGAMgAygLMhUuZHBob25lLnYxLlNjcmVlbkluZm8SHAoEa2V5cxgEIAMoCzIOLmRwaG9uZS52MS5LZXkSGgoSc29mdGtleV9iYXJfaGVpZ2h0GAUgASgNEhgKEG1pcnJvcl9hdmFpbGFibGUYBiABKAgiSgoSV2F0Y2hTY3JlZW5SZXF1ZXN0EiMKBnNjcmVlbhgBIAEoDjITLmRwaG9uZS52MS5TY3JlZW5JZBIPCgdtYXhfZnBzGAIgASgNIokBChNXYXRjaFNjcmVlblJlc3BvbnNlEgsKA3BuZxgBIAEoDBINCgV3aWR0aBgCIAEoDRIOCgZoZWlnaHQYAyABKA0SHgoFbGFtcHMYBCADKAsyDy5kcGhvbmUudjEuTGFtcBIUCgxiYWNrbGlnaHRfb24YBSABKAgSEAoIb2ZmX2hvb2sYBiABKAgiRAoPUHJlc3NLZXlSZXF1ZXN0EgsKA2tleRgBIAEoCRIkCgZhY3Rpb24YAiABKA4yFC5kcGhvbmUudjEuS2V5QWN0aW9uIhIKEFByZXNzS2V5UmVzcG9uc2UiIgoOU2V0SG9va1JlcXVlc3QSEAoIb2ZmX2hvb2sYASABKAgiEQoPU2V0SG9va1Jlc3BvbnNlKk0KCFNjcmVlbklkEhkKFVNDUkVFTl9JRF9VTlNQRUNJRklFRBAAEhIKDlNDUkVFTl9JRF9NQUlOEAESEgoOU0NSRUVOX0lEX1NJREUQAipjCglLZXlBY3Rpb24SGgoWS0VZX0FDVElPTl9VTlNQRUNJRklFRBAAEhIKDktFWV9BQ1RJT05fVEFQEAESEwoPS0VZX0FDVElPTl9ET1dOEAISEQoNS0VZX0FDVElPTl9VUBADMsACCg1TY3JlZW5TZXJ2aWNlElgKD0dldFNjcmVlbkxheW91dBIhLmRwaG9uZS52MS5HZXRTY3JlZW5MYXlvdXRSZXF1ZXN0GiIuZHBob25lLnYxLkdldFNjcmVlbkxheW91dFJlc3BvbnNlEk4KC1dhdGNoU2NyZWVuEh0uZHBob25lLnYxLldhdGNoU2NyZWVuUmVxdWVzdBoeLmRwaG9uZS52MS5XYXRjaFNjcmVlblJlc3BvbnNlMAESQwoIUHJlc3NLZXkSGi5kcGhvbmUudjEuUHJlc3NLZXlSZXF1ZXN0GhsuZHBob25lLnYxLlByZXNzS2V5UmVzcG9uc2USQAoHU2V0SG9vaxIZLmRwaG9uZS52MS5TZXRIb29rUmVxdWVzdBoaLmRwaG9uZS52MS5TZXRIb29rUmVzcG9uc2ViBnByb3RvMw");
 
 /**
  * @generated from message dphone.v1.ScreenInfo
@@ -78,6 +78,27 @@ export const LampSchema: GenMessage<Lamp> = /*@__PURE__*/
   messageDesc(file_dphone_v1_screen, 1);
 
 /**
+ * A key of the phone.
+ *
+ * @generated from message dphone.v1.Key
+ */
+export type Key = Message<"dphone.v1.Key"> & {
+  /**
+   * The stock key name ("1", "sk1", "line2", "vup", ...).
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message dphone.v1.Key.
+ * Use `create(KeySchema)` to create a new message.
+ */
+export const KeySchema: GenMessage<Key> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_screen, 2);
+
+/**
  * @generated from message dphone.v1.GetScreenLayoutRequest
  */
 export type GetScreenLayoutRequest = Message<"dphone.v1.GetScreenLayoutRequest"> & {
@@ -88,7 +109,7 @@ export type GetScreenLayoutRequest = Message<"dphone.v1.GetScreenLayoutRequest">
  * Use `create(GetScreenLayoutRequestSchema)` to create a new message.
  */
 export const GetScreenLayoutRequestSchema: GenMessage<GetScreenLayoutRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_screen, 2);
+  messageDesc(file_dphone_v1_screen, 3);
 
 /**
  * @generated from message dphone.v1.GetScreenLayoutResponse
@@ -112,11 +133,11 @@ export type GetScreenLayoutResponse = Message<"dphone.v1.GetScreenLayoutResponse
   screens: ScreenInfo[];
 
   /**
-   * Names of the keys this model has ("1", "sk1", "line2", "vup", ...).
+   * The keys this model has.
    *
-   * @generated from field: repeated string keys = 4;
+   * @generated from field: repeated dphone.v1.Key keys = 4;
    */
-  keys: string[];
+  keys: Key[];
 
   /**
    * @generated from field: uint32 softkey_bar_height = 5;
@@ -136,7 +157,7 @@ export type GetScreenLayoutResponse = Message<"dphone.v1.GetScreenLayoutResponse
  * Use `create(GetScreenLayoutResponseSchema)` to create a new message.
  */
 export const GetScreenLayoutResponseSchema: GenMessage<GetScreenLayoutResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_screen, 3);
+  messageDesc(file_dphone_v1_screen, 4);
 
 /**
  * @generated from message dphone.v1.WatchScreenRequest
@@ -160,7 +181,7 @@ export type WatchScreenRequest = Message<"dphone.v1.WatchScreenRequest"> & {
  * Use `create(WatchScreenRequestSchema)` to create a new message.
  */
 export const WatchScreenRequestSchema: GenMessage<WatchScreenRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_screen, 4);
+  messageDesc(file_dphone_v1_screen, 5);
 
 /**
  * @generated from message dphone.v1.WatchScreenResponse
@@ -204,7 +225,7 @@ export type WatchScreenResponse = Message<"dphone.v1.WatchScreenResponse"> & {
  * Use `create(WatchScreenResponseSchema)` to create a new message.
  */
 export const WatchScreenResponseSchema: GenMessage<WatchScreenResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_screen, 5);
+  messageDesc(file_dphone_v1_screen, 6);
 
 /**
  * @generated from message dphone.v1.PressKeyRequest
@@ -226,7 +247,7 @@ export type PressKeyRequest = Message<"dphone.v1.PressKeyRequest"> & {
  * Use `create(PressKeyRequestSchema)` to create a new message.
  */
 export const PressKeyRequestSchema: GenMessage<PressKeyRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_screen, 6);
+  messageDesc(file_dphone_v1_screen, 7);
 
 /**
  * @generated from message dphone.v1.PressKeyResponse
@@ -239,7 +260,7 @@ export type PressKeyResponse = Message<"dphone.v1.PressKeyResponse"> & {
  * Use `create(PressKeyResponseSchema)` to create a new message.
  */
 export const PressKeyResponseSchema: GenMessage<PressKeyResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_screen, 7);
+  messageDesc(file_dphone_v1_screen, 8);
 
 /**
  * @generated from message dphone.v1.SetHookRequest
@@ -256,7 +277,7 @@ export type SetHookRequest = Message<"dphone.v1.SetHookRequest"> & {
  * Use `create(SetHookRequestSchema)` to create a new message.
  */
 export const SetHookRequestSchema: GenMessage<SetHookRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_screen, 8);
+  messageDesc(file_dphone_v1_screen, 9);
 
 /**
  * @generated from message dphone.v1.SetHookResponse
@@ -269,7 +290,7 @@ export type SetHookResponse = Message<"dphone.v1.SetHookResponse"> & {
  * Use `create(SetHookResponseSchema)` to create a new message.
  */
 export const SetHookResponseSchema: GenMessage<SetHookResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_screen, 9);
+  messageDesc(file_dphone_v1_screen, 10);
 
 /**
  * @generated from enum dphone.v1.ScreenId

@@ -24,6 +24,20 @@ message PortLink {
   bool full_duplex = 3;
 }
 
+message Ipv6Address {
+  string address = 1;
+  uint32 prefix_len = 2;
+}
+
+message DnsServer {
+  string address = 1;
+}
+
+message NtpServer {
+  // An address or a host name.
+  string host = 1;
+}
+
 message NetworkStatus {
   NetPhase phase = 1;
   string detail = 2;
@@ -38,11 +52,11 @@ message NetworkStatus {
   string ipv4_gateway = 10;
   uint32 lease_secs = 11;
   string dhcp_server = 12;
-  repeated string ipv6_addresses = 13;
-  repeated string dns = 14;
+  repeated Ipv6Address ipv6_addresses = 13;
+  repeated DnsServer dns_servers = 14;
   string domain = 15;
   string dhcp_tftp_server = 16;
-  repeated string ntp_servers = 17;
+  repeated NtpServer ntp_servers = 17;
   bool ntp_synced = 18;
   // "config", "lldp", "dhcp", or "".
   string vlan_source = 19;

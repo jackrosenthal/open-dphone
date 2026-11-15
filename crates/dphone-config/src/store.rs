@@ -253,7 +253,7 @@ impl ConfigStore {
         self.settings = SettingsDocument::load(&self.nv)?;
         self.mirror_provisioned_ssh_keys(&acc)?;
         if acc != self.current.root
-            || self.settings.settings != self.current.settings
+            || !self.settings.settings.same_as(&self.current.settings)
             || self.current.generation == 0
         {
             let selected = merge::selected_network(&acc, &self.net);
@@ -319,7 +319,7 @@ impl ConfigStore {
         let mut doc = SettingsDocument::load(&self.nv)?;
         let before = doc.settings.clone();
         change(&mut doc.settings);
-        if doc.settings != before {
+        if !doc.settings.same_as(&before) {
             doc.save(&self.nv)?;
         }
         self.reload()

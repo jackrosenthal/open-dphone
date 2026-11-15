@@ -3,7 +3,7 @@
 mod common;
 
 use common::TempDir;
-use dphone_config::{ConfigStore, DphoneSettings, Model, Nvdata, Resolved, SettingSource};
+use dphone_config::{ConfigStore, DphoneSettings, IdleSoftkey, Model, Nvdata, Resolved, SettingSource};
 
 const FILE: &str = "dphone_settings.txtpb";
 
@@ -369,8 +369,10 @@ fn provisioned_ssh_keys_combine_with_local_ones() {
 
 #[test]
 fn idle_softkeys_sources() {
-    let (_d, _nv, mut s) = store();
-    let default = ["call_log", "contacts", "status", "menu", "apps", "dnd", "forward"];
+    let (_d, nv, mut s) = store();
+    use dphone_config::IdleFunction::*;
+    let f = IdleSoftkey::Function;
+    let default = [f(CallLog), f(Contacts), f(Status), f(Menu), f(Apps), f(Dnd), f(Forward)];
     // Nothing set: the default list.
     let c = s.config();
     assert_eq!(c.idle_softkeys().keys, default);
@@ -392,26 +394,32 @@ fn idle_softkeys_sources() {
 
     // A provisioned list is shown, and a local list before that.
     s.apply_fetched(&format!(r#"<config>{keymap}<setting id="dphone_idle_softkeys" value="menu, apps"/></config>"#)).unwrap();
-    assert_eq!(s.config().idle_softkeys().keys, ["menu", "apps"]);
+    assert_eq!(s.config().idle_softkeys().keys, [f(Menu), f(Apps)]);
     assert_eq!(s.config().idle_softkeys().source, SettingSource::Provisioned);
-    let c = s.update_dphone_settings(|d| d.idle_softkeys = Some("dnd,app:queues".into())).unwrap();
-    assert_eq!(c.idle_softkeys().keys, ["dnd", "app:queues"]);
+    let local = [f(Dnd), IdleSoftkey::App("queues".into())];
+    let c = s.update_dphone_settings(|d| d.set_idle_softkeys(&local)).unwrap();
+    assert_eq!(c.idle_softkeys().keys, local);
     assert_eq!((c.idle_softkeys().source, c.idle_softkeys().locked), (SettingSource::Local, false));
+    assert!(nv.read_string(FILE).unwrap().unwrap().contains("idle_softkeys {\n  function: FUNCTION_DND\n}\nidle_softkeys {\n  app {\n    name: \"queues\"\n  }\n}\n"));
 
-    // A list that does not parse counts as not set.
-    let c = s.update_dphone_settings(|d| d.idle_softkeys = Some("dnd,lunch".into())).unwrap();
-    assert_eq!(c.idle_softkeys().keys, ["menu", "apps"]);
+    // A provisioned list that does not parse counts as not set, and so
+    // does a local list with nothing in it.
+    s.apply_fetched(r#"<config><setting id="dphone_idle_softkeys" value="menu,lunch"/></config>"#).unwrap();
+    assert_eq!(s.config().idle_softkeys().keys, local);
+    s.apply_fetched(r#"<config><setting id="dphone_idle_softkeys" value="menu, apps"/></config>"#).unwrap();
+    let c = s.update_dphone_settings(|d| d.set_idle_softkeys(&[])).unwrap();
+    assert_eq!(c.idle_softkeys().keys, [f(Menu), f(Apps)]);
 
     // Frozen by the server: the local list has no effect.
-    s.update_dphone_settings(|d| d.idle_softkeys = Some("dnd".into())).unwrap();
+    s.update_dphone_settings(|d| d.set_idle_softkeys(&[f(Dnd)])).unwrap();
     s.apply_fetched(r#"<config><setting id="dphone_idle_softkeys" value="call_log" conflict="freeze"/></config>"#).unwrap();
     let c = s.config();
-    assert_eq!(c.idle_softkeys().keys, ["call_log"]);
+    assert_eq!(c.idle_softkeys().keys, [f(CallLog)]);
     assert_eq!((c.idle_softkeys().source, c.idle_softkeys().locked), (SettingSource::Provisioned, true));
 
     // Neither list set any more: the default again.
     s.apply_fetched("<config/>").unwrap();
-    let c = s.update_dphone_settings(|d| d.idle_softkeys = None).unwrap();
+    let c = s.update_dphone_settings(|d| d.set_idle_softkeys(&[])).unwrap();
     assert_eq!(c.idle_softkeys().keys, default);
 }
 
@@ -425,11 +433,12 @@ fn disabled_apps_sources() {
     let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_disabled_apps" value="calendar, parking"/>"#)).unwrap();
     assert_eq!(c.disabled_apps(), Resolved { value: apps(&["calendar", "parking"]), source: Provisioned, locked: false });
     // A local list comes before a provisioned one, an empty list too.
-    let c = s.update_dphone_settings(|d| d.disabled_apps = Some("status".into())).unwrap();
+    let c = s.update_dphone_settings(|d| d.set_disabled_apps(Some(&apps(&["status"])))).unwrap();
     assert_eq!(c.disabled_apps(), Resolved { value: apps(&["status"]), source: Local, locked: false });
-    assert!(nv.read_string(FILE).unwrap().unwrap().contains("disabled_apps: \"status\""));
-    let c = s.update_dphone_settings(|d| d.disabled_apps = Some(String::new())).unwrap();
+    assert!(nv.read_string(FILE).unwrap().unwrap().contains("disabled_apps {\n  apps {\n    name: \"status\"\n  }\n}\n"));
+    let c = s.update_dphone_settings(|d| d.set_disabled_apps(Some(&[]))).unwrap();
     assert_eq!(c.disabled_apps(), Resolved { value: apps(&[]), source: Local, locked: false });
+    assert!(nv.read_string(FILE).unwrap().unwrap().contains("disabled_apps {}\n"));
 
     // Frozen by the server: the local list has no effect.
     let c = s
@@ -439,7 +448,7 @@ fn disabled_apps_sources() {
     // A provisioned empty value is nothing set.
     let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_disabled_apps" value=""/>"#)).unwrap();
     assert_eq!(c.disabled_apps().source, Local);
-    let c = s.update_dphone_settings(|d| d.disabled_apps = None).unwrap();
+    let c = s.update_dphone_settings(|d| d.set_disabled_apps(None)).unwrap();
     assert_eq!(c.disabled_apps(), Resolved { value: apps(&[]), source: Default, locked: false });
     assert!(s.set("dphone_disabled_apps", "calendar").is_err());
 }

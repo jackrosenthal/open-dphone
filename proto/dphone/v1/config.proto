@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package dphone.v1;
 
+import "dphone/settings/v1/settings.proto";
+
 // Access to the merged configuration by stock setting ID, for the web
 // interface's settings forms.
 service ConfigService {
@@ -60,14 +62,13 @@ enum SettingSource {
 
 // A softkey the idle screen can have.
 message IdleSoftkeyChoice {
-  // "call_log", "menu", ..., or "app:<app name>".
-  string name = 1;
+  dphone.settings.v1.IdleSoftkey softkey = 1;
   string label = 2;
 }
 
 message IdleSoftkeys {
-  // Names of the softkeys in effect, in order.
-  repeated string softkeys = 1;
+  // The softkeys in effect, in order.
+  repeated dphone.settings.v1.IdleSoftkey softkeys = 1;
   SettingSource source = 2;
   // The provisioning server fixed the list; it cannot be changed here.
   bool locked = 3;
@@ -84,7 +85,7 @@ message GetIdleSoftkeysResponse {
 message SetIdleSoftkeysRequest {
   // Empty: drop the list set on the phone, which puts the provisioned or
   // default softkeys back.
-  repeated string softkeys = 1;
+  repeated dphone.settings.v1.IdleSoftkey softkeys = 1;
 }
 
 message SetIdleSoftkeysResponse {

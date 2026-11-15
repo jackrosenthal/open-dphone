@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package dphone.v1;
 
+import "dphone/settings/v1/settings.proto";
 import "dphone/v1/config.proto";
 
 // Phone apps (WebAssembly packages).  A package is uploaded with a plain
@@ -38,7 +39,7 @@ message App {
 // The built-in apps that are switched off (one of Open DPhone's own
 // settings).
 message DisabledApps {
-  repeated string names = 1;
+  repeated dphone.settings.v1.App apps = 1;
   SettingSource source = 2;
   // The provisioning server fixed the list; it cannot be changed here.
   bool locked = 3;

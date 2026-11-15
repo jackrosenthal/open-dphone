@@ -275,7 +275,8 @@ export function Screen() {
 
   if (layout.error) return <Alert tone="red">{errorMessage(layout.error)}</Alert>;
   if (!layout.data) return <Spinner />;
-  const { keys, screens, model, mirrorAvailable } = layout.data;
+  const { screens, model, mirrorAvailable } = layout.data;
+  const keys = layout.data.keys.map((k) => k.name);
   const side = screens.find((s) => s.id === ScreenId.SIDE);
   const panel = panels[model];
   // Keys the phone reports that the drawing has no place for: listed

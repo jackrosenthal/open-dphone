@@ -363,9 +363,8 @@ fn idle_softkeys_follow_the_configuration() {
     // have (absent, or switched off) gets no softkey, so four keys are
     // left, and there is no "More..." page.
     r.store.update::<Apps, _>(|a| a.installed.push(AppInfo { name: "parking".into(), ..Default::default() }));
-    let keys = ["app:parking", "app:calendar", "redial", "dnd", "menu"];
-    let keys = keys.iter().map(|k| IdleSoftkey::from_name(k).unwrap()).collect::<Vec<_>>();
-    assert_eq!(keys[0], IdleSoftkey::App("parking".into()));
+    let app = |name: &str| IdleSoftkey::App(name.into());
+    let keys = vec![app("parking"), app("calendar"), IdleSoftkey::Redial, IdleSoftkey::Dnd, IdleSoftkey::Menu];
     r.ui.handle().set_config(UiConfig { backlight_timeout_secs: 0, idle_softkeys: keys, ..Default::default() });
     r.ui.pump();
     r.tap(Key::Soft(1));
@@ -384,10 +383,6 @@ fn idle_softkeys_follow_the_configuration() {
     r.tap(Key::Soft(4));
     r.tap(Key::Soft(2));
     assert_eq!(r.screen(), "menu");
-    // Names that are not softkeys.
-    for name in ["lunch", "info", "bluetooth", "app:"] {
-        assert_eq!(IdleSoftkey::from_name(name), None, "{name}");
-    }
 }
 
 #[test]

@@ -4,6 +4,9 @@ modules:
 lint:
   use:
     - STANDARD
+  # Not a buf rule, but a rule here: a list is a `repeated` field of a
+  # message type (never of a scalar, and never a delimited string), so that
+  # an item can gain fields later.
 breaking:
   use:
     - FILE

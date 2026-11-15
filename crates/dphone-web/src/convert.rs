@@ -74,11 +74,15 @@ pub fn network(n: &st::Network, mac: String) -> pb::NetworkStatus {
         ipv4_gateway: opt(n.ipv4.gateway),
         lease_secs: n.ipv4.lease_secs,
         dhcp_server: opt(n.ipv4.dhcp_server),
-        ipv6_addresses: n.ipv6.iter().map(|a| format!("{}/{}", a.address, a.prefix_len)).collect(),
-        dns: n.dns.iter().map(|a| a.to_string()).collect(),
+        ipv6_addresses: n
+            .ipv6
+            .iter()
+            .map(|a| pb::Ipv6Address { address: a.address.to_string(), prefix_len: a.prefix_len as u32 })
+            .collect(),
+        dns_servers: n.dns.iter().map(|a| pb::DnsServer { address: a.to_string() }).collect(),
         domain: n.domain.clone(),
         dhcp_tftp_server: n.dhcp_tftp_server.clone(),
-        ntp_servers: n.ntp_servers.clone(),
+        ntp_servers: n.ntp_servers.iter().map(|host| pb::NtpServer { host: host.clone() }).collect(),
         ntp_synced: n.ntp_synced_mono_ms.is_some(),
         vlan_source: match n.vlan.source {
             st::VlanSource::None => "",

@@ -408,10 +408,13 @@ async fn built_in_apps_are_switched_off_and_on() {
     let r = post(p.addr, Some(&s), "/dphone.v1.AppsService/GetDisabledApps", json!({})).await;
     assert_eq!(r.json()["disabledApps"], json!({ "source": "SETTING_SOURCE_DEFAULT" }));
     let r = set("calendar", false).await;
-    assert_eq!(r.json()["disabledApps"], json!({ "names": ["calendar"], "source": "SETTING_SOURCE_LOCAL" }));
+    assert_eq!(r.json()["disabledApps"], json!({ "apps": [{ "name": "calendar" }], "source": "SETTING_SOURCE_LOCAL" }));
     let r = set("parking", false).await;
-    assert_eq!(r.json()["disabledApps"], json!({ "names": ["calendar", "parking"], "source": "SETTING_SOURCE_LOCAL" }));
-    assert!(file().contains("disabled_apps: \"calendar,parking\""));
+    assert_eq!(
+        r.json()["disabledApps"],
+        json!({ "apps": [{ "name": "calendar" }, { "name": "parking" }], "source": "SETTING_SOURCE_LOCAL" })
+    );
+    assert!(file().contains("disabled_apps {\n  apps {\n    name: \"calendar\"\n  }\n  apps {\n    name: \"parking\"\n  }\n}\n"));
     // Only built-in apps.
     assert_eq!(set("extra", false).await.status, 404);
     assert_eq!(set("nope", false).await.status, 404);
@@ -424,15 +427,18 @@ async fn built_in_apps_are_switched_off_and_on() {
     // Over a provisioned list, switching the app on is a local, empty list.
     p.provision(r#"<setting id="dphone_disabled_apps" value="calendar"/>"#);
     let r = post(p.addr, Some(&s), "/dphone.v1.AppsService/GetDisabledApps", json!({})).await;
-    assert_eq!(r.json()["disabledApps"], json!({ "names": ["calendar"], "source": "SETTING_SOURCE_PROVISIONED" }));
+    assert_eq!(r.json()["disabledApps"], json!({ "apps": [{ "name": "calendar" }], "source": "SETTING_SOURCE_PROVISIONED" }));
     let r = set("calendar", true).await;
     assert_eq!(r.json()["disabledApps"], json!({ "source": "SETTING_SOURCE_LOCAL" }));
-    assert!(file().contains("disabled_apps: \"\""));
+    assert!(file().contains("disabled_apps {}\n"));
 
     // Frozen by the server: it cannot be changed here.
     p.provision(r#"<setting id="dphone_disabled_apps" value="parking" conflict="freeze"/>"#);
     let r = set("parking", true).await;
     assert_eq!((r.status, r.json()["code"].as_str().map(str::to_owned)), (400, Some("failed_precondition".into())));
     let r = post(p.addr, Some(&s), "/dphone.v1.AppsService/GetDisabledApps", json!({})).await;
-    assert_eq!(r.json()["disabledApps"], json!({ "names": ["parking"], "source": "SETTING_SOURCE_PROVISIONED", "locked": true }));
+    assert_eq!(
+        r.json()["disabledApps"],
+        json!({ "apps": [{ "name": "parking" }], "source": "SETTING_SOURCE_PROVISIONED", "locked": true })
+    );
 }

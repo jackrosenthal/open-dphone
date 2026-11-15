@@ -4,13 +4,15 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { IdleSoftkey } from "../settings/v1/settings_pb";
+import { file_dphone_settings_v1_settings } from "../settings/v1/settings_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file dphone/v1/config.proto.
  */
 export const file_dphone_v1_config: GenFile = /*@__PURE__*/
-  fileDesc("ChZkcGhvbmUvdjEvY29uZmlnLnByb3RvEglkcGhvbmUudjEiXwoHU2V0dGluZxIKCgJpZBgBIAEoCRINCgV2YWx1ZRgCIAEoCRIOCgZmcm96ZW4YAyABKAgSDgoGc2VjcmV0GAUgASgIEhMKC3Byb3Zpc2lvbmVkGAYgASgISgQIBBAFIiUKE0xpc3RTZXR0aW5nc1JlcXVlc3QSDgoGcHJlZml4GAEgASgJIlAKFExpc3RTZXR0aW5nc1Jlc3BvbnNlEiQKCHNldHRpbmdzGAEgAygLMhIuZHBob25lLnYxLlNldHRpbmcSEgoKZ2VuZXJhdGlvbhgCIAEoBCIqCg1TZXR0aW5nQ2hhbmdlEgoKAmlkGAEgASgJEg0KBXZhbHVlGAIgASgJIj8KElNldFNldHRpbmdzUmVxdWVzdBIpCgdjaGFuZ2VzGAEgAygLMhguZHBob25lLnYxLlNldHRpbmdDaGFuZ2UiKQoTU2V0U2V0dGluZ3NSZXNwb25zZRISCgpnZW5lcmF0aW9uGAEgASgEIjAKEUlkbGVTb2Z0a2V5Q2hvaWNlEgwKBG5hbWUYASABKAkSDQoFbGFiZWwYAiABKAkiiQEKDElkbGVTb2Z0a2V5cxIQCghzb2Z0a2V5cxgBIAMoCRIoCgZzb3VyY2UYAiABKA4yGC5kcGhvbmUudjEuU2V0dGluZ1NvdXJjZRIOCgZsb2NrZWQYAyABKAgSLQoHY2hvaWNlcxgEIAMoCzIcLmRwaG9uZS52MS5JZGxlU29mdGtleUNob2ljZSIYChZHZXRJZGxlU29mdGtleXNSZXF1ZXN0IkkKF0dldElkbGVTb2Z0a2V5c1Jlc3BvbnNlEi4KDWlkbGVfc29mdGtleXMYASABKAsyFy5kcGhvbmUudjEuSWRsZVNvZnRrZXlzIioKFlNldElkbGVTb2Z0a2V5c1JlcXVlc3QSEAoIc29mdGtleXMYASADKAkiSQoXU2V0SWRsZVNvZnRrZXlzUmVzcG9uc2USLgoNaWRsZV9zb2Z0a2V5cxgBIAEoCzIXLmRwaG9uZS52MS5JZGxlU29mdGtleXMiVgoLQm9vbFNldHRpbmcSDQoFdmFsdWUYASABKAgSKAoGc291cmNlGAIgASgOMhguZHBob25lLnYxLlNldHRpbmdTb3VyY2USDgoGbG9ja2VkGAMgASgIKoUBCg1TZXR0aW5nU291cmNlEh4KGlNFVFRJTkdfU09VUkNFX1VOU1BFQ0lGSUVEEAASGgoWU0VUVElOR19TT1VSQ0VfREVGQVVMVBABEhgKFFNFVFRJTkdfU09VUkNFX0xPQ0FMEAISHgoaU0VUVElOR19TT1VSQ0VfUFJPVklTSU9ORUQQAzLiAgoNQ29uZmlnU2VydmljZRJPCgxMaXN0U2V0dGluZ3MSHi5kcGhvbmUudjEuTGlzdFNldHRpbmdzUmVxdWVzdBofLmRwaG9uZS52MS5MaXN0U2V0dGluZ3NSZXNwb25zZRJMCgtTZXRTZXR0aW5ncxIdLmRwaG9uZS52MS5TZXRTZXR0aW5nc1JlcXVlc3QaHi5kcGhvbmUudjEuU2V0U2V0dGluZ3NSZXNwb25zZRJYCg9HZXRJZGxlU29mdGtleXMSIS5kcGhvbmUudjEuR2V0SWRsZVNvZnRrZXlzUmVxdWVzdBoiLmRwaG9uZS52MS5HZXRJZGxlU29mdGtleXNSZXNwb25zZRJYCg9TZXRJZGxlU29mdGtleXMSIS5kcGhvbmUudjEuU2V0SWRsZVNvZnRrZXlzUmVxdWVzdBoiLmRwaG9uZS52MS5TZXRJZGxlU29mdGtleXNSZXNwb25zZWIGcHJvdG8z");
+  fileDesc("ChZkcGhvbmUvdjEvY29uZmlnLnByb3RvEglkcGhvbmUudjEiXwoHU2V0dGluZxIKCgJpZBgBIAEoCRINCgV2YWx1ZRgCIAEoCRIOCgZmcm96ZW4YAyABKAgSDgoGc2VjcmV0GAUgASgIEhMKC3Byb3Zpc2lvbmVkGAYgASgISgQIBBAFIiUKE0xpc3RTZXR0aW5nc1JlcXVlc3QSDgoGcHJlZml4GAEgASgJIlAKFExpc3RTZXR0aW5nc1Jlc3BvbnNlEiQKCHNldHRpbmdzGAEgAygLMhIuZHBob25lLnYxLlNldHRpbmcSEgoKZ2VuZXJhdGlvbhgCIAEoBCIqCg1TZXR0aW5nQ2hhbmdlEgoKAmlkGAEgASgJEg0KBXZhbHVlGAIgASgJIj8KElNldFNldHRpbmdzUmVxdWVzdBIpCgdjaGFuZ2VzGAEgAygLMhguZHBob25lLnYxLlNldHRpbmdDaGFuZ2UiKQoTU2V0U2V0dGluZ3NSZXNwb25zZRISCgpnZW5lcmF0aW9uGAEgASgEIlQKEUlkbGVTb2Z0a2V5Q2hvaWNlEjAKB3NvZnRrZXkYASABKAsyHy5kcGhvbmUuc2V0dGluZ3MudjEuSWRsZVNvZnRrZXkSDQoFbGFiZWwYAiABKAkiqgEKDElkbGVTb2Z0a2V5cxIxCghzb2Z0a2V5cxgBIAMoCzIfLmRwaG9uZS5zZXR0aW5ncy52MS5JZGxlU29mdGtleRIoCgZzb3VyY2UYAiABKA4yGC5kcGhvbmUudjEuU2V0dGluZ1NvdXJjZRIOCgZsb2NrZWQYAyABKAgSLQoHY2hvaWNlcxgEIAMoCzIcLmRwaG9uZS52MS5JZGxlU29mdGtleUNob2ljZSIYChZHZXRJZGxlU29mdGtleXNSZXF1ZXN0IkkKF0dldElkbGVTb2Z0a2V5c1Jlc3BvbnNlEi4KDWlkbGVfc29mdGtleXMYASABKAsyFy5kcGhvbmUudjEuSWRsZVNvZnRrZXlzIksKFlNldElkbGVTb2Z0a2V5c1JlcXVlc3QSMQoIc29mdGtleXMYASADKAsyHy5kcGhvbmUuc2V0dGluZ3MudjEuSWRsZVNvZnRrZXkiSQoXU2V0SWRsZVNvZnRrZXlzUmVzcG9uc2USLgoNaWRsZV9zb2Z0a2V5cxgBIAEoCzIXLmRwaG9uZS52MS5JZGxlU29mdGtleXMiVgoLQm9vbFNldHRpbmcSDQoFdmFsdWUYASABKAgSKAoGc291cmNlGAIgASgOMhguZHBob25lLnYxLlNldHRpbmdTb3VyY2USDgoGbG9ja2VkGAMgASgIKoUBCg1TZXR0aW5nU291cmNlEh4KGlNFVFRJTkdfU09VUkNFX1VOU1BFQ0lGSUVEEAASGgoWU0VUVElOR19TT1VSQ0VfREVGQVVMVBABEhgKFFNFVFRJTkdfU09VUkNFX0xPQ0FMEAISHgoaU0VUVElOR19TT1VSQ0VfUFJPVklTSU9ORUQQAzLiAgoNQ29uZmlnU2VydmljZRJPCgxMaXN0U2V0dGluZ3MSHi5kcGhvbmUudjEuTGlzdFNldHRpbmdzUmVxdWVzdBofLmRwaG9uZS52MS5MaXN0U2V0dGluZ3NSZXNwb25zZRJMCgtTZXRTZXR0aW5ncxIdLmRwaG9uZS52MS5TZXRTZXR0aW5nc1JlcXVlc3QaHi5kcGhvbmUudjEuU2V0U2V0dGluZ3NSZXNwb25zZRJYCg9HZXRJZGxlU29mdGtleXMSIS5kcGhvbmUudjEuR2V0SWRsZVNvZnRrZXlzUmVxdWVzdBoiLmRwaG9uZS52MS5HZXRJZGxlU29mdGtleXNSZXNwb25zZRJYCg9TZXRJZGxlU29mdGtleXMSIS5kcGhvbmUudjEuU2V0SWRsZVNvZnRrZXlzUmVxdWVzdBoiLmRwaG9uZS52MS5TZXRJZGxlU29mdGtleXNSZXNwb25zZWIGcHJvdG8z", [file_dphone_settings_v1_settings]);
 
 /**
  * @generated from message dphone.v1.Setting
@@ -160,11 +162,9 @@ export const SetSettingsResponseSchema: GenMessage<SetSettingsResponse> = /*@__P
  */
 export type IdleSoftkeyChoice = Message<"dphone.v1.IdleSoftkeyChoice"> & {
   /**
-   * "call_log", "menu", ..., or "app:<app name>".
-   *
-   * @generated from field: string name = 1;
+   * @generated from field: dphone.settings.v1.IdleSoftkey softkey = 1;
    */
-  name: string;
+  softkey?: IdleSoftkey | undefined;
 
   /**
    * @generated from field: string label = 2;
@@ -184,11 +184,11 @@ export const IdleSoftkeyChoiceSchema: GenMessage<IdleSoftkeyChoice> = /*@__PURE_
  */
 export type IdleSoftkeys = Message<"dphone.v1.IdleSoftkeys"> & {
   /**
-   * Names of the softkeys in effect, in order.
+   * The softkeys in effect, in order.
    *
-   * @generated from field: repeated string softkeys = 1;
+   * @generated from field: repeated dphone.settings.v1.IdleSoftkey softkeys = 1;
    */
-  softkeys: string[];
+  softkeys: IdleSoftkey[];
 
   /**
    * @generated from field: dphone.v1.SettingSource source = 2;
@@ -255,9 +255,9 @@ export type SetIdleSoftkeysRequest = Message<"dphone.v1.SetIdleSoftkeysRequest">
    * Empty: drop the list set on the phone, which puts the provisioned or
    * default softkeys back.
    *
-   * @generated from field: repeated string softkeys = 1;
+   * @generated from field: repeated dphone.settings.v1.IdleSoftkey softkeys = 1;
    */
-  softkeys: string[];
+  softkeys: IdleSoftkey[];
 };
 
 /**

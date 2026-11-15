@@ -357,14 +357,19 @@ async fn idle_softkeys() {
     // Redial key.
     let (_, v) = call(&p, &l, "ConfigService/GetIdleSoftkeys", json!({})).await;
     let v = &v["idleSoftkeys"];
-    assert_eq!(v["softkeys"], json!(["call_log", "contacts", "status", "menu", "apps", "dnd", "forward"]));
+    let functions = |names: &[&str]| -> serde_json::Value {
+        names.iter().map(|n| json!({ "function": format!("FUNCTION_{n}") })).collect()
+    };
+    assert_eq!(v["softkeys"], functions(&["CALL_LOG", "CONTACTS", "STATUS", "MENU", "APPS", "DND", "FORWARD"]));
     assert_eq!(v["source"], "SETTING_SOURCE_DEFAULT");
-    let offered: Vec<&str> = v["choices"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap()).collect();
-    assert_eq!(offered, ["call_log", "contacts", "status", "menu", "apps", "dnd", "forward", "redial"]);
+    let offered: serde_json::Value = v["choices"].as_array().unwrap().iter().map(|c| c["softkey"].clone()).collect();
+    assert_eq!(offered, functions(&["CALL_LOG", "CONTACTS", "STATUS", "MENU", "APPS", "DND", "FORWARD", "REDIAL"]));
+    assert_eq!(v["choices"][5]["label"], "DND");
 
-    let (status, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({ "softkeys": ["menu", "app:parking", "dnd"] })).await;
+    let list = json!([{ "function": "FUNCTION_MENU" }, { "app": { "name": "parking" } }, { "function": "FUNCTION_DND" }]);
+    let (status, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({ "softkeys": list })).await;
     assert_eq!(status, 200, "{v}");
-    assert_eq!(v["idleSoftkeys"]["softkeys"], json!(["menu", "app:parking", "dnd"]));
+    assert_eq!(v["idleSoftkeys"]["softkeys"], list);
     // The functions, then the phone's apps; a softkey in effect whose app
     // the phone does not have (absent, or switched off) is still listed.
     p.store.update::<st::Apps, _>(|a| {
@@ -372,14 +377,21 @@ async fn idle_softkeys() {
     });
     let (_, v) = call(&p, &l, "ConfigService/GetIdleSoftkeys", json!({})).await;
     let choices = v["idleSoftkeys"]["choices"].as_array().unwrap();
-    assert_eq!(choices[8], json!({ "name": "app:queues", "label": "Queues (app)" }));
-    assert_eq!(choices[9], json!({ "name": "app:parking", "label": "parking" }));
+    assert_eq!(choices[8], json!({ "softkey": { "app": { "name": "queues" } }, "label": "Queues (app)" }));
+    assert_eq!(choices[9], json!({ "softkey": { "app": { "name": "parking" } }, "label": "parking" }));
     assert_eq!(choices.len(), 10);
     assert_eq!(v["idleSoftkeys"]["source"], "SETTING_SOURCE_LOCAL");
-    assert!(std::fs::read_to_string(&settings).unwrap().contains("idle_softkeys: \"menu,app:parking,dnd\""));
+    assert!(std::fs::read_to_string(&settings).unwrap().contains(
+        "idle_softkeys {\n  function: FUNCTION_MENU\n}\nidle_softkeys {\n  app {\n    name: \"parking\"\n  }\n}\nidle_softkeys {\n  function: FUNCTION_DND\n}\n"
+    ));
 
-    let (status, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({ "softkeys": ["menu", "lunch"] })).await;
-    assert_eq!((status, v["code"].as_str()), (400, Some("invalid_argument")), "{v}");
+    // Not softkeys: no function, no action at all, and an app name that
+    // is not one.
+    for bad in [json!({ "function": "FUNCTION_UNSPECIFIED" }), json!({}), json!({ "app": {} }), json!({ "app": { "name": "a,b" } })] {
+        let list = json!([{ "function": "FUNCTION_MENU" }, bad]);
+        let (status, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({ "softkeys": list })).await;
+        assert_eq!((status, v["code"].as_str()), (400, Some("invalid_argument")), "{v}");
+    }
 
     // An empty list drops the local one.
     let (_, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({})).await;
@@ -393,8 +405,8 @@ async fn idle_softkeys() {
         .apply_fetched(r#"<config><setting id="dphone_idle_softkeys" value="call_log,menu" conflict="freeze"/></config>"#)
         .unwrap();
     let (_, v) = call(&p, &l, "ConfigService/GetIdleSoftkeys", json!({})).await;
-    assert_eq!(v["idleSoftkeys"]["softkeys"], json!(["call_log", "menu"]));
+    assert_eq!(v["idleSoftkeys"]["softkeys"], functions(&["CALL_LOG", "MENU"]));
     assert_eq!(v["idleSoftkeys"]["locked"], true);
-    let (status, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({ "softkeys": ["menu"] })).await;
+    let (status, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({ "softkeys": functions(&["MENU"]) })).await;
     assert_eq!((status, v["code"].as_str()), (400, Some("failed_precondition")));
 }

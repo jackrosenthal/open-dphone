@@ -487,22 +487,21 @@ impl Config {
     /// The idle screen's softkeys.  The sources combine as for the other
     /// Open DPhone settings: a frozen provisioned list wins, then the local
     /// list, then an ordinary provisioned list; with none of those, the
-    /// default list ([`settings::DEFAULT_IDLE_SOFTKEYS`]).  A list that
-    /// does not parse counts as not set.  The `idle` keymap state is not
-    /// used: a DPMA server sends one to every phone, whatever its
-    /// administrator set, so it does not count as a list that was set.
+    /// default list ([`settings::DEFAULT_IDLE_SOFTKEYS`]).  A provisioned
+    /// list that does not parse counts as not set.  The `idle` keymap
+    /// state is not used: a DPMA server sends one to every phone, whatever
+    /// its administrator set, so it does not count as a list that was set.
     pub fn idle_softkeys(&self) -> IdleSoftkeys {
-        let list = |l: Option<&str>| l.and_then(|l| settings::parse_idle_softkeys(l).ok()).filter(|k| !k.is_empty());
         let id = settings::PROVISIONED_IDLE_SOFTKEYS;
-        let provisioned = list(self.setting(id));
+        let provisioned = self.setting(id).and_then(|l| settings::parse_idle_softkeys(l).ok()).filter(|k| !k.is_empty());
         let frozen = provisioned.is_some() && self.setting_frozen(id);
-        let local = list(self.settings.idle_softkeys.as_deref());
+        let local = Some(self.settings.local_idle_softkeys()).filter(|k| !k.is_empty());
         match (provisioned, local) {
             (Some(keys), _) if frozen => IdleSoftkeys { keys, source: SettingSource::Provisioned, locked: true },
             (_, Some(keys)) => IdleSoftkeys { keys, source: SettingSource::Local, locked: false },
             (Some(keys), None) => IdleSoftkeys { keys, source: SettingSource::Provisioned, locked: false },
             (None, None) => IdleSoftkeys {
-                keys: settings::DEFAULT_IDLE_SOFTKEYS.split(',').map(str::to_owned).collect(),
+                keys: settings::DEFAULT_IDLE_SOFTKEYS.to_vec(),
                 source: SettingSource::Default,
                 locked: false,
             },
@@ -517,7 +516,7 @@ impl Config {
         let id = settings::PROVISIONED_DISABLED_APPS;
         let provisioned = self.setting(id).filter(|v| !v.trim().is_empty()).map(settings::parse_app_list);
         let frozen = provisioned.is_some() && self.setting_frozen(id);
-        let local = self.settings.disabled_apps.as_deref().map(settings::parse_app_list);
+        let local = self.settings.local_disabled_apps();
         settings::resolve(local, provisioned, frozen, Vec::new())
     }
 

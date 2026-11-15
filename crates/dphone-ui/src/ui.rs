@@ -43,25 +43,6 @@ pub enum IdleSoftkey {
     App(String),
 }
 
-impl IdleSoftkey {
-    /// The softkey a configured name stands for: `call_log`, `contacts`,
-    /// `status`, `menu`, `apps`, `dnd`, `forward`, `redial`, or
-    /// `app:<name>`.
-    pub fn from_name(name: &str) -> Option<IdleSoftkey> {
-        Some(match name {
-            "call_log" => IdleSoftkey::CallLog,
-            "contacts" => IdleSoftkey::Contacts,
-            "status" => IdleSoftkey::Status,
-            "menu" => IdleSoftkey::Menu,
-            "apps" => IdleSoftkey::Apps,
-            "dnd" => IdleSoftkey::Dnd,
-            "forward" => IdleSoftkey::Forward,
-            "redial" => IdleSoftkey::Redial,
-            _ => IdleSoftkey::App(name.strip_prefix("app:").filter(|a| !a.is_empty())?.to_string()),
-        })
-    }
-}
-
 /// Settings the integrator maps from the merged configuration.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UiConfig {

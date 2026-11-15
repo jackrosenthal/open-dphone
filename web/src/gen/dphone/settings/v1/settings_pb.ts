@@ -2,15 +2,15 @@
 // @generated from file dphone/settings/v1/settings.proto (package dphone.settings.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file dphone/settings/v1/settings.proto.
  */
 export const file_dphone_settings_v1_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSLCAgoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBARIbCg5zZXJpYWxfY29uc29sZRgDIAEoCEgCiAEBEhwKD21ldHJpY3NfZW5hYmxlZBgEIAEoCEgDiAEBEhoKDWlkbGVfc29mdGtleXMYBSABKAlIBIgBARIaCg1kaXNhYmxlZF9hcHBzGAYgASgJSAWIAQFCDgoMX3NzaF9lbmFibGVkQh4KHF9pZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmVCEQoPX3NlcmlhbF9jb25zb2xlQhIKEF9tZXRyaWNzX2VuYWJsZWRCEAoOX2lkbGVfc29mdGtleXNCEAoOX2Rpc2FibGVkX2FwcHNiBnByb3RvMw");
+  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSLuAgoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBARIbCg5zZXJpYWxfY29uc29sZRgDIAEoCEgCiAEBEhwKD21ldHJpY3NfZW5hYmxlZBgEIAEoCEgDiAEBEjYKDWlkbGVfc29mdGtleXMYBSADKAsyHy5kcGhvbmUuc2V0dGluZ3MudjEuSWRsZVNvZnRrZXkSPAoNZGlzYWJsZWRfYXBwcxgGIAEoCzIgLmRwaG9uZS5zZXR0aW5ncy52MS5EaXNhYmxlZEFwcHNIBIgBAUIOCgxfc3NoX2VuYWJsZWRCHgocX2lnbm9yZV9wcm92aXNpb25lZF9maXJtd2FyZUIRCg9fc2VyaWFsX2NvbnNvbGVCEgoQX21ldHJpY3NfZW5hYmxlZEIQCg5fZGlzYWJsZWRfYXBwcyITCgNBcHASDAoEbmFtZRgBIAEoCSLKAgoLSWRsZVNvZnRrZXkSPAoIZnVuY3Rpb24YASABKA4yKC5kcGhvbmUuc2V0dGluZ3MudjEuSWRsZVNvZnRrZXkuRnVuY3Rpb25IABImCgNhcHAYAiABKAsyFy5kcGhvbmUuc2V0dGluZ3MudjEuQXBwSAAiygEKCEZ1bmN0aW9uEhgKFEZVTkNUSU9OX1VOU1BFQ0lGSUVEEAASFQoRRlVOQ1RJT05fQ0FMTF9MT0cQARIVChFGVU5DVElPTl9DT05UQUNUUxACEhMKD0ZVTkNUSU9OX1NUQVRVUxADEhEKDUZVTkNUSU9OX01FTlUQBBIRCg1GVU5DVElPTl9BUFBTEAUSEAoMRlVOQ1RJT05fRE5EEAYSFAoQRlVOQ1RJT05fRk9SV0FSRBAHEhMKD0ZVTkNUSU9OX1JFRElBTBAIQggKBmFjdGlvbiI1CgxEaXNhYmxlZEFwcHMSJQoEYXBwcxgBIAMoCzIXLmRwaG9uZS5zZXR0aW5ncy52MS5BcHBiBnByb3RvMw");
 
 /**
  * Settings that only Open DPhone has.  Stored on the phone in protobuf text
@@ -18,13 +18,15 @@ export const file_dphone_settings_v1_settings: GenFile = /*@__PURE__*/
  * reads.  Settings stock also knows stay in the stock XML layers.
  *
  * Every field has explicit presence: an absent field means "not set
- * locally", which is not the same as false.
+ * locally", which is not the same as false.  (A repeated field with no
+ * entries is absent.)
  *
  * A provisioning server can supply the same settings in the configuration
- * it sends, as <setting id="dphone_<field name>" value="0|1"/>.  For each
- * field the effective value is: the provisioned value if the server marked
- * it conflict="freeze"; otherwise the value in this file if the field is
- * present; otherwise the provisioned value; otherwise the default.
+ * it sends, as <setting id="dphone_<field name>" value="..."/> (0 or 1 for
+ * an on/off setting).  For each field the effective value is: the
+ * provisioned value if the server marked it conflict="freeze"; otherwise
+ * the value in this file if the field is present; otherwise the
+ * provisioned value; otherwise the default.
  *
  * @generated from message dphone.settings.v1.DphoneSettings
  */
@@ -67,28 +69,37 @@ export type DphoneSettings = Message<"dphone.settings.v1.DphoneSettings"> & {
   metricsEnabled?: boolean | undefined;
 
   /**
-   * The idle screen's softkeys, in order, as a comma-separated list of:
-   * call_log, contacts, status, menu, apps, dnd, forward, redial, and
-   * app:<name> (opens the app of that name; not shown while the phone has
-   * no such app).  Default: call_log,contacts,status,menu,apps,dnd,forward.
-   * The softkeys of the "idle" keymap state in the XML configuration are
-   * not used.  The provisioned form carries the same list:
+   * The idle screen's softkeys, in order.  Default (also when there are
+   * none here): Call Log, Contacts, Status, Menu, Apps, DND, Forward.  The
+   * softkeys of the "idle" keymap state in the XML configuration are not
+   * used.  In this file, one entry per softkey:
+   *   idle_softkeys { function: FUNCTION_CALL_LOG }
+   *   idle_softkeys { app { name: "parking" } }
+   * The provisioned form is the XML configuration's own, a comma-separated
+   * value of call_log, contacts, status, menu, apps, dnd, forward, redial,
+   * and app:<name>:
    * <setting id="dphone_idle_softkeys" value="call_log,contacts,menu"/>.
    *
-   * @generated from field: optional string idle_softkeys = 5;
+   * @generated from field: repeated dphone.settings.v1.IdleSoftkey idle_softkeys = 5;
    */
-  idleSoftkeys?: string | undefined;
+  idleSoftkeys: IdleSoftkey[];
 
   /**
-   * The built-in apps that are switched off, as a comma-separated list of
-   * app names (e.g., "calendar,parking").  Such an app is not in the
-   * phone's app list and cannot be opened.  Default: none.  The provisioned
-   * form carries the same list:
+   * The built-in apps that are switched off.  Such an app is not in the
+   * phone's app list and cannot be opened.  Default: none.  Present with
+   * no apps in it, it switches every app on, whatever the provisioning
+   * server said.  In this file:
+   *   disabled_apps {
+   *     apps { name: "calendar" }
+   *     apps { name: "parking" }
+   *   }
+   * The provisioned form is the XML configuration's own, a comma-separated
+   * value of app names:
    * <setting id="dphone_disabled_apps" value="calendar,parking"/>.
    *
-   * @generated from field: optional string disabled_apps = 6;
+   * @generated from field: optional dphone.settings.v1.DisabledApps disabled_apps = 6;
    */
-  disabledApps?: string | undefined;
+  disabledApps?: DisabledApps | undefined;
 };
 
 /**
@@ -97,4 +108,146 @@ export type DphoneSettings = Message<"dphone.settings.v1.DphoneSettings"> & {
  */
 export const DphoneSettingsSchema: GenMessage<DphoneSettings> = /*@__PURE__*/
   messageDesc(file_dphone_settings_v1_settings, 0);
+
+/**
+ * An app, by its name (e.g., "calendar").
+ *
+ * @generated from message dphone.settings.v1.App
+ */
+export type App = Message<"dphone.settings.v1.App"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message dphone.settings.v1.App.
+ * Use `create(AppSchema)` to create a new message.
+ */
+export const AppSchema: GenMessage<App> = /*@__PURE__*/
+  messageDesc(file_dphone_settings_v1_settings, 1);
+
+/**
+ * A softkey of the idle screen.  The web interface's messages use this
+ * definition too.
+ *
+ * @generated from message dphone.settings.v1.IdleSoftkey
+ */
+export type IdleSoftkey = Message<"dphone.settings.v1.IdleSoftkey"> & {
+  /**
+   * What the softkey does.  An entry with neither is skipped.
+   *
+   * @generated from oneof dphone.settings.v1.IdleSoftkey.action
+   */
+  action: {
+    /**
+     * @generated from field: dphone.settings.v1.IdleSoftkey.Function function = 1;
+     */
+    value: IdleSoftkey_Function;
+    case: "function";
+  } | {
+    /**
+     * Opens this app; not shown while the phone has no such app.
+     *
+     * @generated from field: dphone.settings.v1.App app = 2;
+     */
+    value: App;
+    case: "app";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message dphone.settings.v1.IdleSoftkey.
+ * Use `create(IdleSoftkeySchema)` to create a new message.
+ */
+export const IdleSoftkeySchema: GenMessage<IdleSoftkey> = /*@__PURE__*/
+  messageDesc(file_dphone_settings_v1_settings, 2);
+
+/**
+ * The built-in functions a softkey can have.
+ *
+ * @generated from enum dphone.settings.v1.IdleSoftkey.Function
+ */
+export enum IdleSoftkey_Function {
+  /**
+   * @generated from enum value: FUNCTION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * The call log; labeled "Missed Calls" while there are unseen ones.
+   *
+   * @generated from enum value: FUNCTION_CALL_LOG = 1;
+   */
+  CALL_LOG = 1,
+
+  /**
+   * @generated from enum value: FUNCTION_CONTACTS = 2;
+   */
+  CONTACTS = 2,
+
+  /**
+   * Phone information.
+   *
+   * @generated from enum value: FUNCTION_STATUS = 3;
+   */
+  STATUS = 3,
+
+  /**
+   * @generated from enum value: FUNCTION_MENU = 4;
+   */
+  MENU = 4,
+
+  /**
+   * The app launcher.
+   *
+   * @generated from enum value: FUNCTION_APPS = 5;
+   */
+  APPS = 5,
+
+  /**
+   * Switches Do Not Disturb.
+   *
+   * @generated from enum value: FUNCTION_DND = 6;
+   */
+  DND = 6,
+
+  /**
+   * The call forwarding menu.
+   *
+   * @generated from enum value: FUNCTION_FORWARD = 7;
+   */
+  FORWARD = 7,
+
+  /**
+   * @generated from enum value: FUNCTION_REDIAL = 8;
+   */
+  REDIAL = 8,
+}
+
+/**
+ * Describes the enum dphone.settings.v1.IdleSoftkey.Function.
+ */
+export const IdleSoftkey_FunctionSchema: GenEnum<IdleSoftkey_Function> = /*@__PURE__*/
+  enumDesc(file_dphone_settings_v1_settings, 2, 0);
+
+/**
+ * The built-in apps that are switched off.
+ *
+ * @generated from message dphone.settings.v1.DisabledApps
+ */
+export type DisabledApps = Message<"dphone.settings.v1.DisabledApps"> & {
+  /**
+   * @generated from field: repeated dphone.settings.v1.App apps = 1;
+   */
+  apps: App[];
+};
+
+/**
+ * Describes the message dphone.settings.v1.DisabledApps.
+ * Use `create(DisabledAppsSchema)` to create a new message.
+ */
+export const DisabledAppsSchema: GenMessage<DisabledApps> = /*@__PURE__*/
+  messageDesc(file_dphone_settings_v1_settings, 3);
 

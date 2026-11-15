@@ -185,7 +185,7 @@ export function Dashboard() {
             rows={[
               ["Address", net.ipv4Address && <>{net.ipv4Address}/{net.ipv4PrefixLen}{net.ipv4Source && <> ({label(addressSourceNames, net.ipv4Source)})</>}</>],
               ["Gateway", net.ipv4Gateway],
-              ["DNS", net.dns.join(", ")],
+              ["DNS", net.dnsServers.map((s) => s.address).join(", ")],
               ["LAN port", net.lan?.up ? `${net.lan.speed} Mbps, ${net.lan.fullDuplex ? "full" : "half"} duplex` : "No link"],
               ["PC port", !net.pcPortEnabled ? "Disabled" : net.pc?.up ? `${net.pc.speed} Mbps` : "No link"],
               ["Voice VLAN", net.voiceVlan !== undefined ? <>{net.voiceVlan}{net.vlanSource && <> ({label(vlanSourceNames, net.vlanSource)})</>}</> : "None"],

@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { Button, Card, Dpma, Input, PageHeader, Select, Toggle } from "../components/ui";
+import type { IdleSoftkey } from "../gen/dphone/settings/v1/settings_pb";
 import { ConfigService, SettingSource, type IdleSoftkeys as IdleSoftkeysMessage, type Setting } from "../gen/dphone/v1/config_pb";
 import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
@@ -134,6 +135,12 @@ const display: Item[] = [
   { id: "small_clock", label: "Small clock", type: "bool" },
 ];
 
+/// True when the two softkeys are the same one.
+function sameSoftkey(a: IdleSoftkey | undefined, b: IdleSoftkey): boolean {
+  if (a?.action.case === "function" && b.action.case === "function") return a.action.value === b.action.value;
+  return a?.action.case === "app" && b.action.case === "app" && a.action.value.name === b.action.value.name;
+}
+
 /// The softkeys of the phone's idle screen, in order.  Each change is
 /// saved as it is made.
 function IdleSoftkeys() {
@@ -148,13 +155,14 @@ function IdleSoftkeys() {
     },
   });
   const keys = saved ?? loaded.data?.idleSoftkeys;
-  const names = keys?.softkeys ?? [];
-  const label = (name: string) => keys?.choices.find((c) => c.name === name)?.label ?? name;
+  const softkeys = keys?.softkeys ?? [];
+  const label = (key: IdleSoftkey) => keys?.choices.find((c) => sameSoftkey(c.softkey, key))?.label ?? (key.action.case === "app" ? key.action.value.name : "");
+  const unused = (keys?.choices ?? []).filter((c) => c.softkey && !softkeys.some((k) => sameSoftkey(c.softkey, k)));
   const dpma = viaDpma(keys);
   const fixed = !keys || dpma || set.isPending;
-  const save = (softkeys: string[]) => set.mutate({ softkeys });
+  const save = (softkeys: IdleSoftkey[]) => set.mutate({ softkeys });
   const move = (i: number, by: number) => {
-    const next = [...names];
+    const next = [...softkeys];
     [next[i], next[i + by]] = [next[i + by], next[i]];
     save(next);
   };
@@ -173,31 +181,37 @@ function IdleSoftkeys() {
       <Dpma on={dpma} className="space-y-3">
         <ErrorNote error={error ?? loaded.error} />
         <ol className="divide-y divide-slate-100 dark:divide-slate-800">
-          {names.map((name, i) => (
-            <li key={name + i} className="flex items-center gap-1 py-1.5 text-sm">
+          {softkeys.map((key, i) => (
+            <li key={i} className="flex items-center gap-1 py-1.5 text-sm">
               <span className="w-6 text-slate-400">{i + 1}</span>
-              <span className="flex-1">{label(name)}</span>
+              <span className="flex-1">{label(key)}</span>
               <Button size="sm" variant="ghost" aria-label="Move up" disabled={fixed || i === 0} onClick={() => move(i, -1)}>
                 ↑
               </Button>
-              <Button size="sm" variant="ghost" aria-label="Move down" disabled={fixed || i === names.length - 1} onClick={() => move(i, 1)}>
+              <Button size="sm" variant="ghost" aria-label="Move down" disabled={fixed || i === softkeys.length - 1} onClick={() => move(i, 1)}>
                 ↓
               </Button>
-              <Button size="sm" variant="ghost" aria-label="Remove" disabled={fixed || names.length === 1} onClick={() => save(names.filter((_, j) => j !== i))}>
+              <Button size="sm" variant="ghost" aria-label="Remove" disabled={fixed || softkeys.length === 1} onClick={() => save(softkeys.filter((_, j) => j !== i))}>
                 ✕
               </Button>
             </li>
           ))}
         </ol>
-        <Select aria-label="Add softkey" value="" disabled={fixed} onChange={(e) => e.target.value && save([...names, e.target.value])}>
+        <Select
+          aria-label="Add softkey"
+          value=""
+          disabled={fixed}
+          onChange={(e) => {
+            const added = e.target.value === "" ? undefined : unused[Number(e.target.value)]?.softkey;
+            if (added) save([...softkeys, added]);
+          }}
+        >
           <option value="">Add softkey…</option>
-          {(keys?.choices ?? [])
-            .filter((c) => !names.includes(c.name))
-            .map((c) => (
-              <option key={c.name} value={c.name}>
-                {c.label}
-              </option>
-            ))}
+          {unused.map((c, i) => (
+            <option key={i} value={i}>
+              {c.label}
+            </option>
+          ))}
         </Select>
       </Dpma>
     </Card>

@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/v1/network.proto.
  */
 export const file_dphone_v1_network: GenFile = /*@__PURE__*/
-  fileDesc("ChdkcGhvbmUvdjEvbmV0d29yay5wcm90bxIJZHBob25lLnYxIjoKCFBvcnRMaW5rEgoKAnVwGAEgASgIEg0KBXNwZWVkGAIgASgNEhMKC2Z1bGxfZHVwbGV4GAMgASgIIroFCg1OZXR3b3JrU3RhdHVzEiIKBXBoYXNlGAEgASgOMhMuZHBob25lLnYxLk5ldFBoYXNlEg4KBmRldGFpbBgCIAEoCRIgCgNsYW4YAyABKAsyEy5kcGhvbmUudjEuUG9ydExpbmsSHwoCcGMYBCABKAsyEy5kcGhvbmUudjEuUG9ydExpbmsSFwoPcGNfcG9ydF9lbmFibGVkGAUgASgIEgsKA21hYxgGIAEoCRITCgtpcHY0X3NvdXJjZRgHIAEoCRIUCgxpcHY0X2FkZHJlc3MYCCABKAkSFwoPaXB2NF9wcmVmaXhfbGVuGAkgASgNEhQKDGlwdjRfZ2F0ZXdheRgKIAEoCRISCgpsZWFzZV9zZWNzGAsgASgNEhMKC2RoY3Bfc2VydmVyGAwgASgJEhYKDmlwdjZfYWRkcmVzc2VzGA0gAygJEgsKA2RucxgOIAMoCRIOCgZkb21haW4YDyABKAkSGAoQZGhjcF90ZnRwX3NlcnZlchgQIAEoCRITCgtudHBfc2VydmVycxgRIAMoCRISCgpudHBfc3luY2VkGBIgASgIEhMKC3ZsYW5fc291cmNlGBMgASgJEhcKCnZvaWNlX3ZsYW4YFCABKA1IAIgBARIUCgdwY192bGFuGBUgASgNSAGIAQESFQoNdmxhbl9wcmlvcml0eRgWIAEoDRIMCgRkc2NwGBcgASgNEhQKDGxsZHBfcHJlc2VudBgYIAEoCBIYChBsbGRwX3N5c3RlbV9uYW1lGBkgASgJEhQKDGxsZHBfcG9ydF9pZBgaIAEoCRIXCg9sbGRwX2NoYXNzaXNfaWQYGyABKAkSHQoVbGxkcF9wb3J0X2Rlc2NyaXB0aW9uGBwgASgJEg8KB3Byb2ZpbGUYHSABKAlCDQoLX3ZvaWNlX3ZsYW5CCgoIX3BjX3ZsYW4i9gMKD05ldHdvcmtTZXR0aW5ncxIeChZhZGRyZXNzaW5nX3Byb3Zpc2lvbmVkGBYgASgIEgwKBGRoY3AYASABKAgSEQoJc3RhdGljX2lwGAIgASgJEhMKC3N1Ym5ldF9tYXNrGAMgASgJEg8KB2dhdGV3YXkYBCABKAkSEwoLcHJpbWFyeV9kbnMYBSABKAkSFQoNc2Vjb25kYXJ5X2RucxgGIAEoCRIOCgZkb21haW4YByABKAkSGwoTdmxhbl9kaXNjb3ZlcnlfbW9kZRgIIAEoCRIUCgd2bGFuX2lkGAkgASgNSACIAQESFwoKcGNfdmxhbl9pZBgKIAEoDUgBiAEBEg4KBnBjX3FvcxgLIAEoDRIUCgxwY19wb3J0X21vZGUYDCABKAkSFQoNbGFuX3BvcnRfbW9kZRgNIAEoCRIQCghzaXBfZHNjcBgOIAEoDRIQCghydHBfZHNjcBgPIAEoDRIPCgdzaXBfcW9zGBAgASgNEg8KB3J0cF9xb3MYESABKA0SGQoRZG90MXhfcGFzc3Rocm91Z2gYEiABKAgSEgoKbnRwX3NlcnZlchgTIAEoCRIRCgl0aW1lX3pvbmUYFCABKAkSFAoMaXB2Nl9lbmFibGVkGBUgASgIQgoKCF92bGFuX2lkQg0KC19wY192bGFuX2lkIhMKEUdldE5ldHdvcmtSZXF1ZXN0ImwKEkdldE5ldHdvcmtSZXNwb25zZRIoCgZzdGF0dXMYASABKAsyGC5kcGhvbmUudjEuTmV0d29ya1N0YXR1cxIsCghzZXR0aW5ncxgCIAEoCzIaLmRwaG9uZS52MS5OZXR3b3JrU2V0dGluZ3MiFQoTV2F0Y2hOZXR3b3JrUmVxdWVzdCJAChRXYXRjaE5ldHdvcmtSZXNwb25zZRIoCgZzdGF0dXMYASABKAsyGC5kcGhvbmUudjEuTmV0d29ya1N0YXR1cyJYChlTZXROZXR3b3JrU2V0dGluZ3NSZXF1ZXN0EiwKCHNldHRpbmdzGAEgASgLMhouZHBob25lLnYxLk5ldHdvcmtTZXR0aW5ncxINCgVhcHBseRgCIAEoCCIcChpTZXROZXR3b3JrU2V0dGluZ3NSZXNwb25zZSISChBSZW5ld0RoY3BSZXF1ZXN0IhMKEVJlbmV3RGhjcFJlc3BvbnNlIhEKD1N5bmNUaW1lUmVxdWVzdCISChBTeW5jVGltZVJlc3BvbnNlKnwKCE5ldFBoYXNlEhkKFU5FVF9QSEFTRV9VTlNQRUNJRklFRBAAEhIKDk5FVF9QSEFTRV9ET1dOEAESGQoVTkVUX1BIQVNFX0NPTkZJR1VSSU5HEAISEAoMTkVUX1BIQVNFX1VQEAMSFAoQTkVUX1BIQVNFX0ZBSUxFRBAEMp4DCg5OZXR3b3JrU2VydmljZRJJCgpHZXROZXR3b3JrEhwuZHBob25lLnYxLkdldE5ldHdvcmtSZXF1ZXN0Gh0uZHBob25lLnYxLkdldE5ldHdvcmtSZXNwb25zZRJRCgxXYXRjaE5ldHdvcmsSHi5kcGhvbmUudjEuV2F0Y2hOZXR3b3JrUmVxdWVzdBofLmRwaG9uZS52MS5XYXRjaE5ldHdvcmtSZXNwb25zZTABEmEKElNldE5ldHdvcmtTZXR0aW5ncxIkLmRwaG9uZS52MS5TZXROZXR3b3JrU2V0dGluZ3NSZXF1ZXN0GiUuZHBob25lLnYxLlNldE5ldHdvcmtTZXR0aW5nc1Jlc3BvbnNlEkYKCVJlbmV3RGhjcBIbLmRwaG9uZS52MS5SZW5ld0RoY3BSZXF1ZXN0GhwuZHBob25lLnYxLlJlbmV3RGhjcFJlc3BvbnNlEkMKCFN5bmNUaW1lEhouZHBob25lLnYxLlN5bmNUaW1lUmVxdWVzdBobLmRwaG9uZS52MS5TeW5jVGltZVJlc3BvbnNlYgZwcm90bzM");
+  fileDesc("ChdkcGhvbmUvdjEvbmV0d29yay5wcm90bxIJZHBob25lLnYxIjoKCFBvcnRMaW5rEgoKAnVwGAEgASgIEg0KBXNwZWVkGAIgASgNEhMKC2Z1bGxfZHVwbGV4GAMgASgIIjIKC0lwdjZBZGRyZXNzEg8KB2FkZHJlc3MYASABKAkSEgoKcHJlZml4X2xlbhgCIAEoDSIcCglEbnNTZXJ2ZXISDwoHYWRkcmVzcxgBIAEoCSIZCglOdHBTZXJ2ZXISDAoEaG9zdBgBIAEoCSKGBgoNTmV0d29ya1N0YXR1cxIiCgVwaGFzZRgBIAEoDjITLmRwaG9uZS52MS5OZXRQaGFzZRIOCgZkZXRhaWwYAiABKAkSIAoDbGFuGAMgASgLMhMuZHBob25lLnYxLlBvcnRMaW5rEh8KAnBjGAQgASgLMhMuZHBob25lLnYxLlBvcnRMaW5rEhcKD3BjX3BvcnRfZW5hYmxlZBgFIAEoCBILCgNtYWMYBiABKAkSEwoLaXB2NF9zb3VyY2UYByABKAkSFAoMaXB2NF9hZGRyZXNzGAggASgJEhcKD2lwdjRfcHJlZml4X2xlbhgJIAEoDRIUCgxpcHY0X2dhdGV3YXkYCiABKAkSEgoKbGVhc2Vfc2VjcxgLIAEoDRITCgtkaGNwX3NlcnZlchgMIAEoCRIuCg5pcHY2X2FkZHJlc3NlcxgNIAMoCzIWLmRwaG9uZS52MS5JcHY2QWRkcmVzcxIpCgtkbnNfc2VydmVycxgOIAMoCzIULmRwaG9uZS52MS5EbnNTZXJ2ZXISDgoGZG9tYWluGA8gASgJEhgKEGRoY3BfdGZ0cF9zZXJ2ZXIYECABKAkSKQoLbnRwX3NlcnZlcnMYESADKAsyFC5kcGhvbmUudjEuTnRwU2VydmVyEhIKCm50cF9zeW5jZWQYEiABKAgSEwoLdmxhbl9zb3VyY2UYEyABKAkSFwoKdm9pY2VfdmxhbhgUIAEoDUgAiAEBEhQKB3BjX3ZsYW4YFSABKA1IAYgBARIVCg12bGFuX3ByaW9yaXR5GBYgASgNEgwKBGRzY3AYFyABKA0SFAoMbGxkcF9wcmVzZW50GBggASgIEhgKEGxsZHBfc3lzdGVtX25hbWUYGSABKAkSFAoMbGxkcF9wb3J0X2lkGBogASgJEhcKD2xsZHBfY2hhc3Npc19pZBgbIAEoCRIdChVsbGRwX3BvcnRfZGVzY3JpcHRpb24YHCABKAkSDwoHcHJvZmlsZRgdIAEoCUINCgtfdm9pY2VfdmxhbkIKCghfcGNfdmxhbiL2AwoPTmV0d29ya1NldHRpbmdzEh4KFmFkZHJlc3NpbmdfcHJvdmlzaW9uZWQYFiABKAgSDAoEZGhjcBgBIAEoCBIRCglzdGF0aWNfaXAYAiABKAkSEwoLc3VibmV0X21hc2sYAyABKAkSDwoHZ2F0ZXdheRgEIAEoCRITCgtwcmltYXJ5X2RucxgFIAEoCRIVCg1zZWNvbmRhcnlfZG5zGAYgASgJEg4KBmRvbWFpbhgHIAEoCRIbChN2bGFuX2Rpc2NvdmVyeV9tb2RlGAggASgJEhQKB3ZsYW5faWQYCSABKA1IAIgBARIXCgpwY192bGFuX2lkGAogASgNSAGIAQESDgoGcGNfcW9zGAsgASgNEhQKDHBjX3BvcnRfbW9kZRgMIAEoCRIVCg1sYW5fcG9ydF9tb2RlGA0gASgJEhAKCHNpcF9kc2NwGA4gASgNEhAKCHJ0cF9kc2NwGA8gASgNEg8KB3NpcF9xb3MYECABKA0SDwoHcnRwX3FvcxgRIAEoDRIZChFkb3QxeF9wYXNzdGhyb3VnaBgSIAEoCBISCgpudHBfc2VydmVyGBMgASgJEhEKCXRpbWVfem9uZRgUIAEoCRIUCgxpcHY2X2VuYWJsZWQYFSABKAhCCgoIX3ZsYW5faWRCDQoLX3BjX3ZsYW5faWQiEwoRR2V0TmV0d29ya1JlcXVlc3QibAoSR2V0TmV0d29ya1Jlc3BvbnNlEigKBnN0YXR1cxgBIAEoCzIYLmRwaG9uZS52MS5OZXR3b3JrU3RhdHVzEiwKCHNldHRpbmdzGAIgASgLMhouZHBob25lLnYxLk5ldHdvcmtTZXR0aW5ncyIVChNXYXRjaE5ldHdvcmtSZXF1ZXN0IkAKFFdhdGNoTmV0d29ya1Jlc3BvbnNlEigKBnN0YXR1cxgBIAEoCzIYLmRwaG9uZS52MS5OZXR3b3JrU3RhdHVzIlgKGVNldE5ldHdvcmtTZXR0aW5nc1JlcXVlc3QSLAoIc2V0dGluZ3MYASABKAsyGi5kcGhvbmUudjEuTmV0d29ya1NldHRpbmdzEg0KBWFwcGx5GAIgASgIIhwKGlNldE5ldHdvcmtTZXR0aW5nc1Jlc3BvbnNlIhIKEFJlbmV3RGhjcFJlcXVlc3QiEwoRUmVuZXdEaGNwUmVzcG9uc2UiEQoPU3luY1RpbWVSZXF1ZXN0IhIKEFN5bmNUaW1lUmVzcG9uc2UqfAoITmV0UGhhc2USGQoVTkVUX1BIQVNFX1VOU1BFQ0lGSUVEEAASEgoOTkVUX1BIQVNFX0RPV04QARIZChVORVRfUEhBU0VfQ09ORklHVVJJTkcQAhIQCgxORVRfUEhBU0VfVVAQAxIUChBORVRfUEhBU0VfRkFJTEVEEAQyngMKDk5ldHdvcmtTZXJ2aWNlEkkKCkdldE5ldHdvcmsSHC5kcGhvbmUudjEuR2V0TmV0d29ya1JlcXVlc3QaHS5kcGhvbmUudjEuR2V0TmV0d29ya1Jlc3BvbnNlElEKDFdhdGNoTmV0d29yaxIeLmRwaG9uZS52MS5XYXRjaE5ldHdvcmtSZXF1ZXN0Gh8uZHBob25lLnYxLldhdGNoTmV0d29ya1Jlc3BvbnNlMAESYQoSU2V0TmV0d29ya1NldHRpbmdzEiQuZHBob25lLnYxLlNldE5ldHdvcmtTZXR0aW5nc1JlcXVlc3QaJS5kcGhvbmUudjEuU2V0TmV0d29ya1NldHRpbmdzUmVzcG9uc2USRgoJUmVuZXdEaGNwEhsuZHBob25lLnYxLlJlbmV3RGhjcFJlcXVlc3QaHC5kcGhvbmUudjEuUmVuZXdEaGNwUmVzcG9uc2USQwoIU3luY1RpbWUSGi5kcGhvbmUudjEuU3luY1RpbWVSZXF1ZXN0GhsuZHBob25lLnYxLlN5bmNUaW1lUmVzcG9uc2ViBnByb3RvMw");
 
 /**
  * @generated from message dphone.v1.PortLink
@@ -38,6 +38,64 @@ export type PortLink = Message<"dphone.v1.PortLink"> & {
  */
 export const PortLinkSchema: GenMessage<PortLink> = /*@__PURE__*/
   messageDesc(file_dphone_v1_network, 0);
+
+/**
+ * @generated from message dphone.v1.Ipv6Address
+ */
+export type Ipv6Address = Message<"dphone.v1.Ipv6Address"> & {
+  /**
+   * @generated from field: string address = 1;
+   */
+  address: string;
+
+  /**
+   * @generated from field: uint32 prefix_len = 2;
+   */
+  prefixLen: number;
+};
+
+/**
+ * Describes the message dphone.v1.Ipv6Address.
+ * Use `create(Ipv6AddressSchema)` to create a new message.
+ */
+export const Ipv6AddressSchema: GenMessage<Ipv6Address> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_network, 1);
+
+/**
+ * @generated from message dphone.v1.DnsServer
+ */
+export type DnsServer = Message<"dphone.v1.DnsServer"> & {
+  /**
+   * @generated from field: string address = 1;
+   */
+  address: string;
+};
+
+/**
+ * Describes the message dphone.v1.DnsServer.
+ * Use `create(DnsServerSchema)` to create a new message.
+ */
+export const DnsServerSchema: GenMessage<DnsServer> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_network, 2);
+
+/**
+ * @generated from message dphone.v1.NtpServer
+ */
+export type NtpServer = Message<"dphone.v1.NtpServer"> & {
+  /**
+   * An address or a host name.
+   *
+   * @generated from field: string host = 1;
+   */
+  host: string;
+};
+
+/**
+ * Describes the message dphone.v1.NtpServer.
+ * Use `create(NtpServerSchema)` to create a new message.
+ */
+export const NtpServerSchema: GenMessage<NtpServer> = /*@__PURE__*/
+  messageDesc(file_dphone_v1_network, 3);
 
 /**
  * @generated from message dphone.v1.NetworkStatus
@@ -106,14 +164,14 @@ export type NetworkStatus = Message<"dphone.v1.NetworkStatus"> & {
   dhcpServer: string;
 
   /**
-   * @generated from field: repeated string ipv6_addresses = 13;
+   * @generated from field: repeated dphone.v1.Ipv6Address ipv6_addresses = 13;
    */
-  ipv6Addresses: string[];
+  ipv6Addresses: Ipv6Address[];
 
   /**
-   * @generated from field: repeated string dns = 14;
+   * @generated from field: repeated dphone.v1.DnsServer dns_servers = 14;
    */
-  dns: string[];
+  dnsServers: DnsServer[];
 
   /**
    * @generated from field: string domain = 15;
@@ -126,9 +184,9 @@ export type NetworkStatus = Message<"dphone.v1.NetworkStatus"> & {
   dhcpTftpServer: string;
 
   /**
-   * @generated from field: repeated string ntp_servers = 17;
+   * @generated from field: repeated dphone.v1.NtpServer ntp_servers = 17;
    */
-  ntpServers: string[];
+  ntpServers: NtpServer[];
 
   /**
    * @generated from field: bool ntp_synced = 18;
@@ -198,7 +256,7 @@ export type NetworkStatus = Message<"dphone.v1.NetworkStatus"> & {
  * Use `create(NetworkStatusSchema)` to create a new message.
  */
 export const NetworkStatusSchema: GenMessage<NetworkStatus> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_network, 1);
+  messageDesc(file_dphone_v1_network, 4);
 
 /**
  * The stored settings (stock setting IDs underneath).
@@ -328,7 +386,7 @@ export type NetworkSettings = Message<"dphone.v1.NetworkSettings"> & {
  * Use `create(NetworkSettingsSchema)` to create a new message.
  */
 export const NetworkSettingsSchema: GenMessage<NetworkSettings> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_network, 2);
+  messageDesc(file_dphone_v1_network, 5);
 
 /**
  * @generated from message dphone.v1.GetNetworkRequest
@@ -341,7 +399,7 @@ export type GetNetworkRequest = Message<"dphone.v1.GetNetworkRequest"> & {
  * Use `create(GetNetworkRequestSchema)` to create a new message.
  */
 export const GetNetworkRequestSchema: GenMessage<GetNetworkRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_network, 3);
+  messageDesc(file_dphone_v1_network, 6);
 
 /**
  * @generated from message dphone.v1.GetNetworkResponse
@@ -363,7 +421,7 @@ export type GetNetworkResponse = Message<"dphone.v1.GetNetworkResponse"> & {
  * Use `create(GetNetworkResponseSchema)` to create a new message.
  */
 export const GetNetworkResponseSchema: GenMessage<GetNetworkResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_network, 4);
+  messageDesc(file_dphone_v1_network, 7);
 
 /**
  * @generated from message dphone.v1.WatchNetworkRequest
@@ -376,7 +434,7 @@ export type WatchNetworkRequest = Message<"dphone.v1.WatchNetworkRequest"> & {
  * Use `create(WatchNetworkRequestSchema)` to create a new message.
  */
 export const WatchNetworkRequestSchema: GenMessage<WatchNetworkRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_network, 5);
+  messageDesc(file_dphone_v1_network, 8);
 
 /**
  * @generated from message dphone.v1.WatchNetworkResponse
@@ -393,7 +451,7 @@ export type WatchNetworkResponse = Message<"dphone.v1.WatchNetworkResponse"> & {
  * Use `create(WatchNetworkResponseSchema)` to create a new message.
  */
 export const WatchNetworkResponseSchema: GenMessage<WatchNetworkResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_network, 6);
+  messageDesc(file_dphone_v1_network, 9);
 
 /**
  * @generated from message dphone.v1.SetNetworkSettingsRequest
@@ -417,7 +475,7 @@ export type SetNetworkSettingsRequest = Message<"dphone.v1.SetNetworkSettingsReq
  * Use `create(SetNetworkSettingsRequestSchema)` to create a new message.
  */
 export const SetNetworkSettingsRequestSchema: GenMessage<SetNetworkSettingsRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_network, 7);
+  messageDesc(file_dphone_v1_network, 10);
 
 /**
  * @generated from message dphone.v1.SetNetworkSettingsResponse
@@ -430,7 +488,7 @@ export type SetNetworkSettingsResponse = Message<"dphone.v1.SetNetworkSettingsRe
  * Use `create(SetNetworkSettingsResponseSchema)` to create a new message.
  */
 export const SetNetworkSettingsResponseSchema: GenMessage<SetNetworkSettingsResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_network, 8);
+  messageDesc(file_dphone_v1_network, 11);
 
 /**
  * @generated from message dphone.v1.RenewDhcpRequest
@@ -443,7 +501,7 @@ export type RenewDhcpRequest = Message<"dphone.v1.RenewDhcpRequest"> & {
  * Use `create(RenewDhcpRequestSchema)` to create a new message.
  */
 export const RenewDhcpRequestSchema: GenMessage<RenewDhcpRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_network, 9);
+  messageDesc(file_dphone_v1_network, 12);
 
 /**
  * @generated from message dphone.v1.RenewDhcpResponse
@@ -456,7 +514,7 @@ export type RenewDhcpResponse = Message<"dphone.v1.RenewDhcpResponse"> & {
  * Use `create(RenewDhcpResponseSchema)` to create a new message.
  */
 export const RenewDhcpResponseSchema: GenMessage<RenewDhcpResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_network, 10);
+  messageDesc(file_dphone_v1_network, 13);
 
 /**
  * @generated from message dphone.v1.SyncTimeRequest
@@ -469,7 +527,7 @@ export type SyncTimeRequest = Message<"dphone.v1.SyncTimeRequest"> & {
  * Use `create(SyncTimeRequestSchema)` to create a new message.
  */
 export const SyncTimeRequestSchema: GenMessage<SyncTimeRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_network, 11);
+  messageDesc(file_dphone_v1_network, 14);
 
 /**
  * @generated from message dphone.v1.SyncTimeResponse
@@ -482,7 +540,7 @@ export type SyncTimeResponse = Message<"dphone.v1.SyncTimeResponse"> & {
  * Use `create(SyncTimeResponseSchema)` to create a new message.
  */
 export const SyncTimeResponseSchema: GenMessage<SyncTimeResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_network, 12);
+  messageDesc(file_dphone_v1_network, 15);
 
 /**
  * @generated from enum dphone.v1.NetPhase

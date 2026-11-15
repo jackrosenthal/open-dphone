@@ -42,6 +42,12 @@ message Lamp {
   string blink = 3;
 }
 
+// A key of the phone.
+message Key {
+  // The stock key name ("1", "sk1", "line2", "vup", ...).
+  string name = 1;
+}
+
 message GetScreenLayoutRequest {}
 
 message GetScreenLayoutResponse {
@@ -49,8 +55,8 @@ message GetScreenLayoutResponse {
   // "small_gray", "large_gray", or "color".
   string skin = 2;
   repeated ScreenInfo screens = 3;
-  // Names of the keys this model has ("1", "sk1", "line2", "vup", ...).
-  repeated string keys = 4;
+  // The keys this model has.
+  repeated Key keys = 4;
   uint32 softkey_bar_height = 5;
   // False when no screen source is attached (no picture, keys still work).
   bool mirror_available = 6;
