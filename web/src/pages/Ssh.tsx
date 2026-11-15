@@ -53,18 +53,89 @@ function WebSwitch({ onError }: { onError: (e: unknown) => void }) {
   );
 }
 
+/// The EHS header as seen when attaching a USB serial cable, with the
+/// cable's wire colors and each pin's function from the phone's side.
+function EhsPinout() {
+  const x = (pin: number) => 35 + (pin - 1) * 50;
+  const ink = "fill-slate-700 dark:fill-slate-200";
+  const muted = "fill-slate-500 dark:fill-slate-400";
+  // Each wire is drawn over a wider gray line, so that white shows on the
+  // light theme and black on the dark one.
+  const wire = (px: number, y1: number, color: string) => (
+    <>
+      <path d={`M${px} ${y1}V122`} className="stroke-slate-500" strokeWidth={8} strokeLinecap="round" />
+      <path d={`M${px} ${y1}V122`} stroke={color} strokeWidth={5} strokeLinecap="round" />
+    </>
+  );
+  const caption = (px: number, color: string, what: string) => (
+    <>
+      <text x={px} y={139} className={ink} fontWeight={600}>
+        {color}
+      </text>
+      <text x={px} y={153} className={muted}>
+        {what}
+      </text>
+    </>
+  );
+  return (
+    <svg
+      viewBox="0 0 320 160"
+      className="block h-auto w-full max-w-sm"
+      fontSize={11}
+      textAnchor="middle"
+      role="img"
+      aria-label="Pin 1: ground, black wire. Pin 2: TX, white wire. Pin 4: 3.3 V, not connected. Pin 5: RX, green wire. Pin 6: ground. Red wire: not connected."
+    >
+      <rect x={8} y={26} width={304} height={36} rx={4} className="fill-slate-200 stroke-slate-400 dark:fill-slate-800 dark:stroke-slate-600" />
+      {[1, 2, 3, 4, 5, 6].map((pin) => (
+        <g key={pin}>
+          <text x={x(pin)} y={18} className={pin === 3 ? muted : ink} fontWeight={pin === 3 ? 400 : 600}>
+            {pin === 3 ? "Key" : pin}
+          </text>
+          {pin !== 3 && <rect x={x(pin) - 6} y={38} width={12} height={12} className="fill-amber-500" />}
+        </g>
+      ))}
+      {wire(x(1), 44, "#111111")}
+      {wire(x(2), 44, "#ffffff")}
+      {wire(x(5), 44, "#16a34a")}
+      {wire(x(6), 104, "#dc2626")}
+      <text x={x(4)} y={78} className={ink}>
+        3.3 V
+      </text>
+      <text x={x(4)} y={90} fontSize={10} className={muted}>
+        Not connected
+      </text>
+      <text x={x(6)} y={78} className={ink}>
+        GND
+      </text>
+      {caption(x(1), "Black", "GND")}
+      {caption(x(2), "White", "TX")}
+      {caption(x(5), "Green", "RX")}
+      <text x={x(6)} y={139} className={ink} fontWeight={600}>
+        Red
+      </text>
+      <text x={x(6)} y={152} fontSize={10} className={muted}>
+        Not connected
+      </text>
+    </svg>
+  );
+}
+
 /// UART A is the EHS headset adapter's unless the serial console is chosen.
 function SerialPort({ onError }: { onError: (e: unknown) => void }) {
   const loaded = useQuery(SystemService.method.getSerialConsole, {});
   const set = useMutation(SystemService.method.setSerialConsole, { onError, onSuccess: () => (onError(undefined), loaded.refetch()) });
   const setting = loaded.data?.serialConsole;
   return (
-    <Field label="Serial port" hint={settingOrigin(setting) || undefined} className="max-w-xs">
-      <Select value={setting?.value ? "console" : "ehs"} disabled={!setting || setting.locked || set.isPending} onChange={(e) => set.mutate({ serialConsole: e.target.value === "console" })}>
-        <option value="ehs">EHS headset</option>
-        <option value="console">Console (115200 8N1)</option>
-      </Select>
-    </Field>
+    <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
+      <Field label="Serial port" hint={settingOrigin(setting) || undefined} className="w-full max-w-xs">
+        <Select value={setting?.value ? "console" : "ehs"} disabled={!setting || setting.locked || set.isPending} onChange={(e) => set.mutate({ serialConsole: e.target.value === "console" })}>
+          <option value="ehs">EHS headset</option>
+          <option value="console">Console (115200 8N1)</option>
+        </Select>
+      </Field>
+      <EhsPinout />
+    </div>
   );
 }
 
