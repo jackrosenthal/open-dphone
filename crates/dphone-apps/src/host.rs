@@ -71,6 +71,8 @@ pub(crate) enum Inbound {
         id: u32,
         result: Result<HttpResponse, String>,
     },
+    /// The worker thread finished a compilation.
+    Compiled(crate::prepare::Outcome),
 }
 
 #[derive(Default)]

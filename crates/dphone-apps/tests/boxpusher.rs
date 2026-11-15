@@ -258,11 +258,9 @@ fn it_plays_on_the_gray_screens_in_black_and_white() {
 
 #[test]
 fn it_is_a_built_in_app_that_can_be_switched_off() {
-    let manifest: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(staged().join(APP).join("app.json")).unwrap()).unwrap();
     assert_eq!(
-        manifest["capabilities"],
-        serde_json::json!(["ui", "canvas", "storage"]),
+        common::capabilities(APP),
+        ["ui", "storage", "canvas"],
         "no sound, no calls, no network, no timers"
     );
     let config = FakeConfig::default();

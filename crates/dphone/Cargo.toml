@@ -32,7 +32,7 @@ eff = { path = "../eff" }
 dphone-sip = { path = "../dphone-sip" }
 dphone-dpma = { path = "../dphone-dpma" }
 async-trait = "0.1"
-dphone-apps = { path = "../dphone-apps", features = ["ui"] }
+dphone-apps = { path = "../dphone-apps", features = ["ui", "compile"] }
 dphone-web = { path = "../dphone-web", optional = true }
 dphone-ui = { path = "../dphone-ui" }
 serde_json = "1"

@@ -1,6 +1,6 @@
 //! The Open DPhone app runtime: WebAssembly components interpreted by
 //! Wasmtime's Pulley interpreter, the host side of the WIT interface in
-//! `crates/dphone-app-sdk/wit/app.wit`, app packages, and the [`AppManager`] the main role runs.
+//! `crates/dphone-app-sdk/wit/app.wit`, app files, and the [`AppManager`] the main role runs.
 //!
 //! # For the integrator
 //!
@@ -26,8 +26,7 @@ pub mod engine;
 mod host;
 pub mod install;
 pub mod manager;
-pub mod manifest;
-pub mod package;
+mod prepare;
 pub mod services;
 pub mod view;
 
@@ -36,8 +35,12 @@ pub mod testutil;
 #[cfg(feature = "ui")]
 pub mod uishell;
 
+/// The app manifest, read from an app file: the code the tool app makers
+/// build their apps with reads it with.
+pub use cargo_dphone_app::manifest;
 pub use engine::{AppEngine, EngineError};
-pub use install::{InstallError, Installer};
+pub use install::{AppFile, InstallError, Installer};
+pub use prepare::{MAX_COMPONENT, capabilities};
 pub use manager::{AppManager, ManagerConfig};
 pub use manifest::{Capability, Manifest, ManifestError};
 pub use services::{

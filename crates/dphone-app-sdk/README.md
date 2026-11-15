@@ -21,6 +21,13 @@ crate-type = ["cdylib"]
 
 [dependencies]
 dphone-app-sdk = "3"
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
 ```
 
 `src/lib.rs`:
@@ -48,43 +55,63 @@ impl App for Hello {
     }
 }
 
-dphone_app_sdk::export_app!(Hello);
-```
-
-An app implements `App` (`start` and `handle`) for a type that has a `Default`, and registers the type with `export_app!`.  The phone makes one instance of it.
-
-`app.json`, the manifest:
-
-```json
-{
-  "name": "hello",
-  "id": "org.example.hello",
-  "displayName": { "fallback": "Hello" },
-  "description": { "fallback": "Says hello" },
-  "type": "foreground",
-  "wasm": "hello.wasm",
-  "capabilities": ["ui"]
+dphone_app_sdk::export_app! {
+    app: Hello,
+    name: "hello",
+    display_name: "Hello",
+    description: "Says hello",
 }
 ```
 
+That is the whole app: there is no other file.  An app implements `App` (`start` and `handle`) for a type that has a `Default`, and registers the type, with the app's manifest, in `export_app!`.  The phone makes one instance of it.
+
+The release profile builds for size, as the built-in apps are built: the phone has little memory and little flash, and it compiles the app when it is installed.
+
 ## The manifest
+
+The manifest is what the phone has to know about an app before it runs it.  It is written in `export_app!`, after `app` (the app's type), as fields in any order; `name` and `display_name` must be there.  A manifest the phone would refuse does not compile, and the error says why.
 
 | Field | Meaning |
 | --- | --- |
-| `name` | The app's name on the phone: 1 to 64 characters, the first a letter or digit, the rest letters, digits, `_`, `.`, or `,`.  It cannot be the name of a built-in app. |
-| `id` | An identifier of the app, e.g., in reverse domain form. |
-| `displayName`, `description` | Text shown to the user: a string, or an object of texts by locale of which `en_us` or `fallback` is used. |
-| `type` | `foreground` (the default), `background`, or `idle`. |
-| `hasIdle` | `true` if the app draws on the idle screen. |
+| `name` | The app's name on the phone: 1 to 64 characters, the first a letter or digit, the rest letters, digits, `_`, `.`, or `,`.  It cannot be the name of a built-in app.  Installing an app replaces the installed app of the same name. |
+| `id` | An identifier of the app, e.g., in reverse domain form (`"org.example.hello"`). |
+| `display_name` | What the phone calls the app on screen. |
+| `display_name_in` | The same in other languages, by locale: `&[("de_de", "Hallo"), ("es_mx", "Hola")]`. |
+| `description`, `description_in` | A line about the app, and the same in other languages. |
+| `kind` | `AppKind::Foreground` (the default): the app runs while it is on screen.  `AppKind::Background`: it starts with the phone and runs without being on screen.  `AppKind::Idle`: it provides the idle screen. |
+| `has_idle` | `true` if the app draws on the idle screen. |
 | `hidden` | `true` marks the app as hidden. |
-| `iconFile` | The name of the app's icon. |
-| `wasm` | The file name of the component in the package. |
-| `capabilities` | The interfaces the app may use (below). |
-| `memoryKiB` | The most memory the app may have.  The default is 4 MiB, and the phone gives no app more than 16 MiB. |
+| `icon` | The app's icon: the name of one of the phone's icons, or of one of `files`.  The phone prefers the file with its model before the name (`D60.icon.png` to `icon.png`). |
+| `memory_kib` | The most memory the app may have, in KiB.  The default is 4 MiB, and the phone gives no app more than 16 MiB. |
+| `files` | The app's data files (e.g., PNG pictures, sounds), by name: `&[("logo.png", include_bytes!("logo.png"))]`.  At most 64 files and 8 MiB in all.  The phone unpacks them where the app's read-only files are (`Location::App`), and where the pictures and sounds that `ui` and `audio` take by name are looked for. |
+
+A manifest with everything:
+
+```rust,ignore
+dphone_app_sdk::export_app! {
+    app: Weather,
+    name: "weather",
+    id: "org.example.weather",
+    display_name: "Weather",
+    display_name_in: &[("de_de", "Wetter")],
+    description: "The weather where the phone is",
+    description_in: &[("de_de", "Das Wetter am Ort des Telefons")],
+    kind: AppKind::Background,
+    has_idle: true,
+    icon: "weather.png",
+    memory_kib: 8192,
+    files: &[
+        ("weather.png", include_bytes!("../data/weather.png")),
+        ("D60.weather.png", include_bytes!("../data/weather-color.png")),
+    ],
+}
+```
+
+The manifest travels in the app's file: `export_app!` writes it, when the app is compiled, into the custom section `dphone-app` of the WebAssembly module, as the protobuf message `dphone.app.v1.Manifest` (`proto/manifest.proto` in this crate).  The phone reads it from there before it installs the app.
 
 ## Capabilities
 
-Each interface of the phone except `runtime` is a capability, and each is a module of this crate with the same name.  An app is given only the capabilities its manifest lists; an app that uses another one does not load.
+Each interface of the phone except `runtime` is a capability, and each is a module of this crate with the same name.  An app does not declare its capabilities: they are the interfaces it uses (the imports of its WebAssembly component, which hold exactly the interfaces the app calls), and the phone gives it those and no others.
 
 | Capability | What it is for |
 | --- | --- |
@@ -101,37 +128,34 @@ Each interface of the phone except `runtime` is a capability, and each is a modu
 | `audio` | Playing a sound file. |
 | `l10n` | The locale, common words, and the text of dates and times. |
 
-`runtime` (logging, leaving the screen, exiting, random numbers) needs no capability.  `hotdesk` and `diagnostics` are for built-in apps only: a package that asks for one is refused.
+`runtime` (logging, leaving the screen, exiting, random numbers) is not a capability: every app has it.  `hotdesk` and `diagnostics` are for the firmware's built-in apps only: the phone refuses to install an app that uses one.
 
 The phone stops an app that takes more than two seconds to handle one event, or that asks for more memory than its limit.
 
 ## Building
 
-The target is `wasm32-unknown-unknown`, and the crate is a `cdylib`:
+The tool `cargo-dphone-app`, published with this crate and at the same version, builds an app.  Install it and the WebAssembly target once:
 
 ```text
+cargo install cargo-dphone-app
 rustup target add wasm32-unknown-unknown
-cargo build --release --target wasm32-unknown-unknown
 ```
 
-This makes a core WebAssembly module, `target/wasm32-unknown-unknown/release/hello.wasm`.  The phone takes a component, in a package: a ZIP archive that holds `app.json`, the component, and the app's data files (e.g., PNG pictures), at the top level or in one directory.  A package may hold 64 files and 8 MiB unpacked.  The tool `dphone-apps-build` in the firmware's repository makes both; run in a checkout of the repository:
+Then, in the app's directory:
 
 ```text
-mkdir pkg
-cp <app>/app.json pkg/
-cargo run -p dphone-apps --features build-tool --bin dphone-apps-build -- \
-    componentize <app>/target/wasm32-unknown-unknown/release/hello.wasm -o pkg/hello.wasm
-cargo run -p dphone-apps --features build-tool --bin dphone-apps-build -- \
-    pack pkg -o hello.zip
+cargo dphone-app
 ```
 
-Build the app in release mode and for size (`opt-level = "s"`, `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`, `strip = true` in `[profile.release]`), as the built-in apps are: the phone has little memory and little flash.
+This builds the crate in release mode for `wasm32-unknown-unknown`, makes a WebAssembly component of the module, and writes the app: one file, `target/dphone-app/hello.wasm` (named after the manifest's `name`), with the manifest and the data files in it.  The tool reads the file as the phone will and refuses what the phone would refuse; it prints the app's name and the capabilities it uses.
+
+The phone compiles the app's code when the app is installed, which takes it about 2 seconds and another 0.12 seconds for every KiB of the file (without the data files).  It takes a file with up to 1 MiB of code.
 
 ## Installing
 
-In the phone's web interface, the page "Apps" has the button "Install App", which uploads a package.  The phone checks the package, compiles the component, and lists the app with the others; installing a package whose `name` is already installed replaces that app.
+In the phone's web interface, the page "Apps" has the button "Install App", which uploads the file.  The phone reads the manifest, compiles the component (calls are not disturbed, and the phone can be used meanwhile), and lists the app with the others; installing an app whose `name` is already installed replaces that app.  "Remove" on the same page removes an installed app with its files.
 
-The phone can compile a component only if its firmware was built with the on-device compiler (the feature `compile` of the crate `dphone-apps`).  Firmware built without it runs its built-in apps and refuses to install a package.
+After a firmware update that changes the phone's WebAssembly engine, the phone compiles the installed apps again by itself, one after the other, when it starts.
 
 ## License
 

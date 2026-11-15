@@ -4,6 +4,7 @@ resolver = "3"
 # being created (no manifest, or one that does not parse yet) must not break
 # cargo for every other crate.  Add a crate here when it builds.
 members = [
+    "crates/cargo-dphone-app",
     "crates/dphone-app-sdk",
     "crates/dphone",
     "crates/dphone-apps",

@@ -122,4 +122,11 @@ impl App for HotDesk {
     }
 }
 
-dphone_app_sdk::export_app!(HotDesk);
+dphone_app_sdk::export_app! {
+    app: HotDesk,
+    name: "hotdesking",
+    id: "org.opendphone.hotdesking",
+    display_name: "Hot Desking",
+    description: "Log in to or out of this phone",
+    icon: "hotdesking",
+}

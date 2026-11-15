@@ -3,19 +3,20 @@
 The app runtime of Open DPhone: WebAssembly components run by Wasmtime's Pulley interpreter, the host side of the app interface, app packages, and the `AppManager` the main role runs.
 
 - The interface is defined once, in `crates/dphone-app-sdk/wit/app.wit`.  `dphone-app-sdk` is the guest crate generated from it, published to crates.io for app makers (its README tells how to write an app); this crate generates the host side from the same file.  The built-in apps are in `apps/`.
-- An app gets only the host interfaces its manifest lists under `capabilities`.  `hotdesk` and `diagnostics` are reserved for built-in apps.
-- Each app has a memory cap (4 MiB by default, 16 MiB at most via `memoryKiB`) and a time budget per event (2 s); going over either stops the app.
+- An app is one file: a WebAssembly component with its manifest and its data files in it (the custom section `dphone-app`, written by the SDK's `export_app!`; `crates/cargo-dphone-app` reads it, here and in the tool app makers build with).
+- An app gets the host interfaces its component imports, and no others: capabilities are not declared.  `hotdesk` and `diagnostics` are reserved for built-in apps: an app that imports one is not installed.
+- Each app has a memory cap (4 MiB by default, 16 MiB at most via `memory_kib`) and a time budget per event (2 s); going over either stops the app.
 
 ## Building apps
 
-Apps are plain `cdylib` crates for `wasm32-unknown-unknown`.  The host tool `dphone-apps-build` (feature `build-tool`) turns the modules cargo produces into components and compiles them to Pulley bytecode for the phone:
+Apps are plain `cdylib` crates for `wasm32-unknown-unknown`.  `cargo dphone-app` (`crates/cargo-dphone-app`, published with the SDK) builds one into the file the phone installs.  For the firmware's own apps, the host tool `dphone-apps-build` (feature `build-tool`) makes the same component with the same code and compiles it to Pulley bytecode for the phone:
 
 ```text
 cd apps && cargo build --release                      # modules in <target>/wasm32-unknown-unknown/release
-dphone-apps-build stage --apps apps --wasm-dir <that dir> --out <root> [--no-wasm]
+dphone-apps-build stage --wasm-dir <that dir> --out <root> [--no-wasm]
 ```
 
-`stage` writes `<root>/<name>/{app.json,<name>.cwasm,<name>.wasm,data files}`; `<root>` goes into the image as `/usr/share/dphone/apps`.  `--no-wasm` leaves the components out (the phone only needs them if it is built with the `compile` feature and the compiled code is stale).  `dphone-apps-build build --apps apps --out <root>` runs cargo itself, and `pack <dir> -o <file.zip>` makes an installable package.
+`stage` writes `<root>/<name>/{app.pb,<name>.cwasm,<name>.wasm,data files}` for every module that is an app; `<root>` goes into the image as `/usr/share/dphone/apps`.  `--no-wasm` leaves the components out (the image has compiled code only).  `dphone-apps-build build --apps apps --out <root>` runs cargo itself.
 
 The `.cwasm` files are tied to the Wasmtime version and to the settings in `src/engine.rs`: build them with the same `dphone-apps` source the phone binary is built from.  A mismatch fails cleanly at load.
 
@@ -23,12 +24,30 @@ The `.cwasm` files are tied to the Wasmtime version and to the settings in `src/
 
 | Path | Contents |
 | --- | --- |
-| `/usr/share/dphone/apps/<name>/` | Built-in apps |
-| `/nvdata/wasmapps/<name>/` | Installed apps (beside the stock `/nvdata/jsapps`, which is left alone) |
+| `/usr/share/dphone/apps/<name>/` | Built-in apps: `app.pb`, `<name>.cwasm`, data files |
+| `/nvdata/wasmapps/<name>/` | Installed apps (beside the stock `/nvdata/jsapps`, which is left alone): `app.pb`, `<name>.wasm`, `.code.cwasm`, data files |
 | `/nvdata/appdata/<name>/`, `/nvdata/appdata/@shared/` | `nv`, `nvshared` |
 | `/tmp/appdata/<name>/`, `/tmp/appdata/@shared/` | `tmp`, `tmpshared` |
 
-Installed packages hold a component (`.wasm`), never compiled code, so installing needs the `compile` feature in the phone binary (Cranelift with the Pulley back end only).  Without it, built-in apps work and `InstallApp` fails with a clear error.
+`app.pb` is the phone's record of an app: its manifest (the message `dphone.app.v1.Manifest` of `crates/dphone-app-sdk/proto/manifest.proto`, without the files' contents) with the interfaces its component imports.  `<name>.wasm` is the component as it was installed, without its data files, which are unpacked beside it.
+
+## Installing
+
+An app file holds a component, never compiled code: Wasmtime trusts the compiled code it loads, so the phone compiles every installed app itself (Cranelift with the Pulley back end; the feature `compile`, which the phone binary must have: `crates/dphone` does not build without it) and keeps the result in `.code.cwasm`.  Before that it reads the manifest from the file and refuses what is not an app, an app with a built-in app's name, and a stock JavaScript package; after it, an app that imports an interface reserved for built-in apps.
+
+Measured on a D60 (ARM1176, 2026-11-15; the web interface's "Install App", a dial tone on the handset meanwhile):
+
+| App | Component | Compile time | Main role's memory, peak over before | Audio ticks a second during |
+| --- | --- | --- | --- | --- |
+| The SDK README's "hello" | 24 KiB | 5.2 s | 3.7 MB | 100 |
+| Status | 50 KiB | 7.9 s | 2.3 MB | 100 |
+| Light Up | 119 KiB | 16.4 s | 6.2 MB | 100 |
+
+So a compilation takes about 2 s and 0.12 s for every KiB, far too long for the manager's thread (the running apps would stand still, and the liveness check would report the subsystem dead).  A worker thread (`src/prepare.rs`) does it, at the lowest priority (nice 19; the audio thread is `SCHED_FIFO`), one app at a time; the command `InstallApp` is answered when it is done, and the web interface waits up to ten minutes.  A component may be 1 MiB (`MAX_COMPONENT`): about three minutes by these figures (the phone's own binary under `qemu-arm` takes 11 times as long for a 1,011 KiB component as for Light Up; such a component has not been timed on a phone).
+
+After a firmware update that changes the engine, the compiled code of the installed apps no longer loads.  The manager finds that when it starts and has the worker compile each such app again; until an app's turn is over, opening it fails with a message that says so.
+
+The cost of the compiler in the phone binary: 12.99 MB without it, 17.65 MB with it; the D60 image's root file system (JFFS2) grows from 18.4 MB to 20.9 MB of the 45 MiB partition.
 
 ## Tests
 
@@ -55,4 +74,4 @@ With the real apps: loading, instantiating, and starting the precompiled Status 
 
 Decision: Wasmtime with Pulley, as the plan prefers; it meets the no-C constraint and the size is acceptable.  wasmi interprets about twice as fast in this test and needs no separate compiler for installed apps, so it remains the fallback if phone measurements disappoint.  Pulley is markedly slower at `opt-level = "s"`; the phone build should set `opt-level = 3` for the `pulley-interpreter` package (the better figures above).
 
-Re-run on hardware with `dphone-apps-s1 <apps root>` (feature `test-util`).
+Re-run on hardware with `dphone-apps-s1 <apps root>` (feature `test-util`).  The phone's own figures for compiling are under "Installing" above.

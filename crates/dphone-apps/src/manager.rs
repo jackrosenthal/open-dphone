@@ -12,14 +12,14 @@ use crate::host::bindings::dphone::app::types as wit;
 use crate::host::{self, Action, AppCtx, Dirs, IDLE_BIT, Inbound, Inbox, Timer};
 use crate::install::{InstallError, Installer};
 use crate::manifest::{AppType, Capability, Manifest};
-use crate::package::Package;
+use crate::prepare::{self, Job, Prepared};
 use crate::services::Services;
 use crate::view::{Shell, WindowEvent, WindowKind};
 use dphone_state::{
-    AppInfo, Apps, Call, Command, CommandError, CommandReceiver, Domain, Event, Reply, Store,
-    Subscription, Subsystem, Topic,
+    AppInfo, Apps, Call, Command, CommandError, CommandReceiver, Domain, Event, Reply, Responder,
+    Store, Subscription, Subsystem, Topic,
 };
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -29,7 +29,7 @@ use wasmtime::component::{Component, Linker};
 
 #[derive(Clone, Debug)]
 pub struct ManagerConfig {
-    /// Built-in apps, read-only: `<root>/<name>/{app.json,<name>.cwasm}`.
+    /// Built-in apps, read-only: `<root>/<name>/{app.pb,<name>.cwasm}`.
     pub builtin_root: PathBuf,
     /// Installed apps.
     pub installed_root: PathBuf,
@@ -97,8 +97,10 @@ struct Running {
     app: App,
 }
 
-/// File holding code this phone compiled for an installed app.
-const CODE_CACHE: &str = ".code.cwasm";
+use crate::prepare::CODE_CACHE;
+
+/// What is said of an installed app whose code is being compiled.
+const COMPILING: &str = "the app is being compiled for this firmware; try again in a moment";
 
 pub struct AppManager {
     cfg: ManagerConfig,
@@ -120,6 +122,11 @@ pub struct AppManager {
     last_presence: Arc<dphone_state::Presence>,
     stop: Arc<AtomicBool>,
     external_waker: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// Compilations waiting for the worker thread, each with the command
+    /// to answer, if a command asked for it.
+    jobs: VecDeque<(Job, Option<Responder>)>,
+    /// The compilation the worker thread is doing now.
+    compiling: Option<(Job, Option<Responder>)>,
 }
 
 mod dyn_mwi {
@@ -167,6 +174,8 @@ impl AppManager {
             generation: 0,
             stop: Arc::new(AtomicBool::new(false)),
             external_waker: None,
+            jobs: VecDeque::new(),
+            compiling: None,
         })
     }
 
@@ -245,6 +254,7 @@ impl AppManager {
     /// Starts the apps that run without being opened: background apps and
     /// apps with an idle-screen window.
     pub fn autostart(&mut self) {
+        self.refresh_code();
         let names: Vec<String> = self
             .known
             .values()
@@ -253,11 +263,147 @@ impl AppManager {
             .map(|k| k.manifest.name.clone())
             .collect();
         for n in names {
-            if let Err(e) = self.start(&n) {
-                log::warn!("app {n}: could not start: {e}");
+            match self.start(&n) {
+                Ok(()) => {}
+                // It starts when its code is ready (`finish_recompile`).
+                Err(e) if e == COMPILING => {}
+                Err(e) => log::warn!("app {n}: could not start: {e}"),
             }
         }
         self.publish();
+    }
+
+    /// Has the code of every installed app compiled again whose compiled
+    /// code this firmware cannot load: after a firmware update that changed
+    /// the engine, or when the file is missing.  The work is done by the
+    /// worker thread, one app after the other.
+    fn refresh_code(&mut self) {
+        if !AppEngine::can_compile() {
+            return;
+        }
+        let stale: Vec<String> = self
+            .known
+            .iter()
+            .filter(|(_, k)| !k.builtin && k.code.is_none())
+            // SAFETY: the file is this manager's own (see `load_code`).
+            .filter(|(_, k)| {
+                unsafe { self.engine.load_precompiled(&k.dir.join(CODE_CACHE)) }.is_err()
+            })
+            .map(|(n, _)| n.clone())
+            .collect();
+        for name in stale {
+            self.recompile(&name);
+        }
+    }
+
+    /// Queues the compilation of an installed app's component.
+    fn recompile(&mut self, name: &str) {
+        let Some(known) = self.known.get(name) else {
+            return;
+        };
+        let queued = self
+            .jobs
+            .iter()
+            .chain(&self.compiling)
+            .any(|(j, _)| matches!(j, Job::Recompile { name: n, .. } if n == name));
+        if queued {
+            return;
+        }
+        log::info!("app {name}: its compiled code is not this firmware's; compiling it again");
+        let job = Job::Recompile {
+            name: name.to_string(),
+            wasm: known.dir.join(&known.manifest.wasm),
+        };
+        self.jobs.push_back((job, None));
+        self.next_job();
+    }
+
+    /// True while an app is being compiled or waits to be.
+    pub fn compiling(&self) -> bool {
+        self.compiling.is_some() || !self.jobs.is_empty()
+    }
+
+    /// Hands the next waiting compilation to a worker thread.
+    fn next_job(&mut self) {
+        if self.compiling.is_some() {
+            return;
+        }
+        let Some((job, responder)) = self.jobs.pop_front() else {
+            return;
+        };
+        let inbox = self.inbox.clone();
+        let wake = self.waker();
+        let done = move |outcome| {
+            inbox.push(Inbound::Compiled(outcome));
+            wake();
+        };
+        match prepare::spawn(
+            self.engine.clone(),
+            self.installer.clone(),
+            job.clone(),
+            done,
+        ) {
+            Ok(()) => self.compiling = Some((job, responder)),
+            Err(e) => {
+                log::error!("apps: cannot start the compiler thread: {e}");
+                if let Some(r) = responder {
+                    r.reply(Err(CommandError::Failed(format!(
+                        "cannot start the compiler thread: {e}"
+                    ))));
+                }
+                self.next_job();
+            }
+        }
+    }
+
+    /// The worker thread finished the compilation in `self.compiling`.
+    fn on_compiled(&mut self, outcome: prepare::Outcome) {
+        let Some((job, responder)) = self.compiling.take() else {
+            return;
+        };
+        match (job, outcome) {
+            (Job::Install { .. }, prepare::Outcome::Install(result)) => {
+                let result = result.and_then(|p| self.finish_install(*p));
+                if let Err(e) = &result {
+                    log::warn!("apps: an app was not installed: {e}");
+                }
+                if let Some(r) = responder {
+                    r.reply(result.map(Reply::Text).map_err(|e| {
+                        CommandError::Failed(format!("{e} (status {})", e.stock_status()))
+                    }));
+                }
+            }
+            (Job::Recompile { name, .. }, prepare::Outcome::Recompile(result)) => {
+                self.finish_recompile(&name, result)
+            }
+            _ => {}
+        }
+        self.next_job();
+    }
+
+    /// Keeps the code compiled again for an installed app, and starts the
+    /// app if it is one that runs without being opened.
+    fn finish_recompile(&mut self, name: &str, result: Result<Vec<u8>, String>) {
+        let Some(known) = self.known.get(name).filter(|k| !k.builtin) else {
+            return;
+        };
+        let code = match result {
+            Ok(code) => code,
+            Err(e) => {
+                log::warn!("app {name}: cannot be compiled: {e}");
+                return;
+            }
+        };
+        if let Err(e) = prepare::write_code(&known.dir, &code) {
+            log::warn!("app {name}: cannot keep its compiled code: {e}");
+            return;
+        }
+        if known.manifest.kind == AppType::Background || known.manifest.has_idle {
+            if let Err(e) = self.start(name) {
+                log::warn!("app {name}: could not start: {e}");
+            }
+            self.publish();
+        }
     }
 
     fn publish(&mut self) {
@@ -306,41 +452,33 @@ impl AppManager {
         if let Some(c) = &known.code {
             return Ok(c.clone());
         }
-        let stem = known
-            .manifest
-            .wasm
-            .strip_suffix(".wasm")
-            .unwrap_or(&known.manifest.wasm);
         let cached = if known.builtin {
-            known.dir.join(format!("{stem}.cwasm"))
+            known.dir.join(format!("{}.cwasm", known.manifest.name))
         } else {
             known.dir.join(CODE_CACHE)
         };
-        let mut component = None;
-        if cached.is_file() {
-            // SAFETY: built-in code comes from the firmware image, and the
-            // cache of an installed app was written by this manager (a
-            // package cannot supply a dot file or a `.cwasm`).
-            match unsafe { self.engine.load_precompiled(&cached) } {
-                Ok(c) => component = Some(c),
-                Err(e) if AppEngine::can_compile() => {
-                    log::debug!("app {name}: stale compiled code ({e}); compiling again")
-                }
-                Err(e) => return Err(format!("compiled code does not load: {e}")),
-            }
-        }
-        let component = match component {
-            Some(c) => c,
-            None => {
+        // SAFETY: built-in code comes from the firmware image, and the
+        // cache of an installed app was written by this manager (a
+        // package cannot supply a dot file or a `.cwasm`).
+        let loaded = unsafe { self.engine.load_precompiled(&cached) };
+        let builtin = known.builtin;
+        let component = match loaded {
+            Ok(c) => c,
+            // A built-in app staged with its component (a development
+            // tree; the image has compiled code only).
+            Err(_) if builtin && known.dir.join(&known.manifest.wasm).is_file() => {
                 let wasm = std::fs::read(known.dir.join(&known.manifest.wasm))
                     .map_err(|e| format!("reading {}: {e}", known.manifest.wasm))?;
-                if !known.builtin
-                    && let Ok(bytes) = self.engine.precompile(&wasm)
-                {
-                    let _ = std::fs::write(&cached, bytes);
-                }
                 self.engine.load_wasm(&wasm).map_err(|e| e.to_string())?
             }
+            // An installed app whose code another firmware compiled: the
+            // worker thread compiles it again, which takes seconds on the
+            // phone, too long for this thread.
+            Err(_) if !builtin && AppEngine::can_compile() => {
+                self.recompile(name);
+                return Err(COMPILING.into());
+            }
+            Err(e) => return Err(format!("compiled code does not load: {e}")),
         };
         if let Some(k) = self.known.get_mut(name) {
             k.code = Some(component.clone());
@@ -560,31 +698,26 @@ impl AppManager {
         }
     }
 
-    /// Installs a package file.  Returns the app's name.
+    /// Installs an app file.  Returns the app's name.
+    ///
+    /// This compiles on the calling thread, which takes seconds on the
+    /// phone; the command `InstallApp` has the worker thread do it.
     pub fn install(
         &mut self,
         path: &Path,
         required_name: Option<&str>,
     ) -> Result<String, InstallError> {
-        let package = Package::open(path)?;
+        let prepared = prepare::prepare(&self.engine, &self.installer, path, required_name)?;
+        self.finish_install(prepared)
+    }
+
+    /// Puts a checked and compiled app in place.
+    fn finish_install(&mut self, prepared: Prepared) -> Result<String, InstallError> {
+        let Prepared { package, code } = prepared;
         let name = package.manifest.name.clone();
-        // Compile first: it proves the component is valid and yields the
-        // code the phone will run.
-        let code = self
-            .engine
-            .precompile(package.wasm())
-            .map_err(|e| InstallError::Unloadable(e.to_string()))?;
-        self.installer
-            .check(&package, required_name, code.len() as u64)?;
-        // The component may import only what the manifest declares.
-        let component = self
-            .engine
-            .load_wasm(package.wasm())
-            .map_err(|e| InstallError::Unloadable(e.to_string()))?;
-        let mut linker = Linker::<AppCtx>::new(self.engine.wasmtime());
-        host::link(&mut linker, &package.manifest)
-            .and_then(|_| linker.instantiate_pre(&component).map(|_| ()))
-            .map_err(|e| InstallError::Unloadable(format!("{e:#}")))?;
+        // Again, now with the compiled code's size, and because the
+        // compilation took a while.
+        self.installer.check(&package, None, code.len() as u64)?;
         let was_running = self.running.contains_key(&name);
         self.close(&name);
         self.installer
@@ -624,10 +757,6 @@ impl AppManager {
                 self.close(&name);
                 Ok(Reply::Done)
             }
-            Command::InstallApp { path } => self
-                .install(Path::new(&path), None)
-                .map(Reply::Text)
-                .map_err(|e| CommandError::Failed(format!("{e} (status {})", e.stock_status()))),
             Command::RemoveApp { name } => self
                 .remove(&name)
                 .map(|_| Reply::Done)
@@ -752,8 +881,7 @@ impl AppManager {
                     name: ev,
                     payload,
                 } => {
-                    if ev != "app_install" && self.running.contains_key(&app)
-                    {
+                    if ev != "app_install" && self.running.contains_key(&app) {
                         self.deliver(&app, wit::Event::Message((ev, payload)));
                     }
                 }
@@ -913,6 +1041,13 @@ impl AppManager {
 
         while let Poll::Ready(Some(envelope)) = self.commands.poll_next(&mut cx) {
             let (command, responder) = envelope.split();
+            if let Command::InstallApp { path } = command {
+                // Answered when the worker thread has compiled the app.
+                let job = Job::Install { path: path.into() };
+                self.jobs.push_back((job, Some(responder)));
+                self.next_job();
+                continue;
+            }
             let result = self.handle_command(command);
             responder.reply(result);
         }
@@ -921,6 +1056,10 @@ impl AppManager {
             let item = self.inbox.queue.lock().unwrap().pop_front();
             let Some(item) = item else { break };
             let (app, generation, id, event) = match item {
+                Inbound::Compiled(outcome) => {
+                    self.on_compiled(outcome);
+                    continue;
+                }
                 Inbound::Pbx {
                     app,
                     generation,

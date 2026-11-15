@@ -477,4 +477,11 @@ impl App for Contacts {
     }
 }
 
-dphone_app_sdk::export_app!(Contacts);
+dphone_app_sdk::export_app! {
+    app: Contacts,
+    name: "contacts",
+    id: "org.opendphone.contacts",
+    display_name: "Contacts",
+    description: "Browse, search, and call your contacts",
+    icon: "contacts",
+}

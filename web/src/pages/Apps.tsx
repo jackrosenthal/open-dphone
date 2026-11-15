@@ -42,7 +42,7 @@ export function Apps() {
         title="Apps"
         actions={
           <>
-            <input ref={file} type="file" className="hidden" onChange={(e) => e.target.files?.[0] && install(e.target.files[0]).then(() => (e.target.value = ""))} />
+            <input ref={file} type="file" accept=".wasm,application/wasm" className="hidden" onChange={(e) => e.target.files?.[0] && install(e.target.files[0]).then(() => (e.target.value = ""))} />
             <Button variant="primary" busy={busy} onClick={() => file.current?.click()}>
               Install App
             </Button>
@@ -51,6 +51,11 @@ export function Apps() {
       />
       <div className="space-y-5">
         <ErrorNote error={error ?? disabled.error} />
+        {busy && (
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            The phone is compiling the app: a few seconds for a small one, a few minutes for the largest. Calls are not disturbed, and the phone can be used meanwhile.
+          </p>
+        )}
         <Card>
           {!snap ? (
             <Spinner />

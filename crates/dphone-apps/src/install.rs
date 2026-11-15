@@ -6,19 +6,32 @@
 //! JavaScript directory (`/nvdata/jsapps`) and never touches it, so a
 //! flash back to stock finds its own apps as it left them.
 //!
-//! Unlike stock, replacement is atomic: the new package is staged in a
+//! An app arrives as one file, a WebAssembly component with its manifest
+//! and its data files in it ([`AppFile`]).  In its directory on the phone
+//! it is the phone's record of it ([`RECORD`]: the manifest, with the
+//! interfaces the component imports), the component (`<name>.wasm`, kept
+//! to compile again after a firmware update), the code this phone compiled
+//! of it (`.code.cwasm`), and the data files, unpacked.  A built-in app has
+//! the same in the image, with `<name>.cwasm` compiled at build time and no
+//! component.
+//!
+//! Unlike stock, replacement is atomic: the new app is staged in a
 //! sibling directory and swapped in with renames, and the old one is
 //! removed only afterwards.
 
 use crate::host::usable_space;
-use crate::manifest::Manifest;
-use crate::package::{Package, PackageError};
+use crate::manifest::{self, Files, Manifest, ManifestError, RECORD};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub enum InstallError {
-    Package(PackageError),
+    Manifest(ManifestError),
+    /// The file is larger than any app may be.
+    TooLarge {
+        size: u64,
+        max: u64,
+    },
     /// The package's name differs from the one the caller required
     /// (stock status -107).
     NameMismatch {
@@ -32,6 +45,11 @@ pub enum InstallError {
         needed: u64,
         available: u64,
     },
+    /// The component is larger than the phone compiles.
+    ComponentTooLarge {
+        size: u64,
+        max: u64,
+    },
     /// The component does not load, or imports something the manifest
     /// does not declare.
     Unloadable(String),
@@ -42,10 +60,10 @@ impl InstallError {
     /// The stock installer's status code for this failure.
     pub fn stock_status(&self) -> i32 {
         match self {
-            InstallError::Package(PackageError::NoManifest) => -101,
-            InstallError::Package(PackageError::Manifest(
-                crate::ManifestError::BadName(_) | crate::ManifestError::Unreadable(_),
-            )) => -102,
+            InstallError::Manifest(
+                ManifestError::NoManifest | ManifestError::NotWasm | ManifestError::JavaScript,
+            ) => -101,
+            InstallError::Manifest(ManifestError::BadName(_) | ManifestError::Malformed(_)) => -102,
             InstallError::ShadowsBuiltin(_) => -103,
             InstallError::NameMismatch { .. } => -107,
             InstallError::NoSpace { .. } => -110,
@@ -57,9 +75,15 @@ impl InstallError {
 impl fmt::Display for InstallError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InstallError::Package(e) => write!(f, "{e}"),
+            InstallError::Manifest(e) => write!(f, "{e}"),
+            InstallError::TooLarge { size, max } => {
+                write!(
+                    f,
+                    "the file is too large for an app: {size} bytes, and the phone takes {max}"
+                )
+            }
             InstallError::NameMismatch { expected, found } => {
-                write!(f, "the package is {found:?}, not {expected:?}")
+                write!(f, "the app is {found:?}, not {expected:?}")
             }
             InstallError::ShadowsBuiltin(n) => write!(f, "{n:?} is a built-in app"),
             InstallError::NoSpace { needed, available } => {
@@ -68,6 +92,10 @@ impl fmt::Display for InstallError {
                     "not enough space: {needed} bytes needed, {available} available"
                 )
             }
+            InstallError::ComponentTooLarge { size, max } => write!(
+                f,
+                "the app's WebAssembly component is too large: {size} bytes, and the phone takes {max}"
+            ),
             InstallError::Unloadable(e) => write!(f, "the app cannot be loaded: {e}"),
             InstallError::Io(e) => write!(f, "{e}"),
         }
@@ -82,9 +110,72 @@ impl From<std::io::Error> for InstallError {
     }
 }
 
-impl From<PackageError> for InstallError {
-    fn from(e: PackageError) -> Self {
-        InstallError::Package(e)
+impl From<ManifestError> for InstallError {
+    fn from(e: ManifestError) -> Self {
+        InstallError::Manifest(e)
+    }
+}
+
+/// The largest app file read at all: the largest component the phone
+/// compiles, the most data files may hold, and room for the rest.
+pub const MAX_APP_FILE: u64 = crate::prepare::MAX_COMPONENT + manifest::MAX_FILE_BYTES + (64 << 10);
+
+/// An app file, read into memory and checked as far as its manifest goes.
+#[derive(Clone, Debug)]
+pub struct AppFile {
+    /// The manifest.  Its capabilities are empty until the component has
+    /// been compiled (they are the component's imports).
+    pub manifest: Manifest,
+    /// The data files the app carries.
+    pub files: Files,
+    /// The component, as it came.
+    pub component: Vec<u8>,
+}
+
+impl AppFile {
+    pub fn open(path: &Path) -> Result<AppFile, InstallError> {
+        let size = std::fs::metadata(path)?.len();
+        if size > MAX_APP_FILE {
+            return Err(InstallError::TooLarge {
+                size,
+                max: MAX_APP_FILE,
+            });
+        }
+        AppFile::read(std::fs::read(path)?)
+    }
+
+    pub fn read(component: Vec<u8>) -> Result<AppFile, InstallError> {
+        let (manifest, files) = Manifest::from_wasm(&component)?;
+        Ok(AppFile {
+            manifest,
+            files,
+            component,
+        })
+    }
+
+    fn files_size(&self) -> u64 {
+        self.files.iter().map(|(_, d)| d.len() as u64).sum()
+    }
+
+    /// The size of the component without the data files it carries: what
+    /// the compiler has to work through.
+    pub fn code_size(&self) -> u64 {
+        (self.component.len() as u64).saturating_sub(self.files_size())
+    }
+
+    /// The component as the phone keeps it: without the data files, which
+    /// are unpacked beside it.
+    fn stored_component(&self) -> Vec<u8> {
+        if self.files.is_empty() {
+            return self.component.clone();
+        }
+        manifest::with_section(&self.component, &self.manifest.section(&[]))
+            .unwrap_or_else(|_| self.component.clone())
+    }
+
+    /// What the app takes on the flash, without its compiled code.
+    pub fn unpacked_size(&self) -> u64 {
+        self.code_size() + self.files_size() + self.manifest.record().len() as u64
     }
 }
 
@@ -116,14 +207,14 @@ pub struct Installer {
 
 impl Installer {
     pub fn is_builtin(&self, name: &str) -> bool {
-        self.builtin_root.join(name).join("app.json").is_file()
+        self.builtin_root.join(name).join(RECORD).is_file()
     }
 
     /// Checks everything that can be checked before touching the flash.
     /// `extra` is space the caller will also need (e.g., compiled code).
     pub fn check(
         &self,
-        package: &Package,
+        package: &AppFile,
         required_name: Option<&str>,
         extra: u64,
     ) -> Result<(), InstallError> {
@@ -140,17 +231,9 @@ impl Installer {
         if self.is_builtin(name) {
             return Err(InstallError::ShadowsBuiltin(name.clone()));
         }
-        if let Some(c) = package
-            .manifest
-            .capabilities
-            .iter()
-            .find(|c| c.builtin_only())
-        {
-            return Err(InstallError::Unloadable(format!(
-                "the capability {:?} is reserved for built-in apps",
-                c.name()
-            )));
-        }
+        // Capabilities are the component's imports, known once it is
+        // compiled; an app importing an interface that is for built-in
+        // apps is refused then (`prepare`).
         std::fs::create_dir_all(&self.installed_root)?;
         // An upgrade is charged its growth, as stock does.
         let existing = dir_size(&self.installed_root.join(name));
@@ -166,7 +249,7 @@ impl Installer {
     /// staging directory and swaps it in.  Returns the app directory.
     pub fn commit(
         &self,
-        package: &Package,
+        package: &AppFile,
         extra: &[(String, Vec<u8>)],
     ) -> Result<PathBuf, InstallError> {
         use std::io::Write;
@@ -178,7 +261,11 @@ impl Installer {
         let _ = std::fs::remove_dir_all(&old);
         let write_all = || -> std::io::Result<()> {
             std::fs::create_dir_all(&stage)?;
-            for (n, data) in package.files.iter().chain(extra) {
+            let own = [
+                (RECORD.to_string(), package.manifest.record()),
+                (package.manifest.wasm.clone(), package.stored_component()),
+            ];
+            for (n, data) in own.iter().chain(&package.files).chain(extra) {
                 let mut f = std::fs::File::create(stage.join(n))?;
                 f.write_all(data)?;
                 f.sync_all()?;
@@ -224,8 +311,7 @@ impl Installer {
 
     /// Removes an installed app with its persistent and temporary data.
     pub fn remove(&self, name: &str) -> Result<(), InstallError> {
-        crate::manifest::validate_name(name)
-            .map_err(|e| InstallError::Package(PackageError::Manifest(e)))?;
+        crate::manifest::validate_name(name).map_err(InstallError::Manifest)?;
         let dir = self.installed_root.join(name);
         if !dir.is_dir() {
             return Err(InstallError::Io(std::io::ErrorKind::NotFound.into()));
@@ -237,8 +323,9 @@ impl Installer {
         Ok(())
     }
 
-    /// Manifests of the apps under a root: (directory, manifest).  Stock
-    /// JavaScript apps and broken manifests are skipped with a log entry.
+    /// The apps under a root, from the phone's records of them: (directory,
+    /// manifest).  Stock JavaScript apps and broken records are skipped
+    /// with a log entry.
     pub fn scan_root(root: &Path) -> Vec<(PathBuf, Manifest)> {
         let mut found = Vec::new();
         let Ok(rd) = std::fs::read_dir(root) else {
@@ -250,17 +337,17 @@ impl Installer {
             if dir_name.starts_with('.') || !dir.is_dir() {
                 continue;
             }
-            let Ok(text) = std::fs::read_to_string(dir.join("app.json")) else {
-                continue;
-            };
-            match Manifest::parse(&text) {
-                Ok(m) if m.name == dir_name => found.push((dir, m)),
-                Ok(m) => log::warn!("app directory {dir_name:?} holds app {:?}; skipped", m.name),
-                Err(crate::ManifestError::JavaScript) => {
+            let Ok(record) = std::fs::read(dir.join(RECORD)) else {
+                if dir.join("app.json").is_file() {
                     log::info!(
                         "skipping JavaScript app {dir_name:?}: it cannot run on this firmware"
-                    )
+                    );
                 }
+                continue;
+            };
+            match Manifest::from_record(&record) {
+                Ok(m) if m.name == dir_name => found.push((dir, m)),
+                Ok(m) => log::warn!("app directory {dir_name:?} holds app {:?}; skipped", m.name),
                 Err(err) => log::warn!("skipping app {dir_name:?}: {err}"),
             }
         }

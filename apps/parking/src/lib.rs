@@ -174,4 +174,11 @@ impl App for Parking {
     }
 }
 
-dphone_app_sdk::export_app!(Parking);
+dphone_app_sdk::export_app! {
+    app: Parking,
+    name: "parking",
+    id: "org.opendphone.parking",
+    display_name: "Parking",
+    description: "See and retrieve parked calls",
+    icon: "parking",
+}

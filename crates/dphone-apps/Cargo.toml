@@ -9,12 +9,13 @@ publish = false
 
 [features]
 default = []
-# Compile WebAssembly to Pulley bytecode (Cranelift).  Used on the build
-# host to precompile apps (`dphone-apps-build`) and by host tests; the
-# phone links it too only if the image is built with it (see README).
+# Compile WebAssembly to Pulley bytecode (Cranelift): what installs an app
+# package.  The phone binary has it (a check in `crates/dphone` fails the
+# build of one that does not), as do the build host's `dphone-apps-build`,
+# which precompiles the built-in apps, and the host tests.
 compile = ["wasmtime/cranelift", "wasmtime/pulley"]
 # The host tool that componentizes, precompiles, and packs apps.
-build-tool = ["compile", "dep:wit-component"]
+build-tool = ["compile", "cargo-dphone-app/tool"]
 # Fake view and services for tests.
 test-util = []
 # `UiShell`: the adapter from the phone UI toolkit to this crate's `Shell`.
@@ -27,10 +28,10 @@ getrandom = "0.3"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rustix = { version = "1", features = ["fs"] }
+rustix = { version = "1", features = ["fs", "process", "thread"] }
 wasmtime = { version = "50", default-features = false, features = ["runtime", "component-model", "std"] }
-zip = { version = "9", default-features = false, features = ["deflate"] }
-wit-component = { version = "0.263", optional = true }
+# The manifest an app file carries, read by the code the tool app makers use.
+cargo-dphone-app = { path = "../cargo-dphone-app", default-features = false }
 
 [[bin]]
 name = "dphone-apps-build"

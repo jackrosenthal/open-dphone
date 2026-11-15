@@ -343,7 +343,9 @@ impl Default for WebOptions {
             upload_dir: PathBuf::from("/tmp/upload"),
             session_idle: Duration::from_secs(30 * 60),
             max_firmware_bytes: 96 << 20,
-            max_app_bytes: 8 << 20,
+            // An app file: at most 1 MiB of code and 8 MiB of data files
+            // (`dphone_apps::install::MAX_APP_FILE`).
+            max_app_bytes: 10 << 20,
             max_connections: 24,
         }
     }

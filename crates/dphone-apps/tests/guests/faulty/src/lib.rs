@@ -42,7 +42,7 @@ fn storage_report() -> String {
     ));
     r.push(format!(
         "pkg={}",
-        storage::exists(Location::App, "app.json")
+        storage::exists(Location::App, "app.pb")
     ));
     r.push(format!(
         "shared={}",
@@ -99,4 +99,9 @@ impl App for Faulty {
     }
 }
 
-dphone_app_sdk::export_app!(Faulty);
+dphone_app_sdk::export_app! {
+    app: Faulty,
+    name: "faulty",
+    id: "test.faulty",
+    display_name: "Faulty",
+}

@@ -21,6 +21,16 @@ use super::net::NetHandle;
 use super::telephony::Telephony;
 use crate::mainrole::{Context, state_model};
 
+// Installing an app compiles its WebAssembly on the phone.  A phone
+// binary built without the compiler (the feature `compile` of `dphone-apps`,
+// which `crates/dphone/Cargo.toml` turns on) runs the built-in apps and
+// refuses every app file, and no test on the build machine would notice:
+// the tests have the compiler for their own use.  So the build fails.
+const _: () = assert!(
+    dphone_apps::AppEngine::can_compile(),
+    "the phone binary must be built with dphone-apps' feature `compile`: without it no app can be installed"
+);
+
 /// Where the simulator looks for staged apps (see `crates/dphone-apps/README.md`).
 pub const APPS_ROOT_ENV: &str = "DPHONE_APPS_ROOT";
 

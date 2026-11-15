@@ -40,6 +40,7 @@ pub mod bindings {
 }
 
 pub mod json;
+pub mod manifest;
 pub mod nav;
 pub mod xml;
 
@@ -159,6 +160,7 @@ pub fn read_string(loc: Location, name: &str) -> Option<String> {
 
 pub mod prelude {
     pub use crate::json::Json;
+    pub use crate::manifest::AppKind;
     pub use crate::nav::{Form, Message};
     pub use crate::{
         App, Event, ListItem, Location, PbxOutcome, ROOT, Rect, Skin, Softkey, Widget, WidgetEvent,
@@ -167,10 +169,39 @@ pub mod prelude {
     };
 }
 
-/// Registers the app type with the host.
+/// Registers the app with the phone: the type that implements [`App`], and
+/// the app's manifest (the fields of [`manifest::Manifest`]), which goes
+/// into the app's WebAssembly file.
+///
+/// ```ignore
+/// dphone_app_sdk::export_app! {
+///     app: Hello,
+///     name: "hello",
+///     display_name: "Hello",
+///     description: "Says hello",
+/// }
+/// ```
+///
+/// `app` comes first; `name` and `display_name` must be given; the other
+/// fields may be: `id`, `display_name_in`, `description`, `description_in`,
+/// `kind`, `has_idle`, `hidden`, `icon`, `memory_kib`, and `files`.  A
+/// field the phone would refuse does not compile.
 #[macro_export]
 macro_rules! export_app {
-    ($ty:ty) => {
+    (app: $ty:ty, $($field:ident : $value:expr),+ $(,)?) => {
+        const _: () = {
+            const MANIFEST: $crate::manifest::Manifest = $crate::manifest::Manifest {
+                $($field: $value,)+
+                ..$crate::manifest::Manifest::EMPTY
+            }
+            .checked();
+            const LEN: usize = MANIFEST.encoded_len();
+            // A custom section of the WebAssembly module.
+            #[cfg_attr(target_family = "wasm", unsafe(link_section = "dphone-app"))]
+            #[used]
+            static SECTION: [u8; LEN] = MANIFEST.encode::<LEN>();
+        };
+
         #[doc(hidden)]
         mod __dphone_app_export {
             use super::*;
@@ -194,6 +225,11 @@ macro_rules! export_app {
             }
             $crate::bindings::export!(Shim with_types_in $crate::bindings);
         }
+    };
+    ($ty:ty) => {
+        compile_error!(
+            "export_app! takes the app's manifest too: export_app! { app: Type, name: \"name\", display_name: \"Name\" }"
+        );
     };
 }
 

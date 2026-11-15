@@ -1,0 +1,82 @@
+// The manifest of an Open DPhone app.
+//
+// An app is one WebAssembly file.  What the phone has to know about it
+// before running it (its name, what to call it on screen, its kind, its
+// icon, its data files) is in the file itself: the custom section
+// "dphone-app" of the app's WebAssembly module holds one `Manifest`
+// message in protobuf's binary form.  The macro `export_app!` of the crate
+// `dphone-app-sdk` writes the section when the app is compiled; the crate
+// `cargo-dphone-app` reads it, on the phone and in the build tool.  Both
+// are written by hand against this file (the SDK's writer runs at compile
+// time, in `const` code), and a test of `cargo-dphone-app` holds them to
+// each other.
+//
+// The interfaces of the phone an app uses are not in the manifest: the
+// phone takes them from the imports of the WebAssembly component.
+
+syntax = "proto3";
+
+package dphone.app.v1;
+
+message Manifest {
+  // The version of this format: 1.  A phone refuses a manifest whose
+  // format it does not know.  New fields alone do not change it.
+  uint32 format = 1;
+  // The app's name on the phone: 1 to 64 characters, the first a letter or
+  // digit, the rest letters, digits, '_', '.', or ','.
+  string name = 2;
+  // An identifier of the app, e.g., in reverse domain form.
+  string id = 3;
+  // What the phone calls the app on screen.
+  Text display_name = 4;
+  Text description = 5;
+  Kind kind = 6;
+  // The app draws on the idle screen.
+  bool has_idle = 7;
+  // The app is marked as hidden.
+  bool hidden = 8;
+  // The app's icon: the name of one of the phone's icons, or of one of
+  // `files` (the phone prefers the file "<model>.<icon>", e.g.,
+  // "D60.icon.png").
+  string icon = 9;
+  // The most memory the app may have, in KiB; 0 is the phone's default.
+  uint32 memory_kib = 10;
+  // The app's data files: the phone puts them where the app's read-only
+  // files are (pictures, sounds).
+  repeated File files = 11;
+
+  // Not for an app's section, where the phone ignores it: in the record
+  // the phone keeps of an app ("app.pb" in the app's directory, a
+  // `Manifest` without the files' contents), the interfaces of the phone
+  // the app's component imports, e.g., "ui".
+  repeated string capabilities = 15;
+}
+
+enum Kind {
+  // As KIND_FOREGROUND.
+  KIND_UNSPECIFIED = 0;
+  // Runs while it is on screen.
+  KIND_FOREGROUND = 1;
+  // Starts with the phone and runs without being on screen.
+  KIND_BACKGROUND = 2;
+  // Provides the idle screen.
+  KIND_IDLE = 3;
+}
+
+message Text {
+  // The text where no localized one applies.
+  string text = 1;
+  repeated LocalizedText localized = 2;
+}
+
+message LocalizedText {
+  // A locale in the phone's form, e.g., "en_us".
+  string locale = 1;
+  string text = 2;
+}
+
+message File {
+  // No path separators; not starting with '.'.
+  string name = 1;
+  bytes data = 2;
+}

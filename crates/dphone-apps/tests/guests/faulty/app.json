@@ -1,8 +1,0 @@
-{
-  "name": "faulty",
-  "id": "test.faulty",
-  "displayName": "Faulty",
-  "type": "foreground",
-  "wasm": "faulty.wasm",
-  "capabilities": ["ui", "storage", "timers"]
-}

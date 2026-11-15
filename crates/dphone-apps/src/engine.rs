@@ -186,6 +186,18 @@ impl AppEngine {
         unsafe { Component::deserialize_file(&self.engine, path) }.map_err(wt)
     }
 
+    /// Loads code [`AppEngine::precompile`] returned, without compiling the
+    /// component a second time.
+    ///
+    /// # Safety
+    ///
+    /// `code` must be bytes this engine's [`AppEngine::precompile`] just
+    /// returned, unchanged (see [`AppEngine::load_precompiled`]).
+    pub unsafe fn load_compiled(&self, code: &[u8]) -> Result<Component, EngineError> {
+        // SAFETY: forwarded to the caller.
+        unsafe { Component::deserialize(&self.engine, code) }.map_err(wt)
+    }
+
     /// Compiles and loads a `.wasm` component (needs the `compile` feature).
     pub fn load_wasm(&self, wasm: &[u8]) -> Result<Component, EngineError> {
         #[cfg(feature = "compile")]

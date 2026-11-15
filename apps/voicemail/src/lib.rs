@@ -529,4 +529,11 @@ impl App for Voicemail {
     }
 }
 
-dphone_app_sdk::export_app!(Voicemail);
+dphone_app_sdk::export_app! {
+    app: Voicemail,
+    name: "voicemail",
+    id: "org.opendphone.voicemail",
+    display_name: "Voicemail",
+    description: "Listen to and manage voicemail messages",
+    icon: "voicemail",
+}

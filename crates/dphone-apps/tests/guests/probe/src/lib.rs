@@ -78,4 +78,15 @@ impl App for Probe {
     }
 }
 
-dphone_app_sdk::export_app!(Probe);
+dphone_app_sdk::export_app! {
+    app: Probe,
+    name: "probe",
+    id: "test.probe",
+    display_name: "Probe",
+    has_idle: true,
+    icon: "pic.png",
+    files: &[
+        ("pic.png", include_bytes!("../data/pic.png")),
+        ("tone.wav", include_bytes!("../data/tone.wav")),
+    ],
+}

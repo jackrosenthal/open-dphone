@@ -1044,13 +1044,9 @@ fn every_size_is_made_and_drawn_on_every_kind_of_display() {
 
 #[test]
 fn it_is_a_built_in_app_that_can_be_switched_off() {
-    let manifest: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(staged().join(APP).join("app.json")).unwrap(),
-    )
-    .unwrap();
     assert_eq!(
-        manifest["capabilities"],
-        serde_json::json!(["ui", "timers", "storage", "canvas"]),
+        common::capabilities(APP),
+        ["ui", "timers", "storage", "canvas"],
         "no sound, no calls, no network"
     );
     let config = FakeConfig::default();

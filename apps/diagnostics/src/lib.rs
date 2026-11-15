@@ -245,4 +245,11 @@ impl App for Diagnostics {
     }
 }
 
-dphone_app_sdk::export_app!(Diagnostics);
+dphone_app_sdk::export_app! {
+    app: Diagnostics,
+    name: "diagnostics",
+    id: "org.opendphone.diagnostics",
+    display_name: "Diagnostics",
+    description: "Hardware tests, subsystems, and the log",
+    icon: "diagnostics",
+}

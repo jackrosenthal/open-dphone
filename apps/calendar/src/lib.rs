@@ -270,4 +270,11 @@ impl App for Calendar {
     }
 }
 
-dphone_app_sdk::export_app!(Calendar);
+dphone_app_sdk::export_app! {
+    app: Calendar,
+    name: "calendar",
+    id: "org.opendphone.calendar",
+    display_name: "Calendar",
+    description: "Month calendar",
+    icon: "calendar",
+}

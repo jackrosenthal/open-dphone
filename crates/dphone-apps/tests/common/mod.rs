@@ -53,6 +53,19 @@ pub fn staged() -> &'static Path {
     })
 }
 
+/// The phone's record of a staged app.
+#[allow(dead_code)]
+pub fn record(app: &str) -> dphone_apps::Manifest {
+    let bytes = std::fs::read(staged().join(app).join(dphone_apps::manifest::RECORD)).unwrap();
+    dphone_apps::Manifest::from_record(&bytes).unwrap()
+}
+
+/// The interfaces of the phone a staged app uses: its component's imports.
+#[allow(dead_code)]
+pub fn capabilities(app: &str) -> Vec<&'static str> {
+    record(app).capabilities.iter().map(|c| c.name()).collect()
+}
+
 pub struct Rig {
     pub mgr: AppManager,
     pub ui: FakeUi,
@@ -153,6 +166,17 @@ impl Rig {
 
     /// Runs the manager until nothing more happens.
     pub fn settle(&mut self) {
+        for _ in 0..8 {
+            self.mgr.pump();
+        }
+        // A compilation on the worker thread (an install, or an installed
+        // app's code compiled again) is waited for.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+        while self.mgr.compiling() {
+            assert!(std::time::Instant::now() < deadline, "the compiler thread did not finish");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            self.mgr.pump();
+        }
         for _ in 0..8 {
             self.mgr.pump();
         }

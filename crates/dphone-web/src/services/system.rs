@@ -38,6 +38,10 @@ pub async fn close_app(ctx: Ctx, req: pb::CloseAppRequest) -> Result<pb::CloseAp
     Ok(pb::CloseAppResponse {})
 }
 
+/// How long installing an app may take: the compilation of the largest
+/// component the phone accepts, behind another one.
+const INSTALL_APP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
 pub async fn install_app(ctx: Ctx, req: pb::InstallAppRequest) -> Result<pb::InstallAppResponse, ConnectError> {
     let upload = {
         let mut uploads = ctx.app.uploads.lock().unwrap();
@@ -48,7 +52,13 @@ pub async fn install_app(ctx: Ctx, req: pb::InstallAppRequest) -> Result<pb::Ins
     }
     .ok_or_else(|| ConnectError::not_found("Upload expired.  Upload the file again."))?;
     let path = upload.path.to_string_lossy().into_owned();
-    let result = command(&ctx.app.store, Command::InstallApp { path }).await;
+    // The phone compiles the app, which takes from seconds to a few minutes
+    // (`dphone_apps::MAX_COMPONENT`), far longer than other commands.
+    let sent = ctx.app.store.send(Command::InstallApp { path });
+    let result = match tokio::time::timeout(INSTALL_APP_TIMEOUT, sent).await {
+        Ok(r) => r.map_err(super::command_error),
+        Err(_) => Err(super::command_error(dphone_state::CommandError::Timeout)),
+    };
     let _ = std::fs::remove_file(&upload.path);
     result?;
     Ok(pb::InstallAppResponse {})

@@ -469,24 +469,28 @@ fn it_plays_on_the_gray_screens_in_gray() {
 
 #[test]
 fn it_needs_the_canvas_capability_and_can_be_switched_off() {
-    // Without `canvas` in its manifest the game must not load.
+    assert_eq!(
+        common::capabilities(APP),
+        ["ui", "timers", "storage", "canvas"],
+        "no sound, no calls, no network"
+    );
+    // An app is linked with the interfaces the phone's record of it lists
+    // (its component's imports when it was built or installed) and no
+    // others: with a record that lacks `canvas` the game does not load.
     let dir = temp_dir("sparrow-gating");
     let copy = dir.0.join("nocanvas");
     std::fs::create_dir_all(&copy).unwrap();
-    for e in std::fs::read_dir(staged().join(APP)).unwrap().flatten() {
-        std::fs::copy(e.path(), copy.join(e.file_name())).unwrap();
-    }
-    let path = copy.join("app.json");
-    let mut manifest: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-    assert_eq!(
-        manifest["capabilities"],
-        serde_json::json!(["ui", "timers", "storage", "canvas"]),
-        "no sound, no calls, no network"
-    );
-    manifest["name"] = "nocanvas".into();
-    manifest["capabilities"] = serde_json::json!(["ui", "timers", "storage"]);
-    std::fs::write(&path, manifest.to_string()).unwrap();
+    std::fs::copy(
+        staged().join(APP).join(format!("{APP}.cwasm")),
+        copy.join("nocanvas.cwasm"),
+    )
+    .unwrap();
+    let mut record = common::record(APP);
+    record.name = "nocanvas".into();
+    record
+        .capabilities
+        .retain(|c| *c != dphone_apps::Capability::Canvas);
+    std::fs::write(copy.join(dphone_apps::manifest::RECORD), record.record()).unwrap();
     let mut r = Rig::with_root(&dir.0, FakeConfig::default(), Model::D60);
     let err = r.mgr.launch("nocanvas").unwrap_err();
     assert!(err.contains("canvas"), "{err}");

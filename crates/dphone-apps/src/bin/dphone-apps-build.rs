@@ -1,24 +1,27 @@
-//! Host tool for building apps: turns the core WebAssembly modules cargo
-//! produces into components, precompiles them for the phone, and packs
-//! installable packages.  The Nix derivations and developers both use it.
+//! Host tool for the firmware's build: turns the core WebAssembly modules
+//! cargo produces for the built-in apps into what the image carries of
+//! each (the phone's record of the app, the code compiled for the phone,
+//! and the app's data files).  The Nix derivations and the tests use it.
+//!
+//! The component and the manifest are made and read by `cargo-dphone-app`,
+//! the tool app makers use: there is one way from an app crate to an app.
 
+use cargo_dphone_app::{Manifest, ManifestError, manifest::RECORD};
 use dphone_apps::engine::{AppEngine, Target};
-use dphone_apps::manifest::Manifest;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 const USAGE: &str = "\
 usage:
-  dphone-apps-build componentize <module.wasm> -o <component.wasm>
   dphone-apps-build precompile <component.wasm> -o <out.cwasm> [--target phone|host|pulley64]
-  dphone-apps-build pack <app-dir> -o <package.zip>
-  dphone-apps-build stage --apps <apps-src-dir> --wasm-dir <dir-of-modules> --out <root>
+  dphone-apps-build stage --wasm-dir <dir-of-modules> --out <root>
                           [--target phone|host|pulley64] [--no-wasm]
   dphone-apps-build build --apps <apps-src-dir> --out <root> [--target ...] [--no-wasm]
 
-stage lays out <root>/<name>/{app.json,<name>.wasm,<name>.cwasm,data files} for
-every directory under <apps-src-dir> that has an app.json.  build runs cargo
-for wasm32-unknown-unknown in <apps-src-dir> first.";
+stage lays out <root>/<name>/{app.pb,<name>.wasm,<name>.cwasm,data files} for
+every module in <dir-of-modules> that is an app (it has a manifest; see
+dphone-app-sdk).  build runs cargo for wasm32-unknown-unknown in
+<apps-src-dir> first.";
 
 type Res<T> = Result<T, String>;
 
@@ -53,76 +56,62 @@ fn write(p: &Path, data: &[u8]) -> Res<()> {
     std::fs::write(p, data).map_err(|e| format!("{}: {e}", p.display()))
 }
 
-/// Wraps a core module built with `dphone-app-sdk` into a component.
-fn componentize(module: &[u8]) -> Res<Vec<u8>> {
-    wit_component::ComponentEncoder::default()
-        .module(module)
-        .map_err(|e| format!("{e:#}"))?
-        .validate(true)
-        .encode()
-        .map_err(|e| format!("{e:#}"))
-}
-
-fn stage(apps: &Path, wasm_dir: &Path, out: &Path, target: Target, keep_wasm: bool) -> Res<()> {
+fn stage(wasm_dir: &Path, out: &Path, target: Target, keep_wasm: bool) -> Res<()> {
     let engine = AppEngine::new(target).map_err(|e| e.to_string())?;
-    let mut dirs: Vec<PathBuf> = std::fs::read_dir(apps)
-        .map_err(|e| format!("{}: {e}", apps.display()))?
+    let mut modules: Vec<PathBuf> = std::fs::read_dir(wasm_dir)
+        .map_err(|e| format!("{}: {e}", wasm_dir.display()))?
         .flatten()
         .map(|e| e.path())
-        .filter(|p| p.join("app.json").is_file())
+        .filter(|p| p.extension().is_some_and(|x| x == "wasm"))
         .collect();
-    dirs.sort();
-    if dirs.is_empty() {
-        return Err(format!("no apps under {}", apps.display()));
-    }
-    for dir in dirs {
-        let text = String::from_utf8(read(&dir.join("app.json"))?).map_err(|e| e.to_string())?;
-        let m = Manifest::parse(&text).map_err(|e| format!("{}: {e}", dir.display()))?;
-        let stem = m.wasm.strip_suffix(".wasm").unwrap_or(&m.wasm);
-        let module = read(&wasm_dir.join(format!("{stem}.wasm")))?;
-        let component = componentize(&module).map_err(|e| format!("{}: {e}", m.name))?;
+    modules.sort();
+    let mut staged = 0;
+    for path in modules {
+        let module = read(&path)?;
+        match Manifest::from_wasm(&module) {
+            Ok(_) => {}
+            // Not an app.
+            Err(ManifestError::NoManifest) => continue,
+            Err(e) => return Err(format!("{}: {e}", path.display())),
+        }
+        // The app file, made as `cargo dphone-app` makes it for an app
+        // that is installed; a built-in app is in the image as the phone
+        // would keep it, with the code compiled here.
+        let app =
+            cargo_dphone_app::build(&module).map_err(|e| format!("{}: {e}", path.display()))?;
+        let m = &app.manifest;
         let code = engine
-            .precompile(&component)
+            .precompile(&app.component)
             .map_err(|e| format!("{}: {e}", m.name))?;
         let dest = out.join(&m.name);
         let _ = std::fs::remove_dir_all(&dest);
-        write(&dest.join("app.json"), text.as_bytes())?;
+        write(&dest.join(RECORD), &m.record())?;
         if keep_wasm {
-            write(&dest.join(&m.wasm), &component)?;
+            write(&dest.join(&m.wasm), &app.component)?;
         }
-        write(&dest.join(format!("{stem}.cwasm")), &code)?;
-        // Package data files (icons, sounds) sit in `data/`.
-        if let Ok(rd) = std::fs::read_dir(dir.join("data")) {
-            let mut files: Vec<PathBuf> = rd
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.is_file())
-                .collect();
-            files.sort();
-            for f in files {
-                write(&dest.join(f.file_name().unwrap()), &read(&f)?)?;
-            }
+        write(&dest.join(format!("{}.cwasm", m.name)), &code)?;
+        for (name, data) in &app.files {
+            write(&dest.join(name), data)?;
         }
+        let uses: Vec<&str> = m.capabilities.iter().map(|c| c.name()).collect();
         println!(
-            "{}: module {} B, component {} B, compiled {} B",
+            "{}: module {} B, component {} B, compiled {} B; uses {}",
             m.name,
             module.len(),
-            component.len(),
-            code.len()
+            app.component.len(),
+            code.len(),
+            uses.join(", ")
         );
+        staged += 1;
+    }
+    if staged == 0 {
+        return Err(format!("no apps in {}", wasm_dir.display()));
     }
     Ok(())
 }
 
 fn run(args: &[String]) -> Res<()> {
     match args.first().map(String::as_str) {
-        Some("componentize") => {
-            let input = args.get(1).ok_or(USAGE)?;
-            write(
-                Path::new(&need(args, "-o")?),
-                &componentize(&read(Path::new(input))?)?,
-            )
-        }
         Some("precompile") => {
             let input = args.get(1).ok_or(USAGE)?;
             let engine = AppEngine::new(target(args)?).map_err(|e| e.to_string())?;
@@ -131,14 +120,7 @@ fn run(args: &[String]) -> Res<()> {
                 .map_err(|e| e.to_string())?;
             write(Path::new(&need(args, "-o")?), &code)
         }
-        Some("pack") => {
-            let dir = args.get(1).ok_or(USAGE)?;
-            let out = need(args, "-o")?;
-            let f = std::fs::File::create(&out).map_err(|e| format!("{out}: {e}"))?;
-            dphone_apps::package::pack(Path::new(dir), f).map_err(|e| e.to_string())
-        }
         Some("stage") => stage(
-            Path::new(&need(args, "--apps")?),
             Path::new(&need(args, "--wasm-dir")?),
             Path::new(&need(args, "--out")?),
             target(args)?,
@@ -166,7 +148,6 @@ fn run(args: &[String]) -> Res<()> {
                 return Err("cargo build of the apps failed".into());
             }
             stage(
-                &apps,
                 &target_dir.join("wasm32-unknown-unknown/release"),
                 Path::new(&need(args, "--out")?),
                 target(args)?,

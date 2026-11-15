@@ -790,4 +790,11 @@ impl App for LightUp {
     }
 }
 
-dphone_app_sdk::export_app!(LightUp);
+dphone_app_sdk::export_app! {
+    app: LightUp,
+    name: "lightup",
+    id: "org.opendphone.lightup",
+    display_name: "Light Up",
+    description: "Light every cell of the grid",
+    icon: "lightup",
+}

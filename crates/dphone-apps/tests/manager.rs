@@ -5,7 +5,8 @@ mod common;
 
 use common::{Rig, staged, temp_dir};
 use dphone_apps::testutil::FakeConfig;
-use dphone_apps::{InstallError, package};
+use dphone_apps::manifest::{self, Manifest};
+use dphone_apps::{InstallError, ManifestError};
 use dphone_state::{Command, Event, Reply};
 use std::path::{Path, PathBuf};
 
@@ -13,23 +14,32 @@ fn rig() -> Rig {
     Rig::new(FakeConfig::dasp())
 }
 
-/// Copies a staged app into `root` under a new name, editing its manifest.
-fn variant(root: &Path, from: &str, name: &str, edit: impl Fn(&mut serde_json::Value)) -> PathBuf {
-    let dir = root.join(name);
-    std::fs::create_dir_all(&dir).unwrap();
-    for e in std::fs::read_dir(staged().join(from)).unwrap().flatten() {
-        std::fs::copy(e.path(), dir.join(e.file_name())).unwrap();
-    }
-    let mut m: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(dir.join("app.json")).unwrap()).unwrap();
-    m["name"] = name.into();
+/// Makes an app file of a staged app under a new name, with its manifest
+/// edited: the component, with another manifest section.
+fn variant(root: &Path, from: &str, name: &str, edit: impl Fn(&mut Manifest)) -> PathBuf {
+    let component = std::fs::read(staged().join(from).join(format!("{from}.wasm"))).unwrap();
+    let (mut m, files) = Manifest::from_wasm(&component).unwrap();
+    m.name = name.into();
     edit(&mut m);
-    std::fs::write(dir.join("app.json"), m.to_string()).unwrap();
-    dir
+    let out = root.join(format!("{name}.wasm"));
+    std::fs::write(
+        &out,
+        manifest::with_section(&component, &m.section(&files)).unwrap(),
+    )
+    .unwrap();
+    out
 }
 
-fn pack(dir: &Path, out: &Path) {
-    package::pack(dir, std::fs::File::create(out).unwrap()).unwrap();
+/// A module that holds nothing but this manifest section.
+fn bare_module(section: &[u8]) -> Vec<u8> {
+    let name = manifest::SECTION.as_bytes();
+    let mut m = b"\0asm\x01\0\0\0\0".to_vec();
+    assert!(name.len() + 1 + section.len() < 128);
+    m.push((name.len() + 1 + section.len()) as u8);
+    m.push(name.len() as u8);
+    m.extend_from_slice(name);
+    m.extend_from_slice(section);
+    m
 }
 
 #[test]
@@ -132,14 +142,32 @@ fn launch_command_and_foreground_state() {
     assert!(!r.ui.has_window("hotdesking"));
 }
 
+/// A staged app again in `root` under a new name, as a built-in app of a
+/// phone whose apps are there, with the phone's record of it edited.
+fn built_in_variant(root: &Path, from: &str, name: &str, edit: impl Fn(&mut Manifest)) {
+    let dir = root.join(name);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::copy(
+        staged().join(from).join(format!("{from}.cwasm")),
+        dir.join(format!("{name}.cwasm")),
+    )
+    .unwrap();
+    let mut record = common::record(from);
+    record.name = name.into();
+    edit(&mut record);
+    std::fs::write(dir.join(manifest::RECORD), record.record()).unwrap();
+}
+
 #[test]
-fn an_app_gets_only_declared_capabilities() {
+fn an_app_gets_only_the_interfaces_in_its_record() {
     let dir = temp_dir("gating");
-    // Status uses the PBX; without the capability it must not load.
-    variant(&dir.0, "status", "nopbx", |m| {
-        m["capabilities"] = serde_json::json!(["ui", "config", "presence"])
+    // The phone's record of an app lists the interfaces its component
+    // imports, and the app is linked with those alone.  Status uses the
+    // PBX: with a record that lacks `pbx` it does not load.
+    built_in_variant(&dir.0, "status", "nopbx", |m| {
+        m.capabilities.retain(|c| *c != dphone_apps::Capability::Pbx)
     });
-    variant(&dir.0, "status", "full", |_| {});
+    built_in_variant(&dir.0, "status", "full", |_| {});
     let mut r = Rig::with_root(&dir.0, FakeConfig::dasp(), dphone_state::Model::D60);
     let err = r.mgr.launch("nopbx").unwrap_err();
     assert!(err.contains("pbx"), "{err}");
@@ -322,36 +350,25 @@ fn timers_fire() {
 #[test]
 fn install_run_upgrade_and_remove() {
     let dir = temp_dir("install");
-    let src = variant(&dir.0, "hotdesking", "deskapp", |m| {
-        m["capabilities"] = serde_json::json!(["ui"]);
-        m["displayName"] = "Desk".into();
-    });
-    // A package carries the component, never compiled code.
-    std::fs::remove_file(src.join("hotdesking.cwasm")).unwrap();
-    let pkg = dir.0.join("deskapp.zip");
-    pack(&src, &pkg);
-
     let mut r = rig();
-    // Needs `hotdesk`, which the manifest no longer declares.
+
+    // What an app may use is what its component imports; nothing is
+    // declared.  An interface for built-in apps is refused.
+    let pkg = variant(&dir.0, "hotdesking", "deskapp", |m| {
+        m.display_names.text = "Desk".into()
+    });
     let err = r.mgr.install(&pkg, None).unwrap_err();
     assert!(matches!(err, InstallError::Unloadable(_)), "{err}");
+    assert!(
+        err.to_string().contains("\"hotdesk\", which is reserved for built-in"),
+        "{err}"
+    );
     assert!(!r.nvdata.join("wasmapps/deskapp").exists());
 
-    // The same code declaring a built-in-only capability is refused too.
-    let src2 = variant(&dir.0, "hotdesking", "deskapp2", |_| {});
-    std::fs::remove_file(src2.join("hotdesking.cwasm")).unwrap();
-    let pkg2 = dir.0.join("deskapp2.zip");
-    pack(&src2, &pkg2);
-    let err = r.mgr.install(&pkg2, None).unwrap_err();
-    assert!(err.to_string().contains("reserved for built-in"), "{err}");
-
-    // A well-formed package installs through the command bus and runs.
-    let src3 = variant(&dir.0, "status", "mystatus", |m| {
-        m["displayName"] = "My Status".into()
+    // A well-formed app file installs through the command bus and runs.
+    let pkg3 = variant(&dir.0, "status", "mystatus", |m| {
+        m.display_names.text = "My Status".into()
     });
-    std::fs::remove_file(src3.join("status.cwasm")).unwrap();
-    let pkg3 = dir.0.join("mystatus.zip");
-    pack(&src3, &pkg3);
     assert!(matches!(
         r.mgr.install(&pkg3, Some("other")).unwrap_err(),
         InstallError::NameMismatch { .. }
@@ -371,7 +388,14 @@ fn install_run_upgrade_and_remove() {
         (info.display_name.as_str(), info.builtin),
         ("My Status", false)
     );
-    assert!(r.nvdata.join("wasmapps/mystatus/status.wasm").is_file());
+    // In its directory: the component, the phone's record of it (with the
+    // interfaces the component imports), and the code the phone compiled.
+    let installed = r.nvdata.join("wasmapps/mystatus");
+    assert!(installed.join("mystatus.wasm").is_file());
+    assert!(installed.join(".code.cwasm").is_file());
+    let record = Manifest::from_record(&std::fs::read(installed.join("app.pb")).unwrap()).unwrap();
+    let uses: Vec<&str> = record.capabilities.iter().map(|c| c.name()).collect();
+    assert_eq!(uses, ["ui", "config", "pbx", "presence"]);
     assert!(
         !r.nvdata.join("jsapps").exists(),
         "the stock app directory is left alone"
@@ -381,7 +405,7 @@ fn install_run_upgrade_and_remove() {
 
     // Upgrading replaces it in place (and stops the running copy first).
     r.mgr.install(&pkg3, Some("mystatus")).unwrap();
-    assert!(r.nvdata.join("wasmapps/mystatus/app.json").is_file());
+    assert!(r.nvdata.join("wasmapps/mystatus/app.pb").is_file());
     let leftovers: Vec<_> = std::fs::read_dir(r.nvdata.join("wasmapps"))
         .unwrap()
         .flatten()
@@ -401,51 +425,45 @@ fn install_run_upgrade_and_remove() {
 }
 
 #[test]
-fn install_refuses_shadowing_javascript_and_bad_archives() {
+fn install_refuses_shadowing_javascript_and_what_is_not_an_app() {
     let dir = temp_dir("refuse");
     let mut r = rig();
 
-    let src = variant(&dir.0, "status", "status", |_| {});
-    std::fs::remove_file(src.join("status.cwasm")).unwrap();
-    let pkg = dir.0.join("status.zip");
-    pack(&src, &pkg);
+    let pkg = variant(&dir.0, "status", "status", |_| {});
     let err = r.mgr.install(&pkg, None).unwrap_err();
     assert!(matches!(err, InstallError::ShadowsBuiltin(_)));
     assert_eq!(err.stock_status(), -103);
 
-    // A stock JavaScript package.
-    let js = dir.0.join("js.zip");
-    {
-        use std::io::Write;
-        let mut z = zip::ZipWriter::new(std::fs::File::create(&js).unwrap());
-        let o = zip::write::SimpleFileOptions::default();
-        z.start_file("demo/app.json", o).unwrap();
-        z.write_all(br#"{"name":"demo","jsFiles":["demo.js"],"type":"foreground"}"#)
-            .unwrap();
-        z.start_file("demo/demo.js", o).unwrap();
-        z.write_all(b"digium.background();").unwrap();
-        z.finish().unwrap();
-    }
-    let err = r.mgr.install(&js, None).unwrap_err();
-    assert!(err.to_string().contains("JavaScript"), "{err}");
+    let file = dir.0.join("file");
+    let mut install = |bytes: &[u8]| {
+        std::fs::write(&file, bytes).unwrap();
+        r.mgr.install(&file, None).unwrap_err()
+    };
 
-    // Path traversal and compiled code are refused before anything is read.
-    for (name, why) in [
-        ("../evil/app.json", "escape"),
-        ("x/app.cwasm", "compiled code"),
-    ] {
-        let bad = dir.0.join("bad.zip");
-        use std::io::Write;
-        let mut z = zip::ZipWriter::new(std::fs::File::create(&bad).unwrap());
-        let o = zip::write::SimpleFileOptions::default();
-        z.start_file("x/app.json", o).unwrap();
-        z.write_all(br#"{"name":"x","wasm":"x.wasm"}"#).unwrap();
-        z.start_file("x/x.wasm", o).unwrap();
-        z.write_all(b"\0asm").unwrap();
-        z.start_file(name, o).unwrap();
-        z.write_all(b"data").unwrap();
-        z.finish().unwrap();
-        assert!(r.mgr.install(&bad, None).is_err(), "{why}");
+    // A stock JavaScript package: a ZIP archive with an `app.json`.
+    let err = install(b"PK\x03\x04\x14\0\0\0\0\0demo/app.json{\"name\":\"demo\",\"jsFiles\":[\"demo.js\"]}");
+    assert!(err.to_string().contains("JavaScript"), "{err}");
+    assert_eq!(err.stock_status(), -101);
+
+    // Something else altogether, and WebAssembly that is not an app.
+    let err = install(b"#!/bin/sh\n");
+    assert!(matches!(err, InstallError::Manifest(ManifestError::NotWasm)), "{err}");
+    let err = install(b"\0asm\x01\0\0\0");
+    assert!(matches!(err, InstallError::Manifest(ManifestError::NoManifest)), "{err}");
+    assert_eq!(err.stock_status(), -101);
+
+    // A manifest for a newer firmware, a bad name, and a data file that
+    // would leave the app's directory or take the place of the phone's
+    // own files: refused from the manifest alone, before anything is
+    // compiled or written.
+    let err = install(&bare_module(&[8, 9, 0x12, 1, b'x']));
+    assert!(matches!(err, InstallError::Manifest(ManifestError::Format(9))), "{err}");
+    let err = install(&bare_module(&[8, 1, 0x12, 3, b'a', b'/', b'b']));
+    assert_eq!(err.stock_status(), -102, "{err}");
+    let (m, _) = Manifest::from_wasm(&bare_module(&[8, 1, 0x12, 1, b'x'])).unwrap();
+    for name in ["../evil", ".code.cwasm", "app.pb", "x.wasm"] {
+        let err = install(&bare_module(&m.section(&[(name.to_string(), vec![1])])));
+        assert!(matches!(err, InstallError::Manifest(ManifestError::BadFile(_))), "{name}: {err}");
     }
     assert!(
         std::fs::read_dir(r.nvdata.join("wasmapps"))
@@ -453,6 +471,35 @@ fn install_refuses_shadowing_javascript_and_bad_archives() {
             .unwrap_or(0)
             == 0
     );
+}
+
+/// An app's data files travel in its file and are unpacked beside the
+/// component, where the app's read-only files, pictures, and sounds are.
+#[test]
+fn an_installed_app_brings_its_data_files() {
+    let dir = temp_dir("files");
+    let mut r = rig();
+    let pkg = variant(&dir.0, "probe", "myprobe", |_| {});
+    r.mgr.install(&pkg, None).unwrap();
+    let installed = r.nvdata.join("wasmapps/myprobe");
+    for f in ["pic.png", "tone.wav"] {
+        assert_eq!(
+            std::fs::read(installed.join(f)).unwrap(),
+            std::fs::read(staged().join("probe").join(f)).unwrap()
+        );
+    }
+    // The component is kept without the files it carried.
+    let kept = std::fs::read(installed.join("myprobe.wasm")).unwrap();
+    let (m, files) = Manifest::from_wasm(&kept).unwrap();
+    assert_eq!((m.name.as_str(), files.len()), ("myprobe", 0));
+    assert!(kept.len() < std::fs::metadata(&pkg).unwrap().len() as usize);
+
+    let apps = r.store.get::<dphone_state::Apps>();
+    let info = apps.installed.iter().find(|a| a.name == "myprobe").unwrap();
+    assert_eq!(Path::new(&info.icon_path), installed.join("pic.png"));
+    r.launch("myprobe");
+    r.softkey("myprobe", "Pics");
+    assert_eq!(r.ui.image_names("myprobe"), ["pic.png"]);
 }
 
 #[test]
@@ -473,4 +520,67 @@ fn stock_javascript_apps_on_nvdata_are_skipped() {
         js.join("app.json").is_file(),
         "left in place for a flash back to stock"
     );
+}
+
+/// The command `InstallApp` compiles on a worker thread, so the manager
+/// goes on with its work meanwhile; and compiled code that another
+/// firmware made of an installed app is compiled again the same way.
+#[test]
+fn installing_compiles_off_the_manager_thread() {
+    let dir = temp_dir("worker");
+    let pkg = variant(&dir.0, "status", "mystatus", |_| {});
+
+    let mut r = rig();
+    let installing = r.store.send(Command::InstallApp {
+        path: pkg.to_string_lossy().into_owned(),
+    });
+    let launching = r.store.send(Command::LaunchApp {
+        name: "status".into(),
+    });
+    r.mgr.pump();
+    // The launch was answered at once; the install is still with the
+    // compiler (its result is taken by a later pump).
+    assert!(r.mgr.compiling());
+    assert_eq!(launching.wait(), Ok(Reply::Done));
+    assert!(r.mgr.is_running("status"));
+    r.settle();
+    assert_eq!(installing.wait(), Ok(Reply::Text("mystatus".into())));
+
+    // A firmware update that changes the engine leaves compiled code the
+    // new firmware cannot load.
+    let code = r.nvdata.join("wasmapps/mystatus/.code.cwasm");
+    std::fs::write(&code, b"compiled by another firmware").unwrap();
+    let err = r.mgr.launch("mystatus").unwrap_err();
+    assert!(err.contains("being compiled"), "{err}");
+    assert!(r.mgr.compiling());
+    r.settle();
+    r.launch("mystatus");
+    assert!(r.mgr.is_running("mystatus"));
+    assert!(std::fs::metadata(&code).unwrap().len() > 1000);
+}
+
+#[test]
+fn install_refuses_a_component_too_large_to_compile() {
+    let dir = temp_dir("large");
+    let pkg = variant(&dir.0, "status", "large", |_| {});
+    // More code than the phone compiles: here, a section of padding.
+    let mut component = std::fs::read(&pkg).unwrap();
+    let padding = dphone_apps::MAX_COMPONENT as usize;
+    component.push(0);
+    let mut len = padding + 4;
+    while len >= 0x80 {
+        component.push(len as u8 & 0x7f | 0x80);
+        len >>= 7;
+    }
+    component.push(len as u8);
+    component.extend_from_slice(b"\x03pad");
+    component.resize(component.len() + padding, 0);
+    std::fs::write(&pkg, component).unwrap();
+    let mut r = rig();
+    let err = r.mgr.install(&pkg, None).unwrap_err();
+    assert!(
+        matches!(err, InstallError::ComponentTooLarge { .. }),
+        "{err}"
+    );
+    assert!(!r.nvdata.join("wasmapps/large").exists());
 }
