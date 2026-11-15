@@ -17,7 +17,7 @@ const fn w(id: &'static str, name: &'static str, family: &'static str) -> Wallpa
 }
 
 /// Every built-in wallpaper, grouped by family.  The first is the default.
-pub const WALLPAPERS: [WallpaperName; 40] = [
+pub const WALLPAPERS: [WallpaperName; 42] = [
     w("harbor", "Harbor", "Facets"),
     w("evergreen", "Evergreen", "Facets"),
     w("merlot", "Merlot", "Facets"),
@@ -38,6 +38,7 @@ pub const WALLPAPERS: [WallpaperName; 40] = [
     w("orbit", "Orbit", "Bubbles"),
     w("pebbles", "Pebbles", "Bubbles"),
     w("slant", "Slant", "Modern"),
+    w("regatta", "Regatta", "Modern"),
     w("prism", "Prism", "Modern"),
     w("glacier", "Glacier", "Modern"),
     w("tides", "Tides", "Modern"),
@@ -53,6 +54,7 @@ pub const WALLPAPERS: [WallpaperName; 40] = [
     w("argyle", "Argyle", "Classic"),
     w("polka", "Polka", "Classic"),
     w("pinstripe", "Pinstripe", "Classic"),
+    w("hot-dog-stand", "Hot Dog Stand", "Classic"),
     w("black", "Black", "Solids"),
     w("charcoal", "Charcoal", "Solids"),
     w("navy", "Navy", "Solids"),

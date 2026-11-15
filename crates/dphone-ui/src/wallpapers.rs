@@ -34,7 +34,10 @@ macro_rules! facets {
     };
 }
 
-static ALL: [Wallpaper; 40] = [
+/// Pure red and pure yellow.
+const KETCHUP_MUSTARD: (Rgb, Rgb) = (0xFF0000, 0xFFFF00);
+
+static ALL: [Wallpaper; 42] = [
     // ------------------------------------------------------------- Facets
     Wallpaper {
         id: "harbor",
@@ -288,6 +291,26 @@ static ALL: [Wallpaper; 40] = [
         },
     },
     Wallpaper {
+        id: "regatta",
+        name: "Regatta",
+        family: Family::Modern,
+        scheme: Scheme::Dark { primary: 0x1848C8, surface: 0x0A1430 },
+        // The yellow of the picture, where the palette has an accent.
+        tweaks: &[("accent", 0xFFD21E)],
+        spec: Spec {
+            base: Base::Grad(Grad::Linear { ax: 1, ay: 1, stops: &[(0, 0x1238B0), (60, 0x0E2A8C), (100, 0x0A1C60)] }),
+            layers: &[
+                // As on Slant, the bands keep clear of the clock and the
+                // date (x - y from -170 to 205); the yellow ones also of
+                // the status icons (up to 296).
+                Layer::Bands { num: -1, den: 1, add: false, color: 0x2A62E8, bands: &[(230, 70, 200, 200)] },
+                Layer::Bands { num: -1, den: 1, add: false, color: 0xFFD21E, bands: &[(300, 64, 256, 256), (378, 10, 256, 256)] },
+                Layer::Bands { num: -1, den: 1, add: false, color: 0x3C7CFF, bands: &[(402, 120, 190, 190)] },
+            ],
+            dither: true,
+        },
+    },
+    Wallpaper {
         id: "prism",
         name: "Prism",
         family: Family::Modern,
@@ -506,6 +529,50 @@ static ALL: [Wallpaper; 40] = [
         spec: Spec {
             base: Base::Grad(Grad::Solid(0x1A1E2A)),
             layers: &[Layer::Stripes { vertical: true, repeat: 12, stripes: &[(5, 1, 0xA8B0C4, 70)] }],
+            dither: false,
+        },
+    },
+    // The one joke: ketchup and mustard, as loud as they come, on every
+    // screen.  Nothing here is toned down.  It can be read all the same:
+    // the text is black, which pure red and pure yellow both carry (5.3
+    // and 19.6 to 1), where white on the red would be 4.0.
+    Wallpaper {
+        id: "hot-dog-stand",
+        name: "Hot Dog Stand",
+        family: Family::Classic,
+        scheme: Scheme::Hand(Palette {
+            bg: KETCHUP_MUSTARD.1,
+            fg: 0x000000,
+            title_bg: KETCHUP_MUSTARD.0,
+            title_fg: 0x000000,
+            sel_bg: KETCHUP_MUSTARD.0,
+            sel_fg: 0x000000,
+            secondary: 0x5A0000,
+            border: KETCHUP_MUSTARD.0,
+            modal_bg: KETCHUP_MUSTARD.1,
+            sk_bg: KETCHUP_MUSTARD.1,
+            sk_edge: 0x000000,
+            sk_fg: 0x000000,
+            sk_go: 0x00FF00,
+            sk_stop: KETCHUP_MUSTARD.0,
+            good: 0x1B5E20,
+            warn: 0x8A4B00,
+            error: 0xC00000,
+            accent: KETCHUP_MUSTARD.0,
+            card: KETCHUP_MUSTARD.1,
+            card_ringing: 0x00FF00,
+            card_held: 0xFF8000,
+            card_dark: KETCHUP_MUSTARD.0,
+            tab_bg: KETCHUP_MUSTARD.1,
+            tab_fg: 0x000000,
+            load_track: KETCHUP_MUSTARD.0,
+            load_fill: KETCHUP_MUSTARD.1,
+        }),
+        tweaks: &[],
+        spec: Spec {
+            // The stand's awning.
+            base: Base::Grad(Grad::Solid(KETCHUP_MUSTARD.0)),
+            layers: &[Layer::Stripes { vertical: true, repeat: 80, stripes: &[(40, 40, KETCHUP_MUSTARD.1, 256)] }],
             dither: false,
         },
     },

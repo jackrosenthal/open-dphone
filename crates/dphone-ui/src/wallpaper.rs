@@ -62,6 +62,8 @@ pub enum Scheme {
     Dark { primary: Rgb, surface: Rgb },
     /// A light palette (dark text) derived from the same two colors.
     Light { primary: Rgb, surface: Rgb },
+    /// Every role chosen by hand.
+    Hand(Palette),
 }
 
 /// Adds `d` to every channel.
@@ -105,6 +107,7 @@ impl Scheme {
         const WHITE: Rgb = 0xFFFFFF;
         match self {
             Scheme::Skin => *skin,
+            Scheme::Hand(palette) => palette,
             Scheme::Dark { primary, surface } => Palette {
                 bg: surface,
                 fg: skin.fg,

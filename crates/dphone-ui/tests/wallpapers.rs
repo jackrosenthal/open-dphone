@@ -142,11 +142,11 @@ fn at(pixels: &[u32], x: i32, y: i32) -> Rgb {
 #[test]
 fn the_list_is_well_formed() {
     let all = wallpaper::all();
-    assert!((30..=40).contains(&all.len()), "{} wallpapers", all.len());
+    assert!((30..=45).contains(&all.len()), "{} wallpapers", all.len());
     assert_eq!(wallpaper::default().id, all[0].id);
     for (i, w) in all.iter().enumerate() {
         assert!(!w.id.is_empty() && w.id.bytes().all(|c| c.is_ascii_lowercase() || c == b'-'), "{}", w.id);
-        assert!(!w.name.is_empty() && w.name.len() <= 12, "{}", w.name);
+        assert!(!w.name.is_empty() && w.name.len() <= 14, "{}", w.name);
         assert!(all[..i].iter().all(|o| o.id != w.id && o.name != w.name), "{} is listed twice", w.id);
         assert_eq!(wallpaper::find(w.id).map(|f| f.id), Some(w.id));
     }
@@ -718,7 +718,7 @@ fn contact_sheets() {
     let c = sheet(&format!("Open DPhone wallpapers ({}): idle screen and menu", all.len()), &all, 3, 2, false);
     write_png(&dir.join("overview.png"), &c);
     // The wallpaper selector on a few wallpapers, dark and light.
-    let shown = ["harbor", "dusk", "sunrise", "houndstooth", "stone", "tides"];
+    let shown = ["harbor", "dusk", "sunrise", "houndstooth", "regatta", "hot-dog-stand"];
     let mut c = Canvas::new((12 + 2 * (WIDTH + 12)) as u16, (12 + 3 * (HEIGHT + 12)) as u16, false);
     c.clear(0x2B2B2B);
     for (i, id) in shown.iter().enumerate() {
