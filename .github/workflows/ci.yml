@@ -3,7 +3,7 @@
 # of the flake's outputs (.github/actions/nix-build):
 #
 #   kernel, web, apps, brush, coreutils, sed, workspace,
-#   checks-deps                                           (nothing before them)
+#   checks-deps, asterisk                                 (nothing before them)
 #   rootfs, tests, clippy                                 (from those)
 #   one image per model, jffs2-mount                      (from rootfs)
 #   checks                                                (`nix flake check`)
@@ -61,6 +61,9 @@ jobs:
           # The dependencies of the tests and of clippy.
           - name: checks-deps
             installables: .#checks.x86_64-linux.tests.cargoArtifacts
+          # Asterisk with res_dpma_rs, which the tests register against.
+          - name: asterisk
+            installables: .#asterisk-modules
     steps:
       - uses: actions/checkout@v7
 
@@ -121,8 +124,7 @@ jobs:
           path: dist
           if-no-files-found: error
 
-  # The tests download the vendor's stock images too, and build Asterisk
-  # with res_dpma_rs; the cache keeps both.
+  # The tests download the vendor's stock images too; the cache keeps them.
   tests:
     name: tests
     needs: build
@@ -136,7 +138,7 @@ jobs:
           name: tests
           installables: .#checks.x86_64-linux.tests
           cache: true
-          stores: nix-new-{workspace,apps,checks-deps}
+          stores: nix-new-{workspace,apps,checks-deps,asterisk}
 
   clippy:
     name: clippy

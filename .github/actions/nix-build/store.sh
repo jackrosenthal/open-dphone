@@ -7,7 +7,9 @@
 #       Copies to DIR everything of that kind in the build closure of the
 #       installables that is in the job's store: their outputs, and what
 #       building them needed (sources, dependency layers, toolchains).
-#       Paths that a directory listed in $KNOWN has already are left out.
+#       Paths that a directory listed in $KNOWN has already are left out,
+#       and so is what the new paths refer to that a directory listed in
+#       $KEPT has.
 #
 #   store.sh results DIR OUT-LINK...
 #       Copies to DIR only the built results and what they refer to.
@@ -44,8 +46,7 @@ ours() {
 }
 
 # Of the store paths on standard input, those that no directory of $KNOWN
-# has.  A path /nix/store/<hash>-<name> of a binary cache is the file
-# <hash>.narinfo.
+# has.
 unknown() {
   while read -r path; do
     hash=${path#/nix/store/}
@@ -63,33 +64,58 @@ copy() {
   xargs --no-run-if-empty nix copy --to "file://$dir?compression=zstd"
 }
 
+# The paths that DIR has, as hashes: /nix/store/<hash>-<name> is the file
+# <hash>.narinfo, which names the path's archive under nar/.
+paths() {
+  (cd "$dir" && ls) | sed --quiet 's/\.narinfo$//p' | sort
+}
+
+# Of them, those of the public cache.
+public() {
+  { find "$dir" -maxdepth 1 -name '*.narinfo' -exec grep --files-with-matches '^Sig: cache\.nixos\.org-1:' {} + || true; } |
+    sed 's|.*/||; s/\.narinfo$//'
+}
+
+# Removes the paths on standard input from DIR, and then the archives that
+# no path names any longer; paths with the same contents share one.
+remove() {
+  while read -r hash; do
+    rm "$dir/$hash.narinfo"
+  done
+  mkdir --parents "$dir/nar"
+  find "$dir" -maxdepth 1 -name '*.narinfo' -exec sed --quiet 's/^URL: //p' {} + | sort --unique > "$tmp/archives"
+  (cd "$dir" && find nar -type f) | sort | comm -23 - "$tmp/archives" | while read -r archive; do
+    rm "$dir/$archive"
+  done
+}
+
 tmp=$(mktemp --directory)
+mkdir --parents "$dir"
 
 case $mode in
   new)
     closure "$@" | ours | unknown | copy
+    # What came along only because a new path refers to it: paths of the
+    # public cache, and paths the directories listed in $KEPT have (the
+    # cache that every later job restores too).
+    {
+      public
+      for kept in ${KEPT:-}; do
+        (cd "$kept" && ls) | sed --quiet 's/\.narinfo$//p'
+      done
+    } | sort --unique > "$tmp/known"
+    paths | comm -12 - "$tmp/known" | remove
     ;;
   results)
     nix-store --query --requisites "$@" | sort | ours | copy
     ;;
   prune)
-    mkdir --parents "$dir/nar"
     closure "$@" | cut --characters=12-43 | sort --unique > "$tmp/wanted"
-    (cd "$dir" && ls) | sed --quiet 's/\.narinfo$//p' | sort > "$tmp/have"
     {
-      comm -23 "$tmp/have" "$tmp/wanted"
-      { find "$dir" -maxdepth 1 -name '*.narinfo' -exec grep --files-with-matches '^Sig: cache\.nixos\.org-1:' {} + || true; } |
-        sed 's|.*/||; s/\.narinfo$//'
-    } | sort --unique | while read -r hash; do
-      rm "$dir/$hash.narinfo"
-    done
-    # Each path names its archive under nar/; paths with the same contents
-    # share one.
-    find "$dir" -maxdepth 1 -name '*.narinfo' -exec sed --quiet 's/^URL: //p' {} + | sort --unique > "$tmp/archives"
-    (cd "$dir" && find nar -type f) | sort | comm -23 - "$tmp/archives" | while read -r archive; do
-      rm "$dir/$archive"
-    done
-    (cd "$dir" && ls) | sed --quiet '/\.narinfo$/p' | sha256sum | cut --characters=1-32
+      paths | comm -23 - "$tmp/wanted"
+      public
+    } | sort --unique | remove
+    paths | sha256sum | cut --characters=1-32
     ;;
   *)
     echo "usage: $0 new|results|prune DIR ARGUMENT..." >&2

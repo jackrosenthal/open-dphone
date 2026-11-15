@@ -42,11 +42,13 @@ runs:
     # opened.  The installer sets `max-jobs = auto`, and `cores` is left at
     # 0, so Nix builds as many derivations at once as the runner has cores,
     # and each may use all of them.  The two directories are binary caches
-    # of unsigned paths: earlier jobs' and earlier runs'.
+    # of unsigned paths: earlier jobs' and earlier runs'.  A path that
+    # cannot be taken from them after all is built instead.
     - uses: cachix/install-nix-action@v31
       with:
         extra_nix_config: |
           extra-substituters = file://${{ runner.temp }}/nix/in?trusted=1 file://${{ runner.temp }}/nix/cache?trusted=1
+          fallback = true
 
     - if: inputs.stores != ''
       uses: actions/download-artifact@v8
@@ -82,6 +84,7 @@ runs:
         du --summarize --human-readable "$RUNNER_TEMP/nix/new"
       env:
         KNOWN: ${{ runner.temp }}/nix/cache ${{ runner.temp }}/nix/in
+        KEPT: ${{ runner.temp }}/nix/cache
         INSTALLABLES: ${{ inputs.installables }}
 
     - if: ${{ !cancelled() && inputs.name != '' && inputs.installables != '' }}
