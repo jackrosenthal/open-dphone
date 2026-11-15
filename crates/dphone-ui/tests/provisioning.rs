@@ -208,3 +208,52 @@ fn setup_shows_before_the_client_has_started() {
     r.at(126_001);
     assert_eq!(r.commands(), pick(5));
 }
+
+/// A phone in its setup with no network (the client has not started) is
+/// not trapped: it can be used without a server, given an address, and its
+/// network settings can be reached, coming back to setup afterward.
+#[test]
+fn setup_with_no_network_is_not_a_trap() {
+    for model in [Model::D40, Model::D60] {
+        let mut r = Rig::new(model, Vec::new());
+        r.store.update::<Provisioning, _>(|p| p.phase = ProvisionPhase::Idle);
+        r.at(1000);
+        assert_eq!(r.ui.screen_name(), "provisioning", "{model:?}");
+
+        // Network: the phone's network settings, and back.
+        r.tap(Key::Soft(2));
+        assert_eq!(r.ui.screen_name(), "network", "{model:?}");
+        r.tap(Key::Cancel);
+        assert_eq!(r.ui.screen_name(), "provisioning", "{model:?}");
+
+        // Manual: an address.
+        r.tap(Key::Soft(1));
+        assert_eq!(r.ui.screen_name(), "provision-server", "{model:?}");
+        r.tap(Key::Cancel);
+        assert_eq!(r.ui.screen_name(), "provisioning", "{model:?}");
+
+        // Skip: use without a server.
+        r.tap(Key::Soft(3));
+        assert_eq!(r.commands(), vec![Command::SkipProvisioning], "{model:?}");
+        r.store.update::<Provisioning, _>(|p| p.phase = ProvisionPhase::Standalone);
+        r.at(2000);
+        assert_eq!(r.ui.screen_name(), "idle", "{model:?}");
+    }
+}
+
+/// The network settings are reachable from the server list too; going
+/// there stops the count, as stock's Settings softkey does.
+#[test]
+fn network_settings_from_the_server_list() {
+    let mut r = Rig::new(Model::D40, vec![server(5)]);
+    r.at(2000);
+    r.tap(Key::Soft(2));
+    assert_eq!(r.ui.screen_name(), "network");
+    r.at(30_000);
+    r.tap(Key::Cancel);
+    assert_eq!(r.ui.screen_name(), "provisioning");
+    r.at(60_000);
+    assert!(r.commands().is_empty(), "the count was stopped");
+    r.tap(Key::Select);
+    assert_eq!(r.commands(), pick(5));
+}

@@ -163,7 +163,9 @@ fn a_phone_with_no_server_and_no_accounts_shows_the_server_menu() {
     let state = |topic: &str| diag(&socket, &["state", topic]).1;
     wait_for("the server menu", Duration::from_secs(30), || state("ui").contains("screen: \"provisioning\""));
     assert!(state("system").contains("phase: Provisioning"), "{}", state("system"));
-    assert!(state("provisioning").contains("phase: AwaitingServer"), "{}", state("provisioning"));
+    // Setup shows from the end of start-up; the client then starts and
+    // waits for a server.
+    wait_for("the client waiting for a server", Duration::from_secs(30), || state("provisioning").contains("phase: AwaitingServer"));
     // Nothing is announced to the simulator, so nothing is selected: the
     // menu is still there after stock's six seconds.
     std::thread::sleep(Duration::from_secs(7));

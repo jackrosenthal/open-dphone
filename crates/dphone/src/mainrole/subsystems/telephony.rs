@@ -582,6 +582,9 @@ async fn run(
 ) {
     let nv = config.lock().unwrap().nvdata().clone();
     let sub = ctx.store.subscribe(Topic::Network);
+    // Until the DPMA client exists (it needs SIP, which needs an address),
+    // the setup screens' choices are taken here.
+    let early = super::provisioning::early_commands(&ctx.store);
 
     // Wait for an address.
     let ip = loop {
@@ -668,6 +671,8 @@ async fn run(
             // Whoever waited for the client (the firmware updater) gets it
             // now, before the first report below starts provisioning.
             telephony.set_dpma(handle.clone());
+            // What the user chose on the setup screens meanwhile.
+            early.hand_over(&ctx.store);
             // Network state, DHCP option 66, and mDNS announcements.
             super::provisioning::start_discovery(&ctx, &net, &handle);
             ctx.store.set_health(Subsystem::Dpma, HealthStatus::Ok);

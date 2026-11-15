@@ -208,7 +208,7 @@ pub async fn start(ctx: &Context, opts: &Options) {
     }
 
     let _ = (audio, hal, telephony, ui);
-    tokio::spawn(provisioning::follow_setup(ctx.clone()));
+    tokio::spawn(provisioning::follow_setup(ctx.store.clone()));
     finish(ctx, config.as_ref());
 }
 

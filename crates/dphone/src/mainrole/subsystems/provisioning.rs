@@ -226,12 +226,12 @@ pub fn system_phase(now: dphone_state::Phase, provisioning: &ProvisionPhase, acc
 
 /// Keeps `System::phase` at [`system_phase`].  Runs from the start of the
 /// main role, whether or not the DPMA client ever starts.
-pub async fn follow_setup(ctx: Context) {
-    let sub = ctx.store.subscribe([Topic::System, Topic::Provisioning, Topic::Accounts]);
+pub async fn follow_setup(store: dphone_state::Store) {
+    let sub = store.subscribe([Topic::System, Topic::Provisioning, Topic::Accounts]);
     loop {
-        let provisioning = ctx.store.read::<Provisioning, _>(|p| p.phase.clone());
-        let accounts = ctx.store.read::<dphone_state::Accounts, _>(|a| a.accounts.len());
-        let now = ctx.store.read::<dphone_state::System, _>(|s| s.phase);
+        let provisioning = store.read::<Provisioning, _>(|p| p.phase.clone());
+        let accounts = store.read::<dphone_state::Accounts, _>(|a| a.accounts.len());
+        let now = store.read::<dphone_state::System, _>(|s| s.phase);
         let next = system_phase(now, &provisioning, accounts);
         if next != now {
             if next == dphone_state::Phase::Provisioning {
@@ -241,13 +241,116 @@ pub async fn follow_setup(ctx: Context) {
             }
             // Only the step that was decided on: a shutdown that began in
             // between stays.
-            ctx.store.update::<dphone_state::System, _>(|s| {
+            store.update::<dphone_state::System, _>(|s| {
                 if s.phase == now {
                     s.phase = next;
                 }
             });
         }
         sub.changed().await;
+    }
+}
+
+/// What the user chose on the setup screens before the DPMA client existed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct EarlyChoice {
+    /// The server address entered ("Enter address...").
+    pub server: Option<String>,
+    /// "Use without a server".
+    pub standalone: bool,
+}
+
+impl EarlyChoice {
+    /// Takes a provisioning command the way the client would, as far as
+    /// that can be done without it: a server is remembered for the client,
+    /// and going on without a server takes effect at once.  Returns the
+    /// phase to show, if it changes, and the reply.
+    pub fn take(&mut self, command: &dphone_state::Command) -> (Option<ProvisionPhase>, Result<dphone_state::Reply, dphone_state::CommandError>) {
+        use dphone_state::{Command, CommandError, Reply};
+        match command {
+            Command::StartProvisioning { server } => {
+                if let Some(s) = server.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                    self.server = Some(s.to_string());
+                }
+                self.standalone = false;
+                (Some(ProvisionPhase::Idle), Ok(Reply::Done))
+            }
+            Command::Reprovision => {
+                self.standalone = false;
+                (Some(ProvisionPhase::Idle), Ok(Reply::Done))
+            }
+            Command::SkipProvisioning => {
+                self.standalone = true;
+                (Some(ProvisionPhase::Standalone), Ok(Reply::Done))
+            }
+            _ => (None, Err(CommandError::Failed("provisioning has not started: the phone has no network address yet".into()))),
+        }
+    }
+
+    /// The commands that tell the client, once it exists, what was chosen.
+    pub fn replay(&self) -> Vec<dphone_state::Command> {
+        use dphone_state::Command;
+        let mut v = Vec::new();
+        if let Some(server) = &self.server {
+            v.push(Command::StartProvisioning { server: Some(server.clone()) });
+        }
+        if self.standalone {
+            v.push(Command::SkipProvisioning);
+        }
+        v
+    }
+}
+
+/// The provisioning commands' handler until the DPMA client takes them
+/// over.  The client starts only once the phone has an address; a phone in
+/// its setup with no network must still let its user go on without a
+/// server or enter one.
+pub struct EarlyCommands {
+    choice: Arc<std::sync::Mutex<EarlyChoice>>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+/// Registers the early handler.  Call it before the client can start.
+pub fn early_commands(store: &dphone_state::Store) -> EarlyCommands {
+    let rx = store.handle(dphone_state::Domain::Provisioning);
+    let choice = Arc::new(std::sync::Mutex::new(EarlyChoice::default()));
+    let (store, shared) = (store.clone(), choice.clone());
+    let task = tokio::spawn(async move {
+        while let Some(envelope) = rx.next().await {
+            let (command, responder) = envelope.split();
+            let (phase, reply) = {
+                let mut choice = shared.lock().unwrap();
+                let r = choice.take(&command);
+                let server = choice.server.clone();
+                if r.0.is_some() {
+                    store.update::<Provisioning, _>(|p| {
+                        p.phase = r.0.clone().unwrap();
+                        p.server = server.map(|s| DiscoveredServer { source: DiscoverySource::Manual, name: s.clone(), address: s });
+                    });
+                }
+                r
+            };
+            if let Some(phase) = phase {
+                info!("setup: before the provisioning client: {command:?} ({phase:?})");
+            }
+            responder.reply(reply);
+        }
+    });
+    EarlyCommands { choice, task }
+}
+
+impl EarlyCommands {
+    /// The client has registered itself for the commands: stop, and tell
+    /// it what the user chose meanwhile.  Call it right after the client
+    /// starts and before it hears of the network, so that a phone used
+    /// without a server does not pass through the server menu again.
+    pub fn hand_over(self, store: &dphone_state::Store) {
+        self.task.abort();
+        for command in self.choice.lock().unwrap().replay() {
+            if !store.post(command) {
+                log::warn!("setup: the provisioning client did not take the choice made before it started");
+            }
+        }
     }
 }
 
@@ -342,6 +445,31 @@ mod tests {
         assert_eq!(f.read("contact_lists/0"), None);
         assert!(f.list("ringtones").is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn choices_made_before_the_client_exists() {
+        use dphone_state::{Command, Reply};
+        // "Use without a server": at once, and the client is told.
+        let mut c = EarlyChoice::default();
+        assert_eq!(c.take(&Command::SkipProvisioning), (Some(ProvisionPhase::Standalone), Ok(Reply::Done)));
+        assert_eq!(c.replay(), [Command::SkipProvisioning]);
+        // Setup ends with it (see `system_phase`).
+        assert_eq!(system_phase(dphone_state::Phase::Provisioning, &ProvisionPhase::Standalone, 0), dphone_state::Phase::Running);
+        // An address entered afterward is what counts.
+        assert_eq!(c.take(&Command::StartProvisioning { server: Some(" 10.0.0.5:5060 ".into()) }), (Some(ProvisionPhase::Idle), Ok(Reply::Done)));
+        assert_eq!(c.replay(), [Command::StartProvisioning { server: Some("10.0.0.5:5060".into()) }]);
+        // Retry without an address keeps the one entered.
+        assert_eq!(c.take(&Command::StartProvisioning { server: None }).1, Ok(Reply::Done));
+        assert_eq!(c.replay(), [Command::StartProvisioning { server: Some("10.0.0.5:5060".into()) }]);
+        // An address, then "Use without a server": the client gets both,
+        // and stays out of the way until asked again.
+        c.take(&Command::SkipProvisioning);
+        assert_eq!(c.replay(), [Command::StartProvisioning { server: Some("10.0.0.5:5060".into()) }, Command::SkipProvisioning]);
+        // What needs the client says so.
+        assert!(c.take(&Command::SelectUser { id: "100".into(), pin: String::new() }).1.is_err());
+        assert!(c.take(&Command::ForgetProvisioning).1.is_err());
+        assert!(EarlyChoice::default().replay().is_empty());
     }
 
     #[test]

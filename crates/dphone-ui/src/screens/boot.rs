@@ -275,14 +275,18 @@ impl Screen for Provision {
     }
     fn softkeys(&self, cx: &Cx) -> Vec<Soft> {
         match &cx.st.provisioning.phase {
+            // Network leads to the phone's network settings from every
+            // setup screen that takes keys (stock: the Settings softkey of
+            // `choosePbx.js` and `noAvahiServers.js`); Cancel there comes
+            // back here.
             ProvisionPhase::AwaitingServer | ProvisionPhase::AwaitingUser => {
-                vec![soft(1, tr::SELECT), soft(0, ""), soft(0, ""), soft(4, tr::STATUS)]
+                vec![soft(1, tr::SELECT), soft(6, tr::NETWORK), soft(0, ""), soft(4, tr::STATUS)]
             }
             ProvisionPhase::Failed { .. } => {
-                vec![soft(2, tr::RETRY), soft(3, tr::MANUAL), soft(5, tr::SKIP), soft(4, tr::STATUS)]
+                vec![soft(2, tr::RETRY), soft(3, tr::MANUAL), soft(5, tr::SKIP), soft(6, tr::NETWORK), soft(4, tr::STATUS)]
             }
             ProvisionPhase::Idle | ProvisionPhase::Discovering => {
-                vec![soft(3, tr::MANUAL), soft(0, ""), soft(5, tr::SKIP), soft(4, tr::STATUS)]
+                vec![soft(3, tr::MANUAL), soft(6, tr::NETWORK), soft(5, tr::SKIP), soft(4, tr::STATUS)]
             }
             _ => Vec::new(),
         }
@@ -300,6 +304,7 @@ impl Screen for Provision {
                 cx.post(Command::SkipProvisioning);
                 Nav::Stay
             }
+            6 => Nav::Push(menus::network_menu()),
             _ => Nav::Stay,
         }
     }
