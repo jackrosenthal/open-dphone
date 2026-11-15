@@ -1,0 +1,872 @@
+//! Desk Sparrow, the game: the app's life under the manager with the fake
+//! screen, and the real thing, drawn by the phone UI on a simulated D60
+//! (color) and D40 (gray), with a player that reads the picture.
+//!
+//! The pictures are written as PNG files under `desk-sparrow/` in cargo's
+//! test scratch directory (`CARGO_TARGET_TMPDIR`), or in the directory
+//! `DESK_SPARROW_PREVIEWS` names.  The rules of the game itself are tested
+//! where they are, in `apps/desksparrow/src/game.rs`.
+
+mod common;
+
+use common::{Rig, staged, temp_dir};
+use dphone_apps::engine::Target;
+use dphone_apps::testutil::{FakeConfig, FakePbx, services};
+use dphone_apps::uishell::UiShell;
+use dphone_apps::{
+    AppManager, AppWindow, Color, ColorRole, DrawOp, ManagerConfig, Rect, Shell, WindowEvent,
+    WindowKind,
+};
+use dphone_hal::{Hal, Screen};
+use dphone_state::{
+    AccountId, Call, CallState, Calls, Direction, Key, Model, Party, Phase, Store, System,
+};
+use dphone_ui::{Ui, UiConfig};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+const APP: &str = "desksparrow";
+
+/// What the tests need to know of the game on a model: the width of a
+/// pipe's flange and its height, the sparrow's size and place, the height
+/// of an opening and of the field, and the length of a tick.
+#[derive(Clone, Copy)]
+struct Measures {
+    pipe_w: u16,
+    flange_h: u16,
+    bird_w: i16,
+    bird_h: i16,
+    bird_x: i16,
+    gap: i16,
+    field_h: i16,
+    tick_ms: u64,
+}
+
+fn measures(model: Model) -> Measures {
+    match model {
+        Model::D40 => Measures {
+            pipe_w: 20,
+            flange_h: 5,
+            bird_w: 16,
+            bird_h: 12,
+            bird_x: 44,
+            gap: 48,
+            field_h: 98,
+            tick_ms: 100,
+        },
+        Model::D70 => Measures {
+            pipe_w: 24,
+            flange_h: 5,
+            bird_w: 16,
+            bird_h: 12,
+            bird_x: 60,
+            gap: 60,
+            field_h: 136,
+            tick_ms: 100,
+        },
+        _ => Measures {
+            pipe_w: 44,
+            flange_h: 10,
+            bird_w: 32,
+            bird_h: 24,
+            bird_x: 96,
+            gap: 92,
+            field_h: 235,
+            tick_ms: 50,
+        },
+    }
+}
+
+/// The sparrow's top edge: its body is the first picture drawn.
+fn bird_y(ops: &[DrawOp]) -> i16 {
+    ops.iter()
+        .find_map(|op| match op {
+            DrawOp::Bitmap(b) => Some(b.y),
+            _ => None,
+        })
+        .expect("a sparrow")
+}
+
+fn bird_x(ops: &[DrawOp]) -> i16 {
+    ops.iter()
+        .find_map(|op| match op {
+            DrawOp::Bitmap(b) => Some(b.x),
+            _ => None,
+        })
+        .expect("a sparrow")
+}
+
+/// The openings on screen, left to right: left edge, top, and bottom.  A
+/// pipe's flange is the one rectangle as wide as the pipe and as high as
+/// a flange; the upper pipe's is above the opening, the lower one's below.
+fn openings(ops: &[DrawOp], m: Measures) -> Vec<(i16, i16, i16)> {
+    let mut flanges: Vec<(i16, i16)> = ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Fill((r, _)) if r.width == m.pipe_w && r.height == m.flange_h => {
+                Some((r.x, r.y))
+            }
+            _ => None,
+        })
+        .collect();
+    flanges.sort();
+    flanges.dedup();
+    flanges
+        .chunks(2)
+        .map(|pair| {
+            assert_eq!(pair.len(), 2, "a pipe without its partner");
+            assert_eq!(pair[0].0, pair[1].0);
+            (pair[0].0, pair[0].1 + m.flange_h as i16, pair[1].1)
+        })
+        .collect()
+}
+
+/// A player: flaps when the sparrow, falling as it fell in the last tick,
+/// would sink too low in the next opening.
+struct Player {
+    m: Measures,
+    last_y: Option<i16>,
+}
+
+impl Player {
+    fn new(m: Measures) -> Player {
+        Player { m, last_y: None }
+    }
+    fn flaps(&mut self, ops: &[DrawOp]) -> bool {
+        let m = self.m;
+        let y = bird_y(ops);
+        let fall = y - self.last_y.replace(y).unwrap_or(y);
+        let bottom = openings(ops, m)
+            .into_iter()
+            .find(|(x, _, _)| x + m.pipe_w as i16 > m.bird_x)
+            .map(|(_, _, bottom)| bottom)
+            // Nothing ahead yet: stay in the middle.
+            .unwrap_or((m.field_h + m.gap) / 2);
+        y + fall + m.bird_h + m.gap / 6 > bottom
+    }
+}
+
+// ------------------------------------------------- with the fake screen
+
+/// The game's canvas on the fake screen.
+fn drawing(r: &Rig) -> Vec<DrawOp> {
+    let mut all = r.ui.drawings(APP);
+    assert_eq!(all.len(), 1, "one canvas");
+    all.remove(0).1
+}
+
+/// Runs the manager until the game has drawn again (a tick has passed).
+fn next_tick(r: &mut Rig) {
+    let before = r.ui.draw_count(APP);
+    let until = Instant::now() + Duration::from_secs(5);
+    loop {
+        assert!(Instant::now() < until, "the game stopped drawing");
+        let wait = r.mgr.pump();
+        if r.ui.draw_count(APP) != before {
+            break;
+        }
+        std::thread::sleep(
+            wait.expect("the game's timer is running")
+                .min(Duration::from_millis(20)),
+        );
+    }
+}
+
+fn game_over(r: &Rig) -> bool {
+    r.ui.shows(APP, "Game over")
+}
+
+#[test]
+fn start_screen_flight_and_game_over() {
+    let mut r = Rig::new(FakeConfig::default());
+    let m = measures(Model::D60);
+    let info = r.store.get::<dphone_state::Apps>();
+    let info = info.installed.iter().find(|a| a.name == APP).unwrap();
+    assert_eq!(info.display_name, "Desk Sparrow");
+
+    r.launch(APP);
+    assert_eq!(r.ui.texts(APP), ["Desk Sparrow", "Press OK to fly"]);
+    assert_eq!(r.ui.softkeys(APP), ["Start", "Exit"]);
+    // One canvas over the whole window, drawn once; nothing ticks on the
+    // start screen.
+    let (bounds, ops) = r.ui.drawings(APP).remove(0);
+    assert_eq!(
+        (bounds.x, bounds.y, bounds.width, bounds.height),
+        (0, 0, 480, 243)
+    );
+    assert!(openings(&ops, m).is_empty());
+    assert_eq!(r.ui.draw_count(APP), 1);
+    assert_eq!(r.mgr.pump(), None, "no timer on the start screen");
+
+    // Select starts a game with a flap: the sparrow is where it flies, in
+    // the middle of the field, and there is a score.
+    r.key(APP, Key::Select);
+    assert!(r.ui.texts(APP).is_empty());
+    assert_eq!(r.ui.softkeys(APP), ["Flap", "Exit"]);
+    let ops = drawing(&r);
+    assert_eq!(bird_x(&ops), m.bird_x);
+    let y0 = bird_y(&ops);
+    assert_eq!(y0, (m.field_h - m.bird_h) / 2);
+    let tick = r.mgr.pump().expect("the game's timer");
+    assert!(tick <= Duration::from_millis(m.tick_ms));
+
+    // It rises from the flap, more slowly each tick, and then falls
+    // faster and faster.
+    let mut ys = vec![y0];
+    for _ in 0..12 {
+        next_tick(&mut r);
+        assert!(!game_over(&r));
+        ys.push(bird_y(&drawing(&r)));
+    }
+    let top = ys
+        .iter()
+        .position(|y| y == ys.iter().min().unwrap())
+        .unwrap();
+    assert!((5..=8).contains(&top), "{ys:?}");
+    assert!(ys[..=top].windows(2).all(|w| w[1] <= w[0]), "{ys:?}");
+    assert!(ys[top..].windows(2).all(|w| w[1] >= w[0]), "{ys:?}");
+    assert!(
+        ys[0] - ys[top] > m.bird_h && ys[12] > ys[top] + m.bird_h / 2,
+        "{ys:?}"
+    );
+    let falls: Vec<i16> = ys[top..].windows(2).map(|w| w[1] - w[0]).collect();
+    assert!(falls.windows(2).all(|w| w[1] >= w[0]), "{falls:?}");
+
+    // Another flap, by the softkey this time, sends it up again.
+    let before = *ys.last().unwrap();
+    r.softkey(APP, "Flap");
+    next_tick(&mut r);
+    assert!(bird_y(&drawing(&r)) < before);
+
+    // Left alone it hits the floor: the game is over and nothing ticks.
+    let until = Instant::now() + Duration::from_secs(10);
+    while !game_over(&r) {
+        assert!(Instant::now() < until);
+        next_tick(&mut r);
+    }
+    assert_eq!(r.ui.texts(APP), ["Game over", "Score 0   Best 0"]);
+    assert_eq!(r.ui.softkeys(APP), ["Again", "Exit"]);
+    assert_eq!(bird_y(&drawing(&r)), m.field_h - m.bird_h);
+    assert_eq!(r.mgr.pump(), None, "no timer after the game");
+
+    // A key right after the crash is the last flap of the lost game, not
+    // a new game; a moment later it is.
+    r.key(APP, Key::Select);
+    assert!(game_over(&r));
+    std::thread::sleep(Duration::from_millis(750));
+    r.key(APP, Key::Select);
+    assert!(!game_over(&r));
+    assert_eq!(bird_y(&drawing(&r)), y0);
+    assert!(r.mgr.pump().is_some());
+
+    // Exit leaves the game, and with it the app stops.
+    r.softkey(APP, "Exit");
+    assert!(!r.mgr.is_running(APP));
+    assert_eq!(r.ui.top(), None);
+    assert_eq!(r.mgr.pump(), None);
+}
+
+#[test]
+fn a_covered_game_stops() {
+    // A call's screen (or any other) over the game: the app is told it
+    // left the screen, and, as an app that is only its window, stops.
+    let mut r = Rig::new(FakeConfig::default());
+    r.launch(APP);
+    r.key(APP, Key::Select);
+    next_tick(&mut r);
+    assert!(r.mgr.pump().is_some());
+    r.ui.cover(APP, true);
+    r.settle();
+    assert!(!r.mgr.is_running(APP));
+    assert_eq!(r.mgr.pump(), None, "its timer is gone");
+    // Cancel leaves it too.
+    r.launch(APP);
+    r.key(APP, Key::Cancel);
+    assert!(!r.mgr.is_running(APP));
+}
+
+#[test]
+fn points_the_best_score_and_the_seed() {
+    let m = measures(Model::D60);
+    // The same seed: the same pipes.
+    let first_openings = |seed: &str| {
+        let mut r = Rig::new(FakeConfig::default());
+        let dir = r.nvdata.join("appdata").join(APP);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("seed"), seed).unwrap();
+        r.launch(APP);
+        r.key(APP, Key::Select);
+        let mut player = Player::new(m);
+        let mut seen = Vec::new();
+        while seen.len() < 2 {
+            next_tick(&mut r);
+            let ops = drawing(&r);
+            if player.flaps(&ops) {
+                r.key(APP, Key::Select);
+            }
+            seen = openings(&ops, m).iter().map(|o| o.1).collect();
+        }
+        seen
+    };
+    let a = first_openings("12345\n");
+    assert_eq!(a, first_openings("12345\n"));
+    assert_ne!(a, first_openings("54321\n"));
+
+    // A game played through two openings, then dropped: two points, and
+    // the best score is in the app's storage.
+    let mut r = Rig::new(FakeConfig::default());
+    let best = r.nvdata.join("appdata").join(APP).join("best");
+    r.launch(APP);
+    r.key(APP, Key::Select);
+    let mut player = Player::new(m);
+    let mut passed = 0;
+    let mut ahead_before = None;
+    let until = Instant::now() + Duration::from_secs(40);
+    while passed < 2 {
+        assert!(Instant::now() < until);
+        next_tick(&mut r);
+        assert!(!game_over(&r), "the player crashed");
+        let ops = drawing(&r);
+        if player.flaps(&ops) {
+            r.key(APP, Key::Select);
+        }
+        // An opening is passed when its pipe's right edge is no longer to
+        // the right of the sparrow's left edge.
+        let ahead = openings(&ops, m)
+            .iter()
+            .filter(|(x, _, _)| x + m.pipe_w as i16 > m.bird_x)
+            .map(|(x, _, _)| *x)
+            .next();
+        if let (Some(before), Some(now)) = (ahead_before, ahead)
+            && now > before
+        {
+            passed += 1;
+        }
+        ahead_before = ahead;
+    }
+    assert!(!best.exists(), "nothing is written during a game");
+    while !game_over(&r) {
+        next_tick(&mut r);
+    }
+    assert_eq!(r.ui.texts(APP), ["Game over", "Score 2   Best 2"]);
+    assert_eq!(std::fs::read_to_string(&best).unwrap(), "2");
+
+    // A worse game leaves the best score alone, in a new run of the app
+    // too.
+    r.softkey(APP, "Exit");
+    std::fs::write(&best, "17").unwrap();
+    r.launch(APP);
+    r.key(APP, Key::Select);
+    while !game_over(&r) {
+        next_tick(&mut r);
+    }
+    assert_eq!(r.ui.texts(APP), ["Game over", "Score 0   Best 17"]);
+    assert_eq!(std::fs::read_to_string(&best).unwrap(), "17");
+}
+
+#[test]
+fn it_plays_on_the_gray_screens_in_gray() {
+    for model in [Model::D40, Model::D70] {
+        let m = measures(model);
+        let mut r = Rig::with_root(staged(), FakeConfig::default(), model);
+        r.launch(APP);
+        assert_eq!(r.ui.texts(APP), ["Desk Sparrow", "Press OK to fly"]);
+        let area = model.app_content_area();
+        r.key(APP, Key::Select);
+        let started = Instant::now();
+        let mut player = Player::new(m);
+        // Until the first pipe is at the sparrow.
+        loop {
+            next_tick(&mut r);
+            assert!(!game_over(&r), "the player crashed on {model:?}");
+            let ops = drawing(&r);
+            if player.flaps(&ops) {
+                r.key(APP, Key::Select);
+            }
+            for op in &ops {
+                let (c, right, bottom) = match op {
+                    DrawOp::Fill((r, c)) => (c, r.x + r.width as i16, r.y + r.height as i16),
+                    DrawOp::Bitmap(b) => {
+                        assert_eq!(b.scale, if b.height == 7 { 2 } else { 1 });
+                        (&b.color, b.x, b.y)
+                    }
+                };
+                assert!(c.r == c.g && c.g == c.b, "a color on a gray screen: {c:?}");
+                assert!(bottom <= area.height as i16, "{op:?}");
+                assert!(right <= area.width as i16 + m.pipe_w as i16, "{op:?}");
+            }
+            if openings(&ops, m)
+                .iter()
+                .any(|(x, _, _)| *x <= m.bird_x + m.bird_w)
+            {
+                break;
+            }
+        }
+        // Ten ticks a second, not twenty: the gray panels are slow.
+        let ticks = r.ui.draw_count(APP) - 2;
+        let per_tick = started.elapsed().as_millis() as u64 / u64::from(ticks);
+        assert!(per_tick >= m.tick_ms, "{per_tick} ms a tick on {model:?}");
+        r.mgr.close(APP);
+    }
+}
+
+#[test]
+fn it_needs_the_canvas_capability_and_can_be_switched_off() {
+    // Without `canvas` in its manifest the game must not load.
+    let dir = temp_dir("sparrow-gating");
+    let copy = dir.0.join("nocanvas");
+    std::fs::create_dir_all(&copy).unwrap();
+    for e in std::fs::read_dir(staged().join(APP)).unwrap().flatten() {
+        std::fs::copy(e.path(), copy.join(e.file_name())).unwrap();
+    }
+    let path = copy.join("app.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(
+        manifest["capabilities"],
+        serde_json::json!(["ui", "timers", "storage", "canvas"]),
+        "no sound, no calls, no network"
+    );
+    manifest["name"] = "nocanvas".into();
+    manifest["capabilities"] = serde_json::json!(["ui", "timers", "storage"]);
+    std::fs::write(&path, manifest.to_string()).unwrap();
+    let mut r = Rig::with_root(&dir.0, FakeConfig::default(), Model::D60);
+    let err = r.mgr.launch("nocanvas").unwrap_err();
+    assert!(err.contains("canvas"), "{err}");
+
+    // It is a built-in app like the others: `disabled_apps` takes it out
+    // of the list, refuses to open it, and stops it.
+    let config = FakeConfig::default();
+    let disabled = config.disabled.clone();
+    let mut r = Rig::new(config);
+    r.launch(APP);
+    r.key(APP, Key::Select);
+    *disabled.lock().unwrap() = vec![APP.into()];
+    r.store
+        .emit(dphone_state::Event::ConfigApplied { generation: 2 });
+    r.settle();
+    assert!(!r.mgr.is_running(APP));
+    assert!(r.mgr.launch(APP).is_err());
+    let apps = r.store.get::<dphone_state::Apps>();
+    assert!(apps.installed.iter().all(|a| a.name != APP));
+    assert!(apps.disabled.iter().any(|a| a.name == APP));
+}
+
+// --------------------------------------------------- with the phone UI
+
+/// The canvas as the app last drew it, and how many times it has drawn.
+#[derive(Default)]
+struct Seen {
+    draws: u32,
+    ops: Vec<DrawOp>,
+}
+
+/// The phone UI's shell, with a look at what the app draws.
+struct Watch {
+    inner: UiShell,
+    seen: Arc<Mutex<Seen>>,
+}
+
+struct WatchedWindow {
+    inner: Box<dyn AppWindow>,
+    seen: Arc<Mutex<Seen>>,
+}
+
+impl Shell for Watch {
+    fn open(
+        &mut self,
+        app: &str,
+        kind: WindowKind,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> Box<dyn AppWindow> {
+        Box::new(WatchedWindow {
+            inner: self.inner.open(app, kind, wake),
+            seen: self.seen.clone(),
+        })
+    }
+    fn show(&mut self, app: &str) {
+        self.inner.show(app)
+    }
+    fn hide(&mut self, app: &str) {
+        self.inner.hide(app)
+    }
+    fn close(&mut self, app: &str, kind: WindowKind) {
+        self.inner.close(app, kind)
+    }
+    fn idle_size(&self) -> dphone_apps::view::Size {
+        self.inner.idle_size()
+    }
+}
+
+impl AppWindow for WatchedWindow {
+    fn metrics(&self) -> dphone_apps::Metrics {
+        self.inner.metrics()
+    }
+    fn create(&mut self, kind: dphone_apps::WidgetKind, parent: Option<u32>, bounds: Rect) -> u32 {
+        self.inner.create(kind, parent, bounds)
+    }
+    fn destroy(&mut self, w: u32) {
+        self.inner.destroy(w)
+    }
+    fn clear(&mut self, w: Option<u32>) {
+        self.inner.clear(w)
+    }
+    fn set_bounds(&mut self, w: u32, bounds: Rect) {
+        self.inner.set_bounds(w, bounds)
+    }
+    fn set_visible(&mut self, w: u32, visible: bool) {
+        self.inner.set_visible(w, visible)
+    }
+    fn set_focus(&mut self, w: Option<u32>) {
+        self.inner.set_focus(w)
+    }
+    fn set_text(&mut self, w: u32, text: &str) {
+        self.inner.set_text(w, text)
+    }
+    fn set_align(&mut self, w: u32, align: dphone_apps::Align) {
+        self.inner.set_align(w, align)
+    }
+    fn set_font(&mut self, w: u32, font: dphone_apps::Font) {
+        self.inner.set_font(w, font)
+    }
+    fn set_wrap(&mut self, w: u32, wrap: bool) {
+        self.inner.set_wrap(w, wrap)
+    }
+    fn set_highlight(&mut self, w: u32, on: bool) {
+        self.inner.set_highlight(w, on)
+    }
+    fn set_items(&mut self, w: u32, items: &[dphone_apps::ListItem]) {
+        self.inner.set_items(w, items)
+    }
+    fn set_selected(&mut self, w: u32, index: u32) {
+        self.inner.set_selected(w, index)
+    }
+    fn selected(&self, w: u32) -> u32 {
+        self.inner.selected(w)
+    }
+    fn set_value(&mut self, w: u32, value: &str) {
+        self.inner.set_value(w, value)
+    }
+    fn value(&self, w: u32) -> String {
+        self.inner.value(w)
+    }
+    fn set_input_mode(&mut self, w: u32, mode: dphone_apps::InputMode) {
+        self.inner.set_input_mode(w, mode)
+    }
+    fn set_max_length(&mut self, w: u32, max: u32) {
+        self.inner.set_max_length(w, max)
+    }
+    fn set_image(&mut self, w: u32, name: &str) {
+        self.inner.set_image(w, name)
+    }
+    fn theme_color(&self, role: ColorRole) -> Color {
+        self.inner.theme_color(role)
+    }
+    fn create_canvas(&mut self, parent: Option<u32>, bounds: Rect) -> u32 {
+        self.inner.create_canvas(parent, bounds)
+    }
+    fn draw(&mut self, w: u32, ops: Vec<DrawOp>) {
+        {
+            let mut seen = self.seen.lock().unwrap();
+            seen.draws += 1;
+            seen.ops = ops.clone();
+        }
+        self.inner.draw(w, ops)
+    }
+    fn set_softkeys(&mut self, w: Option<u32>, keys: &[dphone_apps::Softkey]) {
+        self.inner.set_softkeys(w, keys)
+    }
+    fn claim_keys(&mut self, w: Option<u32>, keys: &[Key]) {
+        self.inner.claim_keys(w, keys)
+    }
+    fn poll_event(&mut self) -> Option<WindowEvent> {
+        self.inner.poll_event()
+    }
+}
+
+/// A simulated phone: the phone UI on the simulator's display and keys,
+/// and the app manager with the real apps.
+struct Phone {
+    model: Model,
+    store: Store,
+    ui: Ui,
+    sim: dphone_hal::sim::SimHandle,
+    mgr: AppManager,
+    seen: Arc<Mutex<Seen>>,
+    /// Time spent on the ticks so far, by the app and by the UI, and
+    /// their number.
+    app_time: Duration,
+    ui_time: Duration,
+    ticks: u32,
+    _dir: common::TempDir,
+}
+
+impl Phone {
+    fn new(model: Model) -> Phone {
+        let dir = temp_dir("sparrow-phone");
+        let mut hal = Hal::sim(model);
+        let sim = hal.sim.clone().unwrap();
+        let store = Store::new(model);
+        let ui = Ui::from_hal(&mut hal, store.clone(), UiConfig::default());
+        store.update::<System, _>(|s| {
+            s.phase = Phase::Running;
+            s.time_synced = true;
+        });
+        let seen = Arc::new(Mutex::new(Seen::default()));
+        let shell = Watch {
+            inner: UiShell::new(ui.handle(), model),
+            seen: seen.clone(),
+        };
+        let mut cfg = ManagerConfig::rooted(staged(), &dir.0.join("nvdata"), &dir.0.join("tmp"));
+        cfg.target = Target::Pulley64;
+        let mut mgr = AppManager::new(
+            cfg,
+            store.clone(),
+            Box::new(shell),
+            services(&FakePbx::default(), FakeConfig::default()),
+        )
+        .expect("engine");
+        mgr.scan();
+        let mut phone = Phone {
+            model,
+            store,
+            ui,
+            sim,
+            mgr,
+            seen,
+            app_time: Duration::ZERO,
+            ui_time: Duration::ZERO,
+            ticks: 0,
+            _dir: dir,
+        };
+        phone.settle();
+        phone
+    }
+
+    /// The UI and the manager take turns until both are done.
+    fn settle(&mut self) {
+        for _ in 0..4 {
+            self.ui.pump();
+            self.mgr.pump();
+        }
+        self.ui.pump();
+    }
+
+    fn tap(&mut self, key: Key) {
+        self.sim.tap(key);
+        self.settle();
+    }
+
+    fn draws(&self) -> u32 {
+        self.seen.lock().unwrap().draws
+    }
+
+    fn ops(&self) -> Vec<DrawOp> {
+        self.seen.lock().unwrap().ops.clone()
+    }
+
+    /// Waits for the game's next tick and lets the UI paint it, timing
+    /// both.  Returns how many times the display was sent something.
+    fn next_tick(&mut self) -> u64 {
+        let before = self.draws();
+        let until = Instant::now() + Duration::from_secs(5);
+        loop {
+            assert!(Instant::now() < until, "the game stopped drawing");
+            let t = Instant::now();
+            let wait = self.mgr.pump();
+            let spent = t.elapsed();
+            if self.draws() != before {
+                self.app_time += spent;
+                break;
+            }
+            std::thread::sleep(
+                wait.expect("the game's timer")
+                    .min(Duration::from_millis(20)),
+            );
+        }
+        let flushes = self.sim.frame_generation();
+        let t = Instant::now();
+        self.ui.pump();
+        self.ui_time += t.elapsed();
+        self.ticks += 1;
+        self.sim.frame_generation() - flushes
+    }
+
+    fn frame(&self) -> dphone_hal::Frame {
+        self.sim.frame(Screen::Main).expect("main frame")
+    }
+
+    /// The pixels of the frame as 0xRRGGBB.
+    fn pixels(&self) -> Vec<u32> {
+        let f = self.frame();
+        let bpp = f.info.format.bytes_per_pixel();
+        let mut out = Vec::new();
+        for y in 0..f.info.height as usize {
+            for x in 0..f.info.width as usize {
+                let i = y * f.info.stride + x * bpp;
+                out.push(if bpp == 4 {
+                    u32::from_le_bytes([f.pixels[i], f.pixels[i + 1], f.pixels[i + 2], 0])
+                } else {
+                    u32::from(f.pixels[i]) * 0x01_0101
+                });
+            }
+        }
+        out
+    }
+
+    fn count(&self, color: u32) -> usize {
+        self.pixels().iter().filter(|p| **p == color).count()
+    }
+
+    /// Writes the frame as a PNG (the gray ones doubled in size).
+    fn shot(&self, name: &str) {
+        let dir = match std::env::var_os("DESK_SPARROW_PREVIEWS") {
+            Some(d) => PathBuf::from(d),
+            None => PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("desk-sparrow"),
+        };
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = self.frame();
+        let (w, h) = (f.info.width as usize, f.info.height as usize);
+        let scale = if self.model.is_color() { 1 } else { 2 };
+        let pixels = self.pixels();
+        let mut rgb = Vec::with_capacity(w * h * 3 * scale * scale);
+        for y in 0..h * scale {
+            for x in 0..w * scale {
+                let p = pixels[(y / scale) * w + x / scale];
+                rgb.extend_from_slice(&[(p >> 16) as u8, (p >> 8) as u8, p as u8]);
+            }
+        }
+        let path = dir.join(format!("{}-{name}.png", self.model.name()));
+        let file = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
+        let mut enc = png::Encoder::new(file, (w * scale) as u32, (h * scale) as u32);
+        enc.set_color(png::ColorType::Rgb);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header().unwrap().write_image_data(&rgb).unwrap();
+    }
+}
+
+/// Plays a game on the simulated phone: the start screen, a flight to the
+/// second pipe, and the end, with a picture of each.
+fn play_on(model: Model) -> Phone {
+    let m = measures(model);
+    let mut p = Phone::new(model);
+    assert_eq!(p.ui.screen_name(), "idle");
+    p.mgr.launch(APP).unwrap();
+    p.settle();
+    assert_eq!(p.ui.screen_name(), "app:desksparrow");
+    p.shot("1-start");
+    let start = p.pixels();
+
+    // Select reaches the app through the phone's keys.
+    p.tap(Key::Select);
+    assert!(p.mgr.pump().is_some(), "the game's timer runs");
+    let mut player = Player::new(m);
+    let mut shot = false;
+    let mut score = 0;
+    let mut ahead_before = None;
+    while score < 2 {
+        // One tick is one repaint, and one transfer to the display at
+        // most (none when the picture is the same: the sparrow at the top
+        // of its rise before the first pipe shows).
+        assert!(p.next_tick() <= 1);
+        let ops = p.ops();
+        let open = openings(&ops, m);
+        if player.flaps(&ops) {
+            p.tap(Key::Select);
+        }
+        let ahead = open
+            .iter()
+            .map(|o| o.0)
+            .find(|x| x + m.pipe_w as i16 > m.bird_x);
+        if let (Some(before), Some(now)) = (ahead_before, ahead)
+            && now > before
+        {
+            score += 1;
+        }
+        ahead_before = ahead;
+        // The picture: one point made, the sparrow in the second opening.
+        if !shot && score == 1 && ahead.is_some_and(|x| x <= m.bird_x + m.bird_w / 2) {
+            p.shot("2-flying");
+            shot = true;
+        }
+    }
+    assert!(shot);
+    assert_eq!(p.ui.screen_name(), "app:desksparrow");
+    while p.mgr.pump().is_some() {
+        p.next_tick();
+    }
+    p.settle();
+    p.shot("3-game-over");
+    assert_ne!(p.pixels(), start);
+    p
+}
+
+#[test]
+fn drawn_on_a_color_phone() {
+    let mut p = play_on(Model::D60);
+    // The pipes are the skin's blue (its selection color), and the
+    // sparrow is brown with a pale belly.
+    assert!(p.count(0x01_579B) > 2000, "pipes in the skin's blue");
+    assert!(p.count(0xBC_864E) > 100, "a brown sparrow");
+    assert!(p.count(0xF3_E6CC) > 40, "with a pale belly");
+    let per_tick = |d: Duration| d.as_micros() / u128::from(p.ticks);
+    eprintln!(
+        "D60: {} ticks; a tick costs {} us in the app and {} us in the UI on this machine",
+        p.ticks,
+        per_tick(p.app_time),
+        per_tick(p.ui_time)
+    );
+
+    // A call comes in: its screen takes the display and the game stops.
+    std::thread::sleep(Duration::from_millis(750));
+    p.tap(Key::Select);
+    p.next_tick();
+    assert!(p.mgr.is_running(APP));
+    let id = p.store.next_call_id();
+    p.store.update::<Calls, _>(|c| {
+        let from = Party {
+            number: "1002".into(),
+            ..Default::default()
+        };
+        let mut call = Call::new(id, AccountId(0), Direction::Incoming, from);
+        call.state = CallState::Ringing;
+        c.calls.push(call);
+        c.focused = Some(id);
+    });
+    p.settle();
+    assert_eq!(p.ui.screen_name(), "call");
+    assert!(!p.mgr.is_running(APP));
+    assert_eq!(p.mgr.pump(), None, "nothing of the game still ticks");
+}
+
+#[test]
+fn drawn_on_a_gray_phone() {
+    for model in [Model::D40, Model::D70] {
+        drawn_in_gray(model);
+    }
+}
+
+fn drawn_in_gray(model: Model) {
+    let p = play_on(model);
+    // Only the panel's four levels, and mostly black and white: black
+    // pipes on a white field.
+    let pixels = p.pixels();
+    assert!(
+        pixels
+            .iter()
+            .all(|c| [0x00_0000, 0x55_5555, 0xAA_AAAA, 0xFF_FFFF].contains(c))
+    );
+    let share = |c: u32| pixels.iter().filter(|p| **p == c).count() * 100 / pixels.len();
+    assert!(share(0xFF_FFFF) > 50, "a white field");
+    assert!(share(0x00_0000) > 8, "black pipes");
+    assert!(share(0xAA_AAAA) + share(0x55_5555) < 12, "few grays");
+    let per_tick = |d: Duration| d.as_micros() / u128::from(p.ticks);
+    eprintln!(
+        "{}: {} ticks; a tick costs {} us in the app and {} us in the UI on this machine",
+        model.name(),
+        p.ticks,
+        per_tick(p.app_time),
+        per_tick(p.ui_time)
+    );
+}

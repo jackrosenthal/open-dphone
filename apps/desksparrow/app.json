@@ -1,0 +1,10 @@
+{
+  "name": "desksparrow",
+  "id": "org.opendphone.desksparrow",
+  "displayName": { "fallback": "Desk Sparrow" },
+  "description": { "fallback": "A one-key flying game" },
+  "type": "foreground",
+  "iconFile": "desksparrow",
+  "wasm": "desksparrow.wasm",
+  "capabilities": ["ui", "timers", "storage", "canvas"]
+}

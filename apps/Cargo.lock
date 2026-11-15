@@ -48,6 +48,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "desksparrow"
+version = "3.0.0"
+dependencies = [
+ "app-sdk",
+]
+
+[[package]]
 name = "diagnostics"
 version = "3.0.0"
 dependencies = [

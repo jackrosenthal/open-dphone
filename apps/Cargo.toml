@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["contacts", "voicemail", "status", "parking", "queues", "hotdesking", "calendar", "diagnostics", "boxpusher"]
+members = ["contacts", "voicemail", "status", "parking", "queues", "hotdesking", "calendar", "diagnostics", "desksparrow", "boxpusher"]
 
 [workspace.package]
 version = "3.0.0"

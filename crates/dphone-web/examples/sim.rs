@@ -288,6 +288,7 @@ fn fabricate(store: &Store, model: Model) {
             app("hotdesking", "Hot Desking", "Log in to this phone"),
             app("calendar", "Calendar", "Month calendar"),
             app("boxpusher", "Box Pusher", "Push every box onto a target"),
+            app("desksparrow", "Desk Sparrow", "A one-key flying game"),
         ];
     });
     store.update::<st::Ui, _>(|u| {

@@ -43,6 +43,7 @@ fn publishes_the_app_list() {
             "boxpusher",
             "calendar",
             "contacts",
+            "desksparrow",
             "diagnostics",
             "faulty",
             "hotdesking",
