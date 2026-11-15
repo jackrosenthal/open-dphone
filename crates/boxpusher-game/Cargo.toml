@@ -1,0 +1,9 @@
+[package]
+name = "boxpusher-game"
+description = "Open DPhone: the Box Pusher puzzle (rules, levels, and pictures), without the phone"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]

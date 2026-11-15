@@ -287,6 +287,7 @@ fn fabricate(store: &Store, model: Model) {
             app("queues", "Queues", "Call queue membership"),
             app("hotdesking", "Hot Desking", "Log in to this phone"),
             app("calendar", "Calendar", "Month calendar"),
+            app("boxpusher", "Box Pusher", "Push every box onto a target"),
         ];
     });
     store.update::<st::Ui, _>(|u| {

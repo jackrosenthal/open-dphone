@@ -32,6 +32,8 @@ let
           # app-sdk inherits its package fields from the firmware workspace.
           (root + "/Cargo.toml")
           (root + "/crates/app-sdk")
+          # The Box Pusher puzzle itself, which the app `boxpusher` is built on.
+          (root + "/crates/boxpusher-game")
           (root + "/crates/dphone-apps/wit")
         ];
       };

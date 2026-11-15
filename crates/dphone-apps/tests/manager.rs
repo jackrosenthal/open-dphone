@@ -40,6 +40,7 @@ fn publishes_the_app_list() {
     assert_eq!(
         names,
         [
+            "boxpusher",
             "calendar",
             "contacts",
             "diagnostics",

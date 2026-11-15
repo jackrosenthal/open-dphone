@@ -298,6 +298,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "boxpusher-game"
+version = "3.0.0"
+
+[[package]]
 name = "brotli"
 version = "8.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
