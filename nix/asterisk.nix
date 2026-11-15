@@ -32,14 +32,14 @@ let
 
   module = rustPlatform.buildRustPackage (finalAttrs: {
     pname = "res_dpma_rs";
-    version = "0.3.0";
+    version = "0.3.4";
     src = fetchFromGitHub {
       owner = "jackrosenthal";
       repo = "dpma-rs";
       tag = "v${finalAttrs.version}";
-      hash = "sha256-5pSoSpmDIL3xdOudeIoNGYLwLu+6AZRHJ9KclSJjpK8=";
+      hash = "sha256-/Wtvp16xPJioRrKYNyOvzugeHwb3I2AOPSjkJyLIJAw=";
     };
-    cargoHash = "sha256-N+43msHyrgP9lAemRIK/mqui38KV8Tx7iEwy44PQSus=";
+    cargoHash = "sha256-FQewHoHhiWQD1vNucvwUT9DYwM6fKcALTS5NvJr/bB4=";
     nativeBuildInputs = [ rustPlatform.bindgenHook ];
     ASTERISK_SOURCE_DIR = "${server}/share/asterisk-source";
     cargoBuildFlags = [

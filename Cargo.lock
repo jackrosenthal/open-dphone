@@ -1245,18 +1245,18 @@ dependencies = [
 
 [[package]]
 name = "dpma-bytes"
-version = "0.2.1"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d31a7e70be53a148d77acf0e28a9a8c44242b1a7e5c169e4f716e1436744619f"
+checksum = "e28d9d0f4afd5d9c91a5cec0aefcd44946628d8dc3d278ed3c683d0d64557adf"
 dependencies = [
  "bstr",
 ]
 
 [[package]]
 name = "dpma-proto"
-version = "0.2.1"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4a63de34863cf9a64773e82e9c546db0ba4a206988919f7c80053b942404b3f"
+checksum = "e763e5acacb1199d89fbeb3baffab1ea1c6d3da4551fe9d4a234b2e9879d662f"
 dependencies = [
  "aes",
  "base64 0.22.1",
@@ -1264,6 +1264,7 @@ dependencies = [
  "dpma-bytes",
  "getrandom 0.2.17",
  "log",
+ "md-5 0.10.6",
  "rsa",
  "serde",
  "serde_json",

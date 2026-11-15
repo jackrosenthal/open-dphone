@@ -9,7 +9,13 @@
 //! `presence` subscription), and the key's state follows that line as it
 //! rings, is answered, and hangs up; 1002 itself is a scripted endpoint
 //! here.  Then the server's configuration changes and it tells the phone,
-//! which fetches the new one.
+//! which fetches the new one.  A phone that starts again with that
+//! configuration verifies its token, gets the configuration's digest in
+//! the answer, and does not fetch what it already has.
+//!
+//! The phone's section also sets the Open DPhone options the server has
+//! for the phone's own behavior (`dphone_*`): each arrives as a setting of
+//! the fetched configuration and reads back from the merged one.
 //!
 //! Skipped unless `DPHONE_TEST_ASTERISK` names an Asterisk installation
 //! (the prefix that holds `bin/asterisk`, the sample configuration in
@@ -98,6 +104,22 @@ fn write(path: &Path, text: &str) {
     std::fs::write(path, text).unwrap();
 }
 
+/// The Open DPhone options of the phone's section: the option and its value
+/// in `res_digium_phone.conf`, and the value of the setting of the same
+/// name in the configuration the server builds.  None of them acts on the
+/// machine the simulator runs on: the simulator leaves the host's network
+/// alone, and has no UART to give to a console.
+const DPHONE_OPTIONS: [(&str, &str, &str); 8] = [
+    ("dphone_ssh_enabled", "no", "0"),
+    ("dphone_metrics_enabled", "no", "0"),
+    ("dphone_serial_console", "yes", "1"),
+    ("dphone_static_address", "192.0.2.20/24", "192.0.2.20/24"),
+    ("dphone_static_gateway", "192.0.2.1", "192.0.2.1"),
+    ("dphone_static_dns", "192.0.2.53, 192.0.2.54", "192.0.2.53,192.0.2.54"),
+    ("dphone_disabled_apps", "calendar, parking", "calendar,parking"),
+    ("dphone_idle_softkeys", "call_log,contacts,redial,menu", "call_log,contacts,redial,menu"),
+];
+
 /// The DPMA configuration: one network, and the phone with the simulator's
 /// MAC address, whose line is the PJSIP endpoint 1001.  The network covers
 /// every address because the simulator has no network of its own: its
@@ -109,13 +131,16 @@ fn write(path: &Path, text: &str) {
 /// Extensions", each contact with `subscribe_to` naming the hint the server
 /// creates for the line), and `blf_contact_group` with
 /// `blf_unused_linekeys` puts those contacts on the simulator's free keys.
+///
+/// The `dphone_*` options are [`DPHONE_OPTIONS`].
 fn dpma_conf(timezone: &str) -> String {
+    let options: String = DPHONE_OPTIONS.iter().map(|(option, value, _)| format!("{option}={value}\n")).collect();
     format!(
         "[general]\nuserlist_auth=disabled\nconfig_auth=mac\nservice_discovery_enabled=no\n\n\
          [everywhere]\ntype=network\nalias=Everywhere\ncidr=0.0.0.0/0\nregistration_address=127.0.0.1\n\
          registration_port={SIP_PORT}\ntransport=udp\n\n\
          [simphone]\ntype=phone\nmac={MAC}\nnetwork=everywhere\nline=1001\nfull_name=Sim Phone\n\
-         timezone={timezone}\ndphone_ssh_enabled=no\ncontact=file://default\n\
+         timezone={timezone}\n{options}contact=file://default\n\
          blf_contact_group=Internal Extensions\nblf_unused_linekeys=yes\n\n\
          [otherphone]\ntype=phone\nmac=000fd3000002\nnetwork=everywhere\nline=1002\nfull_name=Bob Watched\n\n\
          [1001]\ntype=line\n\n[1002]\ntype=line\n"
@@ -279,9 +304,11 @@ fn provisions_and_registers_against_asterisk() {
     let conf = configure(&dir.path().join("ast"), &server, callee.port());
     let server_log = dir.path().join("ast/log/messages.log");
     let phone_log = dir.path().join("phone.log");
+    // The phone's second run, at the end.
+    let phone_log_2 = dir.path().join("phone-2.log");
     // What the phone last said of its watched contacts and keys.
     let blf_dump = dir.path().join("blf.txt");
-    let _show = ShowOnPanic(vec![server_log.clone(), phone_log.clone(), blf_dump.clone()]);
+    let _show = ShowOnPanic(vec![server_log.clone(), phone_log.clone(), phone_log_2.clone(), blf_dump.clone()]);
 
     // The server, in the foreground without a console.
     let _asterisk = KillOnDrop(
@@ -308,21 +335,25 @@ fn provisions_and_registers_against_asterisk() {
         &nv.join("configurator.xml"),
         &format!("<config>\n    <setting id=\"config_server_url\" value=\"sip:proxy@127.0.0.1:{SIP_PORT}\" />\n</config>\n"),
     );
-    let _main = KillOnDrop(
-        Command::new(BIN)
-            // A D65: enough line keys for both of the server's contacts.
-            .args(["main", "--sim", "--model", "d65", "--no-ssh", "--nvdata"])
-            .arg(&nv)
-            .arg("--run-dir")
-            .arg(&run)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(std::fs::File::create(&phone_log).unwrap())
-            .spawn()
-            .unwrap(),
-    );
     let socket = run.join("diag.sock");
-    wait_for("the diag socket", Duration::from_secs(30), || socket.exists().then_some(()));
+    let start_phone = |log: &Path| {
+        let phone = KillOnDrop(
+            Command::new(BIN)
+                // A D65: enough line keys for both of the server's contacts.
+                .args(["main", "--sim", "--model", "d65", "--no-ssh", "--nvdata"])
+                .arg(&nv)
+                .arg("--run-dir")
+                .arg(&run)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(std::fs::File::create(log).unwrap())
+                .spawn()
+                .unwrap(),
+        );
+        wait_for("the diag socket", Duration::from_secs(30), || diag(&socket, &["ping"]).map(|_| ()));
+        phone
+    };
+    let main = start_phone(&phone_log);
 
     // Provisioned: by MAC, with no user to choose.
     let provisioning = wait_for("provisioning", Duration::from_secs(60), || {
@@ -335,7 +366,19 @@ fn provisions_and_registers_against_asterisk() {
     // DPhone setting the phone section carries.
     let fetched = std::fs::read_to_string(nv.join("fetched-config.xml")).expect("fetched-config.xml");
     assert!(fetched.contains("username=\"1001\""), "{fetched}");
-    assert!(fetched.contains("<setting id=\"dphone_ssh_enabled\" value=\"0\""), "{fetched}");
+    for (option, _, value) in DPHONE_OPTIONS {
+        assert!(fetched.contains(&format!("<setting id=\"{option}\" value=\"{value}\"")), "{option}: {fetched}");
+        let got = diag(&socket, &["config", "get", option]).expect("config get");
+        assert!(got.contains(value), "{option}: {got}");
+    }
+    // The two that the simulator acts on: `/metrics` is off, and the
+    // serial console has the UART instead of a headset adapter.
+    for said in ["metrics disabled (metrics_enabled)", "the serial console has the UART (serial_console is on)"] {
+        wait_for(said, Duration::from_secs(30), || diag(&socket, &["log", "-n", "5000"]).filter(|l| l.contains(said)));
+    }
+    // Without `active_locale` the server sends no locale setting, where it
+    // used to send an empty one.
+    assert!(!fetched.contains("id=\"locale\""), "{fetched}");
     assert!(nv.join("md5s/config").exists());
     let configurator = std::fs::read_to_string(nv.join("configurator.xml")).unwrap();
     assert!(configurator.contains("config_server_token"), "{configurator}");
@@ -401,4 +444,24 @@ fn provisions_and_registers_against_asterisk() {
     });
     let fetched = std::fs::read_to_string(nv.join("fetched-config.xml")).unwrap();
     assert!(fetched.contains("America/Chicago"), "{fetched}");
+
+    // A phone that starts with the configuration it has: the server
+    // answers its VerifyRequest with the digest of the configuration, the
+    // digest is the cached one, and nothing is fetched.
+    let digest = nv.join("md5s/config");
+    let written = |p: &Path| std::fs::metadata(p).unwrap().modified().unwrap();
+    let (digest_before, fetched_before) = (written(&digest), written(&nv.join("fetched-config.xml")));
+    let cached = std::fs::read_to_string(&digest).unwrap();
+    assert_eq!(cached.len(), 32, "{cached}");
+    drop(main);
+    let _ = std::fs::remove_file(&socket);
+    let _main = start_phone(&phone_log_2);
+    let provisioning = wait_for("provisioning after a restart", Duration::from_secs(60), || {
+        diag(&socket, &["state", "provisioning"]).filter(|s| s.contains("phase: Provisioned"))
+    });
+    assert!(provisioning.contains(&format!("config_md5: \"{cached}\"")), "{provisioning}");
+    assert_eq!(written(&digest), digest_before, "the configuration was fetched again");
+    assert_eq!(written(&nv.join("fetched-config.xml")), fetched_before, "the configuration was fetched again");
+    let zone = diag(&socket, &["config", "get", "time_zone"]).expect("config get");
+    assert!(zone.contains("America/Chicago"), "{zone}");
 }
