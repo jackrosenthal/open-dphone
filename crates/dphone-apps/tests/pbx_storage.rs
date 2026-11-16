@@ -31,8 +31,8 @@ fn set(store: &FakeStore, scope: StoreScope, key: &str, value: &str, expect: Opt
 #[test]
 fn the_probe_uses_the_interface() {
     assert!(common::capabilities("probe").contains(&"pbx-storage"));
-    // The games do not, yet.
-    assert!(!common::capabilities("lightup").contains(&"pbx-storage"));
+    // An app that does not call it does not have it.
+    assert!(!common::capabilities("diagnostics").contains(&"pbx-storage"));
 }
 
 #[test]

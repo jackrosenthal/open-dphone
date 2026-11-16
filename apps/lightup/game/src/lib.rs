@@ -1,6 +1,7 @@
 //! Light Up, the puzzle, without the phone: the grid and its lighting, the
 //! rules of play, a solver that counts solutions, a generator of puzzles
-//! with exactly one solution at three difficulties, and the pictures.
+//! with exactly one solution at three difficulties, the pictures, and
+//! the tables of the best times.
 //!
 //! A grid has black and white cells.  The player puts lights on white
 //! cells; a light shines along its row and column until a black cell or
@@ -16,6 +17,7 @@ pub mod draw;
 pub mod generate;
 pub mod help;
 pub mod rng;
+pub mod scores;
 pub mod solver;
 
 /// The longest side of a grid.

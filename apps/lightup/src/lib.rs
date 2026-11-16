@@ -17,7 +17,17 @@
 //! one press of 8 did), and the one before, as far as the fresh puzzle;
 //! the changes are kept with the puzzle.  "Help" is five pages of how to
 //! play, each a picture of a rule.  Beside the board is a picture
-//! of the keys and what each does.
+//! of the keys and what each does, and over it the time spent on the
+//! puzzle, which runs while the unsolved puzzle is on the screen.
+//!
+//! The time of a solved puzzle goes to the table of the best times of
+//! its kind (its size and difficulty), which the phones of a PBX share:
+//! the app's store on the PBX has a key for each kind (see
+//! `lightup_game::scores`).  "Scores" shows a table; there, "Size" and
+//! "Level" (or left and right) go to the tables of the other kinds.  A
+//! time that cannot be written, because the PBX is out of reach or keeps
+//! no such store, is kept on the phone and written when the store comes
+//! into reach; until then the table shows it on this phone only.
 //!
 //! Making a puzzle takes a while on the phone, so it is done in short
 //! turns from a timer while "Generating…" is on the screen, and only
@@ -33,6 +43,7 @@ use lightup_game::draw::{
 };
 use lightup_game::generate::{Difficulty, Generator, Params, Progress, SIZES};
 use lightup_game::help::PAGES;
+use lightup_game::scores::{Kind, Pending, Table, clock};
 use lightup_game::{Act, Game, Grid};
 
 const SK_NEW: u32 = 1;
@@ -43,6 +54,9 @@ const SK_RETRY: u32 = 5;
 const SK_HELP: u32 = 6;
 const SK_NEXT: u32 = 7;
 const SK_UNDO: u32 = 8;
+const SK_SCORES: u32 = 9;
+const SK_SIZE: u32 = 10;
+const SK_LEVEL: u32 = 11;
 
 /// The key, in the app's storage, that holds the puzzle with its
 /// lights and marks, the time spent on it, and the cursor.
@@ -51,6 +65,9 @@ const PUZZLE: &str = "puzzle";
 /// for the puzzles (the first is made from it, the next from it plus 1,
 /// and so on).  Without it the phone's random source seeds each puzzle.
 const SEED: &str = "seed";
+/// The key, in the app's storage, that holds the times of solved puzzles
+/// that the tables on the PBX do not have yet.
+const TIMES: &str = "times";
 
 /// How long one turn of making a puzzle lasts, and the pause before the
 /// next, in milliseconds: the keys, the screen, and the rest of the
@@ -71,6 +88,7 @@ enum Screen {
     Failed,
     Play,
     Help,
+    Scores,
 }
 
 /// The widgets of the playing screen.
@@ -80,8 +98,11 @@ struct Board {
     rows: Vec<(Widget, Vec<Look>)>,
     cursor: Widget,
     cursor_at: Option<(usize, usize)>,
+    /// The time spent, over the picture of the keys, and what it says.
+    clock: Widget,
+    clock_shown: String,
     /// The picture of the keys beside the board; "Solved!" and the time
-    /// take its place.
+    /// take the place of both.
     keys: Widget,
     solved_shown: bool,
     status: Widget,
@@ -110,6 +131,8 @@ struct LightUp {
     elapsed: u64,
     /// When the clock was started, if it runs.
     since: Option<u64>,
+    /// The timer of the next second of the time on the screen.
+    tick: Option<u32>,
     making: Option<Making>,
     /// Puzzles made since the app started.
     made: u64,
@@ -121,6 +144,27 @@ struct LightUp {
     help_from_list: bool,
     /// What the puzzle file holds.
     saved: String,
+    /// The tables of the best times as the PBX last gave them, by
+    /// `Kind::index`.
+    tables: Vec<Option<Table>>,
+    /// The times the tables on the PBX do not have yet.
+    pending: Pending,
+    /// The kinds of puzzle whose table the PBX would not write; they are
+    /// tried again when the app next starts.
+    refused: Vec<Kind>,
+    /// The time being written to its table: the kind, the time, and the
+    /// request to the PBX under way (reading the table, or writing it).
+    writing: Option<(Kind, u64, u32)>,
+    /// The table on show, and the request reading it.
+    shown: Kind,
+    reading: Option<u32>,
+    /// Whether the PBX answered when it was last asked for the table on
+    /// show (`None` until it does).
+    reached: Option<bool>,
+    /// Whether the tables were opened from the list of sizes (else from
+    /// the puzzle), and the row of the list to come back to.
+    scores_from_list: bool,
+    row: Option<u32>,
 }
 
 impl Default for LightUp {
@@ -133,6 +177,7 @@ impl Default for LightUp {
             wanted: (SIZES[0], Difficulty::Easy),
             elapsed: 0,
             since: None,
+            tick: None,
             making: None,
             made: 0,
             board: None,
@@ -140,6 +185,15 @@ impl Default for LightUp {
             page: 0,
             help_from_list: false,
             saved: String::new(),
+            tables: vec![None; Kind::COUNT],
+            pending: Pending::default(),
+            refused: Vec::new(),
+            writing: None,
+            shown: Kind::new(SIZES[0], Difficulty::Easy),
+            reading: None,
+            reached: None,
+            scores_from_list: false,
+            row: None,
         }
     }
 }
@@ -259,14 +313,16 @@ fn centered(area: Rect, lines: &[&str]) {
     }
 }
 
-/// A time as the solved puzzle shows it: `3:05`, or `1:02:03`.
-fn clock(ms: u64) -> String {
-    let s = ms / 1000;
-    if s >= 3600 {
-        format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
-    } else {
-        format!("{}:{:02}", s / 60, s % 60)
-    }
+/// The phone's user as the tables know them: the id at the PBX and the
+/// name to show.  A phone that has not reached the PBX does not know
+/// its user.
+fn player() -> Option<(String, String)> {
+    let user = pbx_storage::user()?;
+    let name = [&user.name, &user.extension, &user.id]
+        .into_iter()
+        .find(|n| !n.trim().is_empty())?
+        .clone();
+    Some((user.id, name))
 }
 
 fn size_name(side: usize) -> String {
@@ -356,13 +412,49 @@ impl LightUp {
         if !on {
             self.elapsed = self.spent();
             self.since = None;
-        } else if self.since.is_none() {
-            self.since = Some(timers::now_ms());
+            if let Some(tick) = self.tick.take() {
+                timers::cancel(tick);
+            }
+        } else {
+            if self.since.is_none() {
+                self.since = Some(timers::now_ms());
+            }
+            self.show_time();
         }
+    }
+
+    /// Shows the time spent on the puzzle, and, while the clock runs,
+    /// asks to be called when its next second begins.
+    fn show_time(&mut self) {
+        let spent = self.spent();
+        if let Some(board) = &mut self.board {
+            let now = clock(spent);
+            if board.clock_shown != now {
+                ui::set_text(board.clock, &now);
+                board.clock_shown = now;
+            }
+        }
+        if let Some(tick) = self.tick.take() {
+            timers::cancel(tick);
+        }
+        if self.since.is_some() {
+            self.tick = Some(timers::set((1000 - spent % 1000) as u32, false));
+        }
+    }
+
+    /// The kind of the puzzle being played.
+    fn kind(&self) -> Kind {
+        Kind::new(self.side, self.difficulty)
     }
 
     fn leave_screen(&mut self) {
         self.run_clock(false);
+        if let Some(id) = self.reading.take() {
+            pbx_storage::cancel(id);
+        }
+        if self.screen == Screen::Scores {
+            pbx_storage::watch(false);
+        }
         self.board = None;
         self.list = None;
         if let Some(timer) = self.making.as_mut().and_then(|m| m.timer.take()) {
@@ -387,6 +479,10 @@ impl LightUp {
                 items.push(ListItem::new(format!("{} {}", size_name(side), d.name())));
             }
         }
+        // Back from the tables, the row they were opened from.
+        if let Some(row) = self.row.take() {
+            selected = row.min(items.len() as u32 - 1);
+        }
         ui::set_items(list, &items);
         ui::set_selected(list, selected);
         // Back to the puzzle, if there is one; else out.
@@ -401,6 +497,7 @@ impl LightUp {
                 Softkey::new(SK_PLAY, "Play"),
                 Softkey::new(SK_HELP, "Help"),
                 other,
+                Softkey::new(SK_SCORES, "Scores"),
             ],
         );
         ui::set_focus(list);
@@ -547,19 +644,26 @@ impl LightUp {
             Rect::new(l.board_x, l.board_y, l.board_side, l.board_side),
         );
 
-        // The panel beside the board: the picture of the keys, in the
-        // middle of its height.  "Solved!" and the
-        // time, when it comes to that, are two lines in the middle.
+        // The panel beside the board: the time spent and, under it, the
+        // picture of the keys, the two in the middle of its height.
+        // "Solved!" and the time, when it comes to that, are two lines in
+        // the middle.
         let gap = (m.line_height / 2) as i16;
         let (x, width) = (
             l.panel_x + gap,
             l.panel_width.saturating_sub(2 * gap as u16),
         );
         let ink = canvas::theme_color(canvas::Role::Foreground);
-        let room = m.height.saturating_sub(4);
+        let room = m.height.saturating_sub(4 + m.line_height);
         let keymap = draw::keymap(width, room, palette, Rgb(ink.r, ink.g, ink.b));
-        let top = ((m.height - keymap.height) / 2) as i16;
-        let left = x + ((width - keymap.width) / 2) as i16;
+        let top = ((m.height - m.line_height - keymap.height) / 2) as i16;
+        let shown = clock(self.elapsed);
+        let time = Rect::new(x, top, width, m.line_height);
+        let clock = text(time, Font::Bold, Align::Center, &shown);
+        let (left, top) = (
+            x + ((width - keymap.width) / 2) as i16,
+            top + m.line_height as i16,
+        );
         let keys = canvas::create(ROOT, Rect::new(left, top, keymap.width, keymap.height));
         paint(keys, keymap.ops);
         let top = (m.height.saturating_sub(2 * m.line_height) / 2) as i16;
@@ -569,22 +673,26 @@ impl LightUp {
             rows,
             cursor,
             cursor_at: None,
+            clock,
+            clock_shown: shown,
             keys,
             solved_shown: false,
             status: text(line(0), Font::Bold, Align::Left, ""),
             time: text(line(1), Font::Normal, Align::Left, ""),
         });
-        // Undo first, where it is quickest to reach; a solved puzzle
-        // has nothing to take back.
-        let mut softkeys = vec![
-            Softkey::new(SK_NEW, "New"),
-            Softkey::new(SK_HELP, "Help"),
-            Softkey::new(SK_EXIT, "Exit"),
-        ];
-        if !game.solved() {
-            softkeys.insert(0, Softkey::new(SK_UNDO, "Undo"));
-        }
-        ui::set_softkeys(ROOT, &softkeys);
+        // Undo first, where it is quickest to reach, and the tables of
+        // the best times on the fourth key.  The Cancel key leaves the
+        // app; a solved puzzle, which has nothing to take back, has a
+        // softkey for that as well (`update` sets its keys).
+        ui::set_softkeys(
+            ROOT,
+            &[
+                Softkey::new(SK_UNDO, "Undo"),
+                Softkey::new(SK_NEW, "New"),
+                Softkey::new(SK_HELP, "Help"),
+                Softkey::new(SK_SCORES, "Scores"),
+            ],
+        );
         self.update();
         self.run_clock(true);
     }
@@ -608,9 +716,11 @@ impl LightUp {
             board.cursor_at = at;
         }
         if game.solved() && !board.solved_shown {
-            // The keys do nothing any more: their picture makes room.
+            // The keys do nothing any more: their picture and the
+            // running time make room.
             board.solved_shown = true;
             ui::set_visible(board.keys, false);
+            ui::set_visible(board.clock, false);
             ui::set_text(board.status, "Solved!");
             ui::set_text(board.time, &format!("Time {}", clock(self.elapsed)));
             ui::set_softkeys(
@@ -619,6 +729,7 @@ impl LightUp {
                     Softkey::new(SK_NEW, "New"),
                     Softkey::new(SK_HELP, "Help"),
                     Softkey::new(SK_EXIT, "Exit"),
+                    Softkey::new(SK_SCORES, "Scores"),
                 ],
             );
         }
@@ -672,14 +783,232 @@ impl LightUp {
         );
     }
 
-    /// Leaves the help for where it was opened: the puzzle as it was, or
-    /// the list of sizes.
+    /// Leaves the help or the tables for where they were opened: the
+    /// puzzle as it was, or the list of sizes.
     fn back(&mut self) {
-        if self.screen == Screen::Help && self.help_from_list {
+        let to_list = match self.screen {
+            Screen::Help => self.help_from_list,
+            Screen::Scores => self.scores_from_list,
+            _ => false,
+        };
+        if to_list {
             self.show_choose();
         } else {
             self.show_play();
         }
+    }
+
+    /// The table of the best times of a kind of puzzle: what the phone
+    /// has of it at once, and what the PBX has when it answers.
+    fn show_scores(&mut self, kind: Kind) {
+        match self.screen {
+            Screen::Scores => {}
+            Screen::Choose => {
+                self.scores_from_list = true;
+                self.row = self.list.map(ui::selected);
+            }
+            _ => self.scores_from_list = false,
+        }
+        // The time does not run meanwhile.
+        self.leave_screen();
+        self.screen = Screen::Scores;
+        self.shown = kind;
+        self.reached = None;
+        // Told of the times other phones write, the table is read again.
+        pbx_storage::watch(true);
+        self.read_shown();
+        self.draw_scores();
+    }
+
+    /// Asks the PBX for the table on show.
+    fn read_shown(&mut self) {
+        if let Some(id) = self.reading.take() {
+            pbx_storage::cancel(id);
+        }
+        self.reading = Some(pbx_storage::get(PbxScope::Shared, &self.shown.key()));
+    }
+
+    /// Draws the table on show: the rows the PBX last gave, with the
+    /// time of this phone that is not written there yet in its place.
+    fn draw_scores(&mut self) {
+        let kind = self.shown;
+        let title = match self.reached {
+            Some(false) => format!("Offline: {}", kind.title()),
+            _ => format!("Best times: {}", kind.title()),
+        };
+        let area = screen(&title);
+        ui::claim_keys(ROOT, &["left", "right", "cancel"].map(String::from));
+        self.list = None;
+        let (id, name) = player().unwrap_or((String::new(), "You".to_string()));
+        let mut table = self.tables[kind.index()].clone().unwrap_or_default();
+        if let Some(ms) = self.pending.of(kind) {
+            table.add(ms, &id, &name);
+        }
+        if table.rows().is_empty() {
+            centered(
+                area,
+                &[match self.reached {
+                    None => "Loading\u{2026}",
+                    Some(true) => "No times yet.",
+                    Some(false) => "The PBX cannot be reached.",
+                }],
+            );
+        } else {
+            let list = ui::create(WidgetKind::TextList, ROOT, area);
+            let items: Vec<ListItem> = table
+                .rows()
+                .iter()
+                .enumerate()
+                .map(|(n, row)| {
+                    let mut item = ListItem::new(format!("{}. {}", n + 1, row.name));
+                    item.detail = clock(row.ms);
+                    item
+                })
+                .collect();
+            ui::set_items(list, &items);
+            // The player's row, if the table has one.
+            if let Some(at) = table.place(&id) {
+                ui::set_selected(list, at as u32);
+            }
+            ui::set_focus(list);
+            self.list = Some(list);
+        }
+        ui::set_softkeys(
+            ROOT,
+            &[
+                Softkey::new(SK_SIZE, "Size"),
+                Softkey::new(SK_LEVEL, "Level"),
+                Softkey::new(SK_BACK, "Back"),
+            ],
+        );
+    }
+
+    /// A table as the PBX has it now.
+    fn learn(&mut self, kind: Kind, table: Table) {
+        self.tables[kind.index()] = Some(table);
+        if self.screen == Screen::Scores && self.shown == kind {
+            self.reached = Some(true);
+            self.draw_scores();
+        }
+    }
+
+    /// Writes the times that wait down, to outlast the app.
+    fn keep_pending(&mut self) {
+        let kept = if self.pending.is_empty() {
+            storage::remove(TIMES)
+        } else {
+            storage::set(TIMES, self.pending.to_text().as_bytes())
+        };
+        if let Err(e) = kept {
+            dphone_app_sdk::log_error(&format!("the times were not kept: {e:?}"));
+        }
+    }
+
+    /// The puzzle was solved just now: its time stands, the solved
+    /// puzzle is kept, and the time goes to the table of its kind.
+    fn solved(&mut self) {
+        self.run_clock(false);
+        self.update();
+        self.save();
+        if self.pending.add(self.kind(), self.elapsed) {
+            self.keep_pending();
+        }
+        self.sync();
+    }
+
+    /// Starts writing the next time that waits to its table, unless one
+    /// is being written: the table is read, and written with the time in
+    /// it over exactly what was read.
+    fn sync(&mut self) {
+        if self.writing.is_some() {
+            return;
+        }
+        let next = self
+            .pending
+            .times()
+            .iter()
+            .find(|(kind, _)| !self.refused.contains(kind));
+        if let Some(&(kind, ms)) = next {
+            let id = pbx_storage::get(PbxScope::Shared, &kind.key());
+            self.writing = Some((kind, ms, id));
+        }
+    }
+
+    /// The answer of the PBX's store to a request.
+    fn answered(&mut self, id: u32, outcome: PbxStorageOutcome) {
+        if self.reading == Some(id) {
+            self.reading = None;
+            match outcome {
+                PbxStorageOutcome::Entry(entry) => {
+                    let table = entry.map(|e| Table::parse(&e.value)).unwrap_or_default();
+                    self.learn(self.shown, table);
+                }
+                other => {
+                    if !matches!(other, PbxStorageOutcome::Unreachable(_)) {
+                        dphone_app_sdk::log_warn(&format!("the table was not read: {other:?}"));
+                    }
+                    self.reached = Some(false);
+                    if self.screen == Screen::Scores {
+                        self.draw_scores();
+                    }
+                }
+            }
+            return;
+        }
+        let Some((kind, ms, asked)) = self.writing else {
+            return;
+        };
+        if asked != id {
+            return;
+        }
+        self.writing = None;
+        match outcome {
+            // The table as it is: after a conflict, the one another phone
+            // wrote meanwhile.
+            PbxStorageOutcome::Entry(current) | PbxStorageOutcome::Conflict(current) => {
+                let (mut table, version) = match &current {
+                    Some(entry) => (Table::parse(&entry.value), entry.version),
+                    None => (Table::default(), 0),
+                };
+                self.learn(kind, table.clone());
+                let Some((player, name)) = player() else {
+                    // The time waits until the store is in reach again.
+                    dphone_app_sdk::log_warn("the PBX has not said who the user is");
+                    return;
+                };
+                if table.add(ms, &player, &name) {
+                    let id = pbx_storage::set(
+                        PbxScope::Shared,
+                        &kind.key(),
+                        &table.to_bytes(),
+                        Some(version),
+                    );
+                    self.writing = Some((kind, ms, id));
+                    return;
+                }
+                // The table has a time of the player's as good, or ten
+                // better times: there is nothing to write.
+                if self.pending.done(kind, ms) {
+                    self.keep_pending();
+                }
+            }
+            PbxStorageOutcome::Stored(entry) => {
+                if self.pending.done(kind, ms) {
+                    self.keep_pending();
+                }
+                self.learn(kind, Table::parse(&entry.value));
+            }
+            // The time waits until the store is in reach.
+            PbxStorageOutcome::Unreachable(_) => return,
+            other => {
+                dphone_app_sdk::log_warn(&format!(
+                    "the table {} was not written: {other:?}",
+                    kind.key()
+                ));
+                self.refused.push(kind);
+            }
+        }
+        self.sync();
     }
 
     fn step(&mut self, dx: i8, dy: i8) {
@@ -701,10 +1030,7 @@ impl LightUp {
             return;
         }
         if game.solved() {
-            // The time taken stands, and the solved puzzle is kept.
-            self.run_clock(false);
-            self.update();
-            self.save();
+            self.solved();
         } else {
             self.update();
         }
@@ -724,6 +1050,9 @@ impl App for LightUp {
         // A call over the puzzle does not end it: the app stays until
         // the user leaves it.
         runtime::set_exit_after_background(false);
+        // The times that could not be written when the app last ran.
+        self.pending = Pending::parse(&read_string(TIMES).unwrap_or_default());
+        self.sync();
     }
 
     fn handle(&mut self, event: Event) {
@@ -753,10 +1082,39 @@ impl App for LightUp {
                 self.save();
             }
             Event::Timer(id) => {
-                if self.making.as_ref().is_some_and(|m| m.timer == Some(id)) {
+                if self.tick == Some(id) {
+                    self.tick = None;
+                    self.show_time();
+                } else if self.making.as_ref().is_some_and(|m| m.timer == Some(id)) {
                     self.work();
                 }
             }
+            Event::PbxStorage((id, outcome)) => self.answered(id, outcome),
+            Event::PbxStorageChanged(change) => {
+                // Another phone wrote the table on show.
+                if self.screen == Screen::Scores
+                    && matches!(change.scope, PbxScope::Shared)
+                    && change.key == self.shown.key()
+                {
+                    self.read_shown();
+                }
+            }
+            Event::PbxStorageOnline => {
+                self.sync();
+                if self.screen == Screen::Scores {
+                    self.read_shown();
+                }
+            }
+            Event::Softkey(SK_SCORES) => {
+                // Of the row of the list of sizes, or of the puzzle.
+                let kind = match (&self.screen, self.list) {
+                    (Screen::Choose, Some(list)) => Kind::from_index(ui::selected(list) as usize),
+                    _ => self.kind(),
+                };
+                self.show_scores(kind);
+            }
+            Event::Softkey(SK_SIZE) => self.show_scores(self.shown.next_size()),
+            Event::Softkey(SK_LEVEL) => self.show_scores(self.shown.next_difficulty()),
             Event::Softkey(SK_EXIT) => self.leave(),
             Event::Softkey(SK_NEW) => self.show_choose(),
             Event::Softkey(SK_BACK) => self.back(),
@@ -764,9 +1122,7 @@ impl App for LightUp {
             Event::Softkey(SK_UNDO) => {
                 if self.screen == Screen::Play && self.game.as_mut().is_some_and(Game::undo) {
                     if self.game.as_ref().is_some_and(Game::solved) {
-                        self.run_clock(false);
-                        self.update();
-                        self.save();
+                        self.solved();
                     } else {
                         self.update();
                     }
@@ -792,7 +1148,9 @@ impl App for LightUp {
                 ("8", Screen::Play) => self.changed(|game| game.auto()),
                 ("right" | "down" | "select", Screen::Help) => self.show_help(self.page + 1),
                 ("left" | "up", Screen::Help) => self.show_help(self.page + PAGES.len() - 1),
-                ("cancel", Screen::Help) => self.back(),
+                ("cancel", Screen::Help | Screen::Scores) => self.back(),
+                ("left", Screen::Scores) => self.show_scores(self.shown.step(-1)),
+                ("right", Screen::Scores) => self.show_scores(self.shown.step(1)),
                 ("cancel", Screen::Choose) if self.game.is_some() => self.show_play(),
                 ("cancel", _) => self.leave(),
                 _ => {}

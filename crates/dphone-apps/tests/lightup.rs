@@ -16,9 +16,9 @@ mod common;
 
 use common::{Rig, staged, temp_dir};
 use dphone_apps::engine::Target;
-use dphone_apps::testutil::{FakeConfig, FakePbx, services};
+use dphone_apps::testutil::{FakeConfig, FakePbx, FakeStore, services_with_store};
 use dphone_apps::uishell::UiShell;
-use dphone_apps::{AppManager, DrawOp, ManagerConfig};
+use dphone_apps::{AppManager, DrawOp, ManagerConfig, StoreScope};
 use dphone_hal::{Hal, Screen};
 use dphone_state::{
     AccountId, Call, CallState, Calls, Direction, Key, Model, Party, Phase, Store, System,
@@ -26,6 +26,7 @@ use dphone_state::{
 use dphone_ui::{Ui, UiConfig};
 use lightup_game::draw::{FontSize, Fonts, Layout, Op, Painter, Palette, Rgb, TextFont};
 use lightup_game::generate::{Difficulty, Generator, Params, Progress, SIZES, generate};
+use lightup_game::scores::{Kind, Table};
 use lightup_game::solver::{Outcome, Solve, Techniques};
 use lightup_game::{Act, Game, Grid};
 use std::path::{Path, PathBuf};
@@ -34,11 +35,11 @@ use std::time::{Duration, Instant};
 const APP: &str = "lightup";
 /// The grids the app allows a puzzle (`MAX_GRIDS` in the app).
 const MAX_GRIDS: u32 = 400;
-/// The texts beside the board while a puzzle is played: the two lines
-/// that say "Solved!" and the time when it comes to that, and nothing
-/// else (the keys are a picture).
+/// The texts beside the board while a puzzle is played, after the time
+/// spent ([`beside`]): the two lines that say "Solved!" and the time when
+/// it comes to that, and nothing else (the keys are a picture).
 const PLAYING: [&str; 2] = ["", ""];
-const SOFTKEYS: [&str; 4] = ["Undo", "New", "Help", "Exit"];
+const SOFTKEYS: [&str; 4] = ["Undo", "New", "Help", "Scores"];
 
 fn storage(nvdata: &Path) -> PathBuf {
     nvdata.join("appdata").join(APP)
@@ -94,6 +95,25 @@ fn state(r: &mut Rig) -> (Grid, (usize, usize)) {
     r.ui.cover(APP, false);
     r.settle();
     parse(&file(r))
+}
+
+/// Whether a text is a time (`3:05`).
+fn is_time(text: &str) -> bool {
+    text.contains(':') && text.chars().all(|c| c.is_ascii_digit() || c == ':')
+}
+
+/// The time spent, as the playing screen shows it.
+fn time_shown(r: &Rig) -> String {
+    let texts = r.ui.texts(APP);
+    assert!(texts.first().is_some_and(|t| is_time(t)), "{texts:?}");
+    texts[0].clone()
+}
+
+/// The texts of the playing screen after the time spent, which is the
+/// first of them and goes on.
+fn beside(r: &Rig) -> Vec<String> {
+    time_shown(r);
+    r.ui.texts(APP).split_off(1)
 }
 
 fn generating(r: &Rig) -> bool {
@@ -263,7 +283,8 @@ fn expected(model: Model, game: &Game) -> Vec<Vec<Op>> {
         lists.push(
             lightup_game::draw::keymap(
                 l.panel_width - 2 * (line / 2),
-                area.height - 4,
+                // Under the line of the time spent.
+                area.height - 4 - line,
                 palette,
                 ink,
             )
@@ -280,7 +301,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     assert_eq!(r.ui.top().as_deref(), Some(APP));
     // Nothing is kept yet: the sizes and difficulties come first.
     assert_eq!(r.ui.texts(APP), ["New puzzle"]);
-    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Exit"]);
+    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Exit", "Scores"]);
     let names: Vec<String> = r.ui.items(APP).into_iter().map(|i| i.0).collect();
     assert_eq!(
         names,
@@ -298,7 +319,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     );
     r.softkey(APP, "Play");
     wait(&mut r);
-    assert_eq!(r.ui.texts(APP), PLAYING);
+    assert_eq!(beside(&r), PLAYING);
     assert_eq!(r.ui.softkeys(APP), SOFTKEYS);
 
     // The puzzle is the one the seed gives, and it is written down.
@@ -428,7 +449,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
         .filter(|i| solved.has_light(*i) && !game.grid().has_light(*i))
         .collect();
     for (n, cell) in lights.iter().enumerate() {
-        assert_eq!(r.ui.texts(APP), PLAYING);
+        assert_eq!(beside(&r), PLAYING);
         at(&mut r, &mut game, *cell);
         r.key(
             APP,
@@ -457,7 +478,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     assert_eq!(drawn(&r), expected(Model::D60, &game));
     assert!(drawn(&r)[7].is_empty());
     assert_eq!(drawn(&r).len(), 8);
-    assert_eq!(r.ui.softkeys(APP), ["New", "Help", "Exit"]);
+    assert_eq!(r.ui.softkeys(APP), ["New", "Help", "Exit", "Scores"]);
     // The keys do nothing any more.
     let draws = r.ui.draw_count(APP);
     keys(
@@ -478,7 +499,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     // New: the list again, at the size and difficulty played, and Back
     // (the softkey or Cancel) is the solved puzzle as it was.
     r.softkey(APP, "New");
-    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Back"]);
+    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Back", "Scores"]);
     r.softkey(APP, "Back");
     assert_eq!(r.ui.texts(APP), texts);
     r.softkey(APP, "New");
@@ -491,15 +512,15 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     r.key(APP, Key::Down);
     r.key(APP, Key::Select);
     wait(&mut r);
-    assert_eq!(r.ui.texts(APP), PLAYING);
+    assert_eq!(beside(&r), PLAYING);
     assert_eq!(
         parse(&file(&r)),
         (native(7, Difficulty::Medium, 12), (0, 0))
     );
 
-    r.softkey(APP, "Exit");
+    r.key(APP, Key::Cancel);
     assert_eq!(r.ui.top(), None);
-    assert!(!r.mgr.is_running(APP), "Exit stops the app");
+    assert!(!r.mgr.is_running(APP), "Cancel stops the app");
 }
 
 /// A 7x7 puzzle with lights that see each other and a 1 with two lights.
@@ -524,7 +545,7 @@ fn errors_are_drawn_as_errors_in_color_and_in_black_and_white() {
         let mut r = rig_with(model, WRONG);
         r.launch(APP);
         // The puzzle that was kept, with no generating.
-        assert_eq!(r.ui.texts(APP), PLAYING, "{model:?}");
+        assert_eq!(beside(&r), PLAYING, "{model:?}");
         assert_eq!(drawn(&r), expected(model, &game), "{model:?}");
         let lists = drawn(&r);
         let colors = |ops: &[Op]| -> Vec<Rgb> {
@@ -570,7 +591,7 @@ fn errors_are_drawn_as_errors_in_color_and_in_black_and_white() {
         assert_eq!(drawn(&r), expected(model, &fixed), "{model:?}");
         assert_ne!(expected(model, &fixed)[1], expected(model, &game)[1]);
         assert_ne!(expected(model, &fixed)[2], expected(model, &game)[2]);
-        r.softkey(APP, "Exit");
+        r.key(APP, Key::Cancel);
     }
 }
 
@@ -612,7 +633,7 @@ fn the_puzzle_is_kept_and_a_call_does_not_end_it() {
     r.ui.cover(APP, false);
     r.settle();
     assert_eq!(drawn(&r), shown);
-    assert_eq!(r.ui.texts(APP), PLAYING);
+    assert_eq!(beside(&r), PLAYING);
     r.ui.cover(APP, true);
     r.settle();
     assert!(
@@ -632,12 +653,12 @@ fn the_puzzle_is_kept_and_a_call_does_not_end_it() {
     let left = WRONG.replace("cursor=3,1", "cursor=4,1");
     assert_eq!(rows(&file(&r)), rows(&left));
     r.launch(APP);
-    assert_eq!(r.ui.texts(APP), PLAYING);
+    assert_eq!(beside(&r), PLAYING);
     let (grid, cursor) = parse(&left);
     let mut game = Game::new(grid);
     game.set_cursor(cursor.0, cursor.1);
     assert_eq!(drawn(&r), expected(Model::D60, &game));
-    r.softkey(APP, "Exit");
+    r.key(APP, Key::Cancel);
 
     // A solved puzzle is shown solved, with its time.
     let solved = native(10, Difficulty::Medium, 5);
@@ -673,7 +694,7 @@ fn the_puzzle_is_kept_and_a_call_does_not_end_it() {
         std::fs::write(&puzzle, nonsense).unwrap();
         r.launch(APP);
         assert_eq!(r.ui.texts(APP), ["New puzzle"], "{nonsense:?}");
-        assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Exit"]);
+        assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Exit", "Scores"]);
         r.softkey(APP, "Exit");
         assert!(!r.mgr.is_running(APP));
     }
@@ -796,7 +817,7 @@ fn undo_takes_changes_back_one_by_one_and_is_kept() {
     assert!(file(&r).contains("\nundo=\n"));
 
     // Changes kept in a file that makes no sense are no changes.
-    r.softkey(APP, "Exit");
+    r.key(APP, Key::Cancel);
     std::fs::write(
         storage(&r.nvdata).join("puzzle"),
         WRONG.replace("cursor=3,1\n", "cursor=3,1\nundo=7.999L\n"),
@@ -852,7 +873,7 @@ fn key_8_does_what_the_numbers_settle_and_undo_takes_it_back_at_once() {
         assert_eq!(state(&mut r), (game.grid().clone(), game.cursor()));
         assert_eq!(drawn(&r), expected(model, &game), "{model:?}");
         assert!(file(&r).contains("\nundo=\n"));
-        r.softkey(APP, "Exit");
+        r.key(APP, Key::Cancel);
     }
 }
 
@@ -929,7 +950,7 @@ fn help_shows_how_to_play_and_leaves_the_puzzle_as_it_was() {
         // The time does not run while the help is read.
         std::thread::sleep(Duration::from_millis(1500));
         r.softkey(APP, "Back");
-        assert_eq!(r.ui.texts(APP), PLAYING);
+        assert_eq!(beside(&r), PLAYING);
         assert_eq!(r.ui.softkeys(APP), SOFTKEYS);
         assert_eq!(drawn(&r), shown, "{model:?}");
         assert_eq!(state(&mut r), kept);
@@ -950,7 +971,7 @@ fn help_shows_how_to_play_and_leaves_the_puzzle_as_it_was() {
         r.key(APP, Key::Cancel);
         assert!(r.mgr.is_running(APP));
         assert_eq!(drawn(&r), shown);
-        r.softkey(APP, "Exit");
+        r.key(APP, Key::Cancel);
     }
     // From the list of sizes, before any puzzle: back to the list.
     let mut r = rig(Model::D40, 3);
@@ -962,7 +983,7 @@ fn help_shows_how_to_play_and_leaves_the_puzzle_as_it_was() {
     r.softkey(APP, "Help");
     r.key(APP, Key::Cancel);
     assert_eq!(r.ui.texts(APP), ["New puzzle"]);
-    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Exit"]);
+    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Exit", "Scores"]);
 }
 
 #[test]
@@ -971,7 +992,7 @@ fn generating_goes_on_in_turns_and_waits_while_a_call_has_the_screen() {
     r.launch(APP);
     r.softkey(APP, "New");
     // The list is at the puzzle's size and difficulty.
-    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Back"]);
+    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Back", "Scores"]);
     r.key(APP, Key::Select);
     assert_eq!(r.ui.texts(APP), ["7x7 Hard", "Generating\u{2026}"]);
     wait(&mut r);
@@ -1001,7 +1022,7 @@ fn generating_goes_on_in_turns_and_waits_while_a_call_has_the_screen() {
     r.ui.cover(APP, false);
     r.settle();
     wait(&mut r);
-    assert_eq!(r.ui.texts(APP), PLAYING);
+    assert_eq!(beside(&r), PLAYING);
     // The same puzzle as when made in one go.
     let large = native(14, Difficulty::Hard, 2);
     assert_eq!(parse(&file(&r)), (large.clone(), (0, 0)));
@@ -1016,7 +1037,7 @@ fn generating_goes_on_in_turns_and_waits_while_a_call_has_the_screen() {
     assert!(generating(&r));
     r.softkey(APP, "New");
     assert_eq!(r.ui.texts(APP), ["New puzzle"]);
-    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Back"]);
+    assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Back", "Scores"]);
     std::thread::sleep(Duration::from_millis(30));
     r.settle();
     assert_eq!(
@@ -1025,7 +1046,7 @@ fn generating_goes_on_in_turns_and_waits_while_a_call_has_the_screen() {
         "the abandoned puzzle does not turn up"
     );
     r.softkey(APP, "Back");
-    assert_eq!(r.ui.texts(APP), PLAYING);
+    assert_eq!(beside(&r), PLAYING);
     assert_eq!(state(&mut r), played);
 
     // Exit while generating: the app stops, and the puzzle there was is
@@ -1035,7 +1056,7 @@ fn generating_goes_on_in_turns_and_waits_while_a_call_has_the_screen() {
     r.softkey(APP, "Exit");
     assert!(!r.mgr.is_running(APP));
     r.launch(APP);
-    assert_eq!(r.ui.texts(APP), PLAYING);
+    assert_eq!(beside(&r), PLAYING);
     assert_eq!(state(&mut r), played);
     // Cancel while generating leaves too.
     choose_from_play(&mut r, 10, Difficulty::Hard);
@@ -1081,7 +1102,7 @@ fn every_size_is_made_and_drawn_on_every_kind_of_display() {
                 puzzle,
                 "{model:?} {side} {difficulty:?}"
             );
-            assert_eq!(r.ui.texts(APP), PLAYING);
+            assert_eq!(beside(&r), PLAYING);
             let game = Game::new(puzzle);
             assert_eq!(drawn(&r), expected(model, &game), "{model:?} {side}");
             let bounds: Vec<_> = r.ui.drawings(APP).into_iter().map(|d| d.0).collect();
@@ -1091,7 +1112,7 @@ fn every_size_is_made_and_drawn_on_every_kind_of_display() {
             let area = model.app_content_area();
             assert!(bounds[side].y >= 0 && bounds[side].y as u16 + board <= area.height);
         }
-        r.softkey(APP, "Exit");
+        r.key(APP, Key::Cancel);
     }
 }
 
@@ -1099,8 +1120,8 @@ fn every_size_is_made_and_drawn_on_every_kind_of_display() {
 fn it_is_a_built_in_app_that_can_be_switched_off() {
     assert_eq!(
         common::capabilities(APP),
-        ["ui", "timers", "storage", "canvas"],
-        "no sound, no calls, no network"
+        ["ui", "timers", "storage", "pbx-storage", "canvas"],
+        "no sound, no calls, no network but the store on the PBX"
     );
     let config = FakeConfig::default();
     let disabled = config.disabled.clone();
@@ -1264,17 +1285,36 @@ struct Phone {
     sim: dphone_hal::sim::SimHandle,
     mgr: AppManager,
     nvdata: PathBuf,
+    /// When the time on the playing screen was last seen to change.
+    ticked: Option<Instant>,
+    /// Where the time spent is on the playing screen: right of this
+    /// column and above this row (and some of the picture of the keys
+    /// with it).
+    time_box: (usize, usize),
     _dir: common::TempDir,
 }
 
 impl Phone {
     /// A phone on which the app finds this puzzle file.
     fn new(model: Model, puzzle: &str) -> Phone {
+        Phone::on_pbx(model, puzzle, &FakeStore::default())
+    }
+
+    /// The same, with `app_data` as the PBX's store of app data.
+    fn on_pbx(model: Model, puzzle: &str, app_data: &FakeStore) -> Phone {
         let dir = temp_dir("lightup-phone");
         let nvdata = dir.0.join("nvdata");
         std::fs::create_dir_all(storage(&nvdata)).unwrap();
         std::fs::write(storage(&nvdata).join("puzzle"), puzzle).unwrap();
         std::fs::write(storage(&nvdata).join("seed"), "7").unwrap();
+        // The time is beside the board, a line in the upper half.
+        let side = puzzle
+            .lines()
+            .find_map(|l| l.strip_prefix("size=")?.parse().ok())
+            .unwrap_or(SIZES[0]);
+        let area = model.app_content_area();
+        let board = Layout::new(area.width, area.height, side).board_side;
+        let time_box = (board as usize, (area.height as usize + 25) / 2);
         let mut hal = Hal::sim(model);
         let sim = hal.sim.clone().unwrap();
         let store = Store::new(model);
@@ -1289,7 +1329,7 @@ impl Phone {
             cfg,
             store.clone(),
             Box::new(UiShell::new(ui.handle(), model)),
-            services(&FakePbx::default(), FakeConfig::default()),
+            services_with_store(&FakePbx::default(), FakeConfig::default(), app_data),
         )
         .expect("engine");
         mgr.scan();
@@ -1300,6 +1340,8 @@ impl Phone {
             sim,
             mgr,
             nvdata,
+            ticked: None,
+            time_box,
             _dir: dir,
         };
         phone.settle();
@@ -1317,15 +1359,65 @@ impl Phone {
         self.ui.pump();
     }
 
-    /// Presses keys; returns how many times the display was sent
-    /// something.
-    fn tap(&mut self, keys: &[Key]) -> u64 {
-        let before = self.sim.frame_generation();
-        for key in keys {
-            self.sim.tap(*key);
+    /// With an unsolved puzzle on the screen, waits until the time on
+    /// it has just changed (unless it did so a moment ago): what follows
+    /// at once is then counted and compared without the time changing in
+    /// between.
+    fn steady(&mut self) {
+        if self.ticked.is_some_and(|t| t.elapsed() < Duration::from_millis(300)) {
+            return;
+        }
+        let (before, start) = (self.sim.frame_generation(), Instant::now());
+        while self.sim.frame_generation() == before {
+            assert!(start.elapsed() < Duration::from_secs(10), "the time stands");
+            std::thread::sleep(Duration::from_millis(1));
             self.settle();
         }
-        self.sim.frame_generation() - before
+        self.ticked = Some(Instant::now());
+    }
+
+    /// Presses keys; returns how many times the display was sent
+    /// something, not counting the time spent going on.
+    fn tap(&mut self, keys: &[Key]) -> u64 {
+        let mut sent = 0;
+        for key in keys {
+            let (before, time) = (self.sim.frame_generation(), self.time());
+            let rest = self.pixels().0;
+            self.sim.tap(*key);
+            self.settle();
+            let mut frames = self.sim.frame_generation() - before;
+            if self.time() != time {
+                // The time went on meanwhile, which was sent with what
+                // the key changed, or by itself.
+                let least = u64::from(self.pixels().0 != rest);
+                frames = frames.saturating_sub(1).max(least);
+            }
+            sent += frames;
+        }
+        sent
+    }
+
+    fn in_time_box(&self, i: usize, width: usize) -> bool {
+        i % width >= self.time_box.0 && i / width < self.time_box.1
+    }
+
+    /// The pixels where the time spent is.
+    fn time(&self) -> Vec<u32> {
+        let (frame, width) = self.frame();
+        let inside = (0..frame.len()).filter(|i| self.in_time_box(*i, width));
+        inside.map(|i| frame[i]).collect()
+    }
+
+    /// The pixels of the frame as 0xRRGGBB, and the frame's width, with
+    /// black where the time spent is: it goes on by itself.
+    fn pixels(&self) -> (Vec<u32>, usize) {
+        let (mut frame, width) = self.frame();
+        for (i, pixel) in frame.iter_mut().enumerate() {
+            if self.in_time_box(i, width) {
+                *pixel = 0;
+            }
+        }
+        (frame, width)
     }
 
     fn file(&self) -> String {
@@ -1333,7 +1425,7 @@ impl Phone {
     }
 
     /// The pixels of the frame as 0xRRGGBB, and the frame's width.
-    fn pixels(&self) -> (Vec<u32>, usize) {
+    fn frame(&self) -> (Vec<u32>, usize) {
         let f = self.sim.frame(Screen::Main).expect("main frame");
         let bpp = f.info.format.bytes_per_pixel();
         let mut out = Vec::new();
@@ -1378,7 +1470,7 @@ impl Phone {
             None => PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("light-up"),
         };
         std::fs::create_dir_all(&dir).unwrap();
-        let (pixels, w) = self.pixels();
+        let (pixels, w) = self.frame();
         let h = pixels.len() / w;
         let scale = if self.model.is_color() { 1 } else { 3 };
         let mut rgb = Vec::with_capacity(w * h * 3 * scale * scale);
@@ -1491,6 +1583,7 @@ fn pictures(model: Model) -> [Phone; 3] {
     assert_eq!(parse(&list.file()).0, native(7, Difficulty::Easy, 7));
     // The pages of the help, from the third softkey of a puzzle.
     let mut help = Phone::new(model, &puzzle_file(7, Difficulty::Easy, 30, "play"));
+    help.steady();
     let puzzle = help.pixels().0;
     help.tap(&[Key::Soft(3)]);
     for page in 1..=5 {
@@ -1503,6 +1596,7 @@ fn pictures(model: Model) -> [Phone; 3] {
     // Undo, the first softkey, takes back a light just put: the display
     // is as before again.
     help.tap(&[Key::Right, Key::Right]);
+    help.steady();
     let before = help.pixels().0;
     if help.tap(&[Key::Digit(3)]) > 0 {
         assert_ne!(help.pixels().0, before);
@@ -1518,12 +1612,14 @@ fn pictures(model: Model) -> [Phone; 3] {
 fn only_what_changed_is_sent(fresh: &mut Phone, pitch: usize) {
     let model = fresh.model;
     // The cursor at an edge.
+    fresh.steady();
     assert_eq!(
         fresh.tap(&[Key::Left, Key::Up, Key::Digit(4), Key::Digit(2)]),
         0,
         "{model:?}"
     );
     // One step: the two cells, and the lines around them.
+    fresh.steady();
     let before = fresh.pixels().0;
     assert_eq!(fresh.tap(&[Key::Right]), 1, "{model:?}");
     let (width, height, _) = fresh.changed(&before);
@@ -1539,6 +1635,7 @@ fn only_what_changed_is_sent(fresh: &mut Phone, pitch: usize) {
         .unwrap();
     fresh.tap(&path(cursor, (1, 0), false));
     fresh.tap(&path((1, 0), (white, 0), true));
+    fresh.steady();
     let before = fresh.pixels().0;
     assert_eq!(fresh.tap(&[Key::Digit(1)]), 1, "{model:?}");
     let (width, height, differ) = fresh.changed(&before);
@@ -1554,6 +1651,7 @@ fn only_what_changed_is_sent(fresh: &mut Phone, pitch: usize) {
     // Once more, and with Select: the light goes, and is back.  A mark
     // in its place, and the mark off: once each.  The keys that do
     // nothing: nothing.
+    fresh.steady();
     assert_eq!(fresh.tap(&[Key::Digit(1), Key::Select]), 2, "{model:?}");
     assert_eq!(fresh.tap(&[Key::Digit(3)]), 1, "{model:?}");
     assert_eq!(fresh.tap(&[Key::Digit(3)]), 1, "{model:?}");
@@ -1596,6 +1694,7 @@ fn drawn_on_a_color_phone() {
     // again, as it was, when the call is over.
     let mut p = play;
     p.tap(&[Key::Right, Key::Digit(3)]);
+    p.steady();
     let shown = p.pixels().0;
     assert_eq!(p.ui.screen_name(), "app:lightup");
     let id = p.store.next_call_id();
@@ -1633,6 +1732,7 @@ fn drawn_on_a_color_phone() {
     assert_eq!(p.ui.screen_name(), "app:lightup");
     assert!(p.mgr.is_running(APP));
     assert_eq!(p.pixels().0, shown);
+    p.steady();
     assert_eq!(p.tap(&[Key::Left]), 1, "the puzzle goes on");
 }
 
@@ -1687,6 +1787,7 @@ fn numbers_that_cannot_be_met_are_drawn_as_errors() {
             // number beside the mark is drawn anew with it, and is an
             // error no more.
             phone.tap(&[Key::Up]);
+            phone.steady();
             let before = phone.pixels().0;
             assert_eq!(phone.tap(&[Key::Digit(3)]), 1, "{what}");
             let mut after = grid.clone();
@@ -1731,5 +1832,609 @@ fn drawn_on_the_gray_phones() {
         assert_ne!(fresh.pixels().0, solved.pixels().0);
         assert_ne!(play.pixels().0, solved.pixels().0);
         only_what_changed_is_sent(&mut fresh, pitch);
+    }
+}
+
+// ------------------------------------------- the time and the best times
+
+/// A puzzle file one light from solved, with the cursor on the cell of
+/// that light: key 1 solves it.
+fn almost(side: usize, difficulty: Difficulty, seed: u64, elapsed: u64) -> String {
+    let puzzle = native(side, difficulty, seed);
+    let solved = solution(&puzzle);
+    let lights: Vec<usize> = (0..puzzle.cells())
+        .filter(|i| solved.has_light(*i))
+        .collect();
+    let mut game = Game::new(puzzle);
+    for i in &lights[1..] {
+        game.set_cursor(i % side, i / side);
+        game.act(Act::Light);
+    }
+    assert!(!game.solved());
+    format!(
+        "size={side}\ndifficulty={}\nelapsed={elapsed}\ncursor={},{}\n{}",
+        difficulty.name().to_lowercase(),
+        lights[0] % side,
+        lights[0] / side,
+        game.grid().to_text()
+    )
+}
+
+fn put_puzzle(r: &Rig, puzzle: &str) {
+    std::fs::create_dir_all(storage(&r.nvdata)).unwrap();
+    std::fs::write(storage(&r.nvdata).join("seed"), "1").unwrap();
+    std::fs::write(storage(&r.nvdata).join("puzzle"), puzzle).unwrap();
+}
+
+/// A phone of a PBX (`FakeStore::phone`) on which the app finds this
+/// puzzle file.
+fn rig_on(app_data: FakeStore, puzzle: &str) -> Rig {
+    listen();
+    let r = Rig::with_app_data(
+        staged(),
+        FakeConfig::default(),
+        Model::D60,
+        Duration::from_secs(2),
+        app_data,
+    );
+    put_puzzle(&r, puzzle);
+    r
+}
+
+/// The times the phone has yet to write to the PBX, as it keeps them.
+fn waiting(r: &Rig) -> String {
+    std::fs::read_to_string(storage(&r.nvdata).join("times")).unwrap_or_default()
+}
+
+/// The table of a kind of puzzle as the PBX has it.
+fn table(pbx: &FakeStore, kind: Kind) -> Table {
+    Table::parse(
+        &pbx.value(APP, StoreScope::Shared, &kind.key())
+            .unwrap_or_default(),
+    )
+}
+
+/// The rows of a table: who, and the time in whole seconds.
+fn rows(table: &Table) -> Vec<(&str, &str, u64)> {
+    table
+        .rows()
+        .iter()
+        .map(|r| (r.id.as_str(), r.name.as_str(), r.ms / 1000))
+        .collect()
+}
+
+/// Starts the app on its puzzle file, which is one light from solved,
+/// and puts the light.
+fn solve(r: &mut Rig) {
+    r.launch(APP);
+    assert_eq!(r.ui.softkeys(APP), SOFTKEYS);
+    r.key(APP, Key::Digit(1));
+    assert_eq!(r.ui.texts(APP)[0], "Solved!");
+}
+
+/// Lets the phone run for a while.
+fn pass(r: &mut Rig, time: Duration) {
+    let start = Instant::now();
+    while start.elapsed() < time {
+        std::thread::sleep(Duration::from_millis(5));
+        r.mgr.pump();
+    }
+    r.settle();
+}
+
+fn seconds(time: &str) -> u64 {
+    time.split(':').fold(0, |s, n| s * 60 + n.parse::<u64>().unwrap())
+}
+
+#[test]
+fn the_time_spent_is_shown_and_runs_while_the_puzzle_is_on_the_screen() {
+    let mut r = rig_with(Model::D60, WRONG);
+    r.launch(APP);
+    // What the file says, and then it goes on.
+    assert_eq!(seconds(&time_shown(&r)), 125);
+    pass(&mut r, Duration::from_millis(2100));
+    let shown = seconds(&time_shown(&r));
+    assert!((127..130).contains(&shown), "{shown}");
+    // It is the time the puzzle file gets.
+    let kept = |r: &Rig| -> u64 {
+        let file = file(r);
+        let ms = file.lines().find_map(|l| l.strip_prefix("elapsed="));
+        ms.expect("a time").parse().unwrap()
+    };
+    // Not while something else has the screen (e.g., a call) ...
+    r.ui.cover(APP, true);
+    r.settle();
+    let covered = kept(&r);
+    assert!((shown..shown + 2).contains(&(covered / 1000)), "{covered}");
+    pass(&mut r, Duration::from_millis(1200));
+    assert!(seconds(&time_shown(&r)) <= covered / 1000);
+    r.ui.cover(APP, false);
+    r.settle();
+    let back = seconds(&time_shown(&r));
+    assert!((covered / 1000..covered / 1000 + 2).contains(&back), "{back}");
+    // ... nor under the help, the list of sizes, or the best times, each
+    // of which gives the puzzle back with the time it had.
+    for (open, close) in [("Help", "Back"), ("New", "Back"), ("Scores", "Back")] {
+        let before = seconds(&time_shown(&r));
+        r.softkey(APP, open);
+        assert!(r.ui.texts(APP).iter().all(|t| !is_time(t)), "{open}");
+        pass(&mut r, Duration::from_millis(1200));
+        r.softkey(APP, close);
+        let after = seconds(&time_shown(&r));
+        assert!((before..before + 2).contains(&after), "{open}: {after}");
+    }
+    pass(&mut r, Duration::from_millis(1100));
+    assert!(seconds(&time_shown(&r)) > back);
+    // Undo and key 8 are moves like any other: the time goes on.
+    let before = seconds(&time_shown(&r));
+    r.key(APP, Key::Digit(8));
+    r.softkey(APP, "Undo");
+    assert!(seconds(&time_shown(&r)) >= before);
+    // A solved puzzle shows the time it took, which stands.
+    let mut r = rig_with(Model::D60, &almost(7, Difficulty::Easy, 5, 59_000));
+    solve(&mut r);
+    let texts = r.ui.texts(APP);
+    assert!(texts[1] == "Time 0:59" || texts[1] == "Time 1:00", "{texts:?}");
+    pass(&mut r, Duration::from_millis(1100));
+    assert_eq!(r.ui.texts(APP), texts);
+}
+
+#[test]
+fn a_solved_puzzles_time_is_on_every_phones_table_with_who_solved_it() {
+    let pbx = FakeStore::default();
+    let easy = Kind::new(7, Difficulty::Easy);
+    let mut alice = rig_on(
+        pbx.phone("101", "Alice"),
+        &almost(7, Difficulty::Easy, 5, 83_000),
+    );
+    let mut bob = rig_on(pbx.phone("102", "Bob"), "");
+
+    // Bob has no puzzle: the list of sizes, whose fourth softkey shows
+    // the table of the row.  Nobody has solved a puzzle yet.
+    bob.launch(APP);
+    assert_eq!(bob.ui.softkeys(APP), ["Play", "Help", "Exit", "Scores"]);
+    assert!(bob.app_data.watched().is_empty());
+    bob.softkey(APP, "Scores");
+    assert_eq!(
+        bob.ui.texts(APP),
+        ["Best times: 7x7 Easy", "No times yet."]
+    );
+    assert_eq!(bob.ui.softkeys(APP), ["Size", "Level", "Back"]);
+    assert_eq!(bob.app_data.watched(), [APP]);
+
+    // Alice solves hers.
+    solve(&mut alice);
+    let ms = table(&pbx, easy).rows()[0].ms;
+    assert_eq!(rows(&table(&pbx, easy)), [("101", "Alice", 83)]);
+    let time = lightup_game::scores::clock(ms);
+    assert_eq!(alice.ui.texts(APP), ["Solved!", &format!("Time {time}")]);
+    assert_eq!(waiting(&alice), "", "nothing waits");
+    // Only the table of that kind of puzzle was written.
+    for kind in Kind::all().filter(|k| *k != easy) {
+        assert!(table(&pbx, kind).rows().is_empty());
+    }
+
+    // Bob's phone, with the table on its screen, is told, and shows it.
+    let first = [("1. Alice".to_string(), time.clone())];
+    bob.settle();
+    assert_eq!(bob.ui.texts(APP), ["Best times: 7x7 Easy"]);
+    assert_eq!(bob.ui.items(APP), first);
+
+    // The fourth softkey of the solved puzzle: the table of its kind.
+    assert_eq!(alice.ui.softkeys(APP), ["New", "Help", "Exit", "Scores"]);
+    alice.softkey(APP, "Scores");
+    assert_eq!(alice.ui.texts(APP), ["Best times: 7x7 Easy"]);
+    assert_eq!(alice.ui.items(APP), first);
+    // The other kinds: the next size, the next difficulty, and left and
+    // right through all of them.
+    alice.softkey(APP, "Size");
+    assert_eq!(
+        alice.ui.texts(APP),
+        ["Best times: 10x10 Easy", "No times yet."]
+    );
+    alice.softkey(APP, "Level");
+    assert_eq!(alice.ui.texts(APP)[0], "Best times: 10x10 Medium");
+    alice.softkey(APP, "Level");
+    alice.softkey(APP, "Level");
+    assert_eq!(alice.ui.texts(APP)[0], "Best times: 10x10 Easy");
+    alice.key(APP, Key::Left);
+    assert_eq!(alice.ui.texts(APP)[0], "Best times: 7x7 Hard");
+    alice.softkey(APP, "Size");
+    alice.softkey(APP, "Size");
+    alice.softkey(APP, "Size");
+    assert_eq!(alice.ui.texts(APP)[0], "Best times: 7x7 Hard");
+    for _ in 0..7 {
+        alice.key(APP, Key::Right);
+    }
+    assert_eq!(alice.ui.texts(APP), ["Best times: 7x7 Easy"]);
+    assert_eq!(alice.ui.items(APP), first);
+    alice.key(APP, Key::Left);
+    assert_eq!(alice.ui.texts(APP)[0], "Best times: 14x14 Hard");
+    // Back, the softkey or Cancel, is the solved puzzle.
+    alice.softkey(APP, "Back");
+    assert_eq!(alice.ui.texts(APP), ["Solved!", &format!("Time {time}")]);
+    alice.softkey(APP, "Scores");
+    alice.key(APP, Key::Cancel);
+    assert_eq!(alice.ui.texts(APP), ["Solved!", &format!("Time {time}")]);
+    assert!(alice.mgr.is_running(APP));
+
+    // Bob goes back to the list, to the row he came from, and his phone
+    // no longer asks to be told.
+    bob.softkey(APP, "Level");
+    assert_eq!(bob.ui.texts(APP)[0], "Best times: 7x7 Medium");
+    bob.softkey(APP, "Back");
+    assert_eq!(bob.ui.texts(APP), ["New puzzle"]);
+    assert!(bob.app_data.watched().is_empty());
+    bob.softkey(APP, "Scores");
+    assert_eq!(bob.ui.texts(APP), ["Best times: 7x7 Easy"]);
+    bob.softkey(APP, "Back");
+    bob.softkey(APP, "Exit");
+
+    // He plays a puzzle of the same kind.  The fourth softkey while
+    // playing: the table, and back to the puzzle.
+    put_puzzle(&bob, &almost(7, Difficulty::Easy, 6, 125_000));
+    bob.launch(APP);
+    assert_eq!(bob.ui.softkeys(APP), SOFTKEYS);
+    bob.softkey(APP, "Scores");
+    assert_eq!(bob.ui.items(APP), first);
+    bob.softkey(APP, "Back");
+    assert_eq!(beside(&bob), PLAYING);
+    assert_eq!(bob.ui.softkeys(APP), SOFTKEYS);
+    // He solves it, in more time than Alice: the second row.
+    bob.key(APP, Key::Digit(1));
+    assert_eq!(bob.ui.texts(APP)[0], "Solved!");
+    assert_eq!(
+        rows(&table(&pbx, easy)),
+        [("101", "Alice", 83), ("102", "Bob", 125)]
+    );
+    alice.softkey(APP, "Scores");
+    assert_eq!(
+        alice.ui.items(APP),
+        [first[0].clone(), ("2. Bob".to_string(), "2:05".to_string())]
+    );
+    alice.softkey(APP, "Back");
+    alice.softkey(APP, "Exit");
+
+    // Alice again, slower than before: her row stays, and nothing waits.
+    put_puzzle(&alice, &almost(7, Difficulty::Easy, 7, 300_000));
+    solve(&mut alice);
+    assert_eq!(table(&pbx, easy).rows()[0].ms, ms);
+    assert_eq!(table(&pbx, easy).rows().len(), 2);
+    assert_eq!(waiting(&alice), "");
+    alice.softkey(APP, "Exit");
+    // And faster: her row has the better time.
+    put_puzzle(&alice, &almost(7, Difficulty::Easy, 8, 40_000));
+    solve(&mut alice);
+    assert_eq!(
+        rows(&table(&pbx, easy)),
+        [("101", "Alice", 40), ("102", "Bob", 125)]
+    );
+    // Bob's time on another size is in another table.
+    bob.softkey(APP, "Exit");
+    put_puzzle(&bob, &almost(10, Difficulty::Hard, 9, 600_000));
+    solve(&mut bob);
+    assert_eq!(
+        rows(&table(&pbx, Kind::new(10, Difficulty::Hard))),
+        [("102", "Bob", 600)]
+    );
+    assert_eq!(table(&pbx, easy).rows().len(), 2);
+}
+
+#[test]
+fn two_phones_that_finish_at_once_are_both_on_the_table() {
+    use dphone_apps::{Completion, PbxStore, StoreOp, StoreReply, StoreSignal, StoreUser};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    // Alice's phone reads the table to put her time in it; before its
+    // write arrives, Bob's phone writes the table with his.  A store that
+    // slips that write in:
+    struct Racing {
+        inner: FakeStore,
+        other: FakeStore,
+        raced: AtomicBool,
+    }
+    impl PbxStore for Racing {
+        fn request(&self, op: StoreOp, done: Completion<StoreReply>) {
+            if let StoreOp::Set { key, .. } = &op
+                && !self.raced.swap(true, Ordering::SeqCst)
+            {
+                let mut table = Table::default();
+                table.add(90_000, "102", "Bob");
+                let wrote = self.other.run(StoreOp::Set {
+                    app: APP.into(),
+                    scope: StoreScope::Shared,
+                    key: key.clone(),
+                    value: table.to_bytes(),
+                    expect: Some(0),
+                });
+                assert!(matches!(wrote, StoreReply::Stored(_)));
+            }
+            self.inner.request(op, done);
+        }
+        fn user(&self) -> Option<StoreUser> {
+            self.inner.user()
+        }
+        fn online(&self) -> bool {
+            self.inner.online()
+        }
+        fn watch(&self, apps: &[String]) {
+            self.inner.watch(apps)
+        }
+        fn subscribe(&self, f: Box<dyn Fn(StoreSignal) + Send + Sync>) {
+            self.inner.subscribe(f)
+        }
+    }
+    listen();
+    let pbx = FakeStore::default();
+    let alice_side = pbx.phone("101", "Alice");
+    let racing = Racing {
+        inner: alice_side.clone(),
+        other: pbx.phone("102", "Bob"),
+        raced: false.into(),
+    };
+    let mut alice = Rig::with_services(|mut services| {
+        services.store = std::sync::Arc::new(racing);
+        services
+    });
+    put_puzzle(&alice, &almost(7, Difficulty::Easy, 5, 83_000));
+    solve(&mut alice);
+    // Both are there: Alice's phone was shown Bob's table, and wrote
+    // hers over that one.
+    let easy = Kind::new(7, Difficulty::Easy);
+    assert_eq!(
+        rows(&table(&pbx, easy)),
+        [("101", "Alice", 83), ("102", "Bob", 90)]
+    );
+    let writes: Vec<Option<u64>> = alice_side
+        .ops()
+        .into_iter()
+        .filter_map(|op| match op {
+            StoreOp::Set { expect, .. } => Some(expect),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(writes.len(), 2, "one refused write and one over Bob's");
+    assert_eq!(writes[0], Some(0));
+    assert!(writes[1].is_some_and(|v| v > 0));
+    assert_eq!(waiting(&alice), "");
+    alice.softkey(APP, "Scores");
+    assert_eq!(alice.ui.items(APP).len(), 2);
+
+    // The same from both sides, with two phones and their apps: each
+    // solves, and each table has both, in the order of the times.
+    let pbx = FakeStore::default();
+    let mut carol = rig_on(
+        pbx.phone("103", "Carol"),
+        &almost(14, Difficulty::Medium, 3, 900_000),
+    );
+    let mut dan = rig_on(
+        pbx.phone("104", "Dan"),
+        &almost(14, Difficulty::Medium, 4, 800_000),
+    );
+    carol.launch(APP);
+    dan.launch(APP);
+    carol.ui.press(APP, Key::Digit(1));
+    dan.ui.press(APP, Key::Digit(1));
+    for _ in 0..4 {
+        carol.mgr.pump();
+        dan.mgr.pump();
+    }
+    carol.settle();
+    dan.settle();
+    assert_eq!(
+        rows(&table(&pbx, Kind::new(14, Difficulty::Medium))),
+        [("104", "Dan", 800), ("103", "Carol", 900)]
+    );
+}
+
+#[test]
+fn a_time_set_out_of_reach_is_kept_and_written_when_the_store_is_in_reach() {
+    let pbx = FakeStore::default();
+    let easy = Kind::new(7, Difficulty::Easy);
+    let mut alice = rig_on(
+        pbx.phone("101", "Alice"),
+        &almost(7, Difficulty::Easy, 5, 83_000),
+    );
+    // Bob's time is on the PBX, which Alice's phone cannot reach.
+    let mut theirs = Table::default();
+    theirs.add(70_000, "102", "Bob");
+    pbx.phone("102", "Bob").run(dphone_apps::StoreOp::Set {
+        app: APP.into(),
+        scope: StoreScope::Shared,
+        key: easy.key(),
+        value: theirs.to_bytes(),
+        expect: None,
+    });
+    alice.app_data.set_online(false);
+    solve(&mut alice);
+    let time = alice.ui.texts(APP)[1].strip_prefix("Time ").unwrap().to_string();
+    assert_eq!(seconds(&time), 83);
+    assert_eq!(rows(&table(&pbx, easy)), [("102", "Bob", 70)]);
+    // The time waits on the phone.
+    let kept = waiting(&alice);
+    assert!(kept.starts_with("7x7-easy 83") && kept.ends_with('\n'), "{kept}");
+    // The table says so, and has the time on this phone.
+    alice.softkey(APP, "Scores");
+    assert_eq!(alice.ui.texts(APP), ["Offline: 7x7 Easy"]);
+    assert_eq!(alice.ui.items(APP), [("1. Alice".to_string(), time.clone())]);
+    alice.softkey(APP, "Size");
+    assert_eq!(
+        alice.ui.texts(APP),
+        ["Offline: 10x10 Easy", "The PBX cannot be reached."]
+    );
+    alice.softkey(APP, "Back");
+    assert_eq!(alice.ui.texts(APP), ["Solved!", &format!("Time {time}")]);
+    alice.softkey(APP, "Scores");
+
+    // The PBX is in reach again: the time is written, with the times
+    // that were there, and the table on the screen is the PBX's.
+    alice.app_data.set_online(true);
+    alice.settle();
+    assert_eq!(
+        rows(&table(&pbx, easy)),
+        [("102", "Bob", 70), ("101", "Alice", 83)]
+    );
+    assert_eq!(waiting(&alice), "");
+    assert!(!storage(&alice.nvdata).join("times").exists());
+    assert_eq!(alice.ui.texts(APP), ["Best times: 7x7 Easy"]);
+    assert_eq!(
+        alice.ui.items(APP),
+        [
+            ("1. Bob".to_string(), "1:10".to_string()),
+            ("2. Alice".to_string(), time.clone())
+        ]
+    );
+
+    // Out of reach again, two puzzles of one kind and one of another are
+    // solved: the best of each kind waits.  The app is left, and the PBX
+    // comes in reach while it does not run.
+    alice.softkey(APP, "Back");
+    alice.softkey(APP, "Exit");
+    alice.app_data.set_online(false);
+    for (side, seed, elapsed) in [(7, 6, 60_000), (7, 7, 95_000), (10, 8, 400_000)] {
+        put_puzzle(&alice, &almost(side, Difficulty::Easy, seed, elapsed));
+        solve(&mut alice);
+        alice.softkey(APP, "Exit");
+        assert!(!alice.mgr.is_running(APP));
+    }
+    let kept = waiting(&alice);
+    let lines: Vec<&str> = kept.lines().collect();
+    assert_eq!(lines.len(), 2, "{kept}");
+    assert!(lines[0].starts_with("7x7-easy 60") && lines[1].starts_with("10x10-easy 400"));
+    alice.app_data.set_online(true);
+    alice.settle();
+    assert_eq!(table(&pbx, easy).rows().len(), 2);
+    assert_eq!(waiting(&alice), kept);
+    // When the app next starts, it writes them.
+    alice.launch(APP);
+    assert_eq!(
+        rows(&table(&pbx, easy)),
+        [("101", "Alice", 60), ("102", "Bob", 70)]
+    );
+    assert_eq!(
+        rows(&table(&pbx, Kind::new(10, Difficulty::Easy))),
+        [("101", "Alice", 400)]
+    );
+    assert_eq!(waiting(&alice), "");
+}
+
+#[test]
+fn a_phone_without_a_pbx_store_plays_as_ever_and_keeps_its_times() {
+    listen();
+    let mut r = Rig::with_services(|mut services| {
+        services.store = std::sync::Arc::new(dphone_apps::NoStore);
+        services
+    });
+    put_puzzle(&r, &almost(7, Difficulty::Easy, 5, 83_000));
+    r.launch(APP);
+    assert_eq!(beside(&r), PLAYING);
+    // The keys do what they do: a mark, off again, and the last light.
+    let (before, _) = state(&mut r);
+    r.key(APP, Key::Digit(3));
+    assert_ne!(state(&mut r).0, before);
+    r.key(APP, Key::Digit(3));
+    assert_eq!(state(&mut r).0, before);
+    r.key(APP, Key::Digit(1));
+    let texts = r.ui.texts(APP);
+    assert_eq!(texts[0], "Solved!");
+    assert_eq!(seconds(texts[1].strip_prefix("Time ").unwrap()), 83);
+    assert!(waiting(&r).starts_with("7x7-easy 83"));
+    // The table of this phone's times; it does not know its user's name.
+    r.softkey(APP, "Scores");
+    assert_eq!(r.ui.texts(APP), ["Offline: 7x7 Easy"]);
+    assert_eq!(r.ui.items(APP), [("1. You".to_string(), "1:23".to_string())]);
+    r.softkey(APP, "Level");
+    assert_eq!(
+        r.ui.texts(APP),
+        ["Offline: 7x7 Medium", "The PBX cannot be reached."]
+    );
+    r.softkey(APP, "Back");
+    assert_eq!(r.ui.texts(APP), texts);
+    // The time is still there when the app runs again, and a better one
+    // takes its place.
+    r.softkey(APP, "Exit");
+    put_puzzle(&r, &almost(7, Difficulty::Easy, 6, 50_000));
+    solve(&mut r);
+    assert!(waiting(&r).starts_with("7x7-easy 50"));
+    assert_eq!(waiting(&r).lines().count(), 1);
+    r.softkey(APP, "New");
+    assert_eq!(r.ui.texts(APP), ["New puzzle"]);
+    assert!(r.mgr.is_running(APP));
+}
+
+#[test]
+fn the_time_and_the_best_times_are_drawn_on_every_kind_of_display() {
+    let kind = Kind::new(10, Difficulty::Medium);
+    let players = [
+        ("107", "Priya Raman"),
+        ("101", "Alice Okafor"),
+        ("112", "Bartholomew Featherstonehaugh"),
+        ("104", "Dana Whitfield"),
+        ("103", "Chen Wei"),
+        ("110", "Front Desk"),
+        ("105", "Eli Navarro"),
+        ("121", "Sam"),
+        ("118", "Marta Kowalczyk"),
+        ("109", "Jo Lindqvist"),
+    ];
+    for model in [Model::D60, Model::D70, Model::D40] {
+        let pbx = FakeStore::default();
+        let mut table = Table::default();
+        for (n, (id, name)) in players.iter().enumerate() {
+            table.add(71_000 + 43_210 * (n * n) as u64, id, name);
+        }
+        pbx.run(dphone_apps::StoreOp::Set {
+            app: APP.into(),
+            scope: StoreScope::Shared,
+            key: kind.key(),
+            value: table.to_bytes(),
+            expect: None,
+        });
+        // Dana's phone, with a puzzle of that kind.
+        let mine = pbx.phone("104", "Dana Whitfield");
+        let puzzle = puzzle_file(10, Difficulty::Medium, 31, "play");
+        let mut p = Phone::on_pbx(model, &puzzle, &mine);
+        let area = model.app_content_area();
+        let board = Layout::new(area.width, area.height, 10).board_side as usize;
+        // The time goes on: every second the display is sent its new
+        // digits, beside the board, and nothing else.
+        p.steady();
+        let (before, masked) = (p.frame().0, p.pixels().0);
+        p.ticked = None;
+        p.steady();
+        let (now, width) = p.frame();
+        let differ: Vec<usize> = (0..now.len()).filter(|i| now[*i] != before[*i]).collect();
+        assert!(!differ.is_empty() && differ.len() < 400, "{model:?}");
+        assert!(differ.iter().all(|i| i % width > board), "{model:?}");
+        assert!(differ.iter().all(|i| p.in_time_box(*i, width)), "{model:?}");
+        let height = differ[differ.len() - 1] / width - differ[0] / width + 1;
+        assert!(height <= 25, "{model:?}: {height}");
+        // (The tests that compare pictures leave that place out.)
+        assert_eq!(p.pixels().0, masked, "{model:?}");
+        p.shot("timer");
+        let playing = p.pixels().0;
+
+        // The fourth softkey: the table of the puzzle's kind.
+        p.tap(&[Key::Soft(4)]);
+        p.shot("scores");
+        let shown = p.pixels().0;
+        assert_ne!(shown, playing, "{model:?}");
+        // Down the list.
+        p.tap(&[Key::Down, Key::Down, Key::Down, Key::Down, Key::Down, Key::Down]);
+        p.shot("scores-end");
+        assert_ne!(p.pixels().0, shown, "{model:?}");
+        // The next size, which nobody has solved.
+        p.tap(&[Key::Soft(1)]);
+        p.shot("scores-none");
+        let none = p.pixels().0;
+        // The next difficulty, with the PBX out of reach.
+        mine.set_online(false);
+        p.tap(&[Key::Soft(2)]);
+        p.shot("scores-offline");
+        assert_ne!(p.pixels().0, none, "{model:?}");
+        mine.set_online(true);
+        p.settle();
+        // Back, the third softkey: the puzzle and its time as they were.
+        p.tap(&[Key::Soft(3)]);
+        assert_eq!(p.pixels().0, playing, "{model:?}");
     }
 }
