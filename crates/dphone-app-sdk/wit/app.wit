@@ -180,10 +180,14 @@ interface types {
     idle-screen-show,
     /// The app's idle window left the screen.
     idle-screen-hide,
-    /// A key claimed with `ui.claim-keys`.  Names follow the phone's
-    /// key vocabulary: `0`..`9`, `*`, `#`, `up`, `down`, `left`, `right`,
-    /// `select`, `cancel`, `sk1`.., `line1`.., and so on.
+    /// A key claimed with `ui.claim-keys`, or any key under
+    /// `input.capture`.  Names follow the phone's key vocabulary: `0`..`9`,
+    /// `*`, `#`, `up`, `down`, `left`, `right`, `select`, `cancel`,
+    /// `sk1`.., `line1`.., and so on.
     key(string),
+    /// The handset was lifted (`true`) or put back (under
+    /// `input.capture`).
+    hook(bool),
     softkey(u32),
     widget(tuple<widget, widget-event>),
     timer(timer-id),
@@ -435,28 +439,50 @@ interface hotdesk {
   current-user: func() -> string;
 }
 
-/// Capability `diagnostics`: the phone's hardware tests and its own state.
+/// Capability `diagnostics`: the phone's own state.
 interface diagnostics {
-  enum hardware-test {
-    /// Full-screen patterns; any key shows the next one.
-    display,
-    /// The name of every key and hook change, as it happens.
-    keys,
-    /// Every lamp cycles through its colors.
-    lamps,
-  }
-  /// Put one of the phone's hardware test screens over the app.  A test
-  /// has the whole screen and every key, which an app's window never
-  /// has.  The app is in the background until the user leaves the test.
-  show-test: func(test: hardware-test);
-  /// Play the dial tone for two seconds.
-  play-test-tone: func();
   /// Every subsystem of the phone and its state: `ok`, `starting`,
   /// `stopped`, `degraded: <why>`, or `failed: <why>`.
   health: func() -> list<tuple<string, string>>;
   /// The newest log entries, newest first, at most `max` of them (and at
   /// most 100): `<source> <message>`.
   log-tail: func(max: u32) -> list<string>;
+}
+
+/// Capability `lamps`: the phone's lamps.  What an app sets holds while
+/// the app's window is on screen: under a call or another screen, and
+/// when the app has left, exited, or failed, every lamp shows what the
+/// phone shows there.
+interface lamps {
+  enum color { off, red, green, amber }
+  /// The lamps of this phone: `line1`.. (the line keys, from the top),
+  /// `blf1`.. (the rapid-dial keys, from the top), `message` (message
+  /// waiting), `mute`, `hdst`, and `spkr`.
+  names: func() -> list<string>;
+  /// Shows a color on a lamp in place of what the phone shows there.  A
+  /// name this phone does not have is ignored, and so is a color a lamp
+  /// does not have.
+  set: func(lamp: string, color: color);
+  /// Gives every lamp back to the phone.
+  release: func();
+}
+
+/// Capability `input`: every key and the hookswitch.
+interface input {
+  /// With `true`, every key press comes to the app as `event.key` while
+  /// the app's window is on screen, and every change of the hookswitch
+  /// as `event.hook`: also the keys an app's window never gets otherwise
+  /// (line key 1, the volume keys, `mute`, `spkr`, and `hdst`), the
+  /// softkeys, and the keys a widget would use.  The phone does nothing
+  /// of its own with them: no volume change, no softkey, and no dial
+  /// tone when the handset is lifted.  With `false`, keys go the usual
+  /// way again.
+  ///
+  /// The user can always leave: `cancel` three times in a row leaves the
+  /// app (the first two come to the app).  A call or a notice of the
+  /// phone comes over the app's window as over any other and has the
+  /// keys while it shows.
+  capture: func(on: bool);
 }
 
 /// Capability `canvas`: free drawing, for what the widgets cannot show
@@ -560,6 +586,8 @@ world app {
   import l10n;
   import hotdesk;
   import diagnostics;
+  import lamps;
+  import input;
   import canvas;
   export guest;
 }

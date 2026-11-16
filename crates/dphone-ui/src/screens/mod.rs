@@ -8,7 +8,8 @@ use crate::skin::Theme;
 use crate::strings as tr;
 use crate::widgets::{self, Edit, ListState};
 use crate::UiConfig;
-use dphone_state::{Command, Key, Model, State, Store};
+use dphone_hal::Lamp;
+use dphone_state::{Command, Key, LampColor, Model, State, Store};
 
 pub(crate) mod app;
 pub(crate) mod bluetooth;
@@ -152,9 +153,10 @@ pub(crate) trait Screen: Send {
     fn captures_all_keys(&self) -> bool {
         false
     }
-    /// While shown, the lamp driver cycles every lamp.
-    fn lamp_test(&self) -> bool {
-        false
+    /// Lamps that show these colors, in place of the phone's, while the
+    /// screen is the top screen.
+    fn lamps(&self) -> Vec<(Lamp, LampColor)> {
+        Vec::new()
     }
 }
 

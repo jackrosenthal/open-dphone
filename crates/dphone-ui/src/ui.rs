@@ -12,7 +12,7 @@ use crate::widgets;
 use dphone_hal::{Backlight, Blinker, Display, Hal, Input, InputEvent, Lamp, Lamps, Null, BLINK_TICK_MS};
 use dphone_state::{
     self as ds, clock, AudioPath, BlfState, CallId, CallState, Command, CommandError, Domain, Envelope, Event,
-    InputSource, Key, LampColor, LampState, LineKeyBinding, Model, Notice, Phase, ProvisionPhase, Reply, Store,
+    InputSource, Key, LampState, LineKeyBinding, Model, Notice, Phase, ProvisionPhase, Reply, Store,
     Subsystem, Topic, TopicSet, UpdatePhase, VolumeTarget,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -636,7 +636,6 @@ pub struct Ui {
     popup: Option<Popup>,
     notice_deadlines: Vec<(u64, u64)>,
     blinker: Blinker,
-    lamp_test: bool,
     light: Light,
     /// The panels are on and lit: the first frame has been drawn.  Until
     /// then nothing is written to the panels or the backlight.
@@ -723,7 +722,6 @@ impl Ui {
             popup: None,
             notice_deadlines: Vec::new(),
             blinker: Blinker::new(),
-            lamp_test: false,
             light: Light::On,
             lit: false,
             level: 0,
@@ -1018,15 +1016,6 @@ impl Ui {
                     Err(e) => Err(CommandError::Failed(e.to_string())),
                 }
             }
-            // A hardware test goes over whatever shows (the Diagnostics
-            // app), which is there again when the test is left.
-            Command::ShowScreen { name } if crate::screens::diag::test_screen(&name).is_some() => {
-                self.activity();
-                if let Some(test) = crate::screens::diag::test_screen(&name) {
-                    self.with_cx(|nav, cx| nav.push(cx, test));
-                }
-                Ok(Reply::Done)
-            }
             Command::ShowScreen { name } => {
                 let screen: Option<Option<Box<dyn Screen>>> = match name.as_str() {
                     "idle" | "home" => Some(None),
@@ -1065,16 +1054,12 @@ impl Ui {
 
     fn sync_lamps(&mut self) {
         let keys = self.store.get::<ds::Keys>();
-        let test = self.nav.top_ref().lamp_test();
-        if test {
-            let (now, _) = self.now();
-            let color = [LampColor::Red, LampColor::Green, LampColor::Amber, LampColor::Off][(now / 500 % 4) as usize];
-            for lamp in self.lamps.lamps() {
-                self.blinker.set(lamp, LampState::solid(color));
-            }
-        } else {
-            for lamp in self.lamps.lamps() {
-                let state = match lamp {
+        // The lamps the top screen (an app) sets show its colors.
+        let own = self.nav.top_ref().lamps();
+        for lamp in self.lamps.lamps() {
+            let state = match own.iter().find(|(l, _)| *l == lamp) {
+                Some((_, color)) => Some(LampState::solid(*color)),
+                None => match lamp {
                     Lamp::Line(i) => keys.line_keys.iter().find(|k| k.index == i).map(|k| k.lamp),
                     Lamp::Blf(i) => {
                         keys.rapid_dial.iter().find(|k| k.index == i && k.page == keys.rapid_page).map(|k| k.lamp)
@@ -1083,11 +1068,10 @@ impl Ui {
                     Lamp::Mute => Some(keys.mute_lamp),
                     Lamp::Headset => Some(keys.headset_lamp),
                     Lamp::Speaker => Some(keys.speaker_lamp),
-                };
-                self.blinker.set(lamp, state.unwrap_or(LampState::OFF));
-            }
+                },
+            };
+            self.blinker.set(lamp, state.unwrap_or(LampState::OFF));
         }
-        self.lamp_test = test;
         let _ = self.blinker.tick(clock::mono_ms(), self.lamps.as_mut());
     }
 
@@ -1364,7 +1348,7 @@ impl Ui {
         if self.idle_views.len() > 1 {
             add(Some(self.idle_turn_ms));
         }
-        if self.blinker.needs_ticks() || self.lamp_test {
+        if self.blinker.needs_ticks() {
             add(Some(now + BLINK_TICK_MS));
         }
         if self.fixed_time.is_none() {

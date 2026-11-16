@@ -927,37 +927,99 @@ fn an_app_can_keep_the_backlight_on() {
     assert_eq!(sim.brightness(Screen::Main), Some(32), "and woken");
 }
 
-/// A hardware test goes over the app that asked for it (the Diagnostics
-/// app) and gives the screen back to it; the menu has no diagnostics entry.
+/// A view that captures input gets every key and hookswitch change, and
+/// the phone does nothing of its own with them; Cancel three times in a
+/// row still leaves the app.  The phone has no test screens of its own.
 #[test]
-fn hardware_tests_go_over_an_app() {
+fn a_capturing_app_gets_every_key_and_the_hook() {
     let mut r = Rig::new(Model::D60);
     let (view, events) = AppView::new("diagnostics", Model::D60);
     r.ui.handle().open_app(view.clone());
     r.ui.pump();
-    assert_eq!(r.screen(), "app:diagnostics");
     assert_eq!(events.try_recv(), Some(AppEvent::Foreground));
-    for (name, leave) in [("key_test", vec![Key::Cancel, Key::Cancel]), ("lamp_test", vec![Key::Select]), ("display_test", vec![Key::Cancel])] {
+    let key = |key| Some(AppEvent::Key { widget: None, key });
+
+    // Without capture the phone keeps these.
+    r.tap(Key::VolumeUp);
+    assert_eq!(events.try_recv(), None);
+    assert!(matches!(r.audio_cmds()[..], [Command::AdjustVolume { .. }]));
+
+    view.set_capture(true);
+    for k in [Key::VolumeUp, Key::Line(1), Key::Mute, Key::Speaker, Key::Soft(1), Key::Digit(5), Key::Cancel, Key::Cancel, Key::Hold] {
+        r.tap(k);
+        assert_eq!(events.try_recv(), key(k));
+    }
+    r.hook(true);
+    assert_eq!(events.try_recv(), Some(AppEvent::Hook { off_hook: true }));
+    r.hook(false);
+    assert_eq!(events.try_recv(), Some(AppEvent::Hook { off_hook: false }));
+    assert_eq!(r.screen(), "app:diagnostics");
+    assert_eq!((r.audio_cmds(), r.call_cmds()), (vec![], vec![]), "the phone did nothing with them");
+
+    // Cancel, Cancel, Cancel: the third leaves the app.
+    r.tap(Key::Cancel);
+    r.tap(Key::Cancel);
+    assert_eq!(r.screen(), "app:diagnostics");
+    r.tap(Key::Cancel);
+    assert_eq!(r.screen(), "idle");
+    assert_eq!(events.try_recv(), key(Key::Cancel));
+    assert_eq!(events.try_recv(), key(Key::Cancel));
+    assert_eq!(events.try_recv(), Some(AppEvent::Background));
+
+    // Under another screen the view captures nothing, and without
+    // capture keys go the usual way again.
+    r.tap(Key::VolumeUp);
+    assert_eq!(events.try_recv(), None);
+    r.ui.handle().open_app(view.clone());
+    r.ui.pump();
+    assert_eq!(events.try_recv(), Some(AppEvent::Foreground));
+    view.set_capture(false);
+    r.tap(Key::Line(1));
+    assert_eq!(r.screen(), "idle");
+
+    for name in ["key_test", "lamp_test", "display_test", "diagnostics"] {
         let p = r.store.send(Command::ShowScreen { name: name.into() });
         r.ui.pump();
-        assert_eq!(p.wait(), Ok(Reply::Done));
-        assert_eq!(r.screen(), name);
-        assert_eq!(events.try_recv(), Some(AppEvent::Background));
-        // The key test takes every key, Line 1 included.
-        if name == "key_test" {
-            r.tap(Key::Line(1));
-            assert_eq!(r.screen(), name);
-        }
-        for key in leave {
-            r.tap(key);
-        }
-        assert_eq!(r.screen(), "app:diagnostics", "{name}");
-        assert_eq!(events.try_recv(), Some(AppEvent::Foreground));
+        assert!(p.wait().is_err(), "{name}");
     }
-    // The old menu is gone.
-    let p = r.store.send(Command::ShowScreen { name: "diagnostics".into() });
+}
+
+/// The lamps an app's view sets show its colors while the view is the
+/// top screen, and the phone's otherwise.
+#[test]
+fn an_app_sets_lamps_while_it_is_on_screen() {
+    use dphone_hal::Lamp;
+    use dphone_state::{Keys, LampColor, LampState};
+    let mut r = Rig::new(Model::D60);
+    r.store.update::<Keys, _>(|k| k.message_lamp = LampState::solid(LampColor::Red));
     r.ui.pump();
-    assert!(p.wait().is_err());
+    assert_eq!(r.sim.lamp(Lamp::Message), LampColor::Red);
+
+    let (view, _events) = AppView::new("diagnostics", Model::D60);
+    view.set_lamp(Lamp::Message, LampColor::Green);
+    view.set_lamp(Lamp::Line(0), LampColor::Amber);
+    r.ui.pump();
+    assert_eq!(r.sim.lamp(Lamp::Message), LampColor::Red, "the view is not on screen");
+
+    r.ui.handle().open_app(view.clone());
+    r.ui.pump();
+    assert_eq!((r.sim.lamp(Lamp::Message), r.sim.lamp(Lamp::Line(0))), (LampColor::Green, LampColor::Amber));
+    assert_eq!(r.sim.lamp(Lamp::Speaker), LampColor::Off);
+    // A change shows without a key.
+    view.set_lamp(Lamp::Line(0), LampColor::Off);
+    r.ui.pump();
+    assert_eq!(r.sim.lamp(Lamp::Line(0)), LampColor::Off);
+
+    // Released, or off the screen: the phone's lamps.
+    view.release_lamps();
+    r.ui.pump();
+    assert_eq!(r.sim.lamp(Lamp::Message), LampColor::Red);
+    view.set_lamp(Lamp::Message, LampColor::Green);
+    r.ui.pump();
+    assert_eq!(r.sim.lamp(Lamp::Message), LampColor::Green);
+    r.ui.handle().close_app("diagnostics");
+    r.ui.pump();
+    assert_eq!(r.sim.lamp(Lamp::Message), LampColor::Red);
 }
 
 #[test]

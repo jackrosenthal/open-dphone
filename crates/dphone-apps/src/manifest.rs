@@ -46,10 +46,12 @@ pub enum Capability {
     Canvas,
     Hotdesk,
     Diagnostics,
+    Lamps,
+    Input,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 14] = [
+    pub const ALL: [Capability; 16] = [
         Capability::Ui,
         Capability::Timers,
         Capability::Storage,
@@ -64,6 +66,8 @@ impl Capability {
         Capability::Canvas,
         Capability::Hotdesk,
         Capability::Diagnostics,
+        Capability::Lamps,
+        Capability::Input,
     ];
 
     pub fn name(self) -> &'static str {
@@ -82,6 +86,8 @@ impl Capability {
             Capability::Canvas => "canvas",
             Capability::Hotdesk => "hotdesk",
             Capability::Diagnostics => "diagnostics",
+            Capability::Lamps => "lamps",
+            Capability::Input => "input",
         }
     }
 

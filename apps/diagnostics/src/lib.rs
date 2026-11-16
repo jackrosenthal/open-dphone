@@ -1,11 +1,9 @@
 //! Diagnostics: the display, key, lamp, and tone tests, the state of the
-//! phone's subsystems, and its log.  The three hardware tests are the
-//! phone's own screens, which have the whole display and every key; this
-//! app is the menu that leads to them, and the two status pages.
+//! phone's subsystems, and its log.
 
-use dphone_app_sdk::Align;
-use dphone_app_sdk::diagnostics::{self, HardwareTest};
+use dphone_app_sdk::canvas::{self, Bitmap, Color, Op, Role, Text};
 use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::{Align, Font, diagnostics, input, lamps};
 
 const SK_SELECT: u32 = 1;
 const SK_BACK: u32 = 4;
@@ -23,6 +21,48 @@ const ITEMS: [&str; 6] = [
 const LOG_ENTRIES: u32 = 40;
 /// How often a status page is brought up to date.
 const REFRESH_MS: u32 = 1000;
+
+/// The patterns of the display test, in order.
+const PATTERNS: u8 = 6;
+/// The line of the last pattern, in every font.
+const SAMPLE: &str = "Open DPhone 0123456789 AaBbGgQq";
+/// The key test shows this many of the newest keys.
+const KEYS_SHOWN: usize = 24;
+/// How long every lamp shows a color.
+const LAMP_STEP_MS: u32 = 500;
+const LAMP_COLORS: [lamps::Color; 4] = [
+    lamps::Color::Red,
+    lamps::Color::Green,
+    lamps::Color::Amber,
+    lamps::Color::Off,
+];
+
+/// The test tone: the dial tone (350 Hz and 440 Hz, each at -13 dBm0) for
+/// two seconds.
+const TONE_HZ: [usize; 2] = [350, 440];
+const TONE_AMPLITUDE: f32 = 5110.0;
+const TONE_SECONDS: usize = 2;
+/// The sample rate of a headerless sound.
+const SAMPLE_RATE: usize = 16_000;
+/// The tone repeats after this many samples: both frequencies are whole
+/// multiples of 10 Hz.
+const TONE_PERIOD: usize = SAMPLE_RATE / 10;
+
+const BLACK: Color = gray(0x00);
+const DARK_GRAY: Color = gray(0x55);
+const WHITE: Color = gray(0xFF);
+
+const fn gray(level: u8) -> Color {
+    Color {
+        r: level,
+        g: level,
+        b: level,
+    }
+}
+
+const fn rgb(r: u8, g: u8, b: u8) -> Color {
+    Color { r, g, b }
+}
 
 #[derive(Clone, Copy, PartialEq)]
 enum Info {
@@ -62,6 +102,22 @@ enum Page {
         values: Vec<Widget>,
         rows: Vec<(String, String)>,
     },
+    /// Full-screen patterns; any key shows the next one.
+    Display {
+        pattern: u8,
+    },
+    /// The name of every key and hook change, as it happens.
+    Keys {
+        text: Widget,
+        /// The newest names, oldest first.
+        names: Vec<String>,
+        /// Presses of Cancel in a row.
+        cancels: u8,
+    },
+    /// Every lamp cycles through its colors.
+    Lamps {
+        step: usize,
+    },
 }
 
 #[derive(Default)]
@@ -76,6 +132,127 @@ fn blank() -> Softkey {
     Softkey::new(SK_NONE, "")
 }
 
+/// The space left and right of text.
+fn inset(m: &dphone_app_sdk::Metrics) -> u16 {
+    if m.color { 15 } else { 4 }
+}
+
+/// A rectangle's four edges, one pixel wide.
+fn frame(ops: &mut Vec<Op>, x: i16, y: i16, w: u16, h: u16, color: Color) {
+    let (right, bottom) = (x + w as i16 - 1, y + h as i16 - 1);
+    ops.push(Op::Fill((Rect::new(x, y, w, 1), color)));
+    ops.push(Op::Fill((Rect::new(x, bottom, w, 1), color)));
+    ops.push(Op::Fill((Rect::new(x, y, 1, h), color)));
+    ops.push(Op::Fill((Rect::new(right, y, 1, h), color)));
+}
+
+/// Every other pixel of every other row, over the whole display: a
+/// bitmap is at most 256 pixels each way, so the display takes several.
+fn checkerboard(ops: &mut Vec<Op>, w: u16, h: u16) {
+    const TILE: u16 = 256;
+    for top in (0..h).step_by(TILE as usize) {
+        for left in (0..w).step_by(TILE as usize) {
+            let (width, height) = ((w - left).min(TILE), (h - top).min(TILE));
+            let row_bytes = (width as usize).div_ceil(8);
+            let mut row = vec![0xAA_u8; row_bytes];
+            if width % 8 != 0 {
+                row[row_bytes - 1] &= 0xFF << (8 - width % 8);
+            }
+            let mut bits = Vec::with_capacity(row_bytes * height as usize);
+            for y in 0..height {
+                if y % 2 == 0 {
+                    bits.extend_from_slice(&row);
+                } else {
+                    bits.resize(bits.len() + row_bytes, 0);
+                }
+            }
+            ops.push(Op::Bitmap(Bitmap {
+                x: left as i16,
+                y: top as i16,
+                width,
+                height,
+                scale: 1,
+                color: BLACK,
+                bits,
+            }));
+        }
+    }
+}
+
+/// One pattern of the display test, for a display of this size.
+fn pattern(which: u8, w: u16, h: u16, color: bool) -> Vec<Op> {
+    let all = Rect::new(0, 0, w, h);
+    let mut ops = Vec::new();
+    match which {
+        0 => ops.push(Op::Fill((all, WHITE))),
+        1 => ops.push(Op::Fill((all, BLACK))),
+        2 => {
+            // Color bars, or the four grays.
+            let bars: &[Color] = if color {
+                &[
+                    rgb(255, 0, 0),
+                    rgb(0, 255, 0),
+                    rgb(0, 0, 255),
+                    rgb(255, 255, 0),
+                    rgb(0, 255, 255),
+                    rgb(255, 0, 255),
+                    WHITE,
+                    BLACK,
+                ]
+            } else {
+                &[BLACK, DARK_GRAY, gray(0xAA), WHITE]
+            };
+            let bar = w / bars.len() as u16;
+            for (i, c) in bars.iter().enumerate() {
+                ops.push(Op::Fill((Rect::new((i as u16 * bar) as i16, 0, bar + 1, h), *c)));
+            }
+        }
+        3 => {
+            // Single pixels: a stuck column or row shows.
+            ops.push(Op::Fill((all, WHITE)));
+            checkerboard(&mut ops, w, h);
+        }
+        4 => {
+            // The edges of the display, and its middle.
+            ops.push(Op::Fill((all, WHITE)));
+            frame(&mut ops, 0, 0, w, h, BLACK);
+            frame(&mut ops, 4, 4, w - 8, h - 8, DARK_GRAY);
+            ops.push(Op::Fill((Rect::new(0, (h / 2) as i16, w, 1), BLACK)));
+            ops.push(Op::Fill((Rect::new((w / 2) as i16, 0, 1, h), BLACK)));
+        }
+        _ => {
+            // Every font of the skin.
+            ops.push(Op::Fill((all, canvas::theme_color(Role::Background))));
+            let fg = canvas::theme_color(Role::Foreground);
+            let mut y = 4;
+            for font in [Font::Small, Font::Normal, Font::Bold, Font::Title, Font::Large] {
+                let size = canvas::text_size(font, SAMPLE);
+                ops.push(Op::Text(Text {
+                    box_: Rect::new(4, y, size.width, size.height),
+                    font,
+                    color: fg,
+                    text: SAMPLE.to_string(),
+                }));
+                y += (size.height + size.height / 2) as i16;
+            }
+        }
+    }
+    ops
+}
+
+/// The test tone as a headerless sound: 16-bit little-endian samples.
+/// One period is worked out, and repeated.
+fn tone() -> Vec<u8> {
+    let step = TONE_HZ.map(|hz| core::f32::consts::TAU * hz as f32 / SAMPLE_RATE as f32);
+    let mut period = Vec::with_capacity(TONE_PERIOD * 2);
+    for i in 0..TONE_PERIOD {
+        let t = i as f32;
+        let sample = TONE_AMPLITUDE * ((t * step[0]).sin() + (t * step[1]).sin());
+        period.extend_from_slice(&(sample as i16).to_le_bytes());
+    }
+    period.repeat(SAMPLE_RATE * TONE_SECONDS / TONE_PERIOD)
+}
+
 impl Diagnostics {
     fn stop_timer(&mut self) {
         if let Some(t) = self.timer.take() {
@@ -83,8 +260,23 @@ impl Diagnostics {
         }
     }
 
-    fn show_menu(&mut self) {
+    /// Gives back what a test took: the whole display, the keys, and the
+    /// lamps.
+    fn end_test(&mut self) {
         self.stop_timer();
+        match self.page {
+            Page::Display { .. } => {
+                input::capture(false);
+                ui::set_full_screen(false);
+            }
+            Page::Keys { .. } => input::capture(false),
+            Page::Lamps { .. } => lamps::release(),
+            _ => {}
+        }
+    }
+
+    fn show_menu(&mut self) {
+        self.end_test();
         let r = screen("Diagnostics");
         // As in the phone's own menus: Right selects, and a digit selects
         // the row of that number.
@@ -115,7 +307,7 @@ impl Diagnostics {
         ui::claim_keys(ROOT, &["cancel", "left", "select"].map(String::from));
         let scroll = ui::create(WidgetKind::Scroll, ROOT, r);
         let m = ui::get_metrics();
-        let inset: u16 = if m.color { 15 } else { 4 };
+        let inset = inset(&m);
         let width = r.width.saturating_sub(2 * inset + m.scroll_bar_width);
         let mut values = Vec::with_capacity(rows.len());
         for (i, (label, value)) in rows.iter().enumerate() {
@@ -182,26 +374,178 @@ impl Diagnostics {
         *rows = now;
     }
 
+    /// A pattern of the display test on the whole display.  Every key is
+    /// the test's, so that any key shows the next pattern.
+    fn show_display(&mut self, pattern_index: u8) {
+        ui::clear(ROOT);
+        ui::set_full_screen(true);
+        input::capture(true);
+        let m = ui::get_metrics();
+        let picture = canvas::create(ROOT, Rect::new(0, 0, m.width, m.height));
+        if let Err(e) = canvas::draw(picture, &pattern(pattern_index, m.width, m.height, m.color)) {
+            dphone_app_sdk::log_warn(&format!("the display test could not draw: {e}"));
+        }
+        self.page = Page::Display {
+            pattern: pattern_index,
+        };
+    }
+
+    /// The key test, showing `names`.
+    fn show_keys(&mut self, names: Vec<String>) {
+        let r = screen("Key test");
+        input::capture(true);
+        let m = ui::get_metrics();
+        let inset = inset(&m);
+        let width = r.width.saturating_sub(2 * inset);
+        let hint = ui::create(
+            WidgetKind::Text,
+            ROOT,
+            Rect::new(inset as i16, r.y, width, m.line_height),
+        );
+        ui::set_font(hint, Font::Small);
+        ui::set_text(hint, "Cancel twice to exit");
+        let text = ui::create(
+            WidgetKind::Text,
+            ROOT,
+            Rect::new(
+                inset as i16,
+                r.y + m.line_height as i16,
+                width,
+                r.height.saturating_sub(m.line_height),
+            ),
+        );
+        ui::set_wrap(text, true);
+        ui::set_text(text, &names.join(" "));
+        self.page = Page::Keys {
+            text,
+            names,
+            cancels: 0,
+        };
+    }
+
+    /// A key (`key`) or a hook change in the key test.  Cancel twice in a
+    /// row leaves the test.
+    fn key_tested(&mut self, name: String, key: bool) {
+        let Page::Keys {
+            text,
+            names,
+            cancels,
+        } = &mut self.page
+        else {
+            return;
+        };
+        if key {
+            *cancels = if name == "cancel" { *cancels + 1 } else { 0 };
+            if *cancels >= 2 {
+                return self.show_menu();
+            }
+        }
+        names.push(name);
+        if names.len() > KEYS_SHOWN {
+            names.remove(0);
+        }
+        ui::set_text(*text, &names.join(" "));
+    }
+
+    /// The lamp test: every lamp shows the color of `step`.
+    fn show_lamps(&mut self, step: usize) {
+        ui::clear(ROOT);
+        ui::claim_keys(ROOT, &["cancel", "select"].map(String::from));
+        let m = ui::get_metrics();
+        let inset = inset(&m);
+        let width = m.width.saturating_sub(2 * inset);
+        let top = (m.height.saturating_sub(3 * m.line_height) / 2) as i16;
+        let title = ui::create(
+            WidgetKind::Text,
+            ROOT,
+            Rect::new(inset as i16, top, width, m.line_height),
+        );
+        ui::set_font(title, Font::Title);
+        ui::set_align(title, Align::Center);
+        ui::set_text(title, "Lamp test");
+        let text = ui::create(
+            WidgetKind::Text,
+            ROOT,
+            Rect::new(inset as i16, top + m.line_height as i16, width, m.line_height),
+        );
+        ui::set_align(text, Align::Center);
+        ui::set_text(text, "Cycling all lamps");
+        ui::set_softkeys(
+            ROOT,
+            &[blank(), blank(), blank(), Softkey::new(SK_BACK, "Back")],
+        );
+        self.light(step);
+        if self.timer.is_none() {
+            self.timer = Some(timers::set(LAMP_STEP_MS, true));
+        }
+    }
+
+    fn light(&mut self, step: usize) {
+        let color = LAMP_COLORS[step % LAMP_COLORS.len()];
+        for lamp in lamps::names() {
+            lamps::set(&lamp, color);
+        }
+        self.page = Page::Lamps { step };
+    }
+
     fn activate(&mut self, row: u32) {
         self.selected = row;
-        let test = match row {
-            0 => HardwareTest::Display,
-            1 => HardwareTest::Keys,
-            2 => HardwareTest::Lamps,
-            3 => return diagnostics::play_test_tone(),
-            4 => return self.show_info(Info::Health),
-            5 => return self.show_info(Info::Log),
-            _ => return,
-        };
-        // The test covers this app; it is still here when the test ends.
-        runtime::set_exit_after_background(false);
-        diagnostics::show_test(test);
+        match row {
+            0 => self.show_display(0),
+            1 => self.show_keys(Vec::new()),
+            2 => self.show_lamps(0),
+            3 => {
+                if let Err(e) = audio::play(&tone(), 0) {
+                    dphone_app_sdk::log_warn(&format!("the test tone could not play: {e:?}"));
+                }
+            }
+            4 => self.show_info(Info::Health),
+            5 => self.show_info(Info::Log),
+            _ => {}
+        }
     }
 
     fn back(&mut self) {
         match self.page {
-            Page::Info { .. } => self.show_menu(),
-            _ => runtime::background(),
+            Page::Menu { .. } | Page::None => runtime::background(),
+            _ => self.show_menu(),
+        }
+    }
+
+    /// The page the app was on, drawn anew.
+    fn show_again(&mut self) {
+        match std::mem::take(&mut self.page) {
+            Page::Info { which, .. } => self.show_info(which),
+            Page::Display { pattern } => self.show_display(pattern),
+            Page::Keys { names, .. } => self.show_keys(names),
+            Page::Lamps { step } => self.show_lamps(step),
+            Page::Menu { .. } | Page::None => self.show_menu(),
+        }
+    }
+
+    fn key(&mut self, name: String) {
+        match &self.page {
+            // Cancel leaves the test, and so does any key after the last
+            // pattern.
+            Page::Display { pattern } => {
+                if name == "cancel" || pattern + 1 >= PATTERNS {
+                    self.show_menu();
+                } else {
+                    let next = pattern + 1;
+                    self.show_display(next);
+                }
+            }
+            Page::Keys { .. } => self.key_tested(name, true),
+            Page::Menu { list } if name == "right" => {
+                let row = ui::selected(*list);
+                self.activate(row);
+            }
+            Page::Menu { list } if name.len() == 1 && name != "0" => {
+                let row = u32::from(name.as_bytes()[0] - b'1');
+                ui::set_selected(*list, row);
+                self.activate(row);
+            }
+            _ => self.back(),
         }
     }
 }
@@ -211,15 +555,12 @@ impl App for Diagnostics {
 
     fn handle(&mut self, event: Event) {
         match event {
-            Event::Foreground => {
-                runtime::set_exit_after_background(true);
-                match self.page {
-                    Page::Info { which, .. } => self.show_info(which),
-                    _ => self.show_menu(),
-                }
-            }
+            Event::Foreground => self.show_again(),
             Event::Background => self.stop_timer(),
-            Event::Timer(_) => self.refresh(),
+            Event::Timer(_) => match self.page {
+                Page::Lamps { step } => self.light(step + 1),
+                _ => self.refresh(),
+            },
             Event::Widget((_, WidgetEvent::Highlighted(row))) => self.selected = row,
             Event::Widget((_, WidgetEvent::Activated(row))) => self.activate(row),
             Event::Softkey(SK_SELECT) => {
@@ -228,18 +569,11 @@ impl App for Diagnostics {
                 }
             }
             Event::Softkey(SK_BACK) => self.back(),
-            Event::Key(k) => match (&self.page, k.as_str()) {
-                (Page::Menu { list }, "right") => {
-                    let row = ui::selected(*list);
-                    self.activate(row);
-                }
-                (Page::Menu { list }, digit) if digit.len() == 1 && digit != "0" => {
-                    let row = u32::from(digit.as_bytes()[0] - b'1');
-                    ui::set_selected(*list, row);
-                    self.activate(row);
-                }
-                _ => self.back(),
-            },
+            Event::Key(name) => self.key(name),
+            Event::Hook(off_hook) => {
+                let name = if off_hook { "hook-up" } else { "hook-down" };
+                self.key_tested(name.to_string(), false);
+            }
             _ => {}
         }
     }

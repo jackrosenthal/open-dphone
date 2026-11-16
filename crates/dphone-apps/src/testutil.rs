@@ -48,6 +48,10 @@ pub struct Win {
     pub draws: u32,
     /// The window has the whole display.
     pub full_screen: bool,
+    /// The window takes every key and hookswitch change.
+    pub capture: bool,
+    /// The lamps the app set, each with its color.
+    pub lamps: BTreeMap<Lamp, dphone_state::LampColor>,
     events: VecDeque<WindowEvent>,
     wake: Option<Arc<dyn Fn() + Send + Sync>>,
 }
@@ -196,6 +200,26 @@ impl FakeUi {
     }
 
     /// How many times the app has drawn on a canvas.
+    /// Whether the app's window takes every key and hookswitch change.
+    pub fn captures(&self, app: &str) -> bool {
+        self.with(app, |w| w.capture)
+    }
+
+    /// The lamps the app has set: (name, color), in the phone's order.
+    pub fn lamps(&self, app: &str) -> Vec<(String, dphone_state::LampColor)> {
+        self.with(app, |w| w.lamps.iter().map(|(l, c)| (l.name(), *c)).collect())
+    }
+
+    /// Lifts the handset or puts it back; the app hears of it only while
+    /// its window captures input.
+    pub fn hook(&self, app: &str, off_hook: bool) {
+        self.with(app, |w| {
+            if w.capture {
+                w.push(WindowEvent::Hook(off_hook));
+            }
+        })
+    }
+
     pub fn draw_count(&self, app: &str) -> u32 {
         self.with(app, |w| w.draws)
     }
@@ -316,7 +340,7 @@ impl FakeUi {
     /// keys.
     pub fn press(&self, app: &str, key: Key) {
         self.with(app, |w| {
-            if w.claimed(key) {
+            if w.capture || w.claimed(key) {
                 w.push(WindowEvent::Key(key));
                 return;
             }
@@ -456,6 +480,17 @@ impl AppWindow for FakeWindow {
     }
     fn set_full_screen(&mut self, on: bool) {
         self.with(|w| w.full_screen = on)
+    }
+    fn capture_input(&mut self, on: bool) {
+        self.with(|w| w.capture = on)
+    }
+    fn set_lamp(&mut self, lamp: Lamp, color: dphone_state::LampColor) {
+        self.with(|w| {
+            w.lamps.insert(lamp, color);
+        })
+    }
+    fn release_lamps(&mut self) {
+        self.with(|w| w.lamps.clear())
     }
     fn create(&mut self, kind: WidgetKind, parent: Option<u32>, bounds: Rect) -> u32 {
         self.add(kind, parent, bounds, false)

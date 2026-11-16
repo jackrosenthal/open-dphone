@@ -50,8 +50,8 @@ pub use bindings::dphone::app::types::{
     WidgetEvent, WidgetKind,
 };
 pub use bindings::dphone::app::{
-    audio, calls, canvas, config, diagnostics, events, hotdesk, http, l10n, pbx, presence, runtime,
-    storage, timers, ui,
+    audio, calls, canvas, config, diagnostics, events, hotdesk, http, input, l10n, lamps, pbx,
+    presence, runtime, storage, timers, ui,
 };
 
 /// A widget handle.

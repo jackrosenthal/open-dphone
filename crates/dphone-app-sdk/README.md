@@ -137,7 +137,9 @@ Each interface of the phone except `runtime` is a capability, and each is a modu
 | `audio` | Playing a sound file. |
 | `l10n` | The locale, common words, and the text of dates and times. |
 | `hotdesk` | Changing which user the phone is provisioned for. |
-| `diagnostics` | The phone's hardware tests and its own state. |
+| `diagnostics` | The phone's own state: its subsystems and its log. |
+| `lamps` | The phone's lamps, while the app is on screen. |
+| `input` | Every key and the hookswitch, while the app is on screen and asks for them. |
 
 `runtime` (logging, leaving the screen, exiting, random numbers) is not a capability: every app has it.
 

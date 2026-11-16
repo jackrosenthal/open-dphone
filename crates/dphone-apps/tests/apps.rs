@@ -626,79 +626,155 @@ fn calendar_without_a_set_clock() {
 
 #[test]
 fn diagnostics_menu_tests_and_status_pages() {
-    use dphone_state::{Domain, HealthStatus, Level, Reply, Subsystem, Tone};
+    use dphone_apps::DrawOp;
+    use dphone_state::{Domain, HealthStatus, LampColor, Level, Reply, Subsystem};
+    const APP: &str = "diagnostics";
     let mut r = rig();
-    for domain in [Domain::Ui, Domain::Audio] {
-        common::answer_commands(&r.store, domain, r.commands.clone(), |_| Ok(Reply::Done));
-    }
-    // Commands are answered on another thread: wait for the `n`th.
-    let shown = |r: &Rig, n: usize| -> Vec<String> {
-        let names = |r: &Rig| -> Vec<String> { show_screen_names(r) };
-        for _ in 0..200 {
-            if names(r).len() >= n {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-        names(r)
-    };
-    fn show_screen_names(r: &Rig) -> Vec<String> {
-        r.commands()
-            .into_iter()
-            .filter_map(|c| match c {
-                Command::ShowScreen { name } => Some(name),
-                _ => None,
-            })
-            .collect()
-    }
-    r.launch("diagnostics");
-    let items: Vec<String> = r.ui.items("diagnostics").into_iter().map(|i| i.0).collect();
+    common::answer_commands(&r.store, Domain::Audio, r.commands.clone(), |_| Ok(Reply::Done));
+    r.launch(APP);
+    let items: Vec<String> = r.ui.items(APP).into_iter().map(|i| i.0).collect();
     assert_eq!(
         items,
         ["Display test", "Key test", "Lamp test", "Tone test", "Subsystems", "Log"]
     );
-    assert_eq!(r.ui.softkeys("diagnostics"), ["Select", "", "", "Back"]);
+    let menu = ["Select", "", "", "Back"];
+    assert_eq!(r.ui.softkeys(APP), menu);
+    assert!(!r.ui.captures(APP) && r.ui.lamps(APP).is_empty());
 
-    // A hardware test is the phone's own screen over the app, which stays
-    // and is at the same row afterwards.
-    r.key("diagnostics", Key::Down);
-    r.key("diagnostics", Key::Select);
-    assert_eq!(shown(&r, 1), ["key_test"]);
-    r.ui.cover("diagnostics", true);
+    // The key test is the app's: it takes every key and the hook, and
+    // shows their names.  Cancel twice in a row leaves it, for the menu
+    // at the same row.
+    r.key(APP, Key::Down);
+    r.key(APP, Key::Select);
+    assert!(r.ui.captures(APP) && !r.ui.full_screen(APP));
+    assert_eq!(r.ui.texts(APP), ["Key test", "Cancel twice to exit", ""]);
+    for key in [Key::Line(1), Key::VolumeUp, Key::Cancel, Key::Soft(2), Key::Cancel] {
+        r.key(APP, key);
+    }
+    r.ui.hook(APP, true);
+    r.ui.hook(APP, false);
     r.settle();
-    assert!(r.mgr.is_running("diagnostics"));
-    r.ui.cover("diagnostics", false);
-    r.settle();
-    assert_eq!(r.ui.softkeys("diagnostics"), ["Select", "", "", "Back"]);
-    r.softkey("diagnostics", "Select");
-    assert_eq!(shown(&r, 2), ["key_test", "key_test"]);
-    r.ui.cover("diagnostics", true);
-    r.ui.cover("diagnostics", false);
-    r.settle();
-    // Right and the row's number select, as in the phone's menus.
-    r.key("diagnostics", Key::Up);
-    r.key("diagnostics", Key::Right);
-    r.key("diagnostics", Key::Digit(3));
-    assert_eq!(shown(&r, 4)[2..], ["display_test", "lamp_test"]);
-    r.ui.cover("diagnostics", true);
-    r.ui.cover("diagnostics", false);
-    r.settle();
+    assert_eq!(r.ui.texts(APP)[2], "line1 vup cancel sk2 cancel hook-up hook-down");
+    // The newest 24 show.
+    for _ in 0..12 {
+        r.key(APP, Key::Digit(7));
+        r.key(APP, Key::Mute);
+    }
+    assert_eq!(r.ui.texts(APP)[2], ["7 mute"; 12].join(" "));
+    r.key(APP, Key::Cancel);
+    assert!(r.ui.captures(APP));
+    r.key(APP, Key::Cancel);
+    assert!(!r.ui.captures(APP));
+    assert_eq!(r.ui.softkeys(APP), menu);
+    r.softkey(APP, "Select");
+    assert_eq!(r.ui.texts(APP)[0], "Key test");
+    r.key(APP, Key::Cancel);
+    r.key(APP, Key::Cancel);
+    assert!(r.mgr.is_running(APP));
 
-    r.key("diagnostics", Key::Digit(4));
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    assert!(r.commands().iter().any(|c| matches!(
-        c,
-        Command::PlayTone {
-            tone: Tone::Dial,
-            duration_ms: 2000
+    // The display test: six patterns on the whole display, the next one
+    // at any key, and the menu after the last.  Right selects, as in the
+    // phone's menus.
+    r.key(APP, Key::Up);
+    r.key(APP, Key::Right);
+    let pattern = |r: &Rig| -> Vec<DrawOp> {
+        let mut drawings = r.ui.drawings(APP);
+        assert_eq!(drawings.len(), 1);
+        let (bounds, ops) = drawings.remove(0);
+        assert_eq!((bounds.width, bounds.height), (480, 272));
+        ops
+    };
+    let fills = |ops: &[DrawOp]| ops.iter().filter(|o| matches!(o, DrawOp::Fill(_))).count();
+    assert!(r.ui.captures(APP) && r.ui.full_screen(APP));
+    assert!(matches!(&pattern(&r)[..], [DrawOp::Fill((all, c))] if all.width == 480 && all.height == 272 && (c.r, c.g, c.b) == (255, 255, 255)));
+    r.key(APP, Key::VolumeDown);
+    assert!(matches!(&pattern(&r)[..], [DrawOp::Fill((_, c))] if (c.r, c.g, c.b) == (0, 0, 0)));
+    r.key(APP, Key::Line(1));
+    assert_eq!(fills(&pattern(&r)), 8, "eight color bars");
+    r.key(APP, Key::Select);
+    // Every other pixel of every other row, in bitmaps of at most 256
+    // pixels each way.
+    let ops = pattern(&r);
+    let bitmaps: Vec<_> = ops
+        .iter()
+        .filter_map(|o| match o {
+            DrawOp::Bitmap(b) => Some((b.x, b.y, b.width, b.height, b.bits[0], b.bits[b.width as usize / 8])),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        bitmaps,
+        [(0, 0, 256, 256, 0xAA, 0), (256, 0, 224, 256, 0xAA, 0), (0, 256, 256, 16, 0xAA, 0), (256, 256, 224, 16, 0xAA, 0)]
+    );
+    r.key(APP, Key::Digit(0));
+    assert_eq!(fills(&pattern(&r)), 11, "two frames and a cross");
+    r.key(APP, Key::Soft(4));
+    let texts = pattern(&r).iter().filter(|o| matches!(o, DrawOp::Text(t) if t.text.starts_with("Open DPhone"))).count();
+    assert_eq!(texts, 5, "a line in every font");
+    r.ui.hook(APP, true);
+    r.settle();
+    assert!(r.ui.full_screen(APP), "the hook is not a key");
+    r.key(APP, Key::Hold);
+    assert!(!r.ui.captures(APP) && !r.ui.full_screen(APP));
+    assert_eq!(r.ui.softkeys(APP), menu);
+    // Cancel leaves it at any pattern; the row's number selects.
+    r.key(APP, Key::Digit(1));
+    r.key(APP, Key::Star);
+    assert!(r.ui.full_screen(APP));
+    r.key(APP, Key::Cancel);
+    assert!(!r.ui.captures(APP) && !r.ui.full_screen(APP));
+
+    // The lamp test: every lamp of the phone, a color every half second.
+    r.key(APP, Key::Digit(3));
+    assert_eq!(r.ui.texts(APP), ["Lamp test", "Cycling all lamps"]);
+    assert_eq!(r.ui.softkeys(APP), ["", "", "", "Back"]);
+    assert!(!r.ui.captures(APP));
+    let names: Vec<String> = dphone_apps::Lamp::for_model(dphone_state::Model::D60).into_iter().map(|l| l.name()).collect();
+    assert_eq!(names, ["line1", "line2", "line3", "line4", "line5", "line6", "message", "mute", "hdst", "spkr"]);
+    let all = |color: LampColor| -> Vec<(String, LampColor)> { names.iter().map(|n| (n.clone(), color)).collect() };
+    assert_eq!(r.ui.lamps(APP), all(LampColor::Red));
+    for color in [LampColor::Green, LampColor::Amber, LampColor::Off, LampColor::Red] {
+        let wait = r.mgr.pump().expect("the next color is pending");
+        assert!(wait <= std::time::Duration::from_millis(500));
+        std::thread::sleep(wait + std::time::Duration::from_millis(20));
+        r.settle();
+        assert_eq!(r.ui.lamps(APP), all(color));
+    }
+    r.key(APP, Key::Select);
+    assert!(r.ui.lamps(APP).is_empty(), "the lamps are the phone's again");
+    assert_eq!(r.ui.softkeys(APP), menu);
+    assert_eq!(r.mgr.pump(), None, "and nothing is pending");
+    r.softkey(APP, "Select");
+    assert_eq!(r.ui.lamps(APP), all(LampColor::Red));
+    r.softkey(APP, "Back");
+    assert!(r.ui.lamps(APP).is_empty());
+
+    // The tone test: two seconds of dial tone, which the app makes.
+    r.key(APP, Key::Digit(4));
+    let played: Vec<Command> = r.commands().into_iter().filter(|c| matches!(c, Command::PlayData { .. })).collect();
+    let [Command::PlayData { sound, start_secs: 0, app }] = &played[..] else { panic!("{played:?}") };
+    assert_eq!(app, APP);
+    let samples: Vec<i16> = sound.0.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)).collect();
+    assert_eq!(samples.len(), 2 * 16_000);
+    // 350 Hz and 440 Hz at -13 dBm0 each, and nothing at, e.g., 620 Hz.
+    let level = |hz: f64| -> f64 {
+        let (mut re, mut im) = (0.0, 0.0);
+        for (i, s) in samples[..16_000].iter().enumerate() {
+            let t = std::f64::consts::TAU * hz * i as f64 / 16_000.0;
+            re += f64::from(*s) * t.cos();
+            im += f64::from(*s) * t.sin();
         }
-    )));
+        (re * re + im * im).sqrt() / 8000.0
+    };
+    assert!((level(350.0) - 5110.0).abs() < 60.0 && (level(440.0) - 5110.0).abs() < 60.0);
+    assert!(level(620.0) < 30.0);
 
     // The subsystems page follows the phone's state while it shows.
     r.store.set_health(Subsystem::Net, HealthStatus::Ok);
     r.store
         .set_health(Subsystem::Media, HealthStatus::Degraded("no handset".into()));
     r.key("diagnostics", Key::Digit(5));
+    assert!(!r.ui.captures(APP));
     let texts = r.ui.texts("diagnostics");
     assert_eq!(texts[0], "Subsystems");
     assert_eq!(texts.len(), 1 + 2 * Subsystem::ALL.len());

@@ -360,6 +360,17 @@ pub(crate) fn dispatch(view: &AppView, key: Key, now_ms: u64) -> Dispatch {
 }
 
 fn dispatch_locked(tree: &mut Tree, key: Key, now_ms: u64, events: &mut Vec<AppEvent>) -> Dispatch {
+    if tree.capture {
+        // Every key is the app's, but the user can always leave: Cancel
+        // three times in a row.
+        tree.cancels = if key == Key::Cancel { tree.cancels + 1 } else { 0 };
+        if tree.cancels >= 3 {
+            tree.cancels = 0;
+            return Dispatch::Background;
+        }
+        events.push(AppEvent::Key { widget: None, key });
+        return Dispatch::Consumed;
+    }
     match key {
         Key::Line(1) => return Dispatch::Background,
         Key::VolumeUp | Key::VolumeDown | Key::Mute | Key::Speaker | Key::Headset => return Dispatch::Ignored,

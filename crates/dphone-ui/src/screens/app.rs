@@ -58,6 +58,19 @@ impl Screen for AppScreen {
             Dispatch::Background => Nav::Home,
         }
     }
+    fn captures_all_keys(&self) -> bool {
+        self.view.batch_quiet().capture
+    }
+    fn hook(&mut self, _cx: &Cx, off_hook: bool) -> Nav {
+        if !self.captures_all_keys() {
+            return Nav::Ignored;
+        }
+        self.view.push_event(AppEvent::Hook { off_hook });
+        Nav::Stay
+    }
+    fn lamps(&self) -> Vec<(Lamp, LampColor)> {
+        self.view.batch_quiet().lamps()
+    }
     fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
         self.view.take_dirty();
         let mut tree = self.view.batch_quiet();

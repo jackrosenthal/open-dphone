@@ -1014,6 +1014,7 @@ impl AppManager {
                 return;
             }
             WindowEvent::Key(k) => wit::Event::Key(key_name(k)),
+            WindowEvent::Hook(off_hook) => wit::Event::Hook(off_hook),
             WindowEvent::Softkey(id) => wit::Event::Softkey(id),
             WindowEvent::Highlighted { widget, row } => {
                 wit::Event::Widget((widget | bit, wit::WidgetEvent::Highlighted(row)))

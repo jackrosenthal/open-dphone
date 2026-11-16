@@ -192,11 +192,7 @@ pub const TIME: &str = "Time";
 pub const NOT_SET: &str = "Not set";
 pub const LAST_REBOOT: &str = "Last restart";
 pub const PROVISIONING: &str = "Provisioning";
-pub const TEST_KEYS: &str = "Key test";
-pub const TEST_LAMPS: &str = "Lamp test";
 pub const HEALTH: &str = "Subsystems";
-pub const PRESS_KEYS: &str = "Press keys; hold Cancel to exit";
-pub const LAMPS_CYCLING: &str = "Cycling all lamps";
 
 // Paging.
 pub const PAGING_TITLE: &str = "Paging";

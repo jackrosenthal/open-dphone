@@ -10,8 +10,44 @@ pub use crate::host::bindings::dphone::app::canvas::{
 pub use crate::host::bindings::dphone::app::types::{
     Align, Font, InputMode, ListItem, Metrics, Rect, Size, Skin, Softkey, WidgetKind,
 };
-use dphone_state::Key;
+use dphone_state::{Key, LampColor, Model};
 use std::sync::Arc;
+
+/// A lamp of the phone, as apps name it.  Line and rapid-dial lamps count
+/// from 0 at the top (`line1` is `Lamp::Line(0)`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Lamp {
+    Line(u8),
+    Blf(u8),
+    /// Message waiting.
+    Message,
+    Mute,
+    Headset,
+    Speaker,
+}
+
+impl Lamp {
+    /// The lamps of a model.
+    pub fn for_model(model: Model) -> Vec<Lamp> {
+        let mut v: Vec<Lamp> = (0..model.line_lamps()).map(Lamp::Line).collect();
+        v.extend((0..model.blf_lamps()).map(Lamp::Blf));
+        v.extend([Lamp::Message, Lamp::Mute, Lamp::Headset, Lamp::Speaker]);
+        v
+    }
+
+    /// The name of the lamp in the app interface: that of its key, where
+    /// it is in one.
+    pub fn name(self) -> String {
+        match self {
+            Lamp::Line(i) => format!("line{}", u16::from(i) + 1),
+            Lamp::Blf(i) => format!("blf{}", u16::from(i) + 1),
+            Lamp::Message => "message".into(),
+            Lamp::Mute => "mute".into(),
+            Lamp::Headset => "hdst".into(),
+            Lamp::Speaker => "spkr".into(),
+        }
+    }
+}
 
 /// Which of an app's two possible windows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -29,8 +65,12 @@ pub enum WindowEvent {
     Foreground,
     /// The window stopped being the top screen.
     Background,
-    /// A claimed key was pressed.
+    /// A claimed key was pressed, or any key while the window captures
+    /// input.
     Key(Key),
+    /// The handset was lifted (`true`) or put back while the window
+    /// captures input.
+    Hook(bool),
     Softkey(u32),
     Highlighted {
         widget: u32,
@@ -89,6 +129,14 @@ pub trait AppWindow: Send {
     /// Gives the window the whole display, with no softkey bar, or the
     /// usual area again; [`AppWindow::metrics`] follows.
     fn set_full_screen(&mut self, _on: bool) {}
+    /// Gives the window every key and hookswitch change while it is on
+    /// screen, or the usual key handling again.
+    fn capture_input(&mut self, _on: bool) {}
+    /// Shows a color on a lamp, in place of the phone's, while the window
+    /// is on screen.
+    fn set_lamp(&mut self, _lamp: Lamp, _color: LampColor) {}
+    /// Gives every lamp back to the phone.
+    fn release_lamps(&mut self) {}
     /// A color of the skin (capability `canvas`).
     fn theme_color(&self, _role: ColorRole) -> Color {
         Color { r: 0, g: 0, b: 0 }

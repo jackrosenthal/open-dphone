@@ -4,10 +4,10 @@
 
 use crate::manifest::{Capability, Manifest};
 use crate::services::{APP_VISIBLE_SETTINGS, Completion, HttpRequest, PbxRequest, Services};
-use crate::view::AppWindow;
+use crate::view::{AppWindow, Lamp};
 use dphone_state::{
     AccountId, AudioPath, BlfState, Call, CallId, CallState as StCallState, Command, Direction,
-    Key, PresenceStatus, Reply, Store,
+    Key, LampColor, PresenceStatus, Reply, Store,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -1073,21 +1073,6 @@ impl api::hotdesk::Host for AppCtx {
 }
 
 impl api::diagnostics::Host for AppCtx {
-    fn show_test(&mut self, test: api::diagnostics::HardwareTest) {
-        use api::diagnostics::HardwareTest;
-        let name = match test {
-            HardwareTest::Display => "display_test",
-            HardwareTest::Keys => "key_test",
-            HardwareTest::Lamps => "lamp_test",
-        };
-        self.store.post(Command::ShowScreen { name: name.into() });
-    }
-    fn play_test_tone(&mut self) {
-        self.store.post(Command::PlayTone {
-            tone: dphone_state::Tone::Dial,
-            duration_ms: 2000,
-        });
-    }
     fn health(&mut self) -> Vec<(String, String)> {
         use dphone_state::HealthStatus;
         let health = self.store.get::<dphone_state::Health>();
@@ -1113,6 +1098,37 @@ impl api::diagnostics::Host for AppCtx {
             .rev()
             .map(|e| format!("{} {}", e.target, e.message))
             .collect()
+    }
+}
+
+impl api::lamps::Host for AppCtx {
+    fn names(&mut self) -> Vec<String> {
+        Lamp::for_model(self.store.model())
+            .into_iter()
+            .map(Lamp::name)
+            .collect()
+    }
+    fn set(&mut self, lamp: String, color: api::lamps::Color) {
+        use api::lamps::Color;
+        let color = match color {
+            Color::Off => LampColor::Off,
+            Color::Red => LampColor::Red,
+            Color::Green => LampColor::Green,
+            Color::Amber => LampColor::Amber,
+        };
+        let lamps = Lamp::for_model(self.store.model());
+        if let Some(lamp) = lamps.into_iter().find(|l| l.name() == lamp) {
+            self.window.set_lamp(lamp, color);
+        }
+    }
+    fn release(&mut self) {
+        self.window.release_lamps();
+    }
+}
+
+impl api::input::Host for AppCtx {
+    fn capture(&mut self, on: bool) {
+        self.window.capture_input(on);
     }
 }
 
@@ -1207,6 +1223,8 @@ pub(crate) fn link(
             Capability::Canvas => api::canvas::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Hotdesk => api::hotdesk::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Diagnostics => api::diagnostics::add_to_linker::<_, H>(linker, |c| c)?,
+            Capability::Lamps => api::lamps::add_to_linker::<_, H>(linker, |c| c)?,
+            Capability::Input => api::input::add_to_linker::<_, H>(linker, |c| c)?,
         }
     }
     Ok(())

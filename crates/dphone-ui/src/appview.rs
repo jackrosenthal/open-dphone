@@ -56,9 +56,18 @@
 //! gets [`AppEvent::Key`] and the key is consumed.  Unclaimed keys get the
 //! built-in behavior above; an unclaimed `Cancel` sends
 //! [`AppEvent::CloseRequested`] (the host decides whether to background or
-//! exit).  Keys an app can never see: `Line(1)` backgrounds the app (stock
-//! rule for nonprivileged apps), and the audio keys, hook, and volume keys
-//! always go to the phone.
+//! exit).  Keys a view does not get this way: `Line(1)` backgrounds the app
+//! (stock rule for nonprivileged apps), and the audio keys, hook, and
+//! volume keys go to the phone.
+//!
+//! **Capture.**  With [`AppView::set_capture`] the view gets every key
+//! press as [`AppEvent::Key`] (those keys too, and the softkeys) and every
+//! hookswitch change as [`AppEvent::Hook`] while it is the top screen, and
+//! the phone does nothing of its own with them.  `Cancel` three times in a
+//! row still backgrounds the app.
+//!
+//! **Lamps.**  A lamp set with [`AppView::set_lamp`] shows that color in
+//! place of the phone's while the view is the top screen.
 //!
 //! **Softkeys** are owned by widgets.  The bar shows the set of the nearest
 //! widget, walking up from the focused one, that has softkeys set
@@ -81,7 +90,8 @@
 //! repaint.  [`AppView::batch`] holds the lock across several calls so the
 //! UI never paints a half-built screen.
 
-use dphone_state::{Key, Model, Skin};
+pub use dphone_hal::Lamp;
+use dphone_state::{Key, LampColor, Model, Skin};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -398,6 +408,8 @@ pub enum AppEvent {
     /// A claimed key was pressed.  `widget` is the claimant (`None`: the
     /// window).
     Key { widget: Option<WidgetId>, key: Key },
+    /// The handset was lifted or put back (under capture).
+    Hook { off_hook: bool },
     /// A softkey action was pressed.
     Softkey { id: u32 },
     /// The list selection moved (by the user).
@@ -510,6 +522,12 @@ pub struct Tree {
     pub(crate) background: Color,
     /// The view has the whole screen; there is no softkey bar.
     pub(crate) full_screen: bool,
+    /// The view takes every key and hookswitch change.
+    pub(crate) capture: bool,
+    /// Presses of `Cancel` in a row under capture.
+    pub(crate) cancels: u8,
+    /// The lamps the view sets, each with its color.
+    pub(crate) lamps: Vec<(Lamp, LampColor)>,
     /// Multi-tap state of the focused input (see `crate::input`).
     pub(crate) multitap: crate::multitap::MultiTap,
 }
@@ -528,6 +546,9 @@ impl Tree {
             softkey_page: 0,
             background: Color::Default,
             full_screen: false,
+            capture: false,
+            cancels: 0,
+            lamps: Vec::new(),
             multitap: Default::default(),
         }
     }
@@ -640,6 +661,31 @@ impl Tree {
     }
     pub fn full_screen(&self) -> bool {
         self.full_screen
+    }
+    /// Gives the view every key and hookswitch change while it is the top
+    /// screen, or the usual key dispatch again.
+    pub fn set_capture(&mut self, on: bool) {
+        self.capture = on;
+        self.cancels = 0;
+    }
+    pub fn capture(&self) -> bool {
+        self.capture
+    }
+    /// Shows a color on a lamp, in place of the phone's, while the view is
+    /// the top screen.
+    pub fn set_lamp(&mut self, lamp: Lamp, color: LampColor) {
+        match self.lamps.iter_mut().find(|(l, _)| *l == lamp) {
+            Some(e) => e.1 = color,
+            None => self.lamps.push((lamp, color)),
+        }
+    }
+    /// Gives every lamp back to the phone.
+    pub fn release_lamps(&mut self) {
+        self.lamps.clear();
+    }
+    /// The lamps the view sets.
+    pub fn lamps(&self) -> Vec<(Lamp, LampColor)> {
+        self.lamps.clone()
     }
     /// Background of the whole content area.
     pub fn set_background(&mut self, color: Color) {
@@ -926,6 +972,9 @@ impl AppView {
         fn set_colors(&self, id: WidgetId, fg: Color, bg: Color);
         fn set_border(&self, id: WidgetId, on: bool);
         fn set_full_screen(&self, on: bool);
+        fn set_capture(&self, on: bool);
+        fn set_lamp(&self, lamp: Lamp, color: LampColor);
+        fn release_lamps(&self);
         fn set_background(&self, color: Color);
         fn set_text(&self, id: WidgetId, text: &str);
         fn text(&self, id: WidgetId) -> Option<String>;

@@ -230,6 +230,23 @@ impl AppWindow for UiWindow {
     fn set_full_screen(&mut self, on: bool) {
         self.view.set_full_screen(on);
     }
+    fn capture_input(&mut self, on: bool) {
+        self.view.set_capture(on);
+    }
+    fn set_lamp(&mut self, lamp: Lamp, color: dphone_state::LampColor) {
+        let lamp = match lamp {
+            Lamp::Line(i) => tk::Lamp::Line(i),
+            Lamp::Blf(i) => tk::Lamp::Blf(i),
+            Lamp::Message => tk::Lamp::Message,
+            Lamp::Mute => tk::Lamp::Mute,
+            Lamp::Headset => tk::Lamp::Headset,
+            Lamp::Speaker => tk::Lamp::Speaker,
+        };
+        self.view.set_lamp(lamp, color);
+    }
+    fn release_lamps(&mut self) {
+        self.view.release_lamps();
+    }
     fn theme_color(&self, role: ColorRole) -> Color {
         let (r, g, b) = self.view.theme_color(match role {
             ColorRole::Background => tk::ThemeColor::Background,
@@ -299,6 +316,7 @@ impl AppWindow for UiWindow {
                 AppEvent::Foreground => WindowEvent::Foreground,
                 AppEvent::Background => WindowEvent::Background,
                 AppEvent::Key { key, .. } => WindowEvent::Key(key),
+                AppEvent::Hook { off_hook } => WindowEvent::Hook(off_hook),
                 AppEvent::Softkey { id } => WindowEvent::Softkey(id),
                 AppEvent::ListSelected { widget, row } => WindowEvent::Highlighted {
                     widget: widget.0,
