@@ -473,11 +473,7 @@ impl Entry {
 
     fn from_json(v: &Value) -> Option<Entry> {
         let author = v.get("author");
-        let author_text = |name: &str| {
-            author
-                .and_then(|a| text(a, name))
-                .unwrap_or_default()
-        };
+        let author_text = |name: &str| author.and_then(|a| text(a, name)).unwrap_or_default();
         Some(Entry {
             key: text(v, "key")?,
             value: un_b64(v.get("value")?.as_str()?)?,
@@ -572,9 +568,7 @@ impl Response {
                     more: v.get("more").and_then(Value::as_bool).unwrap_or(false),
                 }
             }
-            "stored" => Outcome::Stored(
-                optional_entry(&v)?.ok_or("the response has no `entry`")?,
-            ),
+            "stored" => Outcome::Stored(optional_entry(&v)?.ok_or("the response has no `entry`")?),
             "removed" => Outcome::Removed,
             "conflict" => Outcome::Conflict(optional_entry(&v)?),
             "error" => Outcome::Error {

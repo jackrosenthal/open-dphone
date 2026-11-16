@@ -91,8 +91,8 @@ impl Session {
             types::VERIFY_REQUEST,
             types::APP_DATA_REQUEST,
         ]
-            .iter()
-            .any(|t| t.eq_ignore_ascii_case(request_type));
+        .iter()
+        .any(|t| t.eq_ignore_ascii_case(request_type));
         Request {
             request_type: request_type.into(),
             mac: self.mac.clone(),

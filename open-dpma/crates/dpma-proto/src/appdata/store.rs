@@ -139,7 +139,12 @@ fn record(e: &Entry) -> String {
 
 fn parse_record(key: &str, text: &str) -> Option<Entry> {
     let v: Value = serde_json::from_str(text).ok()?;
-    let s = |name: &str| v.get(name).and_then(Value::as_str).unwrap_or_default().to_string();
+    let s = |name: &str| {
+        v.get(name)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
     Some(Entry {
         key: key.to_string(),
         value: un_b64(v.get("d")?.as_str()?)?,
@@ -188,12 +193,7 @@ fn holds(expect: Option<u64>, current: Option<&Entry>) -> bool {
 /// Returns the answer, and the change to tell the watching phones of the
 /// tenant about, if there is one.  `hello` changes only the watch list
 /// ([`set_watch`]) and is answered here as it is.
-pub fn apply(
-    b: &mut impl Backend,
-    who: &Who,
-    op: &Op,
-    now: u64,
-) -> (Outcome, Option<Change>) {
+pub fn apply(b: &mut impl Backend, who: &Who, op: &Op, now: u64) -> (Outcome, Option<Change>) {
     let (app, scope, key) = match op {
         Op::Hello { .. } => return (Outcome::Hello, None),
         Op::Get { app, scope, key }
@@ -238,7 +238,8 @@ pub fn apply(
                 if !e.key.starts_with(prefix.as_str()) || e.key.as_str() <= after.as_str() {
                     continue;
                 }
-                if out.len() >= LIST_MAX || (!out.is_empty() && bytes + e.value.len() > LIST_BYTES_MAX)
+                if out.len() >= LIST_MAX
+                    || (!out.is_empty() && bytes + e.value.len() > LIST_BYTES_MAX)
                 {
                     more = true;
                     break;
@@ -260,7 +261,10 @@ pub fn apply(
             if old.is_none() && entries(b, &dir).len() >= scope.keys_max() {
                 return error(ErrorCode::Limit, "the app has as many keys as it may");
             }
-            let seq = b.get("seq").and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+            let seq = b
+                .get("seq")
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0);
             let version = seq.max(old.as_ref().map_or(0, |e| e.version)) + 1;
             let entry = Entry {
                 key: key.clone(),
@@ -387,7 +391,13 @@ mod tests {
                 other => panic!("{other:?}"),
             }
         }
-        fn list(&self, b: &mut MemoryBackend, scope: Scope, prefix: &str, after: &str) -> (Vec<String>, bool) {
+        fn list(
+            &self,
+            b: &mut MemoryBackend,
+            scope: Scope,
+            prefix: &str,
+            after: &str,
+        ) -> (Vec<String>, bool) {
             match self
                 .run(
                     b,
@@ -420,7 +430,10 @@ mod tests {
         let mut b = MemoryBackend::default();
         let (alice, bob) = (Phone::new("", "alice"), Phone::new("", "bob"));
         let e = stored(alice.set(&mut b, Scope::Shared, "best", b"53", None));
-        assert_eq!((e.author_id.as_str(), e.author_name.as_str()), ("alice", "User alice"));
+        assert_eq!(
+            (e.author_id.as_str(), e.author_name.as_str()),
+            ("alice", "User alice")
+        );
         assert_eq!(e.modified, 1000);
         assert_eq!(bob.get(&mut b, Scope::Shared, "best"), Some(e));
         stored(alice.set(&mut b, Scope::User, "level", b"7", None));
@@ -448,14 +461,20 @@ mod tests {
         let shouting = Phone::new("NORTH", "dave");
         let none = Phone::new("", "erin");
         stored(north.set(&mut b, Scope::Shared, "best", b"n", None));
-        assert_eq!(north2.get(&mut b, Scope::Shared, "best").unwrap().value, b"n");
+        assert_eq!(
+            north2.get(&mut b, Scope::Shared, "best").unwrap().value,
+            b"n"
+        );
         for other in [&south, &shouting, &none] {
             assert_eq!(other.get(&mut b, Scope::Shared, "best"), None);
             assert_eq!(other.list(&mut b, Scope::Shared, "", ""), (vec![], false));
         }
         stored(south.set(&mut b, Scope::Shared, "best", b"s", Some(0)));
         stored(none.set(&mut b, Scope::Shared, "best", b"0", Some(0)));
-        assert_eq!(north.get(&mut b, Scope::Shared, "best").unwrap().value, b"n");
+        assert_eq!(
+            north.get(&mut b, Scope::Shared, "best").unwrap().value,
+            b"n"
+        );
         assert_eq!(none.get(&mut b, Scope::Shared, "best").unwrap().value, b"0");
         // A user's keys are the tenant's too.
         stored(north.set(&mut b, Scope::User, "level", b"3", None));
@@ -472,7 +491,13 @@ mod tests {
         let second = bob.set(&mut b, Scope::Shared, "top", b"bob", Some(0));
         assert_eq!(second, Outcome::Conflict(Some(first.clone())));
         // Bob merges and writes over the version he was shown.
-        let merged = stored(bob.set(&mut b, Scope::Shared, "top", b"alice,bob", Some(first.version)));
+        let merged = stored(bob.set(
+            &mut b,
+            Scope::Shared,
+            "top",
+            b"alice,bob",
+            Some(first.version),
+        ));
         assert!(merged.version > first.version);
         // Alice still holds the old version.
         assert_eq!(
@@ -588,7 +613,13 @@ mod tests {
         // Large values end a piece early; a piece always has an entry.
         let mut b = MemoryBackend::default();
         for i in 0..6 {
-            stored(alice.set(&mut b, Scope::Shared, &format!("big{i}"), &vec![0; VALUE_MAX], None));
+            stored(alice.set(
+                &mut b,
+                Scope::Shared,
+                &format!("big{i}"),
+                &vec![0; VALUE_MAX],
+                None,
+            ));
         }
         let (piece, more) = alice.list(&mut b, Scope::Shared, "", "");
         assert_eq!(piece.len(), LIST_BYTES_MAX / VALUE_MAX);
@@ -599,7 +630,10 @@ mod tests {
     fn a_scope_holds_only_so_many_keys() {
         let mut b = MemoryBackend::default();
         let alice = Phone::new("", "alice");
-        for (scope, max) in [(Scope::User, USER_KEYS_MAX), (Scope::Shared, SHARED_KEYS_MAX)] {
+        for (scope, max) in [
+            (Scope::User, USER_KEYS_MAX),
+            (Scope::Shared, SHARED_KEYS_MAX),
+        ] {
             for i in 0..max {
                 stored(alice.set(&mut b, scope, &format!("k{i}"), b"", None));
             }
@@ -636,7 +670,9 @@ mod tests {
     fn escaped_names() {
         for name in [&b"phone101"[..], b"Front Desk/2", b"a=b", b"\xff_x", b""] {
             let e = escape(name);
-            assert!(e.bytes().all(|c| c.is_ascii_alphanumeric() || b".-=".contains(&c)));
+            assert!(e
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || b".-=".contains(&c)));
             assert_eq!(unescape(&e).as_deref(), Some(name));
         }
         assert_eq!(escape(b"Front Desk/2"), "Front=20Desk=2F2");

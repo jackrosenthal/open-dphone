@@ -147,15 +147,23 @@ fn value_of(e: &Option<Entry>) -> Option<&[u8]> {
 /// What one phone writes and another reads, and what the answers say.
 fn store(ctx: &mut Ctx) -> Result<()> {
     let (a, b) = (phone(ctx, "north1")?, phone(ctx, "north2")?);
-    let r = ask(&a, &set_op(Scope::Shared, "store/best", b"53 seconds", None))?;
+    let r = ask(
+        &a,
+        &set_op(Scope::Shared, "store/best", b"53 seconds", None),
+    )?;
     let user = r.user.clone().unwrap_or_default();
     ctx.c.same(
         "the answer names the user",
-        (user.id.as_str(), user.name.as_str(), user.extension.as_str()),
+        (
+            user.id.as_str(),
+            user.name.as_str(),
+            user.extension.as_str(),
+        ),
         ("north1", "North One", "6101"),
     );
     let Outcome::Stored(written) = r.outcome else {
-        ctx.c.fail("set is answered with the entry", format!("{:?}", r.outcome));
+        ctx.c
+            .fail("set is answered with the entry", format!("{:?}", r.outcome));
         return Ok(());
     };
     ctx.c.same(
@@ -163,8 +171,10 @@ fn store(ctx: &mut Ctx) -> Result<()> {
         (written.author_id.as_str(), written.author_name.as_str()),
         ("north1", "North One"),
     );
-    ctx.c.check("the entry has a version", written.version > 0, "");
-    ctx.c.check("the entry has a time", written.modified > 1_700_000_000, "");
+    ctx.c
+        .check("the entry has a version", written.version > 0, "");
+    ctx.c
+        .check("the entry has a time", written.modified > 1_700_000_000, "");
     let r = ask(
         &b,
         &Op::Get {
@@ -181,7 +191,11 @@ fn store(ctx: &mut Ctx) -> Result<()> {
     let user = r.user.unwrap_or_default();
     ctx.c.same(
         "a phone without a full name is named as its section",
-        (user.id.as_str(), user.name.as_str(), user.extension.as_str()),
+        (
+            user.id.as_str(),
+            user.name.as_str(),
+            user.extension.as_str(),
+        ),
         ("north2", "north2", "6102"),
     );
 
@@ -236,9 +250,11 @@ fn store(ctx: &mut Ctx) -> Result<()> {
         set(&a, Scope::Shared, &format!("list/{i:03}"), b"x", None)?;
     }
     let (first, more) = list(&b, Scope::Shared, "list/", "")?;
-    ctx.c.same("a list is cut", (first.len(), more), (LIST_MAX, true));
+    ctx.c
+        .same("a list is cut", (first.len(), more), (LIST_MAX, true));
     let (rest, more) = list(&b, Scope::Shared, "list/", first.last().map_or("", |k| k))?;
-    ctx.c.same("and goes on after a key", (rest.len(), more), (3, false));
+    ctx.c
+        .same("and goes on after a key", (rest.len(), more), (3, false));
     ctx.c.same(
         "in key order",
         (first.first().cloned(), rest.last().cloned()),
@@ -259,8 +275,11 @@ fn store(ctx: &mut Ctx) -> Result<()> {
         },
     )?;
     ctx.c.same("remove", removed.outcome, Outcome::Removed);
-    ctx.c
-        .same("a removed key is gone", get(&a, Scope::Shared, "store/bytes")?, None);
+    ctx.c.same(
+        "a removed key is gone",
+        get(&a, Scope::Shared, "store/bytes")?,
+        None,
+    );
 
     // What the server refuses.
     let ex = a.request("AppDataRequest").body("{}").send()?;
@@ -322,7 +341,10 @@ fn tenants(ctx: &mut Ctx) -> Result<()> {
         value_of(&get(&north2, Scope::Shared, "tenants/k")?),
         Some(&b"north"[..]),
     );
-    for (name, p) in [("another tenant", &south), ("a phone without a tenant", &plain1)] {
+    for (name, p) in [
+        ("another tenant", &south),
+        ("a phone without a tenant", &plain1),
+    ] {
         ctx.c.same(
             format!("{name} does not read it"),
             get(p, Scope::Shared, "tenants/k")?,
@@ -382,7 +404,8 @@ fn tenants(ctx: &mut Ctx) -> Result<()> {
     );
 
     // A request cannot name a tenant: whatever else it carries is ignored.
-    let sneaky = br#"{"op":"get","app":"game","scope":"shared","key":"tenants/k","tenant":"north"}"#;
+    let sneaky =
+        br#"{"op":"get","app":"game","scope":"shared","key":"tenants/k","tenant":"north"}"#;
     let ex = south.request("AppDataRequest").body(sneaky).send()?;
     let got = ex
         .reply()
@@ -450,10 +473,19 @@ fn names(value: &[u8]) -> Vec<String> {
 fn add_name(p: &Phone, key: &str, name: &str) -> Result<usize> {
     let mut current = get(p, Scope::Shared, key)?;
     for conflicts in 0..1000 {
-        let mut list = current.as_ref().map(|e| names(&e.value)).unwrap_or_default();
+        let mut list = current
+            .as_ref()
+            .map(|e| names(&e.value))
+            .unwrap_or_default();
         list.push(name.to_string());
         let expect = current.as_ref().map_or(0, |e| e.version);
-        match set(p, Scope::Shared, key, list.join(",").as_bytes(), Some(expect))? {
+        match set(
+            p,
+            Scope::Shared,
+            key,
+            list.join(",").as_bytes(),
+            Some(expect),
+        )? {
             Outcome::Stored(_) => return Ok(conflicts),
             Outcome::Conflict(now) => current = now,
             other => return Err(anyhow!("set answered {other:?}")),
@@ -478,7 +510,8 @@ fn conflict(ctx: &mut Ctx) -> Result<()> {
     );
     let second = set(&b, Scope::Shared, "conflict/k", b"a,b", Some(first.version))?;
     let Outcome::Stored(second) = second else {
-        ctx.c.fail("a write over the version read", format!("{second:?}"));
+        ctx.c
+            .fail("a write over the version read", format!("{second:?}"));
         return Ok(());
     };
     ctx.c.check(
@@ -537,7 +570,8 @@ fn conflict(ctx: &mut Ctx) -> Result<()> {
         .flat_map(|who| (0..EACH).map(move |i| format!("{who}-{i}")))
         .collect();
     want.sort();
-    ctx.c.same("every name of both writers is in the list", got, want);
+    ctx.c
+        .same("every name of both writers is in the list", got, want);
     ctx.c
         .note(format!("the writers met each other {conflicts} times"));
     Ok(())
@@ -584,11 +618,8 @@ fn watch(ctx: &mut Ctx) -> Result<()> {
         next_change(&north2, 5.0),
         Some(change.clone()),
     );
-    ctx.c.same(
-        "the writer does not",
-        next_change(&north1, 1.0),
-        None,
-    );
+    ctx.c
+        .same("the writer does not", next_change(&north1, 1.0), None);
     ctx.c.same(
         "a phone of another tenant does not",
         next_change(&south, 0.5),
@@ -648,11 +679,8 @@ fn watch(ctx: &mut Ctx) -> Result<()> {
         &db,
         &["/DPhoneAppData/watch/north1", "/DPhoneAppData/watch/plain2"],
     );
-    ctx.c.lacks(
-        "an empty one is not",
-        &db,
-        &["/DPhoneAppData/watch/north2"],
-    );
+    ctx.c
+        .lacks("an empty one is not", &db, &["/DPhoneAppData/watch/north2"]);
     Ok(())
 }
 
@@ -685,7 +713,13 @@ fn restart(ctx: &mut Ctx) -> Result<()> {
         get(&phone(ctx, "south1")?, Scope::Shared, "restart/k")?,
         None,
     );
-    let again = set(&b, Scope::Shared, "restart/k", b"new", Some(written.version))?;
+    let again = set(
+        &b,
+        Scope::Shared,
+        "restart/k",
+        b"new",
+        Some(written.version),
+    )?;
     ctx.c.check(
         "versions go on from where they were",
         matches!(&again, Outcome::Stored(e) if e.version > written.version),
