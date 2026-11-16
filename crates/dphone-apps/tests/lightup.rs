@@ -1,7 +1,8 @@
 //! Light Up, the puzzle: the app's life under the manager with the fake
-//! screen (the keys, the screens, generation in turns, what is kept), and
-//! the real thing drawn by the phone UI on a simulated D60 (color), D40,
-//! and D70 (gray).
+//! screen (the keys, the screens, generation in turns, what is kept, the
+//! time spent, and the tables of the best times with two phones of one
+//! PBX and with a PBX out of reach), and the real thing drawn by the
+//! phone UI on a simulated D60 (color), D40, and D70 (gray).
 //!
 //! The pictures are written as PNG files under `light-up/` in cargo's
 //! test scratch directory (`CARGO_TARGET_TMPDIR`), or in the directory
