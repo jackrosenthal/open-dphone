@@ -1,5 +1,6 @@
 //! The apps' store of keys and values on the PBX (the app interface
-//! `pbx-storage`), over DPMA's `AppDataRequest`.
+//! `pbx-storage`), over DPMA's `AppDataRequest`.  The firmware keeps the
+//! user's theme there too (`themesync`).
 //!
 //! The server knows the phone by its configuration token, so the store is
 //! in reach while the DPMA session is attached and the phone provisioned.
@@ -50,6 +51,8 @@ pub struct AppStore {
     telephony: Telephony,
     runtime: tokio::runtime::Handle,
     state: Arc<Mutex<State>>,
+    /// Notified each time the store comes into reach.
+    reached: Arc<tokio::sync::Notify>,
 }
 
 fn scope(s: StoreScope) -> Scope {
@@ -107,7 +110,14 @@ fn unreachable(e: &DpmaError) -> String {
 
 impl AppStore {
     pub fn new(telephony: Telephony, runtime: tokio::runtime::Handle) -> AppStore {
-        AppStore { telephony, runtime, state: Arc::new(Mutex::new(State::default())) }
+        AppStore { telephony, runtime, state: Arc::new(Mutex::new(State::default())), reached: Arc::default() }
+    }
+
+    /// Notified each time the store comes into reach (the first answer
+    /// of a DPMA session), for the firmware's use of the store; the app
+    /// host has [`StoreSignal::Online`].
+    pub fn reached(&self) -> Arc<tokio::sync::Notify> {
+        self.reached.clone()
     }
 
     fn dpma(&self) -> Option<DpmaHandle> {
@@ -155,6 +165,7 @@ impl AppStore {
         match &result {
             Ok(u) if came_online => {
                 info!("app data: the PBX's store is in reach; the user is {} ({})", u.name, u.id);
+                self.reached.notify_one();
                 self.signal(StoreSignal::Online);
             }
             Ok(_) => {}

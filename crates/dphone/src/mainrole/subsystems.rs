@@ -53,6 +53,7 @@ pub mod ringtones;
 pub mod syslog;
 pub mod system;
 pub mod telephony;
+pub mod themesync;
 pub mod trust;
 pub mod ui;
 pub mod wallpaper;
@@ -179,8 +180,15 @@ pub async fn start(ctx: &Context, opts: &Options) {
 
     remote::register(ctx, ui.as_ref().map(|u| u.tap.clone()));
 
+    // The PBX's store of keys and values (Open DPMA's app data): the
+    // apps', and the firmware's for the user's theme, which follows the
+    // user to a reset phone.
+    let app_store = appstore::AppStore::new(telephony.clone(), tokio::runtime::Handle::current());
+    app_store.follow(ctx.store.clone());
+    themesync::start(ctx, config.clone(), &hub, Arc::new(app_store.clone()), app_store.reached());
+
     // dphone-apps: the WASM runtime, on its own thread.
-    apps::start(ctx, ui.as_ref().map(|u| u.handle.clone()), config.clone(), telephony.clone(), net.clone());
+    apps::start(ctx, ui.as_ref().map(|u| u.handle.clone()), config.clone(), telephony.clone(), net.clone(), app_store);
 
     // 9. dphone-web: HTTP(S) and Connect RPC.
     #[cfg(feature = "web")]

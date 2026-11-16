@@ -242,11 +242,20 @@ impl Text {
     }
 }
 
+/// The name the phone itself has in the PBX's store of app data, where
+/// it keeps what follows a user from phone to phone (the theme).  No app
+/// can have it, so no app can reach those keys.
+pub const PHONE_DATA_NAME: &str = "dphone";
+
 /// Stock name rule: 1 to 64 characters, first a letter or digit, then
-/// letters, digits, `_`, `.`, or `,`.
+/// letters, digits, `_`, `.`, or `,`.  [`PHONE_DATA_NAME`] is the
+/// phone's.
 pub fn validate_name(name: &str) -> Result<(), ManifestError> {
     if name.is_empty() {
         return Err(ManifestError::BadName("empty"));
+    }
+    if name == PHONE_DATA_NAME {
+        return Err(ManifestError::BadName("the phone's own name"));
     }
     if name.len() > 64 {
         return Err(ManifestError::BadName("longer than 64 characters"));
@@ -715,6 +724,9 @@ mod tests {
         assert!(validate_name("a_b.c,d9").is_ok());
         assert!(validate_name("").is_err());
         assert!(validate_name("my-app").is_err());
+        // The phone's own name in the PBX's store is not an app's.
+        assert!(validate_name(PHONE_DATA_NAME).is_err());
+        assert!(validate_name("dphone2").is_ok());
         assert!(validate_name("_x").is_err());
         assert!(validate_name(&"a".repeat(65)).is_err());
         assert!(validate_name("a/b").is_err());

@@ -66,6 +66,8 @@ sha2 = { version = "0.10", default-features = false }
 [dev-dependencies]
 # The in-process DPMA server of dphone-dpma's tests (tests/provisioned_firmware.rs).
 dpma-proto.workspace = true
+# The fake of the PBX's store of app data (the theme kept there).
+dphone-apps = { path = "../dphone-apps", features = ["test-util"] }
 tempfile = "3"
 libc = "0.2"
 rustls-pemfile = "2"

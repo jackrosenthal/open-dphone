@@ -203,7 +203,14 @@ impl ConfigSource for AppConfig {
     }
 }
 
-pub fn start(ctx: &Context, ui: Option<UiHandle>, config: Option<SharedConfig>, telephony: Telephony, net: NetHandle) {
+pub fn start(
+    ctx: &Context,
+    ui: Option<UiHandle>,
+    config: Option<SharedConfig>,
+    telephony: Telephony,
+    net: NetHandle,
+    app_store: super::appstore::AppStore,
+) {
     ctx.store.set_health(Subsystem::Apps, HealthStatus::Starting);
     let Some(ui) = ui else {
         warn!("apps: no UI; the app runtime is not started");
@@ -227,8 +234,6 @@ pub fn start(ctx: &Context, ui: Option<UiHandle>, config: Option<SharedConfig>, 
         .read::<dphone_state::System, _>(|s| s.mac)
         .map(|m| m.iter().map(|b| format!("{b:02x}")).collect::<String>())
         .unwrap_or_default();
-    let app_store = super::appstore::AppStore::new(telephony.clone(), runtime.clone());
-    app_store.follow(ctx.store.clone());
     let services = Services {
         pbx: Arc::new(Pbx { telephony, runtime: runtime.clone() }),
         store: Arc::new(app_store),

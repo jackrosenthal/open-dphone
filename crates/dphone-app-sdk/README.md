@@ -73,7 +73,7 @@ The manifest is what the phone has to know about an app before it runs it.  It i
 
 | Field | Meaning |
 | --- | --- |
-| `name` | The app's name on the phone: 1 to 64 characters, the first a letter or digit, the rest letters, digits, `_`, `.`, or `,`.  It cannot be the name of a built-in app.  Installing an app replaces the installed app of the same name. |
+| `name` | The app's name on the phone: 1 to 64 characters, the first a letter or digit, the rest letters, digits, `_`, `.`, or `,`.  It cannot be the name of a built-in app, or `dphone`, which is the phone's.  Installing an app replaces the installed app of the same name. |
 | `id` | An identifier of the app, e.g., in reverse domain form (`"org.example.hello"`). |
 | `display_name` | What the phone calls the app on screen. |
 | `display_name_in` | The same in other languages, by locale: `&[("de_de", "Hallo"), ("es_mx", "Hola")]`. |
