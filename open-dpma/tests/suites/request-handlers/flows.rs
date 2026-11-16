@@ -29,6 +29,7 @@ pub fn part(ctx: &mut Ctx, f: fn(&mut Ctx) -> Result<()>) -> Result<()> {
     if !READY.swap(true, Ordering::SeqCst) {
         for name in PHONES {
             cli(ctx, &format!("database del DigiumPhoneUsers {name}"))?;
+            cli(ctx, &format!("database del OpenDPMATokens issued/{name}"))?;
         }
         set_auth(ctx, "mac_globalpin", "disabled")?;
         restart(ctx)?;
@@ -195,6 +196,168 @@ fn reload_checks(ctx: &mut Ctx) -> Result<()> {
     ctx.c
         .same("deleted phone: session inactive", got, fl("Yes", "Yes"));
     no_event(ctx, "deleted phone: others not reconfigured", &p);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Keyed tokens
+// ---------------------------------------------------------------------------
+
+/// A ConfigRequest or VerifyRequest of `p` with `token`, checked: the
+/// configuration (or the verification), or with `refused` error -192.
+fn present(ctx: &mut Ctx, name: &str, p: &Phone, token: &BString, refused: bool) -> Result<()> {
+    let err = refused.then_some(-192);
+    let ex = p.config().config_token(token).send()?;
+    let body = if refused {
+        Body::Default
+    } else {
+        Body::Matches(r"\A<config>")
+    };
+    expect(
+        ctx,
+        &format!("{name}: config"),
+        &ex,
+        "ConfigResponse",
+        err,
+        body,
+    );
+    let ex = p.verify().config_token(token).send()?;
+    let body = if refused {
+        Body::Default
+    } else {
+        Body::Is(b"empty body")
+    };
+    expect(
+        ctx,
+        &format!("{name}: verify"),
+        &ex,
+        "VerifyResponse",
+        err,
+        body,
+    );
+    Ok(())
+}
+
+/// A TokenRequest of `p` for `user` with the global pin; the token.
+fn issue(ctx: &mut Ctx, p: &Phone, user: &str) -> Result<BString> {
+    token_for(ctx, p, user)?;
+    Ok(p.token().unwrap_or_default())
+}
+
+/// `token` with its last digit changed.
+fn altered(token: &BString) -> BString {
+    let mut t = token.clone();
+    if let Some(c) = t.last_mut() {
+        *c = if *c == b'0' { b'1' } else { b'0' };
+    }
+    t
+}
+
+pub fn tokens(ctx: &mut Ctx) -> Result<()> {
+    set_auth(ctx, "globalpin", "disabled")?;
+    let res = token_checks(ctx);
+    set_auth(ctx, "mac_globalpin", "disabled")?;
+    res
+}
+
+fn token_checks(ctx: &mut Ctx) -> Result<()> {
+    let official = official_token(MAC_A);
+    let dashed: BString = format!("phonea-{MAC_A}-1-2").into();
+
+    ctx.c
+        .say("-- a phone that holds a token of the official DPMA");
+    // The state the official DPMA leaves in AstDB for a phone it
+    // configured: the last MAC and URI, and no mark of a keyed token.
+    cli(ctx, "database del OpenDPMATokens issued/phonea")?;
+    cli(
+        ctx,
+        &format!("dpmadev token lastinfo phonea pjsip:127.0.0.1:5999 - {MAC_A}"),
+    )?;
+    let out = cli(ctx, "dpmadev token info phonea")?;
+    ctx.c
+        .contains("no keyed token yet", &out, &["keyed token issued: false"]);
+    let a = phone(ctx, MAC_A)?;
+    present(ctx, "official token", &a, &official, false)?;
+    present(ctx, "official token with '-'", &a, &dashed, false)?;
+    // The phone restarts, or loses its session: a new handshake.
+    let ex = a.handshake().send()?;
+    ctx.c.check("handshake again", ex.ok(), ex.describe(0));
+    present(ctx, "official token, new session", &a, &official, false)?;
+    // Asterisk restarts.
+    restart(ctx)?;
+    let a = phone(ctx, MAC_A)?;
+    present(ctx, "official token after a restart", &a, &official, false)?;
+
+    ctx.c.say("-- the phone asks for a token");
+    let keyed = issue(ctx, &a, "phonea")?;
+    let shape = format!(r"\Aphonea/{MAC_A}/[0-9]{{1,10}}/[0-9]{{1,10}}\z");
+    ctx.c.check(
+        "the token is keyed, in the official DPMA's shape",
+        dpma_tests::harness::regex_search(&shape, &keyed) && keyed != official,
+        format!("got {keyed:?}"),
+    );
+    let out = cli(ctx, "dpmadev token info phonea")?;
+    ctx.c
+        .contains("keyed token marked", &out, &["keyed token issued: true"]);
+    present(ctx, "keyed token", &a, &keyed, false)?;
+    present(ctx, "official token after a keyed one", &a, &official, true)?;
+    present(ctx, "'-' token after a keyed one", &a, &dashed, true)?;
+    present(ctx, "keyed token, altered", &a, &altered(&keyed), true)?;
+    let again = issue(ctx, &a, "phonea")?;
+    ctx.c
+        .same("the same token when asked again", &again, &keyed);
+
+    ctx.c.say("-- the session is lost, Asterisk restarts");
+    let ex = a.handshake().send()?;
+    ctx.c.check("handshake again", ex.ok(), ex.describe(0));
+    present(ctx, "keyed token, new session", &a, &keyed, false)?;
+    restart(ctx)?;
+    let a = phone(ctx, MAC_A)?;
+    present(ctx, "keyed token after a restart", &a, &keyed, false)?;
+    present(ctx, "official token after a restart", &a, &official, true)?;
+    let again = issue(ctx, &a, "phonea")?;
+    ctx.c.same("the same token after a restart", &again, &keyed);
+
+    ctx.c.say("-- a user logs in on another phone");
+    let b = phone(ctx, MAC_BAD)?;
+    let keyed_b = issue(ctx, &b, "phonea")?;
+    ctx.c.check(
+        "another MAC, another token",
+        keyed_b.starts_with(format!("phonea/{MAC_BAD}/").as_bytes())
+            && keyed_b[keyed_b.len() - 8..] != keyed[keyed.len() - 8..],
+        format!("got {keyed_b:?}"),
+    );
+    present(ctx, "the new phone's token", &b, &keyed_b, false)?;
+    present(ctx, "the old phone's token", &a, &keyed, true)?;
+    // The numbers of one MAC make no token for another.
+    let mut swapped = keyed_b.clone();
+    let n = swapped.len();
+    swapped.truncate(format!("phonea/{MAC_BAD}").len());
+    swapped.extend_from_slice(&keyed[format!("phonea/{MAC_A}").len()..]);
+    ctx.c
+        .check("(swapped numbers differ)", swapped != keyed_b, n);
+    present(ctx, "the old phone's numbers", &b, &swapped, true)?;
+    // The user logs in on the first phone again.
+    let again = issue(ctx, &a, "phonea")?;
+    ctx.c
+        .same("the first phone's token is the same", &again, &keyed);
+    present(ctx, "the first phone again", &a, &keyed, false)?;
+    present(ctx, "the other phone's token now", &b, &keyed_b, true)?;
+
+    ctx.c
+        .say("-- the phone takes another section: phonea has no last MAC");
+    issue(ctx, &a, "phoneb")?;
+    let got = last_info(ctx, "phonea")?;
+    ctx.c.same("phonea forgets its location", got, forgotten());
+    present(
+        ctx,
+        "no last MAC, a made-up token",
+        &a,
+        &format!("phonea/{MAC_A}/1/2").into(),
+        true,
+    )?;
+    present(ctx, "no last MAC, official token", &a, &official, true)?;
+    present(ctx, "no last MAC, keyed token", &a, &keyed, false)?;
     Ok(())
 }
 

@@ -34,6 +34,7 @@ fn reset(ctx: &mut Ctx) -> Result<()> {
     }
     for p in ["testphone", "testphone2", "testnolines", "1001"] {
         ctx.cli(&format!("database del DigiumPhoneUsers {p}"));
+        ctx.cli(&format!("database del OpenDPMATokens issued/{p}"));
     }
     ctx.drop_ami();
     ctx.inst.stop()?;
@@ -154,24 +155,18 @@ fn presence(ctx: &mut Ctx) -> Result<()> {
 
 fn tokens(ctx: &mut Ctx) -> Result<()> {
     reset(ctx)?;
-    // Tokens and last-seen information.
-    let t = "testphone/000fd3000801/2087735778/1706321644";
+    // Tokens and last-seen information.  First a phone as the official
+    // DPMA leaves it in AstDB, with the token the official DPMA issued:
+    // <phone><sep><last MAC> is all that is compared.
+    let official = "testphone/000fd3000801/2087735778/1706321644";
     expect(
         ctx,
-        "dpmadev token build testphone 000fd3000801 sess1 pjsip:127.0.0.1:5061",
-        &[&format!("token: {t}")],
+        "dpmadev token lastinfo testphone pjsip:127.0.0.1:5061 sess0 000fd3000801",
+        &["last_mac='000fd3000801'", "keyed token issued: false"],
     );
     expect(
         ctx,
-        "dpmadev token info testphone",
-        &[
-            "last_mac='000fd3000801' last_uri='pjsip:127.0.0.1:5061' last_session_id='sess1' token_state=1",
-            "AstDB: last_mac=000fd3000801;last_uri=pjsip:127.0.0.1:5061;last_session_id=sess1",
-        ],
-    );
-    expect(
-        ctx,
-        &format!("dpmadev token find {t} 000fd3000801 sess1 pjsip:127.0.0.1:5061"),
+        &format!("dpmadev token find {official} 000fd3000801 sess0 pjsip:127.0.0.1:5061"),
         &["phone: testphone  previous_token: false"],
     );
     expect(
@@ -190,16 +185,64 @@ fn tokens(ctx: &mut Ctx) -> Result<()> {
         &["phone: (none)"],
     );
     expect(ctx, "dpmadev token find /x . . u", &["phone: (none)"]);
+
+    // The token issued here is keyed: the same shape, other numbers.
+    let build = "dpmadev token build testphone 000fd3000801 sess1 pjsip:127.0.0.1:5061";
+    let out = ctx.cli(build);
+    let t = dpma_tests::harness::regex_capture(
+        r"token: (testphone/000fd3000801/[0-9]{1,10}/[0-9]{1,10})(?:\s|\z)",
+        &out,
+    )
+    .and_then(|t| String::from_utf8(t).ok())
+    .unwrap_or_default();
+    ctx.c.check(
+        "a keyed token in the official DPMA's shape",
+        !t.is_empty() && t != official,
+        format!("got {:?}", out.as_bstr()),
+    );
+    expect(
+        ctx,
+        "dpmadev token info testphone",
+        &[
+            "last_mac='000fd3000801' last_uri='pjsip:127.0.0.1:5061' last_session_id='sess1' token_state=1",
+            "AstDB: last_mac=000fd3000801;last_uri=pjsip:127.0.0.1:5061;last_session_id=sess1",
+            "keyed token issued: true",
+        ],
+    );
+    expect(
+        ctx,
+        &format!("dpmadev token find {t} 000fd3000801 sess1 pjsip:127.0.0.1:5061"),
+        &["phone: testphone  previous_token: false"],
+    );
+    // From then on only the keyed token finds the phone.
+    let last = if t.ends_with('0') { '1' } else { '0' };
+    let altered = format!("{}{last}", &t[..t.len().saturating_sub(1)]);
+    for forged in [
+        official,
+        "testphone/000fd3000801XYZ",
+        "testphone-000fd3000801-1",
+        altered.as_str(),
+    ] {
+        expect(
+            ctx,
+            &format!("dpmadev token find {forged} . . pjsip:127.0.0.1:5061"),
+            &["phone: (none)"],
+        );
+    }
+    // The same token each time, whatever the global pin.
     expect(
         ctx,
         "dpmadev token build testphone 000fd3000801 sess1 pjsip:127.0.0.1:5061 other",
-        &["token: testphone/000fd3000801/2087735778/182229153"],
+        &[&format!("token: {t}")],
     );
     // Same character sum as the token before the latest one, but no
     // match.
     expect(
         ctx,
-        "dpmadev token find testphone/000fd3000810/2087735778/1706321644 . . u",
+        &format!(
+            "dpmadev token find {} . . u",
+            t.replace("000fd3000801", "000fd3000810")
+        ),
         &["phone: (none)  previous_token: true"],
     );
     // Orphaned by MAC, then a MAC mismatch, then a stale location.

@@ -8,7 +8,7 @@ use bstr::{BString, ByteSlice};
 use dpma_proto::documents::method_call_json as method_request_json;
 use dpma_proto::json::dump as json_compact;
 use dpma_proto::message::md5_hex;
-use dpma_tests::harness::{ConfFile, Ctx};
+use dpma_tests::harness::{regex_search, ConfFile, Ctx};
 use dpma_tests::sim::{Exchange, Phone};
 use serde_json::{json, Value};
 
@@ -88,14 +88,31 @@ fn expected_token_incident(flags: u32, pin: &str, cfgpass: &str) -> Option<&'sta
     (flags & PIN != 0 && pin != "4321").then_some("invalid pin")
 }
 
-/// The token phonea gets from a phone with MAC `mac`.
-fn phonea_token(mac: &str) -> BString {
-    format!(
-        "phonea/{mac}/{}/{}",
-        token_hash(b""),
-        token_hash(GLOBALPIN.as_bytes())
-    )
-    .into()
+/// Checks the token of a TokenResponse for phonea and `mac`: with
+/// `issued`, a keyed token (the official DPMA's shape, other numbers), the
+/// same one each time; otherwise none.
+fn check_token(
+    ctx: &mut Ctx,
+    name: &str,
+    got: Option<BString>,
+    issued: bool,
+    mac: &str,
+    seen: &mut std::collections::HashMap<String, BString>,
+) {
+    let Some(t) = got.filter(|_| issued) else {
+        ctx.c
+            .check(format!("{name} (no token)"), !issued, "a token is missing");
+        return;
+    };
+    let shape = format!(r"\Aphonea/{mac}/[0-9]{{1,10}}/[0-9]{{1,10}}\z");
+    ctx.c.check(
+        format!("{name} (token)"),
+        regex_search(&shape, &t) && t != official_token(mac),
+        format!("got {t:?}"),
+    );
+    let first = seen.entry(mac.to_string()).or_insert_with(|| t.clone());
+    ctx.c
+        .same(format!("{name} (the same token each time)"), &t, first);
 }
 
 pub fn token(ctx: &mut Ctx) -> Result<()> {
@@ -108,6 +125,7 @@ pub fn token(ctx: &mut Ctx) -> Result<()> {
         ("4321", "bad"),
         ("bad", GLOBALPIN),
     ];
+    let mut seen = std::collections::HashMap::new();
     for (mode, flags) in MODES {
         set_auth(ctx, mode, "disabled")?;
         let good = phone(ctx, MAC_A)?;
@@ -146,12 +164,8 @@ pub fn token(ctx: &mut Ctx) -> Result<()> {
                 let Some(r) = expect(ctx, &name, &ex, "TokenResponse", err, body) else {
                     continue;
                 };
-                let want = err.is_none().then(|| phonea_token(p.mac()));
-                ctx.c.same(
-                    format!("{name} (token)"),
-                    r.field("Config-Token").cloned(),
-                    want,
-                );
+                let got = r.field("Config-Token").cloned();
+                check_token(ctx, &name, got, err.is_none(), p.mac(), &mut seen);
             }
         }
     }
@@ -176,11 +190,8 @@ pub fn token(ctx: &mut Ctx) -> Result<()> {
             let ex = b.send()?;
             let name = format!("token for user {user:?}");
             if let Some(r) = expect(ctx, &name, &ex, "TokenResponse", None, Body::Default) {
-                ctx.c.same(
-                    format!("{name} (token)"),
-                    r.field("Config-Token").cloned(),
-                    Some(phonea_token(MAC_A)),
-                );
+                let got = r.field("Config-Token").cloned();
+                check_token(ctx, &name, got, true, MAC_A, &mut seen);
             }
         }
         let got = configured(ctx, &sid)?;
@@ -378,19 +389,23 @@ pub fn config(ctx: &mut Ctx) -> Result<()> {
             got.as_deref(),
             Some("Yes"),
         );
-        // The prefix <phone><sep><last MAC> is all that is compared.
-        let ex = p
-            .config()
-            .config_token(format!("phonea-{MAC_A}-anything"))
-            .send()?;
-        expect(
-            ctx,
-            "config with a '-' token",
-            &ex,
-            "ConfigResponse",
-            None,
-            Body::Matches(r"\A<config>"),
-        );
+        // The phone was issued a keyed token: <phone><sep><last MAC> no
+        // longer makes a token (flows-tokens has the phones that were
+        // not).
+        for (what, forged) in [
+            ("a '-' token", format!("phonea-{MAC_A}-anything").into()),
+            ("the official DPMA's token", official_token(MAC_A)),
+        ] {
+            let ex = p.config().config_token(forged).send()?;
+            expect(
+                ctx,
+                &format!("config with {what} after a keyed token"),
+                &ex,
+                "ConfigResponse",
+                Some(-192),
+                Body::Default,
+            );
+        }
         cli(ctx, &format!("dpmadev session mark {sid} unconfigured"))?;
         let ex = p.verify().send()?;
         expect(

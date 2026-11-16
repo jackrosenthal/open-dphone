@@ -84,6 +84,16 @@ pub fn set_general(ctx: &mut Ctx, options: &[(&str, Option<&str>)]) -> Result<()
     Ok(())
 }
 
+/// The token the official DPMA issues phonea for a phone with MAC `mac`.
+pub fn official_token(mac: &str) -> BString {
+    format!(
+        "phonea/{mac}/{}/{}",
+        token_hash(b""),
+        token_hash(GLOBALPIN.as_bytes())
+    )
+    .into()
+}
+
 /// [`set_general`] with `config_auth`, `userlist_auth`, and the global
 /// pin.
 pub fn set_auth(ctx: &mut Ctx, config_auth: &str, userlist_auth: &str) -> Result<()> {

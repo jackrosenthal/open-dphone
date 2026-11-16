@@ -64,6 +64,29 @@ pub fn new_common_password() -> Result<Vec<u8>> {
     Ok(buf)
 }
 
+/// HMAC-SHA-256 (RFC 2104) of `data` under `key`.  Not part of the
+/// phones' protocol: the server keys configuration tokens with it.
+pub fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    const BLOCK: usize = 64;
+    let mut k = [0u8; BLOCK];
+    if key.len() > BLOCK {
+        k[..32].copy_from_slice(&Sha256::digest(key));
+    } else {
+        k[..key.len()].copy_from_slice(key);
+    }
+    let pad = |x: u8| k.map(|b| b ^ x);
+    let inner = Sha256::new()
+        .chain_update(pad(0x36))
+        .chain_update(data)
+        .finalize();
+    Sha256::new()
+        .chain_update(pad(0x5c))
+        .chain_update(inner)
+        .finalize()
+        .into()
+}
+
 /// Generate a new message salt (FUN_00151840): 8 random bytes.
 pub fn new_salt() -> Result<[u8; SALT_LEN]> {
     let mut salt = [0u8; SALT_LEN];
@@ -413,6 +436,22 @@ mod tests {
 
     fn hex(b: &[u8]) -> String {
         b.iter().map(|x| format!("{:02x}", x)).collect()
+    }
+
+    #[test]
+    fn hmac_sha256_known_answers() {
+        // RFC 4231, test cases 2 and 6 (a key longer than a block).
+        assert_eq!(
+            hex(&hmac_sha256(b"Jefe", b"what do ya want for nothing?")),
+            "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+        );
+        assert_eq!(
+            hex(&hmac_sha256(
+                &[0xaa; 131],
+                b"Test Using Larger Than Block-Size Key - Hash Key First"
+            )),
+            "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54"
+        );
     }
 
     #[test]

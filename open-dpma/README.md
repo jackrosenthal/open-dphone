@@ -79,6 +79,19 @@ These differ from the official DPMA:
 - A `config_auth` or `userlist_auth` value that is not one of the values
   is reported as a warning.  The official DPMA ignores such a value
   without a message, which leaves authentication disabled.
+- A configuration token is keyed: its two numbers are part of an HMAC
+  of the phone section's name and the phone's MAC address, under a
+  random key that the module keeps in AstDB (family `OpenDPMATokens`),
+  and a phone section that was issued a keyed token accepts no other.
+  The official DPMA's numbers are hashes of fixed texts, and it accepts
+  every token that begins with a section's name and the MAC address last
+  seen for the section, so that `config_auth` protects nothing from
+  somebody who knows both.  A phone stores and returns the token without
+  reading it, so phones see no difference.  A phone section that has
+  not been issued a keyed token (its phone holds a token of the official
+  DPMA) is treated as the official DPMA treats it, because stock
+  firmware that is refused a token waits at an error screen for somebody
+  to press a key.
 - A wrong PIN in a request for a configuration token is recorded as an
   authentication incident (`DPMAShowIncidents`), as a wrong PIN in a
   request for the user list is.

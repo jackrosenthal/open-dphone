@@ -52,7 +52,8 @@ fn main() -> ExitCode {
     for (name, f) in handler_parts {
         suite = suite.part(name, move |ctx| handlers::part(ctx, f));
     }
-    let flow_parts: [(&str, fn(&mut _) -> _); 6] = [
+    let flow_parts: [(&str, fn(&mut _) -> _); 7] = [
+        ("flows-tokens", flows::tokens),
         ("flows-reload", flows::reload),
         ("flows-mismatch", flows::mismatch),
         ("flows-stale", flows::stale),

@@ -18,6 +18,9 @@
 //! The session side effects of `phone_user_delme_cb` (0x159720) are in
 //! `load.rs`.
 //!
+//! Deviation: configuration tokens are keyed (see "Configuration tokens"
+//! below).
+//!
 //! Lookups return the phone's (or line's) name instead of a referenced
 //! object.  Functions that change phones do so under the registry write
 //! lock and then perform the side effects that leave the users layer in
@@ -399,11 +402,99 @@ fn token_sum(token: &[u8]) -> i32 {
         .fold(0i32, |a, &b| a.wrapping_add(i32::from(b as i8)))
 }
 
+// The official DPMA's token is `<phone>/<mac>/<hash("blah")>/<hash(global
+// pin)>`, and its lookup compares only `<phone>/<last MAC>`, so that
+// anybody who knows a phone's name and MAC address has a token that
+// passes, whatever `config_auth` asks of a TokenRequest.
+//
+// Deviation: the two numbers of a token issued here are 62 bits of an
+// HMAC-SHA-256 of `<phone>/<mac>` under a random key that the server
+// keeps in AstDB (`TOKEN_DB_FAMILY/key`), and a phone that was issued such
+// a token (`TOKEN_DB_FAMILY/issued/<phone>`) is found from then on only by
+// a token whose numbers are those.  What phones see stays as it is:
+//
+// - A phone stores the token and sends it back, and reads nothing in it.
+//   The keyed token has the shape, the characters, and the length of the
+//   official DPMA's (two decimal numbers below 2^31).
+// - The token for a phone and a MAC is the same every time it is issued,
+//   as the official DPMA's is.
+// - A token that the official DPMA or an earlier version of this module
+//   issued passes as before until the phone is issued a keyed one, which
+//   happens when the phone next asks for a token.  Stock firmware that is
+//   refused a token stops at an error screen until somebody presses a
+//   key, so no token that passed before is refused before then.
+// - The key and the marks are in AstDB as the last MAC is.  When AstDB is
+//   lost, every token for the phone passes until the next TokenRequest,
+//   as in the official DPMA after the last MAC is lost.
+
+/// AstDB family of the token key (`key`) and of the phones that were
+/// issued a keyed token (`issued/<phone>`).
+pub const TOKEN_DB_FAMILY: &str = "OpenDPMATokens";
+const TOKEN_DB_KEY: &str = "key";
+/// Shortest stored key that is used (the key is 80 hex digits).
+const TOKEN_KEY_MIN: usize = 32;
+
+/// The token key, if AstDB has one.
+fn token_key_stored() -> Option<Vec<u8>> {
+    dpma_ast::db::get(TOKEN_DB_FAMILY, TOKEN_DB_KEY).filter(|k| k.len() >= TOKEN_KEY_MIN)
+}
+
+/// The token key; the first call makes one.  None when no key can be made
+/// or kept, and then tokens are the official DPMA's.
+fn token_key() -> Option<Vec<u8>> {
+    static CREATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _g = CREATE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(k) = token_key_stored() {
+        return Some(k);
+    }
+    let random = dpma_proto::crypto::new_common_password().ok()?;
+    let key: Vec<u8> = random
+        .iter()
+        .flat_map(|b| format!("{b:02x}").into_bytes())
+        .collect();
+    dpma_ast::db::put(TOKEN_DB_FAMILY, TOKEN_DB_KEY, &key).then_some(key)
+}
+
+fn token_issued_key(phone: &[u8]) -> Vec<u8> {
+    bformat!("issued/{}", phone)
+}
+
+/// Was `phone` issued a keyed token?
+fn token_issued(phone: &[u8]) -> bool {
+    dpma_ast::db::get(TOKEN_DB_FAMILY, token_issued_key(phone)).is_some()
+}
+
+/// The keyed token that begins with `prefix` (`<phone>/<mac>`).
+fn keyed_token(key: &[u8], prefix: &[u8]) -> Vec<u8> {
+    let mac = dpma_proto::crypto::hmac_sha256(key, prefix);
+    let n =
+        |i: usize| u32::from_be_bytes([mac[i], mac[i + 1], mac[i + 2], mac[i + 3]]) & 0x7fff_ffff;
+    crate::util::truncate(&bformat!("{}/{}/{}", prefix, n(0), n(4)), BUF)
+}
+
+/// Is `token` the keyed token for the `<phone>/<mac>` it begins with?
+/// (A token that was cut at the buffer's end is not; no phone has a MAC
+/// of that length.)
+fn keyed_token_valid(token: &[u8]) -> bool {
+    let Some(key) = token_key_stored() else {
+        return false;
+    };
+    let mut fields = token.rsplitn(3, |&c| c == b'/');
+    let (Some(_), Some(_), Some(prefix)) = (fields.next(), fields.next(), fields.next()) else {
+        return false;
+    };
+    let want = keyed_token(&key, prefix);
+    // Every byte is compared, so that the time tells nothing of the
+    // place of the first difference.
+    want.len() == token.len() && want.iter().zip(token).fold(0, |d, (a, b)| d | (a ^ b)) == 0
+}
+
 /// `phone_user_config_token_build`: issue a configuration token for
 /// phone `phone` requested from `mac`, `session_id`, and `uri` (the
 /// TokenRequest's), with `secret` the global pin.  The token is
-/// `<phone>/<mac>/<hash("blah")>/<hash(secret)>` (at most 1023
-/// characters).  None when the phone does not exist.
+/// `<phone>/<mac>/<n>/<n>` (at most 1023 characters), with the keyed
+/// numbers, or without a key the official DPMA's
+/// `<hash("blah")>/<hash(secret)>`.  None when the phone does not exist.
 pub fn config_token_build(
     phone: &[u8],
     mac: &[u8],
@@ -411,21 +502,25 @@ pub fn config_token_build(
     uri: &[u8],
     secret: &[u8],
 ) -> Option<Vec<u8>> {
+    let key = token_key();
     let mut fx = Vec::new();
-    let token = {
+    let (name, token) = {
         let mut g = write();
         let reg = g.as_mut()?;
         let p = reg.phones.get_mut(phone)?;
-        let token = crate::util::truncate(
-            &bformat!(
-                "{}/{}/{}/{}",
-                p.name,
-                mac,
-                token_hash(b""),
-                token_hash(secret)
+        let token = match &key {
+            Some(key) => keyed_token(key, &bformat!("{}/{}", p.name, mac)),
+            None => crate::util::truncate(
+                &bformat!(
+                    "{}/{}/{}/{}",
+                    p.name,
+                    mac,
+                    token_hash(b""),
+                    token_hash(secret)
+                ),
+                BUF,
             ),
-            BUF,
-        );
+        };
         if p.token_state == 0 {
             p.token_state = 1;
         }
@@ -434,8 +529,11 @@ pub fn config_token_build(
         let name = p.name.clone();
         set_last_info_locked(reg, &name, uri, Some(session_id), Some(mac), &mut fx);
         del_stale_response_uri_locked(reg, uri, session_id, &mut fx);
-        token
+        (name, token)
     };
+    if key.is_some() {
+        dpma_ast::db::put(TOKEN_DB_FAMILY, token_issued_key(&name), "1");
+    }
     run(fx);
     Some(token)
 }
@@ -461,6 +559,10 @@ pub struct TokenLookup {
 /// which is the same for all four.  So a token matches when it
 /// starts with the phone's name (case sensitive), the separator, and the
 /// MAC the phone was last seen with.
+///
+/// Deviation: a phone that was issued a keyed token is found only by a
+/// token that also is the keyed token for the phone and MAC it begins
+/// with.
 pub fn find_by_token(
     token: &[u8],
     mac: &[u8],
@@ -499,6 +601,7 @@ pub fn find_by_token(
             None
         }
     };
+    let found = found.filter(|name| !token_issued(name) || keyed_token_valid(token));
     if let Some(name) = &found {
         set_last_info(name, uri, Some(session_id), Some(mac));
     }
@@ -865,6 +968,7 @@ mod devtest {
             "AstDB: {}\n",
             show(dpma_ast::db::get(DB_FAMILY, phone))
         ));
+        a.out(bformat!("keyed token issued: {}\n", token_issued(phone)));
     }
 
     /// dpmadev token info <phone>

@@ -8,7 +8,14 @@ The practices below are for a production server on which Open DPMA is [installed
 
 A phone's configuration holds the SIP password of every line of the phone section, and the section's PIN.  With the default `config_auth=disabled`, the server hands a phone section's configuration to any phone that completes the handshake and names the section.
 
-The configuration token that the server then issues is no secret either: the token is made of the phone section's name and the phone's MAC address, and the server accepts a token that begins with a section's name and the MAC address last seen for that section.  `config_auth` is therefore the only control over who gets a configuration.
+A phone that passes the check of `config_auth` gets a configuration token, and presents the token in place of the PIN from then on, e.g., at every start.  The token holds two numbers that the server computes from the phone section's name, the phone's MAC address, and a key that only the server has.  A party that knows a section's name and a phone's MAC address therefore cannot make a token, and `config_auth` decides who gets a configuration.
+
+The server accepts a token without those numbers in two cases:
+
+- **The phone section has never been issued a token with the numbers.**  The phone of such a section got the token from the original module, or from an early Open DPMA, which issued the tokens of the original module.  For that section the server accepts, as the original module does, any token that begins with the section's name and the MAC address last seen for the section.  The section leaves this case when a phone next asks for a token for the section: e.g., when a user logs in on a phone, or after a factory reset of the phone.  `database show OpenDPMATokens` lists the sections that have left this case, as `issued/<section>`.
+- **The Asterisk database was lost.**  Until a phone asks for a token for a section, the server accepts for the section any token that begins with the section's name, as the original module does.
+
+The server keeps accepting those tokens because a phone with stock firmware that is refused a token does not ask for a new one: the phone shows an error message and waits for a person to press **Retry**.
 
 | Site | Setting | Reason |
 | --- | --- | --- |
@@ -172,16 +179,17 @@ The module also has the AMI actions `DPMAMessageRegister`, `DPMAMessageResponse`
 
 ## Backups
 
-The module keeps state in three families of the Asterisk database:
+The module keeps state in four families of the Asterisk database:
 
 | Family | Contents | When lost |
 | --- | --- | --- |
 | `DPhoneAppData` | The app data. | The data is gone; nothing else holds a copy. |
 | `DigiumPhoneSessions` | The sessions of the phones, each with the session's password. | Each phone starts a new session with a handshake. |
 | `DigiumPhoneUsers` | For each phone section: the MAC address, the URI, and the session of the phone that took the section. | The server cannot send a reconfigure to a phone until the phone contacts the server again. |
+| `OpenDPMATokens` | The key of the [configuration tokens](#choose-a-config_auth-other-than-disabled), and the phone sections that were issued a token made with the key. | The phones keep working.  The server accepts for each phone section a token without the key's numbers until a phone asks for a token for the section. |
 
-- Back up the Asterisk database to keep `DPhoneAppData`.  The module rebuilds the other two families as the phones contact the server.
-- Treat a copy of the database as a secret.  The session passwords in `DigiumPhoneSessions` are encrypted with a passphrase that is the same in every copy of the module and of the original module, so the encryption stops nothing more than a casual look.
+- Back up the Asterisk database to keep `DPhoneAppData`.  The module rebuilds the other three families as the phones contact the server.
+- Treat a copy of the database as a secret.  The session passwords in `DigiumPhoneSessions` are encrypted with a passphrase that is the same in every copy of the module and of the original module, so the encryption stops nothing more than a casual look.  The key in `OpenDPMATokens` makes a configuration token for every phone section.
 - Back up `res_digium_phone.conf`, the files of `file_directory`, and the files named by `appserver_certificate` and `phone_ca_file` with the rest of Asterisk's configuration.  The configuration file holds PINs and the passwords of external lines.
 
 ## Upgrades
