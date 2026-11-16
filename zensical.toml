@@ -13,6 +13,7 @@ repo_url = "https://github.com/jackrosenthal/open-dphone"
 repo_name = "jackrosenthal/open-dphone"
 docs_dir = "docs"
 site_dir = "site"
+extra_css = ["assets/site.css"]
 
 # Every page of the site is listed here, by its path under docs/.  A page
 # that is not listed is built, but no menu leads to it.  The first page of

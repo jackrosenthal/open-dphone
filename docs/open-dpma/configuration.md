@@ -1,6 +1,6 @@
 # Configuration
 
-Open DPMA is configured in `res_digium_phone.conf`, in Asterisk's configuration directory: the file that the original `res_digium_phone` reads.  This page is the reference of every section and option that Open DPMA accepts, for the administrator who writes or reviews that file.  The options that only phones with Open DPhone honor are on a separate page, [Options for Open DPhone](open-dphone-options.md).
+Open DPMA is configured in `res_digium_phone.conf`, in Asterisk's configuration directory: the file that the original `res_digium_phone` reads.  This page lists every section and option that Open DPMA accepts, except the options that only phones with Open DPhone honor, which are in [Options for Open DPhone](open-dphone-options.md).
 
 ## How the module reads the file
 
@@ -89,7 +89,7 @@ The certificates that are built in are those of the original module, which the p
 
 ## `type=phone` { #phone }
 
-A phone section describes one phone.  With a `config_auth` that has no `mac`, a phone section is rather a user: any phone can take the section's configuration by choosing the section in the user list.
+A phone section describes one phone.  With a `config_auth` value without `mac`, a phone section describes a user instead: any phone can take the section's configuration when the user chooses the section in the phone's user list.
 
 Options that can be repeated are marked "repeatable"; each occurrence adds to a list.
 
@@ -99,13 +99,13 @@ Options that can be repeated are marked "repeatable"; each occurrence adds to a 
 | --- | --- | --- | --- |
 | `mac` | MAC address, with or without colons | None | The phone that the section is for.  Used by the `config_auth` values with `mac`. |
 | `pin` | Text, or `voicemail` | None | The section's PIN, for the `config_auth` values with `pin`.  The PIN is also the password of the phone's app account, which the phone's apps send with every request.  With `voicemail`, the PIN is the voicemail password of the primary line's mailbox in `voicemail.conf`, and a change of that password reconfigures the phone. |
-| `group_pin` | Text | None | A PIN that stands in for `globalpin` for this section, so that a group of sections can have a PIN of the group's.  See `config_auth` and `userlist_auth`. |
+| `group_pin` | Text | None | A PIN that the phone sections of one group share, e.g., the sections of one tenant.  The server accepts the PIN in place of `globalpin` for this section.  See [`config_auth`](#config_auth) and [`userlist_auth`](#general). |
 | `full_name` | Text | The section's name | The name in the user list that phones show, in the module's contact list of internal extensions, and as the author of app data. |
 | `web_ui_enabled` | On/off | `no` | Whether the phone's web interface can be used. |
 | `login_password` | Text | Not sent | The password of the phone's web interface. |
 | `lock_preferences` | On/off | `no` | Whether the user is kept from changing the phone's preferences.  The display, sound, answering, localization, and network selection menus are hidden, and the values of this section override the values set on the phone. |
 | `logout_enabled` | On/off | `no` | Whether the phone has the Log Out app. |
-| `config_file` | File name in `file_directory` | None | A complete phone configuration document to send in place of the one that the module builds.  With this option, no other option of the section shapes the configuration. |
+| `config_file` | File name in `file_directory`{ .nowrap } | None | A complete phone configuration document to send in place of the one that the module builds.  With this option, no other option of the section shapes the configuration. |
 
 ### Lines, networks, and other sections
 
@@ -116,8 +116,8 @@ Options that can be repeated are marked "repeatable"; each occurrence adds to a 
 | `network` | Name of a `type=network` section | None | Repeatable.  A network that the phone can be on.  The phone gets each account once for every network, and chooses among the networks by `cidr`. |
 | `firmware` | Name of a `type=firmware` section | None | Repeatable.  A firmware image that the phone is to run.  See [Firmware](administration.md#firmware). |
 | `application` | Name of a `type=application` section | None | Repeatable.  Settings of one of the phone's apps. |
-| `alert` | Name of a `type=alert` section | None | Repeatable. |
-| `multicastpage` | Name of a `type=multicastpage` section | None | Repeatable. |
+| `alert` | Name of a `type=alert` section | None | Repeatable.  An alert of the phone. |
+| `multicastpage` | Name of a `type=multicastpage` section | None | Repeatable.  A multicast page that the phone listens to. |
 | `ringtone` | Name of a `type=ringtone` section, or a built-in ringtone | None | Repeatable.  A ringtone file to load onto the phone.  The name of a built-in ringtone instead selects that ringtone as the active one, unless `active_ringtone` came before.  The built-in names are `Alarm`, `Chimes`, `Digium`, `GuitarStrum`, `Jingle`, `Office`, `Office2`, `RotaryPhone`, `SteelDrum`, `Techno`, `Theme`, `Tweedle`, `Twinkle`, and `Vibe`. |
 | `active_ringtone` | Name of a ringtone | `Digium` | The ringtone of normal calls. |
 | `codecs` | Comma-separated codec names | Not sent | The codecs of the phone, in order of preference.  A `!` before a name disables that codec.  The names are `PCMU`, `PCMA`, `G722`, `G7221`, `G726-32`, `opus`, `G729`, `iLBC`, `L16`, and `L16-256`.  An unknown name ends the list at that point. |
@@ -128,7 +128,7 @@ Options that can be repeated are marked "repeatable"; each occurrence adds to a 
 | --- | --- | --- | --- |
 | `contact` | File name or URL | An empty list | Repeatable.  A contact list.  A file that is in `file_directory` is fetched from the module; any other name is fetched from the network's `file_url_prefix`, and a full URL is used as written. |
 | `blf_contact_group` | Name of a contact group | Not sent | The contact group that the phone uses for busy lamp field keys. |
-| `contacts_display_rules` | File name in `file_directory` | None | An XML file of display rules that the module puts into the settings of the phone's Contacts app. |
+| `contacts_display_rules` | File name in `file_directory`{ .nowrap } | None | An XML file of display rules that the module puts into the settings of the phone's Contacts app. |
 | `contacts_max_subscriptions` | Number | Not sent | The most contacts whose state the phone subscribes to. |
 | `blf_items` | File name or URL | None | A file that assigns contacts to line keys, fetched from the network's `file_url_prefix`. |
 | `blf_unused_linekeys` | On/off | `no` | Whether unused line keys show contacts. |
@@ -162,7 +162,7 @@ Options that can be repeated are marked "repeatable"; each occurrence adds to a 
 
 | Option | Value | Default | Effect |
 | --- | --- | --- | --- |
-| `timezone` | Time zone name, e.g., `America/Denver` | Not sent | The phone's time zone. |
+| `timezone` | Time zone name, e.g., `America/Denver`{ .nowrap } | Not sent | The phone's time zone. |
 | `ntp_resync` | Seconds | Not sent | The interval at which the phone asks the NTP server for the time. |
 | `active_locale` | Locale name, e.g., `en_US` | Not sent | The phone's language. |
 | `brightness` | Number | Not sent | The brightness of the display. |
@@ -228,7 +228,7 @@ A `type=line` section with the endpoint's name is optional and sets what PJSIP d
 | `callerid` | Caller ID | From PJSIP | The caller ID that the phone shows for the line. |
 | `first_name`, `last_name`, `title`, `location` | Text | None | The line's user, in the phone's account and in the module's contact list of internal extensions. |
 | `digit_map` | Digit map | None | The dial plan with which the phone decides that a dialed number is complete. |
-| `mailbox` | `mailbox@context` | From PJSIP or `users.conf` | The line's voicemail box.  Without a context, `default` is used; of a list, the first mailbox counts. |
+| `mailbox` | `mailbox@context`{ .nowrap } | From PJSIP or `users.conf` | The line's voicemail box.  Without a context, `default` is used; of a list, the first mailbox counts. |
 | `voicemail_uri` | SIP URI or number | None | A number that the phone calls for voicemail, in place of the phone's Voicemail app. |
 | `context` | Dialplan context | `default`, or from PJSIP | The context in which the module creates the line's hint when `subscribecontext` is not set. |
 | `subscribecontext` | Dialplan context | The value of `context` | The context in which the module creates the hint `auto_hint_<line>`, which other phones subscribe to for the line's state. |
@@ -251,8 +251,8 @@ A `type=line` section with the endpoint's name is optional and sets what PJSIP d
 | `server_port` | Port | `5060` | External line: the port of the SIP server. |
 | `secondary_server_address` | Host name or address | None | External line: an alternate SIP server. |
 | `secondary_server_port` | Port | `5060` | External line: the port of the alternate server. |
-| `tech` | Text | `PJSIP` for a line with a PJSIP endpoint | The channel technology in the line's hint.  The module sets the value. |
-| `pjsip_auth` | Name of an `auth` section | The endpoint's first `auth` section | The `auth` section whose changes the line follows.  The module sets the value. |
+| `tech` | Text | `PJSIP` for a line with a PJSIP endpoint | The channel technology in the line's hint.  The module sets the value; leave the option out of the file. |
+| `pjsip_auth` | Name of an `auth` section | The endpoint's first `auth` section | The `auth` section whose changes the line follows.  The module sets the value; leave the option out of the file. |
 
 For an internal line, the server address, port, and alternate server come from the phone's [networks](#network), not from the line.
 
@@ -330,8 +330,8 @@ A queue section lets the phone's Queues app show one queue of `app_queue`, and l
 | `location` | Interface, e.g., `PJSIP/101` | None | The member interface with which the user is added to the queue and found among the members. |
 | `membername` | Text | None | The member name with which the user is added. |
 | `permission` (or `permissions`) | `status`, `overview`, or `details` | `status` | How much of the queue the phone shows: the user's status only, also the number of members, or also the members that are logged in and the callers that wait. |
-| `login_exten` | `extension@context` | None | An extension that the module calls from the phone to log the user in, in place of adding the member directly. |
-| `logout_exten` | `extension@context` | None | An extension that the module calls from the phone to log the user out, in place of removing the member directly. |
+| `login_exten` | `extension@context`{ .nowrap } | None | An extension that the module calls from the phone to log the user in, in place of adding the member directly. |
+| `logout_exten` | `extension@context`{ .nowrap } | None | An extension that the module calls from the phone to log the user out, in place of removing the member directly. |
 
 ### `application=status`
 
@@ -381,8 +381,10 @@ A custom section loads an app package onto phones with stock firmware.  A phone 
 | Option | Value | Default | Effect |
 | --- | --- | --- | --- |
 | `alert_info` | Text | None | The value of the `Alert-Info` header that selects the alert.  Required. |
-| `ring_type` | Text | `normal` | How the phone alerts: the configuration always has the types `normal`, `ring-answer`, `visual`, and `answer`. |
+| `ring_type` | `normal`, `ring-answer`, `visual`, or `answer` | `normal` | How the phone alerts the user. |
 | `ringtone` | Name of a ringtone | None | The ringtone of the alert. |
+
+Every phone also gets four alerts that need no section, for the `Alert-Info` values `normal`, `ring-answer`, `visual`, and `intercom`.  The ring types of the four are `normal`, `ring-answer`, `visual`, and `answer`.
 
 ## `type=multicastpage` { #multicastpage }
 
@@ -407,7 +409,7 @@ Work=Arbeit
 
 ## Checking what the module read
 
-Each section type has a CLI command that prints what the module holds, which is the way to confirm a change:
+After a change and a reload, confirm what the module holds with the CLI command of the section type:
 
 | Command | Prints |
 | --- | --- |

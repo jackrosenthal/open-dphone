@@ -1,12 +1,12 @@
 # Options for Open DPhone
 
-Open DPMA adds options to the phone sections (`type=phone`) of `res_digium_phone.conf` for the features that only Open DPhone has.  The names of the options begin with `dphone_`.  This page is for the administrator of a server whose phones, or some of whose phones, run Open DPhone.
+Open DPMA adds options to the phone sections (`type=phone`) of `res_digium_phone.conf` for the features that only Open DPhone has.  The names of the options begin with `dphone_`.
 
 ## What the options have in common
 
 - **Which firmware honors the options.**  A phone with Open DPhone acts on the options.  A phone with stock firmware ignores the settings, so the same phone section serves a phone before and after a change of firmware.  The original module does not know the options and reports each as invalid.
-- **An option that is absent sends nothing.**  The phone then uses the value set on the phone, or else the default of the firmware, which each entry below states.
-- **A value set on the phone goes first.**  The module sends the on/off options, the softkeys, the disabled apps, and the static address as ordinary settings.  When the same setting has been set on the phone, e.g., in the phone's web interface, the phone keeps that value and the option of the server has no effect.  The server's option therefore sets a starting value for a fleet and does not keep a user with access to the phone's settings from changing the value.  [`web_ui_enabled`](configuration.md#phone) and `login_password` control that access.
+- **An absent option sends nothing.**  The phone then uses the value set on the phone, or else the firmware's default, which each entry below states.
+- **A value set on the phone wins.**  When a setting has been changed on the phone, e.g., in the phone's web interface, the phone keeps that value and ignores the server's option.  The rule covers the on/off options, the softkeys, the disabled apps, and the static address.  A server's option therefore sets a starting value for a fleet, and does not stop a user who can reach the phone's settings from changing the value.  The options `web_ui_enabled` and `login_password` ([Identity and access](configuration.md#identity-and-access)) control who reaches the settings.
 - **A value that the module cannot read is skipped.**  The module logs `Invalid option '<name>' at line <n> is not supported by phone module.` at the level `DPMA`, and sends the phone nothing for the option.
 - **`digium_phones show phone <name>`** prints the values that the module holds for a phone section.
 
@@ -51,7 +51,7 @@ Whether the phone's SSH server runs.
 - **Value:** on/off.
 - **Without the option:** the SSH server does not run.
 
-The SSH server gives a root shell on the phone and accepts public keys only, so the option is of use together with at least one key: a [`dphone_ssh_authorized_key`](#dphone_ssh_authorized_key), or a key added on the phone.
+The SSH server gives a root shell on the phone and accepts public keys only.  Nobody can log in until the phone has at least one key: a [`dphone_ssh_authorized_key`](#dphone_ssh_authorized_key), or a key added on the phone.
 
 ### `dphone_ssh_authorized_key` { #dphone_ssh_authorized_key }
 
@@ -61,7 +61,7 @@ An SSH public key that may log in to the phone.
 - **Repeatable:** each occurrence adds a key; a key written twice is sent once.
 - **Without the option:** the server sends no keys.
 
-The phone accepts the keys of the server in addition to the keys that were added on the phone.  When a key is removed from the configuration, the phone drops the key at the next configuration.  The keys have no effect while the SSH server does not run.
+The phone accepts the server's keys in addition to the keys that were added on the phone.  After a key is removed from the phone section, the phone drops the key when the phone next fetches the configuration.  The keys have no effect while the SSH server does not run.
 
 ### `dphone_serial_console` { #dphone_serial_console }
 
@@ -70,7 +70,7 @@ Whether the phone's serial port, on the EHS connector, is a console.
 - **Value:** on/off.
 - **Without the option:** no serial console.
 
-The console and an electronic hook switch headset adapter use the same serial port.  A phone with the console on has no EHS; the `ehs` option then has no effect.  Switch the console on for a phone on the bench, not for a phone whose user has an EHS headset.
+The console and an electronic hook switch headset adapter use the same serial port.  A phone with the console on cannot use an EHS adapter, and the `ehs` option has no effect.  Switch the console on for a phone on the bench, not for a phone whose user has an EHS headset.
 
 ### `dphone_metrics_enabled` { #dphone_metrics_enabled }
 
@@ -83,7 +83,7 @@ The endpoint needs no login, and does not depend on `web_ui_enabled`.  Set `dpho
 
 ## Network address
 
-The three options give a phone a static IPv4 address in place of DHCP.  The gateway and the DNS servers are sent only together with `dphone_static_address`.  A static address that was set on the phone goes before the address of the server.
+The three options give a phone a static IPv4 address in place of DHCP.  The module sends the gateway and the DNS servers only together with `dphone_static_address`.  A static address that was set on the phone wins over the server's address.
 
 ### `dphone_static_address` { #dphone_static_address }
 
@@ -130,7 +130,7 @@ The softkeys of the idle screen, in order from the left.
 
 For example, `dphone_idle_softkeys=call_log,contacts,app:parking,menu`.
 
-Open DPhone does not take the idle softkeys from the options that shape the idle screen of stock firmware (`show_call_log`, `can_forward_calls`, `show_call_parking`, and `idlescreen_softkey` of a custom application).  This option is the way to set the idle softkeys of an Open DPhone phone from the server.
+The options that shape the idle screen of stock firmware (`show_call_log`, `can_forward_calls`, `show_call_parking`, and `idlescreen_softkey` of a custom application) do not change the idle softkeys of Open DPhone.  Only `dphone_idle_softkeys` sets the idle softkeys of an Open DPhone phone from the server.
 
 ### `dphone_disabled_apps` { #dphone_disabled_apps }
 
@@ -152,7 +152,7 @@ The palette file for the wallpaper picture of `wallpaper_file`: the colors in wh
 
 The phone fetches the palette file only when the section also has `wallpaper_file`.  The file is a `dphone.palette.v1` message in protobuf text format, which `proto/dphone/palette/v1/palette.proto` in the repository describes, and is at most 16 KiB.
 
-Unlike the other options of this page, the wallpaper picture and the palette file of the server go before a wallpaper that the user chose on the phone.
+Unlike the other options of this page, the server's wallpaper picture and palette file win over a wallpaper that the user chose on the phone.
 
 ## Firmware
 
@@ -163,7 +163,7 @@ Whether the phone ignores the firmware entries of the configuration.
 - **Value:** on/off.
 - **Without the option:** the phone follows the firmware entries, and installs the image of the phone's entry when that image differs from the running one.
 
-With the option on, the phone keeps the firmware that the phone runs, whatever `firmware` sections or firmware package the server has.  The option is for a phone that has to stay on a build of the administrator's choosing, e.g., a development phone on a server that offers every other phone a release.  See [Firmware](administration.md#firmware).
+With the option on, the phone keeps the running firmware, whatever `firmware` sections or firmware package the server has.  Use the option for a phone that has to stay on a chosen build, e.g., a development phone on a server that offers every other phone a release.  See [Firmware](administration.md#firmware).
 
 ## App data
 
@@ -176,6 +176,6 @@ The tenant whose app data the phone reads and writes.
 
 Phones with the same key share one store of app data, and no phone reads or writes the store of another key.  The module never sends the key to a phone, and no request of a phone can name a key: the key comes from the phone section alone.
 
-A value that is not a valid key is not treated as "no key".  The module logs the option as invalid, and refuses every app data request of the phone until the value is corrected, so that a typing mistake never puts a tenant's phone into the shared store.
+The module does not treat an invalid value as "no key".  The module logs the option as invalid and refuses every app data request of the phone until the value is corrected, so that a typing mistake never puts a tenant's phone into the shared store.
 
 [App data](administration.md#app-data) describes the store, and the practice for servers with more than one tenant.

@@ -1,0 +1,12 @@
+/* The site's additions to the theme's styles (extra_css in zensical.toml). */
+
+/* The theme lets code break inside a word, and a table then squeezes the
+   first column until a name such as userlist_auth is split.  A name in
+   the first column of a table (an option, a command, a file) stays on one
+   line, as does code with the class nowrap. */
+.md-typeset table:not([class]) th:first-child code,
+.md-typeset table:not([class]) td:first-child code,
+.md-typeset code.nowrap {
+  white-space: nowrap;
+  word-break: normal;
+}

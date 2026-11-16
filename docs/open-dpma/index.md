@@ -1,8 +1,8 @@
 # Open DPMA
 
-Open DPMA is an Asterisk module, `res_open_dpma.so`, that provisions Digium D-series phones and answers the requests of the phones' apps.  The module is the Open DPhone project's implementation, in Rust, of DPMA, the Digium Phone Module for Asterisk, and takes the place of the original `res_digium_phone` and the two PJSIP helper modules that come with the original.
+Open DPMA is an Asterisk module, `res_open_dpma.so`, that provisions Digium D-series phones and answers the requests of the phones' apps.  The module is the Open DPhone project's open-source implementation, in Rust, of DPMA, the protocol of the Digium Phone Module for Asterisk.  Open DPMA takes the place of the original `res_digium_phone` and of the two PJSIP helper modules that come with the original.
 
-This section is for the administrator of an Asterisk server that has D-series phones, with stock firmware or with Open DPhone.
+This section is for the administrator of an Asterisk server whose D-series phones run stock firmware, Open DPhone, or both.
 
 | Page | Contents |
 | --- | --- |
@@ -17,14 +17,14 @@ Open DPMA speaks the DPMA protocol to every D-series phone, whatever firmware th
 
 | Firmware on the phone | What Open DPMA provides |
 | --- | --- |
-| Stock firmware | What the original module provides.  A phone ignores the `dphone_*` settings, and stock firmware has no app data. |
+| Stock firmware | What the original module provides.  Stock firmware ignores the `dphone_*` settings and has no app data. |
 | Open DPhone | The same, and also the [options for Open DPhone](open-dphone-options.md) and [app data](administration.md#app-data) kept on the server. |
 
 A phone that runs Open DPhone also works with the original module, without the `dphone_*` options and without app data.
 
 ## Differences from the original module
 
-Open DPMA reads the configuration file of the original module, `res_digium_phone.conf`, and registers the CLI commands and AMI actions of the original under the same names.  An administrator who moves a server from the original module is affected by the following differences.
+Open DPMA reads the configuration file of the original module, `res_digium_phone.conf`, and registers the CLI commands and AMI actions of the original under the same names.  The differences below affect an administrator who moves a server from the original module.
 
 **Not supported**
 
@@ -37,7 +37,7 @@ Open DPMA reads the configuration file of the original module, `res_digium_phone
 - A phone file request whose file name has a `..` component is refused.  The original module opens such a name, which reaches every file that the Asterisk process can read.
 - The server tells a phone the MD5 digest of the phone's configuration.  A phone therefore downloads the configuration only after a change; with the original module a phone downloads the configuration at every start.
 - A phone section without `active_locale` sends no locale to the phone.  The original module sends an empty locale, which stock firmware cannot load.
-- Service discovery does not use `avahi-daemon`.  The module answers mDNS queries directly, and the service's host name is `<hostname>-dpma.local`.
+- Service discovery does not need `avahi-daemon`.  The module answers mDNS queries directly, and the service's host name is `<hostname>-dpma.local`.
 - A phone request that was forwarded to an AMI client and never answered is dropped after 300 seconds.  The original module keeps such requests until the module is unloaded.
 - A firmware entry carries a checksum of the firmware image when the image file is on the server.  See [Firmware](administration.md#firmware).
 - A session record in the Asterisk database that cannot be decrypted is deleted, and the phone starts a new session.

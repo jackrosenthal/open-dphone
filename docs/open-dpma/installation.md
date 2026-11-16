@@ -1,7 +1,5 @@
 # Installation
 
-This page takes an Asterisk administrator from a server without Open DPMA to a server on which phones are provisioned by the module.
-
 ## Requirements
 
 | Requirement | Details |
@@ -13,7 +11,7 @@ This page takes an Asterisk administrator from a server without Open DPMA to a s
 | `pjsip.conf` | The endpoint that `default_outbound_endpoint` of the `[global]` section names must exist.  The module creates the endpoint that receives the phones' requests from that endpoint's name. |
 | `res_digium_phone.conf` | The file must exist in Asterisk's configuration directory.  See [Configuration](configuration.md). |
 
-The pre-built modules are for the versions and platforms above.  For another platform, [build the module from source](#building-from-source).
+For another platform, [build the module from source](#building-from-source).
 
 The module uses `func_presencestate`, `app_voicemail`, `res_parking`, and `app_queue` when Asterisk has loaded them, for the phones' Status, Voicemail, Parking, and Queues apps.
 
@@ -43,7 +41,7 @@ Each release on the project's [releases page](https://github.com/jackrosenthal/o
 | Asterisk 23 | `res_open_dpma-asterisk23-x86_64.so` | `res_open_dpma-asterisk23-aarch64.so` |
 | Asterisk 24 | `res_open_dpma-asterisk24-x86_64.so` | `res_open_dpma-asterisk24-aarch64.so` |
 
-Download the module for the server and the checksum file, then verify the download.  For Asterisk 22 on x86_64:
+`asterisk -V` prints the version of Asterisk, and `uname -m` prints the architecture.  Download the module for the server and the checksum file, then verify the download.  For Asterisk 22 on x86_64:
 
 ```sh
 curl -fLO https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_open_dpma-asterisk22-x86_64.so
@@ -51,7 +49,7 @@ curl -fLO https://github.com/jackrosenthal/open-dphone/releases/latest/download/
 sha256sum --ignore-missing -c SHA256SUMS
 ```
 
-`sha256sum` must print `OK` for the module.  `asterisk -V` prints the version of Asterisk, and `uname -m` prints the architecture.
+`sha256sum` must print `OK` for the module.
 
 ## Install the module
 
@@ -67,7 +65,7 @@ sha256sum --ignore-missing -c SHA256SUMS
 
 ## Replace the original module
 
-Open DPMA and the original module cannot both be loaded: both register the same CLI commands, AMI actions, and message technology, and both read `res_digium_phone.conf`.  Open DPMA contains the function of all three modules of the original, so all three have to stay unloaded.
+Open DPMA and the original module cannot both be loaded: both register the same CLI commands, AMI actions, and message technology, and both read `res_digium_phone.conf`.  Open DPMA does the work of all three modules of the original, so all three have to stay unloaded.
 
 Add the following lines to `modules.conf`, or remove the three files from the module directory:
 
@@ -122,7 +120,7 @@ A phone finds the server from the module's mDNS announcement when service discov
 
 !!! tip "See the module's log messages"
 
-    The module writes most messages at a log level of the module's, named `DPMA`.  Asterisk shows the level only in a log channel that lists the level:
+    The module writes most messages at the log level `DPMA`, which the module adds to Asterisk.  Asterisk writes those messages only to a log channel that lists `dpma`:
 
     ```ini title="logger.conf"
     [logfiles]
@@ -130,7 +128,7 @@ A phone finds the server from the module's mDNS announcement when service discov
     messages.log => notice,warning,error,dpma
     ```
 
-    The reason that a phone was refused a configuration is logged at that level, e.g., `Auth failed for ip ...`.
+    A message at that level says why a phone was refused a configuration, e.g., `Auth failed for ip ...`.
 
 ## Building from source
 
@@ -154,5 +152,3 @@ export ASTERISK_SOURCE_DIR=$(cargo xtask headers --asterisk 22)
 !!! warning "Do not enable the `devtest` feature"
 
     The crate's `devtest` feature adds the `dpmadev` CLI commands that the test suites use, e.g., commands that issue configuration tokens and send messages to phones.  A module for a production server must be built without the feature, which is the default.
-
-The [Dev Guide](../dev-guide/index.md) covers the rest of the repository.
