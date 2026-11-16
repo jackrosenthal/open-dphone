@@ -136,10 +136,11 @@ impl Output {
     }
 }
 
-/// The repository root (the parent of this crate's directory).
+/// The repository root (this crate is `dpma/tests` in it).
 pub fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
+        .ancestors()
+        .nth(2)
         .map(PathBuf::from)
         .unwrap_or_default()
 }

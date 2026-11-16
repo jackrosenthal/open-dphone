@@ -1,5 +1,5 @@
 //! The main role against a real server: Asterisk with `res_dpma_rs` (the
-//! open DPMA module, <https://github.com/jackrosenthal/dpma-rs>), both on
+//! open DPMA module, `dpma/` in this repository), both on
 //! loopback.  The real binary in simulator mode finds its saved server,
 //! provisions over DPMA (handshake with a freshly minted identity, token,
 //! configuration), writes the stock-format files, and registers the line

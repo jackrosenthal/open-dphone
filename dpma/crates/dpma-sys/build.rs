@@ -403,7 +403,7 @@ fn main() {
         Some(d) if !d.is_empty() => PathBuf::from(d),
         _ => panic!(
             "ASTERISK_SOURCE_DIR is not set: set it to a configured Asterisk source tree \
-             (see README.md, \"Building\")"
+             (see dpma/README.md, \"Building\")"
         ),
     };
     let asterisk = source.join("include");

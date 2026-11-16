@@ -4,7 +4,8 @@ The protocol that Digium phones speak to their application server (the
 Digium Phone Module for Asterisk, DPMA), as a Rust library with no Asterisk
 dependency.
 
-It is the protocol half of [dpma-rs](https://github.com/jackrosenthal/dpma-rs),
+It is the protocol half of
+[dpma-rs](https://github.com/jackrosenthal/open-dphone/tree/main/dpma),
 an open source replacement for the official DPMA.  The code follows the
 official module's behavior closely, including its error texts and limits, so
 that what it produces and accepts is what phones expect.  It is written from
@@ -51,11 +52,11 @@ Two runnable examples use `message` over a real SIP stack,
 lives (`examples/common/mod.rs`); everything about the protocol is the
 crate's.
 
-- [`examples/server.rs`](https://github.com/jackrosenthal/dpma-rs/blob/main/crates/dpma-proto/examples/server.rs)
+- [`examples/server.rs`](https://github.com/jackrosenthal/open-dphone/blob/main/dpma/crates/dpma-proto/examples/server.rs)
   is a server.  It verifies a phone's certificates, answers the Handshake with
   the session's password, and answers requests.  It trusts the CA certificates
   built into the official DPMA unless you pass others.
-- [`examples/phone.rs`](https://github.com/jackrosenthal/dpma-rs/blob/main/crates/dpma-proto/examples/phone.rs)
+- [`examples/phone.rs`](https://github.com/jackrosenthal/open-dphone/blob/main/dpma/crates/dpma-proto/examples/phone.rs)
   is a phone.  It handshakes with the certificates and key you give it, then
   sends a PingRequest and reads the reply.
 

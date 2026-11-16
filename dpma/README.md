@@ -11,6 +11,10 @@ that crash Asterisk.
 dpma-rs is an independent rewrite, not made or endorsed by Digium or
 Sangoma.
 
+It is part of Open DPhone, the open firmware for the Digium D-series
+phones, and has the firmware's version: each release of Open DPhone has
+the firmware images and the modules.
+
 ## Installation
 
 ### Pre-built modules
@@ -21,15 +25,15 @@ RHEL 9).  For anything else, see "Building".
 
 | | x86_64 | aarch64 |
 |---|---|---|
-| Asterisk 22 | [res_dpma_rs-asterisk22-x86_64.so](https://github.com/jackrosenthal/dpma-rs/releases/latest/download/res_dpma_rs-asterisk22-x86_64.so) | [res_dpma_rs-asterisk22-aarch64.so](https://github.com/jackrosenthal/dpma-rs/releases/latest/download/res_dpma_rs-asterisk22-aarch64.so) |
-| Asterisk 23 | [res_dpma_rs-asterisk23-x86_64.so](https://github.com/jackrosenthal/dpma-rs/releases/latest/download/res_dpma_rs-asterisk23-x86_64.so) | [res_dpma_rs-asterisk23-aarch64.so](https://github.com/jackrosenthal/dpma-rs/releases/latest/download/res_dpma_rs-asterisk23-aarch64.so) |
-| Asterisk 24 | [res_dpma_rs-asterisk24-x86_64.so](https://github.com/jackrosenthal/dpma-rs/releases/latest/download/res_dpma_rs-asterisk24-x86_64.so) | [res_dpma_rs-asterisk24-aarch64.so](https://github.com/jackrosenthal/dpma-rs/releases/latest/download/res_dpma_rs-asterisk24-aarch64.so) |
+| Asterisk 22 | [res_dpma_rs-asterisk22-x86_64.so](https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_dpma_rs-asterisk22-x86_64.so) | [res_dpma_rs-asterisk22-aarch64.so](https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_dpma_rs-asterisk22-aarch64.so) |
+| Asterisk 23 | [res_dpma_rs-asterisk23-x86_64.so](https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_dpma_rs-asterisk23-x86_64.so) | [res_dpma_rs-asterisk23-aarch64.so](https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_dpma_rs-asterisk23-aarch64.so) |
+| Asterisk 24 | [res_dpma_rs-asterisk24-x86_64.so](https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_dpma_rs-asterisk24-x86_64.so) | [res_dpma_rs-asterisk24-aarch64.so](https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_dpma_rs-asterisk24-aarch64.so) |
 
 To download and verify, e.g., for Asterisk 24 on x86_64:
 
 ```
-curl -fLO https://github.com/jackrosenthal/dpma-rs/releases/latest/download/res_dpma_rs-asterisk24-x86_64.so
-curl -fLO https://github.com/jackrosenthal/dpma-rs/releases/latest/download/SHA256SUMS
+curl -fLO https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_dpma_rs-asterisk24-x86_64.so
+curl -fLO https://github.com/jackrosenthal/open-dphone/releases/latest/download/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
 ```
 
@@ -86,10 +90,18 @@ dphone_ssh_authorized_key=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaa
 
 ## Development
 
-- `crates/`: the module (`res_dpma_rs`) and its libraries.
+This directory, `dpma/`, is dpma-rs in the Open DPhone repository:
+
+- `crates/`: the module (`res_dpma_rs`) and its libraries.  The firmware
+  uses two of them, `dpma-proto` and `dpma-bytes`.
 - `tests/`: the test suites and their tools; see `tests/README.md`.
 - `tools/`: `cargo xtask`, and the test image for each pinned Asterisk
   release.
+
+The crates are members of the repository's one Cargo workspace, and take
+their version from it.  Run the commands below in `dpma/`: `cargo xtask`
+is dpma-rs's own there (`.cargo/config.toml`), and the firmware's
+anywhere else in the repository.  `target/` is the repository's.
 
 ### Building
 
@@ -99,16 +111,17 @@ headers` copies them out of a test image (podman or docker needed).
 
 ```
 export ASTERISK_SOURCE_DIR=$(cargo xtask headers --asterisk 24)
-cargo build --release
+cargo build --profile module -p res_dpma_rs
 ```
 
-The module is `target/release/libres_dpma_rs.so`.  Never enable the
-`devtest` feature in production; it adds CLI commands for the test suites.
+The module is `target/module/libres_dpma_rs.so`, in the repository's
+`target/`.  Never enable the `devtest` feature in production; it adds CLI
+commands for the test suites.
 
 ### Testing
 
 ```
-cargo test --workspace --exclude res_dpma_rs
+cargo test -p dpma-bytes -p dpma-proto -p dpma-tests -p dpma-xtask
 cargo xtask test [--asterisk 22] [all]
 cargo xtask ci --asterisk 23
 ```
@@ -120,4 +133,4 @@ what each CI job runs.
 
 CI runs `cargo xtask ci` for each pinned Asterisk major version on x86_64
 and aarch64.  Pushing a tag `vX.Y.Z` matching the workspace version
-publishes a GitHub Release.
+publishes a GitHub Release of the firmware images and the modules.

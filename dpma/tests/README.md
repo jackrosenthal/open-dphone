@@ -4,14 +4,19 @@ All test tooling is Rust:
 
 - `tests/` is the crate `dpma-tests`, the test suites and their tools
   (`cargo doc -p dpma-tests --open` documents them).
-- `tools/` is the crate `xtask`, run as `cargo xtask`, and the test
-  image, `tools/Containerfile`: the suites run in a container that holds
-  one pinned Asterisk release.
+- `tools/` is the crate `dpma-xtask`, run as `cargo xtask` in `dpma/`,
+  and the test image, `tools/Containerfile`: the suites run in a
+  container that holds one pinned Asterisk release.
 
-The crates' own tests run on the host with `cargo test --workspace
---exclude res_dpma_rs` (the module's test binary cannot link outside
-Asterisk).  The suites are skipped there, since they need the test
-container.
+Paths here are in `dpma/` of the repository, except `target/`, which is
+the repository's.  The repository's Cargo workspace also holds the phone
+firmware, so Cargo commands name the packages of dpma-rs.
+
+The crates' own tests run on the host with `cargo test -p dpma-bytes -p
+dpma-proto -p dpma-tests -p dpma-xtask`; with `ASTERISK_SOURCE_DIR` set,
+add `-p dpma-sys -p dpma-ast` (the module's test binary cannot link
+outside Asterisk).  The suites are skipped there, since they need the
+test container.
 
 You need podman or docker, and Rust.  Asterisk and its build
 dependencies are in the image.
@@ -80,7 +85,8 @@ when it is done:
   releases never clash.  The xtask turns multicast on for `lo`, as root
   in the container (`--cap-add NET_ADMIN`), for the mDNS checks of
   `apps-discovery`.
-- **Mounts:** the repository; `target/container/<release>/` for what
+- **Mounts:** the repository (the work runs in its `dpma/`);
+  `target/container/<release>/` for what
   the run writes; and `target/container/cargo/` as `CARGO_HOME`, the
   crates cache that the releases share.  The container has no network,
   so the xtask fetches the crates into that cache on the host first.
@@ -158,9 +164,10 @@ check that nothing happens.
 ## The module for publishing
 
 After the suites pass, `cargo xtask ci` builds the module as it is
-published (without devtest), checks that it needs no newer glibc than
-the minimum that `README.md` states (`GLIBC_BASELINE` in
-`tools/src/ci.rs`), and smoke-tests it in the container's Asterisk.
+published (the Cargo profile `module`, without devtest), checks that it
+needs no newer glibc than the minimum that `README.md` states
+(`GLIBC_BASELINE` in `tools/src/ci.rs`), and smoke-tests it in the
+container's Asterisk.
 
 ## The simulator and AMI from the command line
 
@@ -186,7 +193,8 @@ simulator's test configuration and its phones.
 
 ## CI
 
-`.github/workflows/ci.yml` runs `cargo xtask ci` for each pinned major
-version, natively on x86_64 and aarch64, with the test images kept in
-the Actions cache.  A pushed tag `vX.Y.Z` that names the workspace
-version also publishes a GitHub Release.
+The repository's `.github/workflows/ci.yml` runs `cargo xtask ci` for
+each pinned major version, natively on x86_64 and aarch64, with the test
+images kept in the Actions cache.  A pushed tag `vX.Y.Z` that names the
+workspace version also publishes a GitHub Release of the firmware images
+and the modules.

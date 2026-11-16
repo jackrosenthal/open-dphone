@@ -22,7 +22,8 @@
 //!   releases never clash.  Root in the container (an `exec` as user 0,
 //!   with `--cap-add NET_ADMIN`) turns multicast on for `lo` and routes
 //!   224.0.0.0/4 through it, for the apps-discovery suite's mDNS.
-//! - Mounts ([`SRC`], [`OUT`], and [`CARGO_HOME`]): the repository;
+//! - Mounts ([`SRC`], [`OUT`], and [`CARGO_HOME`]): the repository (the
+//!   work runs in its `dpma/`, [`DPMA`]);
 //!   `target/container/<release>/` for what the run writes; and
 //!   `target/container/cargo/` as `CARGO_HOME`, the registry cache that
 //!   the releases share.  The container has no network, so the host
@@ -53,10 +54,13 @@ use anyhow::{bail, Context, Result};
 use sha2::{Digest, Sha256};
 
 use crate::pins::Pin;
-use crate::{repo_root, run};
+use crate::{repo_root, run, tools_dir};
 
 /// The repository, in the container.
 pub const SRC: &str = "/src";
+/// `dpma/` of the repository, in the container: where the work runs, so
+/// that `cargo xtask` there is this one (`dpma/.cargo/config.toml`).
+pub const DPMA: &str = "/src/dpma";
 /// `target/container/<release>/`, in the container.
 pub const OUT: &str = "/out";
 /// `target/container/cargo/` (`CARGO_HOME`), in the container.
@@ -123,7 +127,7 @@ impl Engine {
         if have.success() {
             return Ok(tag);
         }
-        let tools = repo_root().join("tools");
+        let tools = tools_dir();
         eprintln!("building the image {tag}");
         // Its output goes to stderr: `headers` prints a path on stdout.
         run(self
@@ -146,7 +150,7 @@ impl Engine {
 /// the hash covers the Containerfile, the pin, and the files of
 /// `tools/asterisk-conf/`.
 pub fn image_tag(pin: &Pin) -> Result<String> {
-    let tools = repo_root().join("tools");
+    let tools = tools_dir();
     let mut h = Sha256::new();
     let mut add = |name: &str, data: &[u8]| {
         h.update(name.as_bytes());
@@ -238,7 +242,7 @@ impl Container {
         // ends the container, not the engine's client.
         use std::os::unix::process::CommandExt;
         let mut main = c
-            .args(["-w", SRC, image, "cat"])
+            .args(["-w", DPMA, image, "cat"])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .process_group(0)
@@ -298,7 +302,7 @@ impl Container {
     }
 
     /// `args` as the host user in the container (see [`Container::host_user`]),
-    /// in `dir` (default: the repository).
+    /// in `dir` (default: [`DPMA`]).
     pub fn work(&self, dir: Option<&str>, args: &[&str]) -> Command {
         self.exec(Some(&self.user), dir, args)
     }

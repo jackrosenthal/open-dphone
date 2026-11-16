@@ -19,7 +19,7 @@ sip = ["dep:dphone-sip"]
 [dependencies]
 dphone-state = { path = "../dphone-state" }
 dphone-sip = { path = "../dphone-sip", optional = true }
-dpma-proto = "0.3.4"
+dpma-proto.workspace = true
 eff = { path = "../eff" }
 dphone-update = { path = "../dphone-update", optional = true }
 dphone-hal = { path = "../dphone-hal", optional = true }

@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use anyhow::{anyhow, Context, Result};
 
-use crate::repo_root;
+use crate::tools_dir;
 
 /// One pinned release.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,7 +25,7 @@ pub struct Pin {
 
 /// The pin file, `tools/asterisk-versions`.
 pub fn pins_file() -> PathBuf {
-    repo_root().join("tools").join("asterisk-versions")
+    tools_dir().join("asterisk-versions")
 }
 
 /// The pins in the text of a pin file, in file order.

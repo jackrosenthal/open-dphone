@@ -1,4 +1,5 @@
-//! `cargo xtask`: the development tasks of dpma-rs (see `tests/README.md`).
+//! `cargo xtask` in `dpma/`: the development tasks of dpma-rs (see
+//! `tests/README.md`).
 //!
 //! `test` and `ci` run in fresh containers of the release's test image
 //! ([`container`]): one builds, then every suite runs in one of its own
@@ -99,10 +100,28 @@ fn jobs(jobs: Option<usize>) -> usize {
     jobs.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from))
 }
 
-/// The repository.
-pub fn repo_root() -> PathBuf {
+/// The packages of dpma-rs.  The repository's workspace also holds the
+/// phone firmware, so every Cargo command here names its packages.
+pub const PACKAGES: [&str; 7] = [
+    "dpma-ast",
+    "dpma-bytes",
+    "dpma-proto",
+    "dpma-sys",
+    "res_dpma_rs",
+    "dpma-tests",
+    "dpma-xtask",
+];
+
+/// `tools/`: this crate's directory.
+pub fn tools_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
+}
+
+/// The repository (this crate is `dpma/tools` in it).
+pub fn repo_root() -> PathBuf {
+    tools_dir()
+        .ancestors()
+        .nth(2)
         .map(PathBuf::from)
         .unwrap_or_default()
 }

@@ -354,7 +354,7 @@ impl Instance {
             .join("libres_dpma_rs.so")
     }
 
-    /// Installs the module built in `profile` (`debug` or `release`) as
+    /// Installs the module built in `profile` (`debug` or `module`) as
     /// `res_dpma_rs.so` in the module directory, by copying it to a
     /// temporary file and renaming that into place (so that a running
     /// Asterisk is not hurt; restart it to use the new build).
@@ -362,12 +362,12 @@ impl Instance {
         let src = Instance::module_build(profile);
         if !src.is_file() {
             bail!(
-                "no module build {} (cargo build{} -p res_dpma_rs --features devtest)",
+                "no module build {} (cargo build{} -p res_dpma_rs)",
                 src.display(),
-                if profile == "release" {
-                    " --release"
+                if profile == "debug" {
+                    " --features devtest".to_string()
                 } else {
-                    ""
+                    format!(" --profile {profile}")
                 }
             );
         }

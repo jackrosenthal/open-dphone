@@ -63,9 +63,9 @@ let
     else
       null;
 
-  asterisk = pkgs.callPackage ./asterisk.nix { inherit rustPlatform; };
+  asterisk = pkgs.callPackage ./asterisk.nix { module = workspace.res_dpma_rs; };
   workspace = pkgs.callPackage ./workspace.nix {
-    inherit craneLib rust;
+    inherit craneLib rust rustPlatform;
     inherit stock asterisk;
     webDist = web;
     appsStaged = if apps != null then apps.testFixture else null;

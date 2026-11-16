@@ -1,3 +1,4 @@
-# cargo xtask (tools/, see tests/README.md).
+# In dpma/, cargo xtask is the DPMA module's (tools/, see tests/README.md),
+# not the firmware's (xtask/ in the repository).
 [alias]
-xtask = "run --package xtask --"
+xtask = "run --package dpma-xtask --"

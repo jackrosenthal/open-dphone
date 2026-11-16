@@ -9,10 +9,22 @@
 #   checks                                                (`nix flake check`)
 #   cache                                                 (for the next run)
 #
-# Each image is uploaded as a workflow artifact, `firmware-<model>`.  A
-# pushed tag vX.Y.Z (the workspace version in Cargo.toml) also publishes the
-# seven images as a GitHub Release, with SHA256SUMS, and then publishes
-# dphone-app-sdk and cargo-dphone-app to crates.io (trusted publishing).
+# Each image is uploaded as a workflow artifact, `firmware-<model>`.
+#
+# The DPMA module for Asterisk (dpma/) is built, linted, and tested for
+# every pinned Asterisk major version on x86_64 and aarch64.  Each of those
+# jobs is a thin wrapper around `cargo xtask ci` in dpma/, which runs the
+# same way locally (with podman or docker):
+#
+#   cd dpma && cargo xtask ci --asterisk <major>
+#
+# Each module is uploaded as a workflow artifact,
+# `res_dpma_rs-asterisk<major>-<arch>`.
+#
+# A pushed tag vX.Y.Z (the workspace version in Cargo.toml) also publishes
+# the seven images and the modules as a GitHub Release, with SHA256SUMS,
+# and then publishes dpma-bytes, dpma-proto, dphone-app-sdk, and
+# cargo-dphone-app to crates.io (trusted publishing).
 name: CI
 
 on:
@@ -61,7 +73,8 @@ jobs:
           # The dependencies of the tests and of clippy.
           - name: checks-deps
             installables: .#checks.x86_64-linux.tests.cargoArtifacts
-          # Asterisk with res_dpma_rs, which the tests register against.
+          # Asterisk with res_dpma_rs (dpma/), which the tests register
+          # against.
           - name: asterisk
             installables: .#asterisk-modules
     steps:
@@ -224,15 +237,122 @@ jobs:
           path: ${{ runner.temp }}/nix/cache
           key: ${{ steps.joined.outputs.key }}
 
+  # The firmware's crates are not all formatted with rustfmt; the crates of
+  # dpma/ are.
+  dpma-fmt:
+    name: dpma formatting
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Rust 1.99
+        run: rustup toolchain install 1.99 --profile minimal --component rustfmt && rustup default 1.99
+
+      - run: cargo fmt --check -p dpma-ast -p dpma-bytes -p dpma-proto -p dpma-sys -p res_dpma_rs -p dpma-tests -p dpma-xtask
+
+  dpma-versions:
+    name: Pinned Asterisk versions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      majors: ${{ steps.pins.outputs.majors }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Rust 1.99
+        run: rustup toolchain install 1.99 --profile minimal && rustup default 1.99
+
+      - id: pins
+        working-directory: dpma
+        run: echo "majors=$(cargo xtask majors)" >> "$GITHUB_OUTPUT"
+
+  dpma-test:
+    name: Asterisk ${{ matrix.asterisk }} (${{ matrix.arch }})
+    needs: dpma-versions
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        asterisk: ${{ fromJSON(needs.dpma-versions.outputs.majors) }}
+        arch: [x86_64, aarch64]
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    env:
+      # The runners have both; the image cache below is docker's.
+      DPMA_ENGINE: docker
+    steps:
+      - uses: actions/checkout@v7
+
+      # Rust runs only the xtask on the runner; the build and the tests run
+      # in the test container.  (rustup is installed first where the
+      # runner image has none.)
+      - name: Rust 1.99
+        run: |
+          command -v rustup || { curl --proto '=https' -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none && echo "$HOME/.cargo/bin" >> "$GITHUB_PATH" && export PATH="$HOME/.cargo/bin:$PATH"; }
+          rustup toolchain install 1.99 --profile minimal && rustup default 1.99
+
+      # Keyed by what the image's tag covers (image_tag in
+      # dpma/tools/src/container.rs), so that the xtask finds the image and
+      # does not build it again.
+      - name: Restore the test image
+        id: image
+        uses: actions/cache/restore@v6
+        with:
+          path: test-image.tar
+          key: test-image-${{ matrix.asterisk }}-${{ matrix.arch }}-${{ hashFiles('dpma/tools/Containerfile', 'dpma/tools/asterisk-conf/**', 'dpma/tools/asterisk-versions', 'dpma/tools/src/container.rs') }}
+
+      - name: Load the test image
+        if: steps.image.outputs.cache-hit == 'true'
+        run: docker load -i test-image.tar && rm test-image.tar
+
+      - name: Build, lint, and test dpma-rs
+        working-directory: dpma
+        run: cargo xtask ci --asterisk ${{ matrix.asterisk }}
+
+      # Saved even when the tests fail, so that the next run does not
+      # build the image again.
+      - name: Save the test image
+        if: always() && steps.image.outputs.cache-hit != 'true'
+        run: docker save -o test-image.tar dpma-rs-asterisk
+
+      - uses: actions/cache/save@v6
+        if: always() && steps.image.outputs.cache-hit != 'true' && hashFiles('test-image.tar') != ''
+        with:
+          path: test-image.tar
+          key: ${{ steps.image.outputs.cache-primary-key }}
+
+      - name: Upload the test logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-logs-asterisk${{ matrix.asterisk }}-${{ matrix.arch }}
+          path: target/container/*/logs
+          if-no-files-found: ignore
+
+      - name: Upload the module
+        uses: actions/upload-artifact@v7
+        with:
+          name: res_dpma_rs-asterisk${{ matrix.asterisk }}-${{ matrix.arch }}
+          path: target/container/*/res_dpma_rs-asterisk${{ matrix.asterisk }}-${{ matrix.arch }}.so
+          if-no-files-found: error
+
   release:
     name: GitHub Release
-    needs: [model, checks]
+    needs: [model, checks, dpma-fmt, dpma-test]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
     steps:
+      # For the LICENSE, which goes into the release.
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           pattern: firmware-*
@@ -248,9 +368,22 @@ jobs:
           expected="$(printf '%s\n' "$version"_D{40,45,50,60,62,65,70}_firmware.eff)"
           test "$(printf '%s\n' * | LC_ALL=C sort)" = "$expected"
 
+      # The modules were built from the same commit, so they have the same
+      # version.  upload-artifact keeps the directory that the upload path's
+      # wildcard matched (the Asterisk release), so the modules are moved
+      # out of it.
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: res_dpma_rs-*
+          path: modules
+          merge-multiple: true
+
+      - name: The modules
+        run: find modules -name 'res_dpma_rs-*.so' -exec mv -t dist {} +
+
       - name: SHA256SUMS
         working-directory: dist
-        run: sha256sum -- *.eff > SHA256SUMS && cat SHA256SUMS
+        run: sha256sum -- *.eff *.so > SHA256SUMS && cat SHA256SUMS
 
       # Running the job again replaces the files of the release it made.
       - name: Create the release
@@ -259,9 +392,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/*.eff dist/SHA256SUMS --clobber
+            gh release upload "$GITHUB_REF_NAME" dist/*.eff dist/*.so dist/SHA256SUMS LICENSE --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/*.eff dist/SHA256SUMS --verify-tag --generate-notes
+            gh release create "$GITHUB_REF_NAME" dist/*.eff dist/*.so dist/SHA256SUMS LICENSE --verify-tag --generate-notes
           fi
 
   # Last, because a version on crates.io cannot be replaced: everything
@@ -277,8 +410,9 @@ jobs:
       contents: read
       id-token: write
     env:
-      # In dependency order: the packaging tool's tests use the SDK.
-      CRATES: dphone-app-sdk cargo-dphone-app
+      # In dependency order: dpma-proto uses dpma-bytes, and the packaging
+      # tool's tests use the SDK.
+      CRATES: dpma-bytes dpma-proto dphone-app-sdk cargo-dphone-app
     steps:
       - uses: actions/checkout@v7
 

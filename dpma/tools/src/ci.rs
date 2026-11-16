@@ -12,10 +12,14 @@ use dpma_tests::harness::Instance;
 
 use crate::container::{out_dir, Run, OUT};
 use crate::pins::Pin;
-use crate::{pins, run, suites};
+use crate::{pins, run, suites, PACKAGES};
+
+/// The Cargo profile of the module for publishing (`Cargo.toml` of the
+/// repository).
+const MODULE: &str = "module";
 
 /// The newest glibc symbol version that the module may need: the minimum
-/// glibc of the published module (README.md, "Installation").
+/// glibc of the published module (`dpma/README.md`, "Installation").
 pub const GLIBC_BASELINE: [u32; 2] = [2, 34];
 
 fn step(what: &str, version: &str) {
@@ -25,6 +29,15 @@ fn step(what: &str, version: &str) {
 fn cargo_step(what: &str, version: &str, args: &[&str]) -> Result<()> {
     step(what, version);
     run(crate::cargo().args(args))
+}
+
+/// `-p PACKAGE` for each of [`PACKAGES`] but `except`.
+fn packages(except: &[&str]) -> Vec<&'static str> {
+    PACKAGES
+        .iter()
+        .filter(|p| !except.contains(p))
+        .flat_map(|p| ["-p", p])
+        .collect()
 }
 
 /// The newest `GLIBC_x.y[.z]` symbol version in `objdump -T` output.
@@ -57,8 +70,8 @@ fn check_glibc(so: &Path) -> Result<()> {
     if newest.as_slice() > GLIBC_BASELINE.as_slice() {
         bail!(
             "the module needs GLIBC_{}, newer than the baseline GLIBC_{} (the minimum glibc \
-             README.md states); find what pulls it in, or raise the baseline (tools/src/ci.rs) \
-             and the README together",
+             dpma/README.md states); find what pulls it in, or raise the baseline \
+             (dpma/tools/src/ci.rs) and the README together",
             fmt(&newest),
             fmt(&GLIBC_BASELINE)
         );
@@ -66,12 +79,12 @@ fn check_glibc(so: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Loads the release build into the container's Asterisk.
+/// Loads the build for publishing into the container's Asterisk.
 fn smoke_test() -> Result<()> {
     let inst = Instance::new()?;
     inst.stop()?;
     inst.reset_conf()?;
-    inst.install("release")?;
+    inst.install(MODULE)?;
     inst.start()?;
     let shown = inst.cli_run("module show like res_dpma_rs");
     inst.stop()?;
@@ -87,18 +100,21 @@ fn smoke_test() -> Result<()> {
 /// steps.
 pub fn check(release: &str) -> Result<u8> {
     let v = release;
-    cargo_step("cargo build", v, &["build", "--locked"])?;
+    let all = packages(&[]);
+    cargo_step(
+        "cargo build",
+        v,
+        &[&["build", "--locked"], &all[..]].concat(),
+    )?;
     cargo_step(
         "cargo clippy --all-targets",
         v,
         &[
-            "clippy",
-            "--locked",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings",
-        ],
+            &["clippy", "--locked"],
+            &all[..],
+            &["--all-targets", "--", "-D", "warnings"],
+        ]
+        .concat(),
     )?;
     cargo_step(
         "cargo clippy -p res_dpma_rs --features devtest",
@@ -120,13 +136,7 @@ pub fn check(release: &str) -> Result<u8> {
     cargo_step(
         "cargo test",
         v,
-        &[
-            "test",
-            "--locked",
-            "--workspace",
-            "--exclude",
-            "res_dpma_rs",
-        ],
+        &[&["test", "--locked"], &packages(&["res_dpma_rs"])[..]].concat(),
     )?;
     Ok(0)
 }
@@ -139,11 +149,18 @@ pub fn publish(release: &str) -> Result<u8> {
     cargo_step(
         "the module for publishing",
         v,
-        &["build", "--locked", "--release", "-p", "res_dpma_rs"],
+        &[
+            "build",
+            "--locked",
+            "--profile",
+            MODULE,
+            "-p",
+            "res_dpma_rs",
+        ],
     )?;
-    let so = Instance::module_build("release");
+    let so = Instance::module_build(MODULE);
     check_glibc(&so)?;
-    step("smoke test of the release build", v);
+    step("smoke test of the module for publishing", v);
     smoke_test()?;
     let asset = PathBuf::from(OUT).join(format!(
         "res_dpma_rs-asterisk{}-{}.so",

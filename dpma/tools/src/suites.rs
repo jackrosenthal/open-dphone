@@ -26,7 +26,7 @@ use std::time::Instant;
 
 use anyhow::{bail, Context, Result};
 
-use crate::container::{Run, OUT, SRC};
+use crate::container::{Run, DPMA, OUT};
 use crate::run;
 
 /// The suites, in order: a default run (or `all`) runs them all.
@@ -189,7 +189,7 @@ fn run_one(run: &Run, s: &str, binary: Option<&String>, log: &Path) -> Outcome {
         };
         let args = [binary.as_str(), "--ignored"];
         // In tests/, as Cargo runs test binaries.
-        let tests = format!("{SRC}/tests");
+        let tests = format!("{DPMA}/tests");
         let start = Instant::now();
         let status = c
             .work(Some(&tests), &args)
