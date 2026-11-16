@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter } from "@tanstack/react-rout
 import { lazy, Suspense } from "react";
 import { Layout } from "./components/Layout";
 import { Accounts } from "./pages/Accounts";
+import { Alarms } from "./pages/Alarms";
 import { Apps } from "./pages/Apps";
 import { Bluetooth } from "./pages/Bluetooth";
 import { Calls } from "./pages/Calls";
@@ -36,6 +37,7 @@ const routeTree = root.addChildren([
   page("/provisioning", Provisioning),
   page("/preferences", Preferences),
   page("/bluetooth", Bluetooth),
+  page("/alarms", Alarms),
   page("/apps", Apps),
   page("/logs", Logs),
   page("/screen", Screen),

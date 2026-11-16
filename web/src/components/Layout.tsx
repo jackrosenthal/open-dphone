@@ -17,6 +17,7 @@ const nav = [
   { to: "/contacts", label: "Contacts", icon: Icons.users },
   { to: "/preferences", label: "Preferences", icon: Icons.sliders },
   { to: "/bluetooth", label: "Bluetooth", icon: Icons.bluetooth, needs: "bluetooth" },
+  { to: "/alarms", label: "Alarms", icon: Icons.alarm },
   { to: "/apps", label: "Apps", icon: Icons.apps },
   { to: "/network", label: "Network", icon: Icons.network },
   { to: "/provisioning", label: "Provisioning", icon: Icons.cloud },

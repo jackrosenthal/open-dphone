@@ -287,6 +287,7 @@ fn fabricate(store: &Store, model: Model) {
             app("queues", "Queues", "Call queue membership"),
             app("hotdesking", "Hot Desking", "Log in to this phone"),
             app("calendar", "Calendar", "Month calendar"),
+            app("alarms", "Alarms", "Set the alarm clock"),
             app("boxpusher", "Box Pusher", "Push every box onto a target"),
             app("desksparrow", "Desk Sparrow", "A one-key flying game"),
             app("lightup", "Light Up", "Light every cell of the grid"),
@@ -308,6 +309,21 @@ fn fabricate(store: &Store, model: Model) {
         );
     }
     store.update::<st::Health, _>(|h| h.healthy = true);
+
+    store.update::<st::Alarms, _>(|a| {
+        let alarm = |id, hour, minute, days, tone: &str, enabled| st::Alarm { id, hour, minute, days, tone: tone.into(), enabled };
+        a.alarms = vec![
+            alarm(1, 6, 30, 0b0111110, "Chime", true),
+            alarm(2, 8, 0, 0b0000010, "Marimba", true),
+            alarm(3, 9, 30, 0b1000001, "Classic", false),
+            alarm(4, 14, 45, 0, "Marimba", true),
+        ];
+        a.tones = ["Marimba", "Classic", "Chime", "Pulse", "Rise", "Mellow"].map(String::from).to_vec();
+        a.show_icon = true;
+        a.icon = true;
+        a.snooze_secs = 600;
+        a.next = Some((4, st::clock::unix_secs() + 2 * 3600));
+    });
 
     store.update::<st::Paging, _>(|p| {
         let group = |id: &str, name: &str, last: u8| st::PageGroup {
@@ -555,6 +571,37 @@ fn spawn_handlers(store: &Store, hal: Hal, config: Arc<Mutex<ConfigStore>>) {
             _ => store.update::<st::Paging, _>(|p| p.activity = st::PageActivity::Idle),
         }
         Ok(Reply::Done)
+    });
+
+    // The alarm clock keeps its alarms; nothing rings.
+    let mut last_alarm = 4;
+    handle(store, Domain::Alarms, move |store, c| {
+        let mut reply = Ok(Reply::Done);
+        store.update::<st::Alarms, _>(|a| match c {
+            Command::SetAlarm { alarm } if alarm.id == 0 => {
+                last_alarm += 1;
+                a.alarms.push(st::Alarm { id: last_alarm, ..alarm.clone() });
+                reply = Ok(Reply::Id(last_alarm.into()));
+            }
+            Command::SetAlarm { alarm } => {
+                if let Some(x) = a.alarms.iter_mut().find(|x| x.id == alarm.id) {
+                    *x = alarm.clone();
+                }
+            }
+            Command::RemoveAlarm { id } => a.alarms.retain(|x| x.id != *id),
+            Command::SetAlarmIcon { on } => a.show_icon = *on,
+            Command::SnoozeAlarm => {
+                if let Some(r) = a.ringing.take() {
+                    a.snoozed = Some((r.id, st::clock::unix_secs() + u64::from(a.snooze_secs)));
+                }
+            }
+            Command::DismissAlarm => {
+                a.ringing = None;
+                a.snoozed = None;
+            }
+            _ => {}
+        });
+        reply
     });
 
     // Bluetooth: discovery finds two made-up devices; one pairs by passkey

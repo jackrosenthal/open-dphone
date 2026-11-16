@@ -1,4 +1,4 @@
-//! End-to-end tests of the Bluetooth, paging, and expansion services and
+//! End-to-end tests of the Bluetooth, paging, expansion, and alarms services and
 //! the serial console switch: the real server on a loopback port, driven
 //! over raw HTTP/1.1 with the JSON codec.
 
@@ -39,13 +39,15 @@ async fn phone(model: Model) -> Phone {
     let config = Arc::new(Mutex::new(ConfigStore::open(nv, cfg_model, dir.join("tmp")).unwrap()));
     let store = Store::new(model);
     let seen = Arc::new(Mutex::new(Vec::new()));
-    for domain in [Domain::Bluetooth, Domain::Paging] {
+    for domain in [Domain::Bluetooth, Domain::Paging, Domain::Alarms] {
         let rx = store.handle(domain);
         let seen = seen.clone();
         std::thread::spawn(move || {
             while let Some(env) = rx.recv() {
                 let reply = match &env.command {
                     Command::BluetoothConnect { .. } => Err(CommandError::Failed("the headset did not answer".into())),
+                    Command::SetAlarm { alarm } if alarm.id == 0 => Ok(Reply::Id(5)),
+                    Command::SnoozeAlarm => Err(CommandError::Invalid("no alarm is ringing".into())),
                     _ => Ok(Reply::Done),
                 };
                 seen.lock().unwrap().push(env.command.clone());
@@ -409,4 +411,103 @@ async fn idle_softkeys() {
     assert_eq!(v["idleSoftkeys"]["locked"], true);
     let (status, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({ "softkeys": functions(&["MENU"]) })).await;
     assert_eq!((status, v["code"].as_str()), (400, Some("failed_precondition")));
+}
+
+#[tokio::test]
+async fn alarms() {
+    let p = phone(Model::D60).await;
+    let l = login(p.addr).await;
+    p.store.update::<st::Alarms, _>(|a| {
+        a.alarms = vec![
+            st::Alarm { id: 1, hour: 8, minute: 0, days: 0b0000010, tone: "Chime".into(), enabled: true },
+            st::Alarm { id: 2, hour: 0, minute: 5, days: 0, tone: "Marimba".into(), enabled: false },
+        ];
+        a.tones = vec!["Marimba".into(), "Chime".into()];
+        a.show_icon = true;
+        a.icon = true;
+        a.next = Some((1, 1_794_844_800));
+        a.snoozed = Some((2, 1_794_800_000));
+        a.snooze_secs = 600;
+    });
+    let expected = json!({
+        "alarms": [
+            { "id": 1, "hour": 8, "days": 2, "tone": "Chime", "enabled": true },
+            { "id": 2, "minute": 5, "tone": "Marimba" },
+        ],
+        "tones": ["Marimba", "Chime"],
+        "showIcon": true,
+        "next": { "id": 1, "unixSecs": "1794844800" },
+        "snoozed": { "id": 2, "unixSecs": "1794800000" },
+        "snoozeSecs": 600,
+        "maxAlarms": 16,
+    });
+    let (status, v) = call(&p, &l, "AlarmsService/GetAlarms", json!({})).await;
+    assert_eq!(status, 200);
+    assert_eq!(v["snapshot"], expected);
+    assert_eq!(first(&p, &l, "AlarmsService/WatchAlarms").await["snapshot"], expected);
+    p.store.update::<st::Alarms, _>(|a| a.ringing = Some(st::AlarmRinging { id: 1, hour: 8, minute: 0 }));
+    let (_, v) = call(&p, &l, "AlarmsService/GetAlarms", json!({})).await;
+    assert_eq!(v["snapshot"]["ringing"], 1);
+
+    // Each RPC becomes its command.
+    let weekly = st::Alarm { id: 0, hour: 6, minute: 30, days: 0b0111110, tone: "Chime".into(), enabled: true };
+    let cases: Vec<(&str, Value, Command)> = vec![
+        (
+            "SetAlarm",
+            json!({ "alarm": { "hour": 6, "minute": 30, "days": 62, "tone": "Chime", "enabled": true } }),
+            Command::SetAlarm { alarm: weekly.clone() },
+        ),
+        (
+            "SetAlarm",
+            json!({ "alarm": { "id": 2, "hour": 23, "minute": 59 } }),
+            Command::SetAlarm { alarm: st::Alarm { id: 2, hour: 23, minute: 59, days: 0, tone: String::new(), enabled: false } },
+        ),
+        ("RemoveAlarm", json!({ "id": 1 }), Command::RemoveAlarm { id: 1 }),
+        ("SetAlarmIcon", json!({ "showIcon": true }), Command::SetAlarmIcon { on: true }),
+        ("SetAlarmIcon", json!({}), Command::SetAlarmIcon { on: false }),
+        ("DismissAlarm", json!({}), Command::DismissAlarm),
+    ];
+    for (method, body, command) in cases {
+        let (status, v) = call(&p, &l, &format!("AlarmsService/{method}"), body).await;
+        assert_eq!(status, 200, "{method}: {v}");
+        assert_eq!(last_command(&p), command);
+        // A new alarm's ID comes back, and a changed alarm's is its own.
+        match command {
+            Command::SetAlarm { alarm } if alarm.id == 0 => assert_eq!(v["id"], 5),
+            Command::SetAlarm { alarm } => assert_eq!(v["id"], alarm.id),
+            _ => {}
+        }
+    }
+
+    // A refusal from the alarm clock reaches the caller with its text.
+    let (status, v) = call(&p, &l, "AlarmsService/SnoozeAlarm", json!({})).await;
+    assert_ne!(status, 200);
+    assert_eq!(v["message"], "no alarm is ringing");
+
+    // Bad input is refused before any command is sent.
+    let sent = p.seen.lock().unwrap().len();
+    for (method, body, code) in [
+        ("SetAlarm", json!({}), "invalid_argument"),
+        ("SetAlarm", json!({ "alarm": { "hour": 24 } }), "invalid_argument"),
+        ("SetAlarm", json!({ "alarm": { "hour": 1, "minute": 60 } }), "invalid_argument"),
+        ("SetAlarm", json!({ "alarm": { "hour": 1, "days": 128 } }), "invalid_argument"),
+        ("SetAlarm", json!({ "alarm": { "id": 9, "hour": 1 } }), "not_found"),
+        ("RemoveAlarm", json!({ "id": 9 }), "not_found"),
+    ] {
+        let (status, v) = call(&p, &l, &format!("AlarmsService/{method}"), body.clone()).await;
+        assert_ne!(status, 200, "{method} {body}");
+        assert_eq!(v["code"].as_str(), Some(code), "{method} {body}");
+    }
+    // No more than the phone keeps.
+    p.store.update::<st::Alarms, _>(|a| {
+        a.alarms = (1..=16).map(|id| st::Alarm { id, ..weekly.clone() }).collect();
+    });
+    let (_, v) = call(&p, &l, "AlarmsService/SetAlarm", json!({ "alarm": { "hour": 6 } })).await;
+    assert_eq!(v["code"], "resource_exhausted");
+    assert_eq!(v["message"], "The phone keeps at most 16 alarms.");
+    assert_eq!(p.seen.lock().unwrap().len(), sent);
+
+    // Not without a session.
+    let (status, _, _) = post(p.addr, "/dphone.v1.AlarmsService/SetAlarmIcon", &[("Content-Type", "application/json")], b"{}", false).await;
+    assert_eq!(status, 401);
 }

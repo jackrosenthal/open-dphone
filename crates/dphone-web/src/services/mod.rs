@@ -4,6 +4,7 @@
 // impls here name the concrete message, as the connectrpc guide directs.
 #![allow(refining_impl_trait_internal, refining_impl_trait_reachable)]
 
+mod alarms;
 mod auth;
 mod calls;
 mod config;
@@ -222,6 +223,16 @@ service!(ExpansionService {
     stream watch_expansion(WatchExpansionRequest) -> WatchExpansionResponse = devices::watch_expansion;
 });
 
+service!(AlarmsService {
+    unary get_alarms(GetAlarmsRequest) -> GetAlarmsResponse = alarms::get_alarms;
+    stream watch_alarms(WatchAlarmsRequest) -> WatchAlarmsResponse = alarms::watch_alarms;
+    unary set_alarm(SetAlarmRequest) -> SetAlarmResponse = alarms::set_alarm;
+    unary remove_alarm(RemoveAlarmRequest) -> RemoveAlarmResponse = alarms::remove_alarm;
+    unary set_alarm_icon(SetAlarmIconRequest) -> SetAlarmIconResponse = alarms::set_alarm_icon;
+    unary snooze_alarm(SnoozeAlarmRequest) -> SnoozeAlarmResponse = alarms::snooze_alarm;
+    unary dismiss_alarm(DismissAlarmRequest) -> DismissAlarmResponse = alarms::dismiss_alarm;
+});
+
 /// The Connect router with every service registered.
 pub(crate) fn router() -> connectrpc::Router {
     let rpc = Arc::new(Rpc);
@@ -244,6 +255,7 @@ pub(crate) fn router() -> connectrpc::Router {
         .add_service::<Rpc, pb::BluetoothServiceRegisterMarker>(rpc.clone())
         .add_service::<Rpc, pb::PagingServiceRegisterMarker>(rpc.clone())
         .add_service::<Rpc, pb::ExpansionServiceRegisterMarker>(rpc.clone())
+        .add_service::<Rpc, pb::AlarmsServiceRegisterMarker>(rpc.clone())
 }
 
 /// A command failure as an RPC error.

@@ -88,6 +88,12 @@ export const Icons = {
       <path d="M5 4h14M5 9h14M5 14h9M5 19h6" />
     </Icon>
   ),
+  alarm: (p: P) => (
+    <Icon {...p}>
+      <circle cx="12" cy="13" r="7" />
+      <path d="M12 9.5V13l2.5 1.5M3.5 6.5l3.5-3M20.5 6.5l-3.5-3" />
+    </Icon>
+  ),
   bluetooth: (p: P) => (
     <Icon {...p}>
       <path d="M7 7l10 10-5 4V3l5 4L7 17" />

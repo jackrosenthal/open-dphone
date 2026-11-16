@@ -521,6 +521,31 @@ pub fn paging(p: &st::Paging) -> pb::PagingSnapshot {
     }
 }
 
+pub fn alarm(a: &st::Alarm) -> pb::Alarm {
+    pb::Alarm {
+        id: a.id,
+        hour: a.hour.into(),
+        minute: a.minute.into(),
+        days: a.days.into(),
+        tone: a.tone.clone(),
+        enabled: a.enabled,
+    }
+}
+
+pub fn alarms(a: &st::Alarms) -> pb::AlarmsSnapshot {
+    let time = |t: Option<(u32, u64)>| t.map(|(id, unix_secs)| pb::AlarmTime { id, unix_secs }).into();
+    pb::AlarmsSnapshot {
+        alarms: a.alarms.iter().map(alarm).collect(),
+        tones: a.tones.clone(),
+        show_icon: a.show_icon,
+        next: time(a.next),
+        ringing: a.ringing.as_ref().map(|r| r.id),
+        snoozed: time(a.snoozed),
+        snooze_secs: a.snooze_secs,
+        max_alarms: st::Alarms::MAX as u32,
+    }
+}
+
 pub fn expansion(e: &st::Expansion) -> pb::ExpansionSnapshot {
     pb::ExpansionSnapshot {
         enabled: e.enabled,
