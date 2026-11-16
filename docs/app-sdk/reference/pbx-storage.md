@@ -130,7 +130,7 @@ fn handle(&mut self, event: Event) {
     if let Event::PbxStorage((id, outcome)) = event {
         if id != self.asked { return; }
         match outcome {
-            // The table as the PBX has the table now; after a conflict,
+            // The table as the PBX has the key now; after a conflict,
             // the table another phone wrote in the meantime.
             PbxStorageOutcome::Entry(current) | PbxStorageOutcome::Conflict(current) => {
                 self.add_mine(current)

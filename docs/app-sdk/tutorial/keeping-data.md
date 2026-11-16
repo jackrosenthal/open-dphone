@@ -6,7 +6,7 @@ At the end of [the previous step](softkeys-and-state.md), the app forgot the pot
 
 The phone ends an app such as Fresh Pot when the app's window leaves the screen: after `runtime::exit`, and also when the user leaves with line key 1.  The next opening starts a new instance, with a new `FreshPot::default()`, in which `brewed` is `None`.
 
-That lifetime belongs to an app of the kind `Foreground`, which is the kind of an app whose manifest names no other.  The reference describes [the other kinds](../reference/index.md#lifetime-of-an-app), which keep running off screen.  A board for a coffee pot has no work to do off screen, so Fresh Pot stays a `Foreground` app and stores what must last.
+An app that lives only while on screen is an app of the kind `Foreground`, which is the kind of an app whose manifest names no kind.  The reference describes [the ways for an app to keep running off screen](../reference/index.md#lifetime-of-an-app).  A board for a coffee pot has no work to do off screen, so Fresh Pot stays a `Foreground` app and stores what must last.
 
 ## The app's store
 

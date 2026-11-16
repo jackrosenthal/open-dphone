@@ -26,7 +26,7 @@ Each step adds one ability to the app, and each ends with an app that builds, in
 | 1. [A first app](first-app.md) | A screen with one line of text. | The tools, the crate, the manifest, building the app file, installing the file from the web interface, and reading the log. |
 | 2. [Softkeys, keys, and state](softkeys-and-state.md) | The softkeys Brewed, Empty, and Exit, and the age of the pot. | Laying out widgets for every display, softkeys, keys, timers, and handling events. |
 | 3. [Keeping data](keeping-data.md) | The pot's time outlasts the app. | When the phone ends an app, and the store that the phone keeps for each app. |
-| 4. [Drawing on a canvas](drawing.md) | A mug, and a bar that empties while the coffee goes stale. | Free drawing with the colors of the phone's skin. |
+| 4. [Drawing on a canvas](drawing.md) | A mug, and a bar that empties while the coffee goes stale. | Free drawing that fits every display and takes the phone's colors. |
 | 5. [Data shared by every phone](shared-data.md) | Every phone of the office shows the same pot, and who brewed the pot. | The app's store on the PBX, and requests whose results arrive as events. |
 
 Each page prints every change to the source, and ends with the whole `src/lib.rs` as the file stands after the step.

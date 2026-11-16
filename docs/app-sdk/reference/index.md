@@ -21,7 +21,7 @@ A request that an app makes of the app manager (`runtime::exit`, `runtime::backg
 
 What the phone does after a fault depends on how the app starts:
 
-- An app that starts only when opened stays stopped until someone opens the app or the phone restarts.
+- An app that starts only when opened stays stopped until the user or another app opens the app.
 - An app that starts with the phone (`AppKind::Background`, or `has_idle`) is started again by the phone, as a new instance: 10 seconds after the first fault, and after twice the previous wait for each further fault in a row (20 seconds, 40 seconds, and so on), up to one hour.  The count of faults in a row starts over when the user or another app opens the app, and when an instance has run for one hour without a fault.  An app that the phone stops for another reason (`runtime::exit`, removal, the configuration) is not started again this way.
 
 ## Capabilities
@@ -30,27 +30,27 @@ Each interface except `runtime` is a capability.  An app does not declare capabi
 
 Some events arrive only at apps that have a capability, whether or not the app asked for the event: the page [Events](app-events.md) names the capability for each.
 
-| Interface | Rust module | Purpose |
-| --- | --- | --- |
-| [`runtime`](runtime.md) | `runtime` | Leaving the screen, exiting, logging, and random numbers.  Every app has `runtime`. |
-| [`ui`](ui.md) | `ui` | Widgets, softkeys, keys, pictures, and the window. |
-| [`canvas`](canvas.md) | `canvas` | A widget that the app draws from rectangles, bitmaps, and text. |
-| [`timers`](timers.md) | `timers` | Timers and clocks. |
-| [`storage`](storage.md) | `storage` | Keys and values kept on the phone. |
-| [`pbx-storage`](pbx-storage.md) | `pbx_storage` | Keys and values kept on the PBX and shared between phones. |
-| [`config`](config.md) | `config` | The app's provisioned configuration, the accounts, and some settings of the phone. |
-| [`pbx`](pbx.md) | `pbx` | Requests to the PBX's application server. |
-| [`http`](http.md) | `http` | HTTP and HTTPS requests. |
-| [`calls`](calls.md) | `calls` | Placing and controlling calls, call events, and message-waiting counts. |
-| [`presence`](presence.md) | `presence` | The presence of contacts and of the phone's user. |
-| [`events`](events.md) | `events` | Events that the PBX pushes to the phone, and messages between apps. |
-| [`audio`](audio.md) | `audio` | Playing a sound. |
-| [`l10n`](l10n.md) | `l10n` | The locale, common words, and the text of dates and times. |
-| [`hotdesk`](hotdesk.md) | `hotdesk` | Changing which user the phone is provisioned for. |
-| [`diagnostics`](diagnostics.md) | `diagnostics` | The state of the phone's subsystems, and the log. |
-| [`lamps`](lamps.md) | `lamps` | The phone's lamps, while the app is on screen. |
-| [`input`](input.md) | `input` | Every key and the hookswitch, while the app is on screen. |
-| [`alarms`](alarms.md) | `alarms` | The phone's alarm clock. |
+| Interface | Purpose |
+| --- | --- |
+| [`runtime`](runtime.md) | Leaving the screen, exiting, logging, and random numbers.  Every app has `runtime`. |
+| [`ui`](ui.md) | Widgets, softkeys, keys, pictures, and the window. |
+| [`canvas`](canvas.md) | A widget that the app draws from rectangles, bitmaps, and text. |
+| [`timers`](timers.md) | Timers and clocks. |
+| [`storage`](storage.md) | Keys and values kept on the phone. |
+| [`pbx-storage`](pbx-storage.md) | Keys and values kept on the PBX and shared between phones.  The Rust module is `pbx_storage`. |
+| [`config`](config.md) | The app's provisioned configuration, the accounts, and some settings of the phone. |
+| [`pbx`](pbx.md) | Requests to the PBX's application server. |
+| [`http`](http.md) | HTTP and HTTPS requests. |
+| [`calls`](calls.md) | Placing and controlling calls, call events, and message-waiting counts. |
+| [`presence`](presence.md) | The presence of contacts and of the phone's user. |
+| [`events`](events.md) | Events that the PBX pushes to the phone, and messages between apps. |
+| [`audio`](audio.md) | Playing a sound. |
+| [`l10n`](l10n.md) | The locale, common words, and the text of dates and times. |
+| [`hotdesk`](hotdesk.md) | Changing which user the phone is provisioned for. |
+| [`diagnostics`](diagnostics.md) | The state of the phone's subsystems, and the log. |
+| [`lamps`](lamps.md) | The phone's lamps, while the app is on screen. |
+| [`input`](input.md) | Every key and the hookswitch, while the app is on screen. |
+| [`alarms`](alarms.md) | The phone's alarm clock. |
 
 ## The other pages
 

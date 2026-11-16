@@ -17,7 +17,7 @@ The interface [`pbx-storage`](../reference/pbx-storage.md) (the Rust module `pbx
 Two things differ from the store on the phone:
 
 - **A request does not return the answer.**  The PBX is across the network, and no call of an app may block.  `get`, `set`, and `remove` return a request number at once, and the answer arrives later as `Event::PbxStorage` with the same number.
-- **The PBX signs each entry.**  An entry comes back with the value and with the name of the user who wrote the value, which the PBX fills in from the user that the writing phone is provisioned for.  Fresh Pot shows who brewed the pot without ever asking for a name.
+- **The PBX records who wrote each entry.**  An entry comes back with the value and with the name of the user who wrote the value, which the PBX fills in from the user that the writing phone is provisioned for.  Fresh Pot shows who brewed the pot without ever asking for a name.
 
 ## Plan
 
@@ -146,7 +146,7 @@ The softkeys now also write to the PBX:
 
 Three new arms handle what comes back:
 
-- **`Event::PbxStorage`** is the answer to a request.  The guard `id == self.asked` drops the answer to any request but the latest.  `Entry` answers a `get`, `Stored` answers a `set` with the entry as the PBX now holds the entry, and `Removed` answers a `remove`; all three end in `take`.  `Unreachable` means that the PBX could not be asked or did not answer; the app logs the reason and goes on showing what the phone's store holds.  Of the remaining outcomes, only `Refused` can follow these requests (the PBX refuses, e.g., a value of more than 4096 bytes), and the app logs the outcome.
+- **`Event::PbxStorage`** is the answer to a request.  The guard `id == self.asked` drops the answer to any request but the latest.  `Entry` answers a `get`, `Stored` answers a `set` with the entry as the PBX now holds the key, and `Removed` answers a `remove`; all three end in `take`.  `Unreachable` means that the PBX could not be asked or did not answer; the app logs the reason and goes on showing what the phone's store holds.  Of the remaining outcomes, only `Refused` can follow these requests (the PBX refuses, e.g., a value of more than 4096 bytes), and the app logs the outcome.
 - **`Event::PbxStorageChanged`** says that another phone wrote the key.  The event carries no value, so the app asks.
 - **`Event::PbxStorageOnline`** says that the store is in reach, at first or again.  What the app read before may be out of date, so the app asks.
 

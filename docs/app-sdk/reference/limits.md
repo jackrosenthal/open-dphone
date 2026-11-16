@@ -1,7 +1,5 @@
 # Limits
 
-Every limit the phone enforces on an app, and what happens at the limit.
-
 ## Running
 
 | Limit | Value | At the limit |
@@ -11,7 +9,7 @@ Every limit the phone enforces on an app, and what happens at the limit.
 | Linear memory | `memory_kib` of the manifest; 4 MiB by default, 16 MiB at most | An allocation past the limit fails; in a Rust app the failure is a trap, and the phone stops the app. |
 | WebAssembly memories, tables, table elements, instances | 1, 4, 50,000, and 8 | The app does not start. |
 
-The app's data (`include_bytes!`, `include_str!`) is part of the program and counts toward linear memory.  A stopped app that starts only when opened starts again when opened or when the phone restarts.  The phone starts a stopped app that starts with the phone again after a wait:
+The app's data (`include_bytes!`, `include_str!`) is part of the program and counts toward linear memory.  An app that the phone stopped at a limit starts again when opened.  An app that starts with the phone (`AppKind::Background`, or `has_idle`) is also started again by the phone, after a wait:
 
 | Limit | Value | At the limit |
 | --- | --- | --- |

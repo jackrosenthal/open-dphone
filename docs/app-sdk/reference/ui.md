@@ -21,7 +21,7 @@ fn show_menu() -> Widget {
 
 Handle 0 (`ROOT`) is the app's window: the area of the display above the softkey bar (see [`Metrics`](types.md#metrics-and-skin) for the sizes).  The phone paints the window in the skin's background color and then the widgets, parents before children and siblings in the order of creation.  Each widget is clipped to the widget's bounds and to the bounds of every ancestor.
 
-The phone holds back what an app changes in a window while `start` or `handle` runs and shows the changes when the function returns, so the changes of one handler normally appear together, in one repaint.  The window is not locked meanwhile: when the phone repaints the window for another reason during a handler (the window comes on screen, the skin's palette changes), that repaint shows the widgets as the handler has left them so far.  Changes made while the window is off screen are kept and show when the window returns.
+The phone holds back what an app changes in a window while `start` or `handle` runs and shows the changes when the function returns, so the changes of one handler normally appear together, in one repaint.  The window is not locked meanwhile: when the phone repaints the window for another reason during a handler (the window comes on screen, the user chooses another theme), that repaint shows the widgets as the handler has left them so far.  Changes made while the window is off screen are kept and show when the window returns.
 
 A function that takes a widget and is given a handle that does not exist, or `ROOT` where a real widget is needed, does nothing.  A function given a widget of a kind that has no use for the value stores the value without visible effect; the page notes the kinds each function serves.
 
@@ -65,7 +65,7 @@ An app whose manifest sets `has_idle` has a second window, on the idle screen.  
 The idle window differs from the app's window in these ways:
 
 - The size is small and fixed ([`idle_size`](#idle_size)).
-- The phone draws no background; the widgets appear over the wallpaper, and text takes the wallpaper's text color.
+- The phone draws no background; the widgets appear over the wallpaper of the user's theme, and text takes the color that the theme has for text on the wallpaper.
 - The window never receives keys: softkeys, key claims, and focus have no effect, and no `Event::Widget` arrives.
 - The idle screen shows one app's idle window at a time.  Windows that have at least one widget take turns; the setting `idle_cycle_seconds` of the phone's configuration gives the length of a turn (10 seconds by default; with 0, no idle window shows).  [`Event::IdleScreenShow` and `Event::IdleScreenHide`](app-events.md#idlescreenshow-and-idlescreenhide) report the turns.
 - `set_full_screen`, `get_metrics`, `input::capture`, and `lamps` concern the app's window only.

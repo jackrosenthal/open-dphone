@@ -83,7 +83,7 @@ A color of the skin in use, so that a drawing matches the widgets around the can
 | `Secondary` | Secondary text. |
 | `Border` | Separators and borders. |
 
-On a color model the colors follow the wallpaper the user chose and can change while the app runs.  The app on screen then receives [`Event::Foreground`](app-events.md#foreground) again; an app that reads the colors and draws at every `Foreground` stays in step.
+On a color model the colors are those of the theme that the user chose, and change while the app runs when the user chooses another theme.  The app on screen then receives [`Event::Foreground`](app-events.md#foreground) again; an app that reads the colors and draws at every `Foreground` stays in step.
 
 ## `text_size`
 

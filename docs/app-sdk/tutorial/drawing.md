@@ -133,7 +133,7 @@ fn gauge_ops(&self) -> Vec<Op> {
 Coordinates are relative to the top-left corner of the canvas, and the phone draws nothing outside the canvas.  Three choices make one drawing fit every display:
 
 - **The size follows the canvas.**  The mug's `scale` enlarges each bit to a square, so the 10 rows fill the height of the canvas: 5 pixels to a bit on a color display, 3 on the smallest gray display.  The bar takes the rest of the width.
-- **The colors come from the phone's skin.**  [`canvas::theme_color`](../reference/canvas.md#theme_color) returns the color that the phone uses for a purpose: `Role::Foreground` for text, `Role::Border` for lines, `Role::Highlight` for a selection.  The drawing therefore matches the screens around the app on a color display, and on a gray display, where the skin has four levels of gray.
+- **The colors come from the phone.**  [`canvas::theme_color`](../reference/canvas.md#theme_color) returns the color that the phone uses for a purpose: `Role::Foreground` for text, `Role::Border` for lines, `Role::Highlight` for a selection.  On a color display, the colors are those of the theme that the phone's user chose; a gray display has four levels of gray.  The drawing therefore matches the screens around the app on every model.
 - **The drawing paints only what differs from the window.**  The frame is four rectangles one pixel thick, and the only paint inside the frame is the filled part, so the window's background shows through the rest.  Where operations overlap, a later operation paints over an earlier one.
 
 Finally, draw whenever the state is shown.  At the end of `show`, add:

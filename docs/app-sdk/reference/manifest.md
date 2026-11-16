@@ -30,13 +30,13 @@ The manifest is checked while the crate compiles.  Each check that fails stops t
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `name` | `&str` | required | The app's name on the phone, which also names the app's [storage](storage.md) and the app's configuration (`<application id="name">`).  1 to 64 characters; the first is an ASCII letter or digit, and the rest are ASCII letters, digits, `_`, `.`, or `,`. |
+| `name` | `&str` | required | The app's name on the phone, which also names the app's [storage](storage.md) and the app's configuration (`<application id="name">`).  1 to 64 characters; the first is an ASCII letter or digit, and the rest are ASCII letters, digits, `_`, `.`, or `,`.  The phone refuses the name of a built-in app and the name `dphone` at installation. |
 | `id` | `&str` | `""` | An identifier for the app, e.g., in reverse domain form (`"org.example.weather"`).  The phone stores and reports the identifier and does nothing else with the value. |
-| `display_name` | `&str` | required | The name the phone shows for the app. |
+| `display_name` | `&str` | required | The name the phone shows for the app, as written; the manifest has no texts for other languages. |
 | `description` | `&str` | `""` | One line about the app. |
 | `kind` | `AppKind` | `AppKind::Foreground` | When the app runs.  See [Kinds](#kinds). |
 | `has_idle` | `bool` | `false` | The app gets a second window, on the idle screen, starts when the phone starts, and keeps running when the app's window leaves the screen, whatever the `kind`.  See [the idle window](ui.md#the-idle-window). |
-| `hidden` | `bool` | `false` | The phone's Apps menu does not list the app.  Another app can still open the app with `runtime::show_app`, and `kind` and `has_idle` still start the app. |
+| `hidden` | `bool` | `false` | The phone's Applications menu does not list the app.  Another app can still open the app with `runtime::show_app`, and `kind` and `has_idle` still start the app. |
 | `icon` | `&[u8]` | `&[]` | The app's icon: the content of a PNG file, e.g., `include_bytes!("weather.png")`.  At most 256 KiB, and the content must begin with the PNG signature. |
 | `icon_for` | `&[(&str, &[u8])]` | `&[]` | Icons for particular models, each under the rules of `icon`: `&[("D60", include_bytes!("color.png"))]`.  The models are `D40`, `D45`, `D50`, `D60`, `D62`, `D65`, and `D70`, and a model may appear once. |
 | `phone_icon` | `&str` | `""` | The name of one of the phone's app icons, used when the app has no PNG icon for the model. |
@@ -53,13 +53,13 @@ pub enum AppKind { Foreground, Background }
 | `Foreground` | The app starts when opened and is stopped when the app's window leaves the screen.  `runtime::set_exit_after_background(false)` keeps the app running after that. |
 | `Background` | The app starts when the phone starts, without a window on screen, and keeps running when the window leaves the screen. |
 
-An app that draws on the idle screen sets `has_idle`, with either kind; the manifest has no kind for the idle screen.
+An app that draws on the idle screen sets `has_idle`, with either kind.
 
 The page [Reference](index.md#lifetime-of-an-app) describes starting and stopping in full.
 
 ## Which icon the phone shows
 
-The Apps menu shows, in this order of preference:
+The Applications menu shows, in this order of preference:
 
 1. The entry of `icon_for` for the phone's model.
 2. `icon`.
@@ -68,10 +68,6 @@ The Apps menu shows, in this order of preference:
 5. The phone's generic app icon.
 
 A PNG icon is reduced to the size of the phone's app icons (48 by 48 pixels on the color models) and never enlarged.  The phone's app icons are named `alarms`, `app`, `boxpusher`, `calendar`, `calllog`, `contacts`, `desksparrow`, `diagnostics`, `forward`, `hotdesking`, `info`, `lightup`, `network`, `paging`, `parking`, `queues`, `settings`, `status`, `update`, and `voicemail`.
-
-## Which text the phone shows
-
-The phone shows `display_name` and `description` as written.  The phone's texts are in English ([`l10n::locale`](l10n.md#locale) is always `en_US`), and the manifest has no texts for other languages.
 
 ## What the phone checks at installation
 
@@ -84,7 +80,7 @@ The phone installs an app from one file, the WebAssembly component.  The checks,
 | The file has a `dphone-app` section. | `the WebAssembly file has no app manifest`. |
 | The manifest's kind is one the phone knows. | `bad app kind N`. |
 | The manifest's format number is 1. | `the app's manifest has format N, and this firmware knows format 1`. |
-| `name` follows the rule above. | `bad app name: ...`. |
+| `name` follows the rule above and is not `dphone`. | `bad app name: ...`. |
 | Each icon is a PNG of at most 256 KiB, and each model of `icon_for` is a model. | `bad app icon: ...`. |
 | The code sections of the component total at most 1 MiB.  Data does not count. | The component holds more code than the phone compiles. |
 | No built-in app has the same `name`. | `"name" is a built-in app`. |

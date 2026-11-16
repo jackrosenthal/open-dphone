@@ -146,7 +146,7 @@ Each arm is one kind of event:
 
 - **Softkeys.**  Brewed stores the current time, and Empty clears the time.  Exit ends the app.
 - **Keys.**  The cancel key arrives as `Event::Key`, because `screen` claimed the key for the window; the app treats the key as Exit.  A key arrives as an event only when the app has claimed the key with [`ui::claim_keys`](../reference/ui.md#claim_keys); the page [Events](../reference/app-events.md#key) lists the names of the keys.
-- **The timer.**  [`timers::set(REFRESH_MS, true)`](../reference/timers.md#set) in `start` asked for an `Event::Timer` every 30 seconds.  The call returns a `Result`: `Ok` holds the identifier of the timer, for an app that has several timers or cancels one, and `Err` says that the phone started no timer.  Fresh Pot has one timer and never cancels the timer, and discards the result with `let _ =`.  The arm does nothing but fall through to `show`, which computes the age again.
+- **The timer.**  [`timers::set(REFRESH_MS, true)`](../reference/timers.md#set) in `start` asked for an `Event::Timer` every 30 seconds.  The call returns a `Result`: `Ok` holds the identifier of the timer, for an app that has several timers or cancels one, and `Err` says that the phone started no timer.  Fresh Pot has one timer, never cancels that timer, and so discards the result with `let _ =`.  The arm does nothing but fall through to `show`, which computes the age again.
 - **Everything else** returns without redrawing.
 
 The phone allows `handle` two seconds for one event and stops an app that takes longer, so an app with long work to do splits the work over timer events.

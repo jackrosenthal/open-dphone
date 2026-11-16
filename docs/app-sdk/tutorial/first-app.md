@@ -1,6 +1,6 @@
 # A first app
 
-This step goes the whole way once, with the smallest app that can be seen on a phone: install the tools, create the crate, write a screen with one line of text, build the app file, install the file on a phone, open the app, and read the app's log.  The later steps repeat only the last four.
+This step goes the whole way once, with the smallest app that can be seen on a phone: install the tools, create the crate, write a screen with one line of text, build the app file, install the file on a phone, open the app, and read the app's log.  The later steps change the code and repeat the build and the installation.
 
 ## Install the tools
 
@@ -52,7 +52,13 @@ Three parts of the file matter to the phone:
 
 !!! note "Building against the SDK in a clone of the repository"
 
-    Each release of the firmware publishes `dphone-app-sdk` on crates.io under the release's version.  For a phone that runs firmware built from source, depend on the SDK of the same source instead, by the path of the crate in a clone of the repository:
+    Each release of the firmware publishes `dphone-app-sdk` on crates.io under the release's version.  For a phone that runs firmware built from source, depend on the SDK of the same source instead.  Clone the repository beside the directory `freshpot`:
+
+    ```sh
+    git clone https://github.com/jackrosenthal/open-dphone
+    ```
+
+    Then name the crate by path in `Cargo.toml`, in place of the line `dphone-app-sdk = "3"`:
 
     ```toml
     dphone-app-sdk = { path = "../open-dphone/crates/dphone-app-sdk" }
@@ -100,7 +106,7 @@ The file has three parts.
 **The trait `App`.**  The phone calls `start` once, and then calls `handle` once for every event.
 
 - `start` builds the screen.  [`screen`](../reference/helpers.md#screen) clears the app's window, writes a title, and returns the rectangle under the title.  [`ui::create`](../reference/ui.md#create) creates a widget: here a `Text`, as a child of the window (`ROOT`), filling that rectangle.  [`ui::set_text`](../reference/ui.md#set_text) gives the widget a line to show.
-- `log_info` writes a line to the phone's log.  The line is the simplest way to see from outside what an app is doing.
+- `log_info` writes a line to the phone's log, which [the last part of this step](#read-the-log) reads.
 - `handle` receives the events.  `screen` reserves the cancel key (the key marked ✕) for the app, so the key arrives as `Event::Key("cancel")`, and the app answers with [`runtime::exit`](../reference/runtime.md#exit), which ends the app and takes the app's window off the display.
 
 **The manifest.**  `export_app!` registers the type with the phone and writes the manifest into the app file: what the phone must know about an app before running the app.
@@ -109,7 +115,7 @@ The file has three parts.
 - `display_name` is the name that the phone shows in the Applications menu.
 - `description` is one line that the web interface shows beside the name.
 
-The [manifest reference](../reference/manifest.md) lists the other fields, e.g., `icon`.  A manifest that the phone would refuse does not compile, and the compiler's error says why.
+The [manifest reference](../reference/manifest.md) lists the other fields, e.g., `icon`.  A manifest with a malformed field, e.g., a `name` with a space, does not compile, and the compiler's error says why.
 
 ## Build the app file
 
@@ -121,7 +127,7 @@ wasm-tools component new \
     target/wasm32-unknown-unknown/release/freshpot.wasm -o freshpot.wasm
 ```
 
-The first command writes the module to `target/wasm32-unknown-unknown/release/freshpot.wasm`; `cargo` names the module after the crate, with `_` for each `-`.  The second command writes the component to `freshpot.wasm` in the crate's directory.  That file, of about 27 KiB, is the whole app: the code, the manifest, and any data that the code includes.
+The first command writes the module to `target/wasm32-unknown-unknown/release/freshpot.wasm`; `cargo` names the module after the crate, with `_` for each `-`.  The second command writes the component to `freshpot.wasm` in the crate's directory.  That file, of about 30 KiB, is the whole app: the code, the manifest, and any data that the code includes.
 
 ## Install the app on the phone
 
@@ -135,7 +141,7 @@ Installing a later build is the same three actions.  The phone replaces the inst
 
 ## Open the app
 
-On the phone, open the Applications menu (**Applications** in the main menu, or the softkey **Apps** of the idle screen) and choose Fresh Pot.  **Open** on the web interface's page Apps does the same from the browser, and the page **Screen** shows the phone's display and presses the phone's keys, which saves reaching for the phone.
+On the phone, open the Applications menu (**Applications** in the main menu, or the softkey **Apps** of the idle screen) and choose Fresh Pot.  **Open** on the web interface's page Apps does the same from the browser, and the page **Screen** shows the phone's display and presses the phone's keys.
 
 <figure markdown="span">
   ![The first screen of Fresh Pot: a title and one line of text](../../assets/app-sdk/first-screen.png){ width="480" }

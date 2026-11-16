@@ -1,6 +1,6 @@
 # Events
 
-The phone calls `App::handle` with one `Event` for everything that happens: a key, a softkey, a timer, the result of a request, a change of a call.  This page lists every variant, when the phone sends the variant, and which apps receive the variant.  In `app.wit` the type is the variant `event` of the interface `types`, and the names are the same in kebab-case (e.g., `pbx-storage-online` for `PbxStorageOnline`).
+The phone calls `App::handle` with one `Event` for everything that happens: a key, a softkey, a timer, the result of a request, a change of a call.  For every variant, this page says when the phone sends the event and which apps receive the event.  In `app.wit` the type is the variant `event` of the interface `types`, and the names are the same in kebab-case (e.g., `pbx-storage-online` for `PbxStorageOnline`).
 
 ```rust
 pub enum Event {
@@ -70,7 +70,7 @@ Only running apps receive events.  The phone keeps nothing for an app that is no
 
 The app's window became the top screen: the app was opened, or a screen that covered the window (a call, a menu, another app) went away.  `runtime::in_foreground` returns `true` from this event until `Background`.
 
-On a color model the phone sends `Foreground` again to the app on screen when the skin's palette changes (the user chose another wallpaper), so that an app that draws with [`canvas::theme_color`](canvas.md#theme_color) draws again.  An app therefore treats `Foreground` as "draw the screen", not as "the app was opened".
+On a color model the phone sends `Foreground` again to the app on screen when the skin's palette changes (the user chose another theme), so that an app that draws with [`canvas::theme_color`](canvas.md#theme_color) draws again.  An app therefore treats `Foreground` as "draw the screen", not as "the app was opened".
 
 ## `Background`
 
@@ -115,7 +115,7 @@ The names:
 | `expM.K` | Key `K` of expansion module `M`. |
 | `keyN` | A key the phone has no name for, by the key's code `N`. |
 
-Which of these a model has depends on the model.
+No model has every key of the table.
 
 ## `Hook`
 

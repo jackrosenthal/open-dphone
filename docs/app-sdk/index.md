@@ -1,6 +1,6 @@
 # App SDK
 
-The App SDK is for developers who write apps for phones that run Open DPhone.  This section holds a tutorial that builds an app in Rust, and the reference for the interface between an app and the phone.
+The App SDK is the Rust crate `dphone-app-sdk`, with which developers write apps for phones that run Open DPhone.
 
 <figure markdown="span">
   ![Fresh Pot on a color display and on a gray display](../assets/app-sdk/gauge.png){ width="656" }
@@ -34,7 +34,7 @@ Each interface of the phone is a module of `dphone-app-sdk`, and each has a page
 ## What a developer needs
 
 - **Rust 1.88 or later**, installed with `rustup`, with the target `wasm32-unknown-unknown`, and the command `wasm-tools`.  The tutorial's first step installs both.
-- **The crate `dphone-app-sdk`.**  The crate's version is the version of the firmware whose interface the crate describes, so an app for firmware 3 depends on `dphone-app-sdk = "3"`.
+- **The crate `dphone-app-sdk`.**  The crate's version is the version of the firmware whose interface the crate describes, so an app for firmware 3 depends on `dphone-app-sdk = "3"` from crates.io.  An app for a phone that runs firmware built from source depends on the crate in a clone of the repository; the tutorial's first step shows [both forms](tutorial/first-app.md#create-the-crate).
 - **A phone that runs Open DPhone**, and the password of that phone's web interface.  The web interface installs an app, shows the phone's log, and mirrors the phone's display.
 - **A PBX with [Open DPMA](../open-dpma/index.md)**, only for an app that keeps data on the PBX.
 

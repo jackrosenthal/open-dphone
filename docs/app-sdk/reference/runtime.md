@@ -44,7 +44,7 @@ With `false`, an app of kind `Foreground` keeps running when the window leaves t
 pub fn show_app(name: &str) -> Result<(), String>
 ```
 
-Opens another app by the `name` of the app's manifest, starting the app if needed, and puts the app's window on top.
+Opens another app, named by the `name` of that app's manifest: the phone starts the other app if needed and puts the other app's window on top.
 
 The call fails, with a sentence that says why, when `name` is not formed like an app name, when the phone has no app of that name, and when the app is a built-in app that the configuration switches off.  `Ok` says that the request was recorded.  An app that then fails to start is not shown; the phone writes a warning to the log, and the calling app is not told.
 

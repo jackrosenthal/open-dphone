@@ -2,7 +2,7 @@
 
 The crate `dphone-app-sdk` adds a few functions and types on top of the interface.  All of them run inside the app and only call the functions the other pages describe, so an app that uses a helper gains the capability of the interface the helper calls.
 
-`use dphone_app_sdk::prelude::*;` brings in `App`, `Event`, `ROOT`, `Widget`, `Rect`, `ListItem`, `Softkey`, `WidgetKind`, `WidgetEvent`, `Skin`, `PbxOutcome`, `PbxScope`, `PbxEntry`, `PbxStorageOutcome`, `AppKind`, `Json`, `Form`, `Message`, the functions `screen`, `content_rect`, and `row_height`, and the modules `audio`, `calls`, `config`, `events`, `http`, `l10n`, `pbx`, `pbx_storage`, `presence`, `runtime`, `storage`, `timers`, and `ui`.  Everything else is imported by name, e.g., `dphone_app_sdk::canvas` or `dphone_app_sdk::InputMode`.
+`use dphone_app_sdk::prelude::*;` brings in `App`, `Event`, `ROOT`, `Widget`, `Rect`, `ListItem`, `Softkey`, `WidgetKind`, `WidgetEvent`, `Skin`, `PbxOutcome`, `PbxScope`, `PbxEntry`, `PbxStorageOutcome`, `TimeStyle`, `AppKind`, `Json`, `Form`, `Message`, the functions `screen`, `content_rect`, and `row_height`, and the modules `audio`, `calls`, `config`, `events`, `http`, `l10n`, `pbx`, `pbx_storage`, `presence`, `runtime`, `storage`, `timers`, and `ui`.  Everything else is imported by name, e.g., `dphone_app_sdk::canvas` or `dphone_app_sdk::InputMode`.
 
 ## Screens
 

@@ -11,7 +11,7 @@ pub type Widget = u32;
 pub const ROOT: Widget = 0;
 ```
 
-A `Widget` names a widget within one app.  `ROOT` (0) is the app's window: the parent of top-level widgets, and the holder of the window's softkeys and key claims.  Handles of widgets in the [idle window](ui.md#the-idle-window) have the highest bit set, and the idle window's root is `0x8000_0000`.  The phone never reuses a handle within one instance of an app.  A function given a handle of a widget that no longer exists does nothing, and a getter returns `0` or `""`.
+A `Widget` names a widget within one app.  `ROOT` (0) is the app's window: the parent of top-level widgets, and the holder of the window's softkeys and key claims.  Handles of widgets in the [idle window](ui.md#the-idle-window) have the highest bit set, and the idle window's root is `0x8000_0000`.  The phone never reuses a handle within one instance of an app.  A function given a handle of a widget that no longer exists does nothing; `ui::selected` returns `None` for such a handle, and `ui::value` returns `""`.
 
 Timer identifiers, request identifiers, and call identifiers are `u32` (`timer-id`, `request-id`, and `call-id` in `app.wit`).  Timer and request identifiers are never 0.  The identifiers of `pbx::request`, `http::request`, and the `pbx_storage` requests come from one counter, so no two pending requests of an app share an identifier.
 
