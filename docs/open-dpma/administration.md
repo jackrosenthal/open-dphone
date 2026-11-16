@@ -16,7 +16,7 @@ The configuration token that the server then issues is no secret either: the tok
 | The same, where MAC addresses are not trusted. | `config_auth=mac_pin` or `mac_globalpin` | The user also has to know a PIN. |
 | Users move between phones. | `config_auth=pin`, and `pin` in every phone section | The PIN identifies the user, whichever phone the user sits at. |
 
-After a change, read `Config Authentication` in `digium_phones show settings`: the module ignores a misspelled value without a message, and `disabled` stays in force.
+After a change, read `Config Authentication` in `digium_phones show settings`: the module does not apply a misspelled value, so `disabled` stays in force, and reports the value as a warning in the log.
 
 ### Protect the user list
 
@@ -28,7 +28,7 @@ A phone that has completed the handshake can request any file below `file_direct
 
 ### Watch the authentication incidents
 
-The module records, by source address, each handshake whose certificate fails verification, and each user list request with a wrong PIN.  A record expires 600 seconds after the last failure.  A wrong PIN in a request for a configuration token is refused, and is not recorded.
+The module records, by source address, each handshake whose certificate fails verification, each user list request with a wrong PIN, and each request for a configuration token with a wrong PIN: the reason `invalid pin` for a phone section's `pin`, and `invalid config pass` for `globalpin` or a `group_pin`.  A record expires 600 seconds after the last failure.
 
 - Each failure is logged at the level `DPMA` as `Auth failed for ip '<address>' mac '<MAC>' reason '<reason>' count=<n>`.  From the fifth failure of an address, the line ends in `ALERT`.
 - The AMI action `DPMAShowIncidents` lists the records, and `DPMARemoveIncident` with the header `IPAddress` removes one.
@@ -39,7 +39,7 @@ The module blocks nothing: the module still answers an address that the list sho
 
 - `web_ui_enabled` is off by default.  When switching the web interface on, set `login_password` in the same phone section, so that the phone does not keep a default password.
 - On Open DPhone, the `/metrics` endpoint needs no login and is on by default, and SSH is off by default.  See [`dphone_metrics_enabled`](open-dphone-options.md#dphone_metrics_enabled) and [`dphone_ssh_enabled`](open-dphone-options.md#dphone_ssh_enabled).
-- A value that a user sets on an Open DPhone phone wins over the server's `dphone_*` option.  A user who can log in to the phone's web interface can therefore switch SSH on.  To prevent the change, leave `web_ui_enabled` off.
+- A `dphone_*` option of the server holds on an Open DPhone phone: a user who can log in to the phone's web interface cannot change the setting.  Without the option, the user decides, so write `dphone_ssh_enabled=no` in the phone section, or leave `web_ui_enabled` off, where users are not to switch SSH on.
 
 ## Pushing a changed configuration
 

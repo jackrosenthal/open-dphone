@@ -6,7 +6,7 @@ Open DPMA adds options to the phone sections (`type=phone`) of `res_digium_phone
 
 - **Which firmware honors the options.**  A phone with Open DPhone acts on the options.  A phone with stock firmware ignores the settings, so the same phone section serves a phone before and after a change of firmware.  The original module does not know the options and reports each as invalid.
 - **An absent option sends nothing.**  The phone then uses the value set on the phone, or else the firmware's default, which each entry below states.
-- **A value set on the phone wins.**  When a setting has been changed on the phone, e.g., in the phone's web interface, the phone keeps that value and ignores the server's option.  The rule covers the on/off options, the softkeys, the disabled apps, and the static address.  A server's option therefore sets a starting value for a fleet, and does not stop a user who can reach the phone's settings from changing the value.  The options `web_ui_enabled` and `login_password` ([Identity and access](configuration.md#identity-and-access)) control who reaches the settings.
+- **The server's value holds on the phone.**  The module sends the on/off options, the softkeys, the disabled apps, the theme, the palette file, and the static address as frozen settings (`conflict="freeze"`).  The phone uses the server's value, whatever was set on the phone before, and the phone's web interface shows the setting as a disabled control with the note "Configured via DPMA".  A user who can reach the phone's settings therefore cannot change the value, e.g., cannot switch SSH on against `dphone_ssh_enabled=no`.  When the option is removed from the configuration file, the value that was set on the phone applies again.
 - **A value that the module cannot read is skipped.**  The module logs `Invalid option '<name>' at line <n> is not supported by phone module.` at the level `DPMA`, and sends the phone nothing for the option.
 - **`digium_phones show phone <name>`** prints the values that the module holds for a phone section.
 
@@ -38,6 +38,7 @@ line=101
 | [`dphone_static_dns`](#dphone_static_dns) | IPv4 addresses, comma-separated; repeatable | No DNS servers |
 | [`dphone_idle_softkeys`](#dphone_idle_softkeys) | Softkeys, comma-separated; repeatable | `call_log,contacts,status,menu,apps,dnd,forward` |
 | [`dphone_disabled_apps`](#dphone_disabled_apps) | App names, comma-separated; repeatable | Every built-in app offered |
+| [`dphone_theme`](#dphone_theme) | Name of a built-in theme | The theme chosen on the phone |
 | [`dphone_palette_file`](#dphone_palette_file) | File name or URL | The phone's palette |
 | [`dphone_ignore_provisioned_firmware`](#dphone_ignore_provisioned_firmware) | On/off | Firmware entries followed |
 | [`dphone_app_data_tenant`](#dphone_app_data_tenant) | A tenant key | The store of the phones without a key |
@@ -83,7 +84,7 @@ The endpoint needs no login, and does not depend on `web_ui_enabled`.  Set `dpho
 
 ## Network address
 
-The three options give a phone a static IPv4 address in place of DHCP.  The module sends the gateway and the DNS servers only together with `dphone_static_address`.  A static address that was set on the phone wins over the server's address.
+The three options give a phone a static IPv4 address in place of DHCP.  The module sends the gateway and the DNS servers only together with `dphone_static_address`.  The server's address replaces a static address that was set on the phone, so check the address, the prefix length, and the gateway before reconfiguring the phone: a phone with a wrong address does not reach the server for a corrected configuration.
 
 ### `dphone_static_address` { #dphone_static_address }
 
@@ -142,6 +143,16 @@ The built-in apps that the phone does not offer.  A disabled app is not in the p
 
 The built-in apps are `alarms`, `boxpusher`, `calendar`, `contacts`, `desksparrow`, `diagnostics`, `hotdesking`, `lightup`, `parking`, `queues`, `status`, and `voicemail`.  Disable the apps for services that the server does not have, e.g., `queues` on a server without `app_queue`, and the games where games are not wanted.
 
+### `dphone_theme` { #dphone_theme }
+
+The built-in theme of the phone: a wallpaper together with the colors in which the phone draws every screen.
+
+- **Value:** the name of a theme, e.g., `dusk`: 1 to 32 letters, digits, `_`, and `-`.  The phone's theme selector and the phone's web interface list the themes.  A phone shows the default theme for a name that the firmware does not have.
+- **Without the option:** the theme that the user chose on the phone, else the firmware's default theme.
+- **Models:** the color models D60, D62, and D65.  The other models have no themes.
+
+A phone section that also has `wallpaper_file` shows that picture, not the theme.
+
 ### `dphone_palette_file` { #dphone_palette_file }
 
 The palette file for the wallpaper picture of `wallpaper_file`: the colors in which the phone draws every screen while that picture is the wallpaper.
@@ -152,7 +163,7 @@ The palette file for the wallpaper picture of `wallpaper_file`: the colors in wh
 
 The phone fetches the palette file only when the section also has `wallpaper_file`.  The file is a `dphone.palette.v1` message in protobuf text format, which `proto/dphone/palette/v1/palette.proto` in the repository describes, and is at most 16 KiB.
 
-Unlike the other options of this page, the server's wallpaper picture and palette file win over a wallpaper that the user chose on the phone.
+The server's wallpaper picture and palette file replace a theme that the user chose on the phone, as the server's values of the other options of this page do.
 
 ## Firmware
 

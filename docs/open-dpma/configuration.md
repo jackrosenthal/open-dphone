@@ -25,7 +25,7 @@ Rules that apply to the whole file:
 - Asterisk's templates work, e.g., `[sales](!)` and `[phone101](sales)`.
 - An on/off option takes any value that Asterisk reads as true (`yes`, `true`, `on`, `1`) or false.
 - An option that the module does not know, or a value that the module cannot read, is reported in the log at the level `DPMA` and skipped; the rest of the section still applies.  A section without `type`, or with an unknown `type`, is reported and skipped.
-- Most text values are put into the phone's configuration, an XML document, as written.  A value that contains `"`, `<`, `>`, or `&` damages the document.  The names and credentials of lines are the exception and are escaped.
+- Text values go into the phone's configuration, an XML document.  The module escapes a `"`, a `<`, and an `&` in a value, so that any text can be written as the phone is to show the text.  An `&` that begins a reference, e.g., `&amp;` or `&#38;`, is left alone, so a value that was written with references for the original module, which escapes nothing, reads the same on the phone.  In the configuration file, a `;` begins a comment unless written as `\;`.
 
 The module reads the file when Asterisk starts and at `module reload res_open_dpma.so`.  A reload does not send the new configuration to phones that are running, except to a phone whose lines changed; see [Pushing a changed configuration](administration.md#pushing-a-changed-configuration).
 
@@ -85,7 +85,7 @@ The certificates that are built in are those of the original module, which the p
 
 !!! warning "A misspelled value leaves authentication disabled"
 
-    The module ignores a `config_auth` or `userlist_auth` value that is not in the lists above, without a log message.  After every change, check the lines `Config Authentication` and `Userlist Authentication` of `digium_phones show settings`.  [Authentication](administration.md#authentication) says which value to choose.
+    The module does not apply a `config_auth` or `userlist_auth` value that is not in the lists above, and logs a warning that names the value and the line: `Invalid value '<value>' for config_auth at line <n> of res_digium_phone.conf is ignored`.  The default, `disabled`, then stays in force.  After every change, check the lines `Config Authentication` and `Userlist Authentication` of `digium_phones show settings`.  [Authentication](administration.md#authentication) says which value to choose.
 
 ## `type=phone` { #phone }
 
@@ -153,10 +153,12 @@ Options that can be repeated are marked "repeatable"; each occurrence adds to a 
 | `ring_headset_only` | On/off | `no` | Whether the phone rings on the headset alone. |
 | `reset_call_volume` | On/off | `no` | Whether the call volume returns to the default after each call. |
 | `ehs` | Text | Not sent | The kind of electronic hook switch headset adapter. |
-| `enable_check_sync` | On/off | `no` | Whether the phone acts on a SIP `check-sync` notification.  Once on, the option stays on until the file says `enable_check_sync=no` or Asterisk restarts; removing the line is not enough. |
+| `enable_check_sync` | On/off | `no` | Whether the phone acts on a SIP `check-sync` notification. |
 | `transport_tls_allowed` | On/off | Not sent | Whether the phone may use TLS for SIP. |
 | `allow_insecure_ssl` | On/off | `no` | Whether the phone accepts a TLS certificate that the phone cannot verify. |
 | `handshake_timeout` | Seconds | `946080000` (30 years) | The lifetime of the phone's handshake with the server. |
+
+On stock firmware, `show_call_log`, `can_forward_calls`, and `show_call_parking` also decide whether the idle screen has the softkey of the feature.  Open DPhone does not take the idle softkeys from these options: [`dphone_idle_softkeys`](open-dphone-options.md#dphone_idle_softkeys) sets the idle softkeys of a phone with Open DPhone.
 
 ### Display and sound
 
@@ -219,7 +221,7 @@ A line that a phone names with `line` is a PJSIP endpoint of this server.  The m
 
 A user of `users.conf` with `hasvoicemail` also gives the line of the user's name a mailbox, as with the original module.
 
-A `type=line` section with the endpoint's name is optional and sets what PJSIP does not carry.  A `type=external_line` section is required for each external line, and carries all of the line's settings.  Both types take the same options:
+A `type=line` section with the endpoint's name is optional and sets what PJSIP does not carry.  An option of the section goes before the value from PJSIP, also after a later change of the endpoint, e.g., a `callerid` of the section stays when the endpoint's `callerid` changes.  A `type=external_line` section is required for each external line, and carries all of the line's settings.  Both types take the same options:
 
 | Option | Value | Default | Effect |
 | --- | --- | --- | --- |
@@ -280,7 +282,7 @@ A network section says which server addresses a phone uses while the phone's add
 | `network_vlan_id` | VLAN number | Not sent | The VLAN of the phone.  Sent when above `0`. |
 | `sip_qos` | `0` to `7` | `0` | The 802.1p priority of SIP packets on the VLAN. |
 | `rtp_qos` | `0` to `7` | `0` | The 802.1p priority of RTP packets on the VLAN. |
-| `network_vlan_qos` | `0` to `7` | — | An old name of `rtp_qos`.  The option has no effect in a network section; use `rtp_qos`. |
+| `network_vlan_qos` | `0` to `7` | — | An old name of `rtp_qos`, which the module reports as deprecated.  The option sets the priority of RTP packets in a section that has no `rtp_qos` before the option. |
 | `pc_vlan_id` | VLAN number | `0` | The VLAN of the phone's PC port. |
 | `pc_qos` | Number | `0` | The 802.1p priority of the PC port's packets. |
 | `sip_dscp` | Number | `0` | The DSCP value of SIP packets. |

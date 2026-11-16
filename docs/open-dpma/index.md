@@ -43,6 +43,12 @@ Open DPMA reads the configuration file of the original module, `res_digium_phone
 - A session record in the Asterisk database that cannot be decrypted is deleted, and the phone starts a new session.
 - Several requests and events that crash Asterisk with the original module are handled, e.g., a change of a PJSIP AOR while a line has no PJSIP endpoint, a voicemail request that names no folder, and a voicemail request for pages of zero messages.
 - A phone's request to start recording a call reports success.  The original module starts the recording and reports an error to the phone.
+- A `config_auth` or `userlist_auth` value that is misspelled is reported as a warning.  The original module ignores such a value without a message.
+- A request for a configuration token with a wrong PIN is recorded as an [authentication incident](administration.md#watch-the-authentication-incidents).  The original module records only the wrong PIN of a user list request.
+- A text value with a `"`, a `<`, or an `&` is escaped in the phone's configuration.  The original module writes such a value unchanged, which makes a document that a phone cannot read.
+- `enable_check_sync` is off again after the line is removed from the configuration file.  With the original module the option stays on until the file says `enable_check_sync=no`.
+- `network_vlan_qos` takes effect in a network section.
+- An option of a `type=line` section keeps going before the line's value from PJSIP after a change of the PJSIP endpoint.  With the original module, such a change replaces or clears the section's `context`, `callerid`, `mailbox`, `secret`, and `authname` until the next reload.
 
 **Added**
 
