@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 250" width="420" height="250" role="img" font-family="sans-serif" font-size="13" text-anchor="middle">
+  <title>The EHS header and the wires of a USB serial cable</title>
+  <desc>Top row, left to right: pin 1, ground, black wire; pin 2, the phone's transmit line, white wire; the key, with no pin.  Bottom row, left to right: pin 4, 3.3 V, not connected; pin 5, the phone's receive line, green wire; pin 6, ground.</desc>
+  <rect x="0" y="0" width="420" height="250" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+  <!-- The wires, drawn over a wider gray line so that white and black both show. -->
+  <g stroke-linecap="round">
+    <path d="M150 88V52" stroke="#64748b" stroke-width="9"/>
+    <path d="M150 88V52" stroke="#111111" stroke-width="6"/>
+    <path d="M210 88V52" stroke="#64748b" stroke-width="9"/>
+    <path d="M210 88V52" stroke="#ffffff" stroke-width="6"/>
+    <path d="M210 162V198" stroke="#64748b" stroke-width="9"/>
+    <path d="M210 162V198" stroke="#16a34a" stroke-width="6"/>
+  </g>
+  <!-- The header. -->
+  <rect x="114" y="74" width="192" height="102" rx="6" fill="#e2e8f0" stroke="#94a3b8"/>
+  <g fill="#fbbf24">
+    <rect x="134" y="84" width="32" height="32" rx="3"/>
+    <rect x="194" y="84" width="32" height="32" rx="3"/>
+    <rect x="134" y="134" width="32" height="32" rx="3"/>
+    <rect x="194" y="134" width="32" height="32" rx="3"/>
+    <rect x="254" y="134" width="32" height="32" rx="3"/>
+  </g>
+  <rect x="254" y="84" width="32" height="32" rx="3" fill="none" stroke="#94a3b8" stroke-dasharray="4 4"/>
+  <g fill="#0f172a" font-weight="700">
+    <text x="150" y="105">1</text>
+    <text x="210" y="105">2</text>
+    <text x="150" y="155">4</text>
+    <text x="210" y="155">5</text>
+    <text x="270" y="155">6</text>
+  </g>
+  <g fill="#0f172a">
+    <text x="150" y="22" font-weight="700">Black</text>
+    <text x="150" y="38" fill="#475569">Ground</text>
+    <text x="210" y="22" font-weight="700">White</text>
+    <text x="210" y="38" fill="#475569">Phone TX</text>
+    <text x="210" y="218" font-weight="700">Green</text>
+    <text x="210" y="234" fill="#475569">Phone RX</text>
+    <text x="318" y="105" text-anchor="start" fill="#475569">Key (no pin)</text>
+    <text x="318" y="155" text-anchor="start">Ground</text>
+    <text x="104" y="149" text-anchor="end">3.3 V</text>
+    <text x="104" y="165" text-anchor="end" fill="#475569">Not connected</text>
+  </g>
+</svg>
