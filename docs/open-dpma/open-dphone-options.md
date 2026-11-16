@@ -36,7 +36,7 @@ line=101
 | [`dphone_static_address`](#dphone_static_address) | `<address>/<prefix length>` | DHCP |
 | [`dphone_static_gateway`](#dphone_static_gateway) | IPv4 address | No gateway |
 | [`dphone_static_dns`](#dphone_static_dns) | IPv4 addresses, comma-separated; repeatable | No DNS servers |
-| [`dphone_idle_softkeys`](#dphone_idle_softkeys) | Softkeys, comma-separated; repeatable | `call_log,contacts,status,menu,apps,dnd,forward` |
+| [`dphone_idle_softkeys`](#dphone_idle_softkeys) | Softkeys, comma-separated; repeatable | `call_log,contacts,status,menu,apps,dnd,forward`, and `theme` on the color models |
 | [`dphone_disabled_apps`](#dphone_disabled_apps) | App names, comma-separated; repeatable | Every built-in app offered |
 | [`dphone_theme`](#dphone_theme) | Name of a built-in theme | The theme chosen on the phone |
 | [`dphone_palette_file`](#dphone_palette_file) | File name or URL | The phone's palette |
@@ -149,7 +149,7 @@ The built-in apps are `alarms`, `boxpusher`, `calendar`, `contacts`, `desksparro
 The built-in theme of the phone: a wallpaper together with the colors in which the phone draws every screen.
 
 - **Value:** the name of a theme, e.g., `dusk`: 1 to 32 letters, digits, `_`, and `-`.  The phone's theme selector and the phone's web interface list the themes.  A phone shows the default theme for a name that the firmware does not have.
-- **Without the option:** the theme that the user chose on the phone, else the firmware's default theme.
+- **Without the option:** the theme that the user chose on the phone, else the firmware's default theme, Tides.  The server keeps the user's choice with the [app data](administration.md#app-data), so the choice follows the user to another phone and returns after the phone is reset.
 - **Models:** the color models D60, D62, and D65.  The other models have no themes.
 
 A phone section that also has `wallpaper_file` shows that picture, not the theme.

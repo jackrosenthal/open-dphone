@@ -110,7 +110,7 @@ An Open DPhone phone remembers an image that failed to install, or that was inst
 
 ## App data
 
-The apps of Open DPhone phones keep data on the server, e.g., the best times of a game, which every phone then shows, or a user's progress, which returns after the phone is reset.  App data needs no option: the module answers the phones' app data requests and keeps the data in the Asterisk database, in the family `DPhoneAppData`.  Stock firmware and the original module have no app data.
+The apps of Open DPhone phones keep data on the server, e.g., the best times of a game, which every phone then shows, or a user's progress, which returns after the phone is reset.  The firmware keeps the theme that a user chose in the same way, as the user's key `theme` under the name `dphone`, which no app can have.  App data needs no option: the module answers the phones' app data requests and keeps the data in the Asterisk database, in the family `DPhoneAppData`.  Stock firmware and the original module have no app data.
 
 Each app has keys that all phones of a store share, and keys for each user.  The user is the phone section that the phone is provisioned as.
 
