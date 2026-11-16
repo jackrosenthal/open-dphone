@@ -1578,7 +1578,7 @@ fn drawn_on_a_color_phone() {
     assert!(fresh.count(unlit) > 100 * 16 * 16 && fresh.count(blue) > 4 * 17);
     assert!(play.count(yellow) > 30 * 16 * 16 && play.count(unlit) > 16 * 16);
     assert!(
-        play.count(red) > 2 * 70 + 20,
+        play.count(red) > 2 * 40 + 20,
         "a number and two lights: {}",
         play.count(red)
     );

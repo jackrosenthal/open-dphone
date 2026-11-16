@@ -297,6 +297,60 @@ fn every_look_is_its_own_picture() {
 }
 
 #[test]
+fn a_light_is_a_bulb_where_the_cell_has_room_for_one() {
+    let g = Grid::parse("L").unwrap();
+    let cell = |pitch: u16, pal: Palette| -> Vec<Vec<Rgb>> {
+        let ops = Painter::new(1, pitch, pal).row(&g, 0);
+        let side = pitch as usize + 1;
+        let px = paint(&ops, side, side, Rgb(1, 2, 3));
+        px.chunks(side).map(|row| row.to_vec()).collect()
+    };
+    // In color, at every size of the board: glass on a screw base of
+    // metal, in an outline, and a spot of light on the glass of the
+    // larger ones.  The base is below the glass, and narrower.
+    let c = Palette::color();
+    for (pitch, shine) in [(34, true), (24, true), (17, false)] {
+        let px = cell(pitch, c);
+        let rows = |color: Rgb| -> Vec<usize> {
+            px.iter()
+                .map(|row| row.iter().filter(|p| **p == color).count())
+                .collect()
+        };
+        let (glass, metal) = (rows(c.light), rows(c.metal));
+        let last = |rows: &[usize]| rows.iter().rposition(|n| *n > 0).expect("some");
+        let first = |rows: &[usize]| rows.iter().position(|n| *n > 0).expect("some");
+        assert!(first(&metal) > last(&glass), "{pitch}");
+        assert!(
+            metal.iter().max() < glass.iter().max() && metal.iter().sum::<usize>() >= 2,
+            "{pitch}"
+        );
+        assert!(rows(c.outline).iter().sum::<usize>() > 2 * pitch as usize);
+        assert_eq!(rows(c.number).iter().sum::<usize>() > 0, shine, "{pitch}");
+        assert_eq!(rows(c.error).iter().sum::<usize>(), 0);
+    }
+    // In black and white, where the cell is large enough (7x7 on the
+    // larger gray display): black, with a clear groove across its base.
+    // In the smaller cells a light is a disk, which has none.
+    for (pitch, bulb) in [
+        (19, true),
+        (14, false),
+        (13, false),
+        (10, false),
+        (9, false),
+        (7, false),
+    ] {
+        let px = cell(pitch, palette(false));
+        let black: Vec<bool> = px.iter().map(|row| row.contains(&BLACK)).collect();
+        let (top, bottom) = (
+            black.iter().position(|b| *b).unwrap(),
+            black.iter().rposition(|b| *b).unwrap(),
+        );
+        let groove = black[top..bottom].iter().any(|b| !*b);
+        assert_eq!(groove, bulb, "{pitch}");
+    }
+}
+
+#[test]
 fn the_cursor_is_a_frame_that_stays_clear_of_what_the_cell_shows() {
     for (w, h, color) in WINDOWS {
         for side in [7, 10, 14] {

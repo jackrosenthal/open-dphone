@@ -12,10 +12,12 @@
 //! in the display's own font, the tallest that fits ([`Fonts`]); where
 //! none is given or none fits, they are this module's bitmaps.
 //!
-//! On the color display a lit cell is yellow and what is wrong is red.
+//! On the color display a lit cell is yellow, a light is a light bulb,
+//! and what is wrong is red.
 //! The gray displays get black and white only, so nothing depends on
 //! telling two grays apart: a cell no light shines on is dotted, a lit
-//! cell is plain white, a light is a black disk, a light that another
+//! cell is plain white, a light is a black light bulb where the cell has
+//! room for one and a black disk where it has not, a light that another
 //! light shines on is a cross, a no-light mark is a small square, and a
 //! numbered cell that cannot be met (too many lights beside it, or too
 //! few cells left for the lights it needs) is white with a black number
@@ -165,6 +167,8 @@ pub struct Palette {
     pub unlit: Rgb,
     pub lit: Rgb,
     pub light: Rgb,
+    /// The screw base of a light bulb.
+    pub metal: Rgb,
     pub outline: Rgb,
     pub mark: Rgb,
     pub error: Rgb,
@@ -182,6 +186,7 @@ impl Palette {
             unlit: Rgb(0xC4, 0xC4, 0xC4),
             lit: Rgb(0xFF, 0xF0, 0x70),
             light: Rgb(0xFF, 0xA8, 0x00),
+            metal: Rgb(0xB4, 0xB4, 0xB4),
             outline: Rgb(0x1E, 0x1E, 0x1E),
             mark: Rgb(0x30, 0x30, 0x30),
             error: Rgb(0xE0, 0x20, 0x20),
@@ -201,6 +206,7 @@ impl Palette {
             unlit: bg,
             lit: bg,
             light: fg,
+            metal: fg,
             outline: fg,
             mark: fg,
             error: fg,
@@ -339,6 +345,102 @@ fn disk(d: u16) -> Picture {
     })
 }
 
+/// The parts of the picture of a light bulb.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Part {
+    /// The whole bulb, on which the others are drawn (or, in black and
+    /// white, the bulb but for the grooves of its base).
+    Shape,
+    Glass,
+    /// The screw base, but for its grooves.
+    Base,
+    /// A spot of light on the glass.
+    Shine,
+}
+
+/// The smallest box in which a light bulb in black and white reads as
+/// one; in a smaller cell a light is a disk.
+const BULB_MIN: u16 = 12;
+
+/// A light bulb in a square of this side, standing on its screw base:
+/// round glass that narrows to the base, and the base with grooves across
+/// it and a narrower tip.  In color, the glass and the base are drawn
+/// inside the shape, which leaves an outline `ring` pixels wide, and the
+/// grooves are of the outline; in black and white (`ring` 0) there is
+/// the shape alone, with the grooves left out of it.
+fn bulb(side: u16, ring: u16) -> Vec<(Part, Picture)> {
+    let s = side as i32;
+    // The base, the glass (as wide as it is high), and the row where
+    // the base begins, a little inside the round of the glass.
+    let base_height = (s * 3 / 10).max(3);
+    let g = s - base_height;
+    let mut base_width = (g / 2).max(2);
+    if (s - base_width) % 2 != 0 {
+        base_width += 1;
+    }
+    let top = g - (g / 5).max(1);
+    // 0 outside, 1 glass, 2 base, 3 a groove of the base.  Across and
+    // down from the middle of the glass, in half pixels.
+    let part = move |x: i32, y: i32| -> u8 {
+        if x < 0 || y < 0 || x >= s || y >= s {
+            return 0;
+        }
+        let (dx, dy) = (2 * x + 1 - s, 2 * y + 1 - g);
+        if y >= top {
+            let tip = y == s - 1 && base_width > 3;
+            let width = if tip { base_width - 2 } else { base_width };
+            if dx.abs() < width {
+                return if (y - top) % 2 == 1 && y != s - 1 {
+                    3
+                } else {
+                    2
+                };
+            }
+        }
+        if dx * dx + dy * dy <= g * g {
+            return 1;
+        }
+        // Below its middle the glass narrows in a straight line.
+        let to_base = 2 * top + 1 - g;
+        (dy > 0 && y < top && dx.abs() <= g - (g - base_width) * dy / to_base.max(1)) as u8
+    };
+    let r = ring as i32;
+    let inside = move |x: i32, y: i32| (-r..=r).all(|i| (-r..=r).all(|j| part(x + i, y + j) != 0));
+    if ring == 0 {
+        return vec![(
+            Part::Shape,
+            Picture::new(side, side, |x, y| matches!(part(x, y), 1 | 2)),
+        )];
+    }
+    let mut parts = vec![
+        (
+            Part::Shape,
+            Picture::new(side, side, |x, y| part(x, y) != 0),
+        ),
+        (
+            Part::Glass,
+            Picture::new(side, side, |x, y| part(x, y) == 1 && inside(x, y)),
+        ),
+        (
+            Part::Base,
+            Picture::new(side, side, |x, y| part(x, y) == 2 && inside(x, y)),
+        ),
+    ];
+    if side >= 16 {
+        // A round spot up and to the left of the middle of the glass.
+        let d = (g / 5).max(2);
+        let (cx, cy) = (s - g * 2 / 5, g - g * 2 / 5);
+        parts.push((
+            Part::Shine,
+            Picture::new(side, side, |x, y| {
+                let (dx, dy) = (2 * x + 1 - cx, 2 * y + 1 - cy);
+                dx * dx + dy * dy <= d * d && inside(x, y)
+            }),
+        ));
+    }
+    parts
+}
+
 /// A diagonal cross of this side and line width.
 fn cross(side: u16, width: u16) -> Picture {
     let (s, w) = (side as i32, width as i32);
@@ -357,8 +459,11 @@ pub struct Painter {
     digit_at: (i16, i16),
     /// The display's font for the digits, if one fits the cells.
     digit_font: Option<TextFont>,
-    light: Picture,
-    light_inner: Picture,
+    /// The picture of a light, the lowest part first, and where it is
+    /// in its cell.
+    light: Vec<(Part, Picture)>,
+    bulb_at: i16,
+    /// Where the cross of a light in error is.
     light_at: i16,
     cross: Picture,
     dots: Picture,
@@ -398,6 +503,7 @@ impl Painter {
         } else {
             (inside / 12).max(1)
         };
+        let gray_bulb = inside.saturating_sub(if inside >= 12 { 4 } else { 2 });
         let period = if inside < 12 { 3 } else { 4 };
         // A font of the display for the numbers, the tallest that fits:
         // inside the frame of a wrong number in black and white, and
@@ -423,8 +529,22 @@ impl Painter {
                 1 + ((inside - dh.min(inside)).div_ceil(2)) as i16,
             ),
             digit_font,
-            light: disk(d),
-            light_inner: disk(d - 2 * ring),
+            // A light bulb; in black and white, where there is room for
+            // one, and else a disk.
+            // In black and white the bulb gets all of the cell but the
+            // cursor's frame and a clear pixel inside that.
+            light: if !palette.two_tone {
+                bulb(d, ring)
+            } else if gray_bulb >= BULB_MIN {
+                bulb(gray_bulb, 0)
+            } else {
+                vec![(Part::Shape, disk(d))]
+            },
+            bulb_at: if palette.two_tone && gray_bulb >= BULB_MIN {
+                1 + ((inside - gray_bulb) / 2) as i16
+            } else {
+                1 + margin as i16
+            },
             light_at: 1 + margin as i16,
             cross: cross(d, ((d + 2) / 5).max(1)),
             // Placed so that a marked dotted cell is not the picture of a
@@ -581,17 +701,21 @@ impl Painter {
                         ops.push(fill(p.lit));
                     }
                     let at = left - 1 + self.light_at;
-                    if p.two_tone {
-                        let picture = if error { &self.cross } else { &self.light };
-                        ops.push(picture.op(at, self.light_at, 1, p.light));
-                    } else {
-                        ops.push(self.light.op(at, self.light_at, 1, p.outline));
-                        let ring = ((self.light.width - self.light_inner.width) / 2) as i16;
-                        let color = if error { p.error } else { p.light };
-                        ops.push(
-                            self.light_inner
-                                .op(at + ring, self.light_at + ring, 1, color),
-                        );
+                    if p.two_tone && error {
+                        ops.push(self.cross.op(at, self.light_at, 1, p.light));
+                        continue;
+                    }
+                    for (part, picture) in &self.light {
+                        let color = match part {
+                            Part::Shape if p.two_tone => p.light,
+                            Part::Shape => p.outline,
+                            Part::Glass if error => p.error,
+                            Part::Glass => p.light,
+                            Part::Base => p.metal,
+                            Part::Shine => p.number,
+                        };
+                        let at = left - 1 + self.bulb_at;
+                        ops.push(picture.op(at, self.bulb_at, 1, color));
                     }
                 }
             }
