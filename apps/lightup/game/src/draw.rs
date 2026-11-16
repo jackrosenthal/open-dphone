@@ -17,8 +17,10 @@
 //! telling two grays apart: a cell no light shines on is dotted, a lit
 //! cell is plain white, a light is a black disk, a light that another
 //! light shines on is a cross, a no-light mark is a small square, and a
-//! numbered cell with too many lights is white with a black number
-//! instead of black with a white one.  There are no grid lines there:
+//! numbered cell that cannot be met (too many lights beside it, or too
+//! few cells left for the lights it needs) is white with a black number
+//! instead of black with a white one.  On the color display the number
+//! of such a cell is red.  There are no grid lines there:
 //! a black cell covers the lines around it, and the cursor is a box on
 //! the lines around its cell, black around a white cell and white around
 //! a black one, so it never touches what the cell shows.
@@ -222,7 +224,7 @@ impl Look {
         if let Some(number) = grid.clue(i) {
             Look::Clue {
                 number,
-                error: grid.clue_overfull(i),
+                error: grid.clue_unsatisfiable(i),
             }
         } else if grid.is_black(i) {
             Look::Black
@@ -552,8 +554,8 @@ impl Painter {
                         ops.push(square(inside - 2 * frame, p.number));
                         ops.push(digit(p.black));
                     } else {
-                        ops.push(fill(p.error));
-                        ops.push(digit(p.number));
+                        ops.push(fill(p.black));
+                        ops.push(digit(p.error));
                     }
                 }
                 Look::Unlit { marked } => {

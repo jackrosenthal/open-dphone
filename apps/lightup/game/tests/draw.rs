@@ -163,9 +163,11 @@ fn the_board_fills_the_height_of_each_window() {
     assert_eq!([7, 10, 14].map(|n| pitch(480, 243, n)), [34, 24, 17]);
 }
 
-/// A grid of the given side that shows every look: a row of
-/// `# 0 1 2 3 4`, an overfull 0 with its light, two lights that see each
-/// other, a lone light, marks on lit and unlit cells.
+/// A grid of the given side that shows every look but that of a number
+/// that can still be met: a row of `# 0 1 2 3 4` (a 0 with a light
+/// beside it, and four numbers with too few cells left for their
+/// lights), two lights that see each other, a lone light, marks on lit
+/// and unlit cells.
 fn sampler(side: usize) -> Grid {
     let mut rows = vec![".".repeat(side); side];
     rows[0] = format!("#01234{}", ".".repeat(side - 6));
@@ -174,6 +176,15 @@ fn sampler(side: usize) -> Grid {
     rows[3] = format!("L.x.L#{}", ".".repeat(side - 6));
     rows[4] = format!("{}#", "#".repeat(side - 1));
     rows[5] = format!("x.{}", "#".repeat(side - 2));
+    Grid::parse(&rows.join("\n")).unwrap()
+}
+
+/// A grid of the given side with the numbers 0 to 4, each of which can
+/// still be met.
+fn numbers(side: usize) -> Grid {
+    let mut rows = vec![".".repeat(side); side];
+    rows[0] = format!(".0.1.2.{}", ".".repeat(side - 7));
+    rows[1] = format!("..3.4..{}", ".".repeat(side - 7));
     Grid::parse(&rows.join("\n")).unwrap()
 }
 
@@ -190,10 +201,12 @@ fn every_look_is_its_own_picture() {
                 palette(color)
             };
             let painter = Painter::new(side, l.pitch, pal);
-            let g = sampler(side);
             let pitch = l.pitch as usize;
             let mut seen: Vec<(Look, Vec<Rgb>)> = Vec::new();
-            for row in 0..side {
+            for (g, row) in [sampler(side), numbers(side)]
+                .iter()
+                .flat_map(|g| (0..side).map(move |row| (g, row)))
+            {
                 let (x, y, width, height) = painter.row_bounds(row);
                 assert_eq!(
                     (x, y as usize, width),
@@ -201,7 +214,7 @@ fn every_look_is_its_own_picture() {
                     "{what}"
                 );
                 assert_eq!(height as usize, pitch + (row + 1 == side) as usize);
-                let ops = painter.row(&g, row);
+                let ops = painter.row(g, row);
                 // What the canvas takes in one call.
                 assert!(ops.len() <= 100, "{what}: {} operations", ops.len());
                 let bytes: usize = ops
@@ -229,7 +242,7 @@ fn every_look_is_its_own_picture() {
                 }
                 // The inside of each cell, between the grid lines.
                 for col in 0..side {
-                    let look = Look::of(&g, g.index(col, row));
+                    let look = Look::of(g, g.index(col, row));
                     let inside: Vec<Rgb> = (1..pitch)
                         .flat_map(|yy| (1..pitch).map(move |xx| (xx, yy)))
                         .map(|(xx, yy)| px[yy * width as usize + col * pitch + xx])
@@ -242,25 +255,29 @@ fn every_look_is_its_own_picture() {
                     }
                 }
                 assert_eq!(
-                    painter.row_state(&g, row),
+                    painter.row_state(g, row),
                     (0..side)
-                        .map(|c| Look::of(&g, g.index(c, row)))
+                        .map(|c| Look::of(g, g.index(c, row)))
                         .collect::<Vec<_>>()
                 );
             }
-            // Black, five numbers, the overfull 0, unlit and lit, each
-            // plain and marked, a light, and a light in error.
+            // Black, five numbers, each as one that can be met and as
+            // one that cannot, unlit and lit, each plain and marked, a
+            // light, and a light in error.
             assert_eq!(
                 seen.len(),
-                12,
+                17,
                 "{what}: {:?}",
                 seen.iter().map(|s| s.0).collect::<Vec<_>>()
             );
-            assert!(seen.iter().any(|s| s.0
-                == Look::Clue {
-                    number: 0,
-                    error: true
-                }));
+            for number in 0..=4 {
+                for error in [false, true] {
+                    assert!(
+                        seen.iter().any(|s| s.0 == Look::Clue { number, error }),
+                        "{what}: {number} {error}"
+                    );
+                }
+            }
             assert!(seen.iter().any(|s| s.0 == Look::Light { error: true }));
             for (i, a) in seen.iter().enumerate() {
                 for b in &seen[i + 1..] {

@@ -1,4 +1,4 @@
-//! The rules of play: lighting, the two kinds of error, the marks, and
+//! The rules of play: lighting, the kinds of error, the marks, and
 //! when the puzzle counts as solved.
 
 use lightup_game::{Act, Game, Grid};
@@ -74,12 +74,80 @@ fn lights_that_see_each_other_and_overfull_numbers_are_errors() {
     assert!(g.clue_overfull(one));
     g.remove_light(at(&g, 1, 0));
     assert!(!g.clue_overfull(one));
-    // Too few lights is not shown as an error, and an unnumbered black
-    // cell never is.
+    // Too few lights is no error while there are cells left for them,
+    // and an unnumbered black cell never is one.
     g.remove_light(at(&g, 0, 1));
-    assert!(!g.clue_overfull(one));
+    assert!(!g.clue_overfull(one) && !g.clue_unsatisfiable(one));
     assert!(!g.clue_overfull(at(&g, 2, 0)));
     assert!(!g.is_solved());
+}
+
+#[test]
+fn a_number_that_can_no_longer_be_met_is_unsatisfiable() {
+    let at = |g: &Grid, x, y| g.index(x, y);
+    // A 2 with four white cells beside it, and a 1 in a corner.
+    let mut g = grid(
+        ".....\n\
+         ..2..\n\
+         .....\n\
+         ....#\n\
+         ...#1",
+    );
+    let two = at(&g, 2, 1);
+    assert!(!g.clue_unsatisfiable(two));
+    // The 1 has no white cell beside it at all.
+    assert!(g.clue_unsatisfiable(at(&g, 4, 4)));
+    // Marks: two of the four cells are left, which is enough; with one
+    // left, it is not.
+    assert!(g.set_mark(at(&g, 2, 0), true) && g.set_mark(at(&g, 1, 1), true));
+    assert!(!g.clue_unsatisfiable(two));
+    g.set_mark(at(&g, 3, 1), true);
+    assert!(g.clue_unsatisfiable(two));
+    g.set_mark(at(&g, 3, 1), false);
+    assert!(!g.clue_unsatisfiable(two));
+    // A light that shines on a cell beside the number, from away: that
+    // cell can take no light any more, so one cell is left for two
+    // lights.
+    g.place_light(at(&g, 3, 3));
+    assert!(g.is_lit(at(&g, 3, 1)) && !g.has_light(at(&g, 3, 1)));
+    assert!(g.clue_unsatisfiable(two));
+    assert!(!g.clue_overfull(two));
+    g.remove_light(at(&g, 3, 3));
+    assert!(!g.clue_unsatisfiable(two));
+    // A light beside the number counts as a light, though its cell is
+    // lit: one light and one cell left for the other.
+    g.place_light(at(&g, 3, 1));
+    assert_eq!(g.lights_beside(two), 1);
+    assert!(!g.clue_unsatisfiable(two));
+    // The second light, below (the first does not shine there): met.
+    g.place_light(at(&g, 2, 2));
+    assert_eq!(g.lights_beside(two), 2);
+    assert!(!g.clue_unsatisfiable(two));
+    // A third light, on a marked cell (the light takes the mark): too
+    // many.
+    g.place_light(at(&g, 2, 0));
+    assert!(g.clue_overfull(two) && g.clue_unsatisfiable(two));
+    g.remove_light(at(&g, 2, 0));
+    assert!(!g.clue_unsatisfiable(two));
+    // One light and no cell left for the second: the cell above is
+    // marked, and the one on the left is marked and lit.
+    g.remove_light(at(&g, 2, 2));
+    g.set_mark(at(&g, 2, 0), true);
+    g.place_light(at(&g, 2, 4));
+    assert!(g.is_lit(at(&g, 2, 2)));
+    assert!(g.clue_unsatisfiable(two) && !g.clue_overfull(two));
+
+    // A 0 is unsatisfiable only with a light beside it, and a black cell
+    // without a number never is.
+    let mut g = grid("x0.\n.#.\n...");
+    assert!(!g.clue_unsatisfiable(1) && !g.clue_unsatisfiable(4));
+    g.place_light(2);
+    assert!(g.clue_unsatisfiable(1) && !g.clue_unsatisfiable(4));
+
+    // No number of a solved puzzle is unsatisfiable.
+    let g = grid("#1L\nL..\n.#0");
+    assert!(g.is_solved());
+    assert!((0..9).all(|i| !g.clue_unsatisfiable(i)));
 }
 
 #[test]

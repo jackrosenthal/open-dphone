@@ -704,7 +704,7 @@ fn undo_takes_changes_back_one_by_one_and_is_kept() {
         drawn(r)
             .iter()
             .flatten()
-            .filter(|op| matches!(op, Op::Fill { color, .. } | Op::Bitmap { color, .. } if *color == Rgb(0xE0, 0x20, 0x20)))
+            .filter(|op| matches!(op, Op::Fill { color, .. } | Op::Bitmap { color, .. } | Op::Text { color, .. } if *color == Rgb(0xE0, 0x20, 0x20)))
             .count()
     };
     assert_eq!(red(&r), 4);
@@ -1524,7 +1524,7 @@ fn drawn_on_a_color_phone() {
     assert!(fresh.count(unlit) > 100 * 16 * 16 && fresh.count(blue) > 4 * 17);
     assert!(play.count(yellow) > 30 * 16 * 16 && play.count(unlit) > 16 * 16);
     assert!(
-        play.count(red) > 16 * 16 + 50,
+        play.count(red) > 2 * 70 + 20,
         "a number and two lights: {}",
         play.count(red)
     );
@@ -1580,6 +1580,75 @@ fn drawn_on_a_color_phone() {
     assert!(p.mgr.is_running(APP));
     assert_eq!(p.pixels().0, shown);
     assert_eq!(p.tap(&[Key::Left]), 1, "the puzzle goes on");
+}
+
+/// A puzzle file of the given side with, in its top left corner, a 2
+/// with three lights beside it, a 1 with no cell left for its light (the
+/// four beside it are lit from away, lit from away, marked, and black), a
+/// 1 that is met, and a 2 that can still be met; the cursor under the
+/// mark.
+fn unsatisfiable_file(side: usize) -> String {
+    let mut rows = vec![".".repeat(side); side];
+    for (row, cells) in [
+        ".L.....", "L2L.1x.", "....#..", "...1L..", ".......", ".2.....",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        rows[row] = format!("{cells}{}", ".".repeat(side - 7));
+    }
+    format!(
+        "size={side}\ndifficulty=easy\nelapsed=61000\ncursor=5,2\n{}\n",
+        rows.join("\n")
+    )
+}
+
+#[test]
+fn numbers_that_cannot_be_met_are_drawn_as_errors() {
+    let red = 0xE02020;
+    for (model, pitches) in [
+        (Model::D40, [14, 10, 7]),
+        (Model::D70, [19, 13, 9]),
+        (Model::D60, [34, 24, 17]),
+    ] {
+        for (side, pitch) in SIZES.into_iter().zip(pitches) {
+            let what = format!("{model:?} {side}");
+            let file = unsatisfiable_file(side);
+            let grid = parse(&file).0;
+            let wrong: Vec<usize> = (0..grid.cells())
+                .filter(|i| grid.clue_unsatisfiable(*i))
+                .collect();
+            assert_eq!(wrong, [grid.index(1, 1), grid.index(4, 1)], "{what}");
+            assert!(grid.clue_overfull(wrong[0]) && !grid.clue_overfull(wrong[1]));
+            assert!((0..grid.cells()).all(|i| !grid.light_conflicts(i)));
+            let mut phone = Phone::new(model, &file);
+            phone.shot(&format!("unsat-{side}x{side}"));
+            // The two numbers are red on the color display, and their
+            // cells are not.
+            let both = phone.count(red);
+            if model.is_color() {
+                assert!(both > 0 && both < pitch * pitch, "{what}: {both}");
+            }
+            // Clearing the mark leaves the 1 a cell for its light: the
+            // number beside the mark is drawn anew with it, and is an
+            // error no more.
+            phone.tap(&[Key::Up]);
+            let before = phone.pixels().0;
+            assert_eq!(phone.tap(&[Key::Digit(1)]), 1, "{what}");
+            let mut after = grid.clone();
+            assert!(after.set_mark(after.index(5, 1), false));
+            assert!(!after.clue_unsatisfiable(wrong[1]) && after.clue_unsatisfiable(wrong[0]));
+            let (width, height, _) = phone.changed(&before);
+            assert!(
+                width > pitch + 2 && width < 2 * pitch && height < pitch,
+                "{what}: {width}x{height}"
+            );
+            if model.is_color() {
+                let one = phone.count(red);
+                assert!(one > 0 && one < both, "{what}: {one} of {both}");
+            }
+        }
+    }
 }
 
 #[test]

@@ -486,6 +486,26 @@ impl Grid {
             .is_some_and(|n| self.lights_beside(i) > n as usize)
     }
 
+    /// A numbered cell that no further play can meet as things stand: it
+    /// has more lights beside it than its number, or the lights beside it
+    /// and the cells beside it that could still take one (white, with no
+    /// light shining on them, and not marked) are fewer than its number.
+    pub fn clue_unsatisfiable(&self, i: usize) -> bool {
+        self.clue(i).is_some_and(|n| {
+            let (cells, count) = self.neighbors(i);
+            let (mut lights, mut open) = (0, 0);
+            for j in &cells[..count] {
+                let j = *j as usize;
+                if self.has_light(j) {
+                    lights += 1;
+                } else if self.is_candidate(j) {
+                    open += 1;
+                }
+            }
+            lights > n as usize || lights + open < n as usize
+        })
+    }
+
     /// The three conditions of a solution; marks do not matter.
     pub fn is_solved(&self) -> bool {
         self.dark == 0
