@@ -17,27 +17,48 @@
 //!
 //! No expected documents are recorded (they were compared with the
 //! decompile by hand); the suite checks that every document the setup
-//! describes is produced and well formed.
+//! describes is produced and well formed, and what a reload does with
+//! options that were removed or misspelled.
 
 use std::process::ExitCode;
+use std::time::Duration;
 
 use anyhow::{bail, Result};
 use bstr::{BString, ByteSlice};
-use dpma_tests::harness::{fixtures, setup, Ctx, Suite};
+use dpma_tests::harness::{fixtures, setup, ConfFile, Ctx, Suite};
 use dpma_tests::xml;
 
-/// Values the official DPMA writes unescaped (attribute text as in the
-/// document), by phone.
-const UNESCAPED: [(&str, &[&str]); 2] = [
+/// Values that the official DPMA writes as they are in the configuration,
+/// which makes a document that is not well formed (attribute text as in
+/// the document), by phone: an `&` that begins no reference, a `<`, and a
+/// `"` are escaped; a `>` and a reference written in the file stay.
+/// (`fullphone` has display rules, so libxml2 writes its document, with
+/// `>` as a reference too.)
+const ESCAPED: [(&str, &[&str]); 2] = [
     (
         "fullphone",
         &[
-            r#"display_name="Remote & <Other>""#,
-            r#"value="ACME <Corp>""#,
+            r#"display_name="Remote &amp; &lt;Other&gt;""#,
+            r#"<setting id="idle_company_text" value="ACME &lt;Corp&gt; &amp; &quot;Sons&quot; R&amp;D"/>"#,
         ],
     ),
-    ("nolinephone", &[r#"display_name="Remote & <Other>""#]),
+    (
+        "nolinephone",
+        &[r#"display_name="Remote &amp; &lt;Other>""#],
+    ),
 ];
+
+/// `text` with every empty element written as libxml2 writes one (`<a/>`,
+/// not `<a />`), and ending in a line break: the form in which a document
+/// that display rules were merged into is compared with one that the
+/// module wrote directly.
+fn plain(text: impl AsRef<[u8]>) -> BString {
+    let mut text: BString = text.as_ref().replace(" />", "/>").into();
+    if !text.ends_with(b"\n") {
+        text.push(b'\n');
+    }
+    text
+}
 
 /// The output of a `dpmadev` command (printed with `-v`); fails when the
 /// module has no `dpmadev` commands.
@@ -59,28 +80,23 @@ fn head(doc: &[u8], n: usize) -> String {
 
 fn config(ctx: &mut Ctx) -> Result<()> {
     for phone in ["fullphone", "minphone", "altphone", "nolinephone"] {
-        let mut doc = document(ctx, &format!("dpmadev config {phone} D65"))?;
+        let raw = document(ctx, &format!("dpmadev config {phone} D65"))?;
+        let doc = plain(&raw);
         ctx.c.check(
             format!("{phone}: a configuration document"),
             doc.contains_str("<config>") && doc.contains_str("</config>"),
             head(&doc, 200),
         );
-        let unescaped = UNESCAPED
+        let escaped = ESCAPED
             .iter()
             .find(|(p, _)| *p == phone)
             .map_or(&[][..], |(_, t)| *t);
-        for text in unescaped {
+        for text in escaped {
             ctx.c.check(
-                format!("{phone}: unescaped {text}"),
+                format!("{phone}: escaped {text}"),
                 doc.contains_str(text),
                 "",
             );
-            let (name, value) = text.split_once('=').expect("name=\"value\"");
-            let value = xml::escape(&value.as_bytes()[1..value.len() - 1]);
-            let mut escaped = format!("{name}=\"").into_bytes();
-            escaped.extend_from_slice(&value);
-            escaped.push(b'"');
-            doc = doc.replace(text, &escaped).into();
         }
         let err = xml::well_formed(&doc);
         ctx.c.check(
@@ -91,7 +107,7 @@ fn config(ctx: &mut Ctx) -> Result<()> {
         // The locale setting only for a phone with an active_locale (the
         // stock firmware's boot configuration fails on an empty one).
         let locale: &[u8] = if phone == "fullphone" {
-            b"<setting id=\"locale\" value=\"de_DE\" conflict=\"freeze\" />\n"
+            b"<setting id=\"locale\" value=\"de_DE\" conflict=\"freeze\"/>\n"
         } else {
             b""
         };
@@ -101,14 +117,25 @@ fn config(ctx: &mut Ctx) -> Result<()> {
                 && doc.contains_str(locale),
             "",
         );
-        if phone == "altphone" {
+        // The phones with display rules.  fullphone has texts that the
+        // official DPMA writes unescaped, so that libxml2 cannot read the
+        // document and the rules are not merged.
+        if phone == "altphone" || phone == "fullphone" {
             ctx.c.check(
-                "altphone: display rules merged",
-                doc.starts_with(b"<?xml version=\"1.0\"?>\n<config>"),
+                format!("{phone}: display rules merged"),
+                raw.starts_with(b"<?xml version=\"1.0\"?>\n<config>"),
                 head(&doc, 80),
             );
         }
     }
+    // The deprecated network_vlan_qos of network3, which has no rtp_qos.
+    let doc = plain(document(ctx, "dpmadev config fullphone D65")?);
+    ctx.c.check(
+        "fullphone: network_vlan_qos sets the RTP priority",
+        doc.contains_str("<setting id=\"rtp_qos\" value=\"4\" network_id=\"network3\"/>\n")
+            && doc.contains_str("<setting id=\"rtp_qos\" value=\"5\" network_id=\"network1\"/>\n"),
+        find_all(&doc, "<setting id=\"rtp_qos\"").join(" | "),
+    );
     dphone_options(ctx)?;
     let doc = document(ctx, "dpmadev config cfgphone D65")?;
     ctx.c.check(
@@ -124,19 +151,23 @@ fn config(ctx: &mut Ctx) -> Result<()> {
 /// not addresses are left out, and a list with one is left out whole), the
 /// disabled apps (a list with something that is not an app name is left out
 /// whole), the idle softkeys (a list with something that is neither a
-/// function nor an app is left out whole), and
+/// function nor an app is left out whole), the theme (a value that is
+/// not a name is left out, and the name is in lower case), and
 /// the two acceptable keys of the six configured (a duplicate, a private
-/// key header, a line with options, and a short blob are left out).
+/// key header, a line with options, and a short blob are left out).  Each
+/// setting is frozen, so that a value set on the phone does not go before
+/// the configuration's.
 const DPHONE_SETTINGS: &str = concat!(
-    "<setting id=\"dphone_ssh_enabled\" value=\"0\" />\n",
-    "<setting id=\"dphone_ignore_provisioned_firmware\" value=\"1\" />\n",
-    "<setting id=\"dphone_metrics_enabled\" value=\"0\" />\n",
-    "<setting id=\"dphone_serial_console\" value=\"1\" />\n",
-    "<setting id=\"dphone_static_address\" value=\"192.0.2.20/23\" />\n",
-    "<setting id=\"dphone_static_gateway\" value=\"192.0.2.1\" />\n",
-    "<setting id=\"dphone_static_dns\" value=\"192.0.2.1,192.0.2.2,192.0.2.4\" />\n",
-    "<setting id=\"dphone_disabled_apps\" value=\"calendar,parking,queues\" />\n",
-    "<setting id=\"dphone_idle_softkeys\" value=\"call_log,app:parking,menu,dnd\" />\n",
+    "<setting id=\"dphone_ssh_enabled\" value=\"0\" conflict=\"freeze\" />\n",
+    "<setting id=\"dphone_ignore_provisioned_firmware\" value=\"1\" conflict=\"freeze\" />\n",
+    "<setting id=\"dphone_metrics_enabled\" value=\"0\" conflict=\"freeze\" />\n",
+    "<setting id=\"dphone_serial_console\" value=\"1\" conflict=\"freeze\" />\n",
+    "<setting id=\"dphone_static_address\" value=\"192.0.2.20/23\" conflict=\"freeze\" />\n",
+    "<setting id=\"dphone_static_gateway\" value=\"192.0.2.1\" conflict=\"freeze\" />\n",
+    "<setting id=\"dphone_static_dns\" value=\"192.0.2.1,192.0.2.2,192.0.2.4\" conflict=\"freeze\" />\n",
+    "<setting id=\"dphone_disabled_apps\" value=\"calendar,parking,queues\" conflict=\"freeze\" />\n",
+    "<setting id=\"dphone_idle_softkeys\" value=\"call_log,app:parking,menu,dnd\" conflict=\"freeze\" />\n",
+    "<setting id=\"dphone_theme\" value=\"deep-sea\" conflict=\"freeze\" />\n",
 );
 const DPHONE_KEYS: &str = concat!(
     "<dphone_ssh_authorized_keys>\n",
@@ -158,15 +189,15 @@ fn find_all(doc: &[u8], prefix: &str) -> Vec<String> {
 /// The Open DPhone options: present as configured for `fullphone`, and
 /// absent from the document of a phone that does not set them.
 fn dphone_options(ctx: &mut Ctx) -> Result<()> {
-    let doc = document(ctx, "dpmadev config fullphone D65")?;
+    let doc = plain(document(ctx, "dpmadev config fullphone D65")?);
     ctx.c.check(
         "fullphone: Open DPhone settings",
-        doc.contains_str(DPHONE_SETTINGS),
+        doc.contains_str(plain(DPHONE_SETTINGS)),
         "",
     );
     ctx.c.check(
         "fullphone: Open DPhone SSH keys",
-        doc.contains_str(DPHONE_KEYS) && !doc.contains_str("PRIVATE KEY"),
+        doc.contains_str(plain(DPHONE_KEYS)) && !doc.contains_str("PRIVATE KEY"),
         "",
     );
     // The palette file is offered as the wallpaper is: here, not in the
@@ -193,14 +224,14 @@ fn dphone_options(ctx: &mut Ctx) -> Result<()> {
     ctx.c.check(
         "fullphone: checksum of a profile's local file",
         doc.contains_str(
-            "1_1_0_0_48178_D40_firmware.eff\" network_id=\"network1\" checksum=\"0a1b2c3d-1500000-ffffffff-39321600\" />\n",
+            "1_1_0_0_48178_D40_firmware.eff\" network_id=\"network1\" checksum=\"0a1b2c3d-1500000-ffffffff-39321600\"/>\n",
         ),
         "",
     );
     ctx.c.check(
         "fullphone: no checksum for a URL",
         doc.contains_str(
-            "url=\"http://fw.example.com/2_9_17_D65_firmware.eff\" network_id=\"network1\" />\n",
+            "url=\"http://fw.example.com/2_9_17_D65_firmware.eff\" network_id=\"network1\"/>\n",
         ),
         "",
     );
@@ -230,6 +261,88 @@ fn dphone_options(ctx: &mut Ctx) -> Result<()> {
             !doc.contains_str("dphone_"),
             "",
         );
+    }
+    Ok(())
+}
+
+/// The `[general]` options of the instance's `res_digium_phone.conf` set
+/// to `options` (`None` removes one), and the module reloaded.
+fn set_options(ctx: &Ctx, section: &str, options: &[(&str, Option<&str>)]) -> Result<()> {
+    let opts: Vec<(&str, Option<&[u8]>)> = options
+        .iter()
+        .map(|(k, v)| (*k, v.map(str::as_bytes)))
+        .collect();
+    ConfFile::new(&ctx.inst.conf("res_digium_phone.conf")).set_options(section, &opts)?;
+    ctx.cli("module reload res_open_dpma.so");
+    Ok(())
+}
+
+/// What a reload does with options that changed in the file.
+fn reload(ctx: &mut Ctx) -> Result<()> {
+    let backup = ConfFile::new(&ctx.inst.conf("res_digium_phone.conf")).backup()?;
+    let res = reload_checks(ctx);
+    backup.restore()?;
+    ctx.cli("module reload res_open_dpma.so");
+    res
+}
+
+fn reload_checks(ctx: &mut Ctx) -> Result<()> {
+    // enable_check_sync is off again once its line is gone.
+    let check_sync = |ctx: &Ctx| -> Result<Vec<String>> {
+        let doc = plain(document(ctx, "dpmadev config fullphone D65")?);
+        Ok(find_all(&doc, "<setting id=\"enable_check_sync\""))
+    };
+    let setting = |v: u8| format!("<setting id=\"enable_check_sync\" value=\"{v}\"/>");
+    ctx.c
+        .same("enable_check_sync=yes", check_sync(ctx)?, vec![setting(1)]);
+    set_options(ctx, "fullphone", &[("enable_check_sync", None)])?;
+    ctx.c.same(
+        "enable_check_sync removed from the section",
+        check_sync(ctx)?,
+        vec![setting(0)],
+    );
+
+    // A config_auth or userlist_auth value that is not one is reported,
+    // and changes nothing: the defaults stay.
+    let settings = |ctx: &Ctx| {
+        let out = ctx.cli_text("digium_phones show settings");
+        let line = |name: &str| {
+            out.lines()
+                .find_map(|l| l.strip_prefix(name))
+                .unwrap_or("?")
+                .trim()
+                .to_owned()
+        };
+        (
+            line("Userlist Authentication:"),
+            line("Config Authentication:"),
+        )
+    };
+    ctx.c.same(
+        "the setup's authentication",
+        settings(ctx),
+        ("globalpin".to_owned(), "mac globalpin".to_owned()),
+    );
+    let mark = ctx.log().mark();
+    set_options(
+        ctx,
+        "general",
+        &[
+            ("config_auth", Some("mac_globalpn")),
+            ("userlist_auth", Some("globalpn")),
+        ],
+    )?;
+    ctx.c.same(
+        "misspelled values leave the defaults",
+        settings(ctx),
+        ("disabled".to_owned(), "disabled".to_owned()),
+    );
+    for text in [
+        "Invalid value 'mac_globalpn' for config_auth at line ",
+        "Invalid value 'globalpn' for userlist_auth at line ",
+    ] {
+        let ok = ctx.log().wait_for(mark, text, Duration::from_secs(2));
+        ctx.c.check(format!("logged: {text}"), ok, "not in the log");
     }
     Ok(())
 }
@@ -271,5 +384,6 @@ fn main() -> ExitCode {
         .part("config", config)
         .part("contacts", contacts)
         .part("userlist", userlist)
+        .part("reload", reload)
         .main()
 }

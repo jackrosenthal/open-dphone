@@ -212,6 +212,9 @@ pub struct Phone {
     pub dphone_disabled_apps: Vec<Vec<u8>>,
     /// Open DPhone: each softkey of `dphone_idle_softkeys`, in order.
     pub dphone_idle_softkeys: Vec<Vec<u8>>,
+    /// Open DPhone: `dphone_theme`, the name of a built-in theme, in lower
+    /// case.
+    pub dphone_theme: Vec<u8>,
     /// Open DPhone: `dphone_palette_file`, the palette file for the
     /// wallpaper.
     pub dphone_palette_file: Vec<u8>,
@@ -270,7 +273,7 @@ pub struct Phone {
     pub show_call_parking: bool,
     pub parking_transfer_type: ParkingTransfer,
     pub allow_insecure_ssl: bool,
-    /// The official DPMA never resets this, and it starts out off.
+    /// Off unless the section says otherwise.
     pub enable_check_sync: bool,
     /// -1 when not configured.
     pub transport_tls_allowed: i32,
@@ -313,10 +316,14 @@ impl Phone {
     /// including the presence options (back to the defaults; the caller
     /// runs `presence::sync_applications` with the previous application
     /// list, as the official DPMA does).
+    ///
+    /// Deviation: `enable_check_sync` is reset with the rest.  The official
+    /// DPMA leaves it alone, so the option stays on after its line is
+    /// removed from the file, until `enable_check_sync=no` is written or
+    /// the module is unloaded.
     pub fn set_defaults(&mut self) {
         let fresh = Phone {
             name: std::mem::take(&mut self.name),
-            enable_check_sync: self.enable_check_sync,
             pin_is_voicemail: self.pin_is_voicemail,
             last_mac: std::mem::take(&mut self.last_mac),
             last_uri: std::mem::take(&mut self.last_uri),
@@ -396,6 +403,7 @@ impl Phone {
             dphone_static_dns: Vec::new(),
             dphone_disabled_apps: Vec::new(),
             dphone_idle_softkeys: Vec::new(),
+            dphone_theme: Vec::new(),
             dphone_palette_file: Vec::new(),
             dphone_app_data_tenant: Vec::new(),
             dphone_ssh_authorized_keys: Vec::new(),
@@ -592,6 +600,9 @@ pub struct Network {
     pub network_vlan_id: i32,
     pub sip_qos: i32,
     pub rtp_qos: i32,
+    /// An `rtp_qos` option set `rtp_qos`, so the deprecated
+    /// `network_vlan_qos` does not.
+    pub rtp_qos_set: bool,
     pub sip_dscp: i32,
     pub rtp_dscp: i32,
     pub pc_vlan_id: i32,
@@ -623,6 +634,7 @@ impl Network {
             network_vlan_id: 0,
             sip_qos: 3,
             rtp_qos: -1,
+            rtp_qos_set: false,
             sip_dscp: -1,
             rtp_dscp: -1,
             pc_vlan_id: 0,

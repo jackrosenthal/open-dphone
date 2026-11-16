@@ -57,9 +57,84 @@ pub fn escape(s: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Does `s`, which follows an `&`, begin with the rest of a reference: one
+/// of the five predefined entities, or a character reference (`#38;`,
+/// `#x26;`)?
+fn continues_reference(s: &[u8]) -> bool {
+    if [&b"amp;"[..], b"lt;", b"gt;", b"quot;", b"apos;"]
+        .iter()
+        .any(|name| s.starts_with(name))
+    {
+        return true;
+    }
+    let (digits, is_digit): (&[u8], fn(&u8) -> bool) = match s {
+        [b'#', b'x', rest @ ..] => (rest, u8::is_ascii_hexdigit),
+        [b'#', rest @ ..] => (rest, u8::is_ascii_digit),
+        _ => return false,
+    };
+    let n = digits.iter().take_while(|c| is_digit(c)).count();
+    n > 0 && digits.get(n) == Some(&b';')
+}
+
+/// `s` as the value of a double-quoted attribute (or as element text),
+/// changed only where a document would not be well formed with the bytes
+/// as they are: `"` and `<` become entities, and so does an `&` that
+/// begins no reference.  A reference (`&amp;`, `&#38;`) stays, so a value
+/// that was written escaped comes out as written, and `>` and `'`, which
+/// may stand in such a value, stay too.  The input is a C string (it ends
+/// at a NUL).
+pub fn attr_value(s: &[u8]) -> Vec<u8> {
+    let s = c_bytes(s);
+    let mut out = Vec::with_capacity(s.len());
+    for (i, &c) in s.iter().enumerate() {
+        match c {
+            b'"' => out.extend_from_slice(b"&quot;"),
+            b'<' => out.extend_from_slice(b"&lt;"),
+            b'&' if !continues_reference(&s[i + 1..]) => out.extend_from_slice(b"&amp;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn attribute_values() {
+        // Nothing to change: the bytes as they are.
+        for same in [
+            &b"America/Denver"[..],
+            b"",
+            b"it's 5 > 4",
+            b"R&amp;D &lt;lab&gt; &quot;x&quot; &apos;y&apos;",
+            b"&#38; &#x26; &#x3C;",
+            "Zürich".as_bytes(),
+            b"Jos\xe9",
+        ] {
+            assert_eq!(attr_value(same), same);
+        }
+        assert_eq!(attr_value(b"ACME <Corp>"), b"ACME &lt;Corp>");
+        assert_eq!(attr_value(b"say \"hi\""), b"say &quot;hi&quot;");
+        assert_eq!(attr_value(b"R&D"), b"R&amp;D");
+        assert_eq!(attr_value(b"http://x/a?b=1&c=2"), b"http://x/a?b=1&amp;c=2");
+        // An `&` that only looks like the start of a reference.
+        for (raw, escaped) in [
+            (&b"&"[..], &b"&amp;"[..]),
+            (b"&amp", b"&amp;amp"),
+            (b"&nbsp;", b"&amp;nbsp;"),
+            (b"&#;", b"&amp;#;"),
+            (b"&#x;", b"&amp;#x;"),
+            (b"&#12a;", b"&amp;#12a;"),
+            (b"&#xZ;", b"&amp;#xZ;"),
+            (b"a && b", b"a &amp;&amp; b"),
+        ] {
+            assert_eq!(attr_value(raw), escaped);
+        }
+        // A C string.
+        assert_eq!(attr_value(b"a<b\0c<d"), b"a&lt;b");
+    }
 
     #[test]
     fn escapes() {

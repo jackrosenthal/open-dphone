@@ -396,7 +396,10 @@ const NAME_BUF: usize = 0x80;
 ///
 /// A failed GLOBALPIN check is answered with -198 (Invalid Config
 /// Password), any other failure (no such phone, MAC or pin mismatch)
-/// with -195 (User Not Found).  On success the token goes back in
+/// with -195 (User Not Found).  A failed GLOBALPIN or PIN check records an
+/// auth incident ("invalid config pass", "invalid pin"); the official DPMA
+/// records none for a token request, so that guessing a PIN leaves no
+/// trace.  On success the token goes back in
 /// `Config-Token`, the phone's last MAC, URI, and session are updated, and
 /// the session is marked configured.
 pub fn handle_token(tx: Arc<Transaction>) -> i32 {
@@ -437,10 +440,14 @@ fn token_reply(tx: &Transaction) {
         flags & auth::PIN == 0 || users::runtime::find_authenticated(&name, &tx.password).is_some();
     if !configpass_ok {
         set_error(tx, errors::msg::INVALID_CONFIG_PASSWORD);
+        crate::auth::issue_alert(tx, "invalid config pass");
         return;
     }
     if !(mac_ok && pin_ok) {
         set_error(tx, errors::msg::USER_NOT_FOUND);
+        if !pin_ok {
+            crate::auth::issue_alert(tx, "invalid pin");
+        }
         return;
     }
     match users::runtime::config_token_build(

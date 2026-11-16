@@ -282,6 +282,29 @@ pub fn apply_line_sections(line: &mut Line) {
     }
 }
 
+/// What a whole pass ([`process`]) applies to a line after its PJSIP
+/// settings, for the PJSIP side to apply after it sets them on a sorcery
+/// observer event: the res_digium_phone.conf `[line]` and
+/// `[external_line]` sections named after the line, then the mailbox of
+/// the users.conf (app_voicemail) user of that name.
+pub fn apply_line_overrides(line: &mut Line) {
+    apply_line_sections(line);
+    let Some(src) = sources() else { return };
+    let Some(users) = &src.users_voicemail else {
+        return;
+    };
+    let context = users_context(&src.voicemail);
+    let name = line.name.clone();
+    for cat in users
+        .iter()
+        .filter(|c| !c.name.eq_ignore_ascii_case(b"general") && c.name.eq_ignore_ascii_case(&name))
+    {
+        if users_voicemail_enabled(&src.users_voicemail, cat) {
+            options::set_line_mailbox(line, &bformat!("{}@{}", cat.name, context));
+        }
+    }
+}
+
 fn is_type(cat: &Category, ty: &str) -> bool {
     cat.get("type")
         .is_some_and(|t| t.eq_ignore_ascii_case(ty.as_bytes()))

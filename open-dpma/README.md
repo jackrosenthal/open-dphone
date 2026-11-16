@@ -47,20 +47,73 @@ sha256sum --ignore-missing -c SHA256SUMS
    `res_pjsip_dialog_info_digium_body_supplement.so`.
 3. Restart Asterisk.
 
+A new build of the module also needs a restart of Asterisk: `module
+reload`, and `module unload` followed by `module load`, keep the code
+that the Asterisk process already has.
+
 The module needs `res_pjsip`, `res_pjsip_session`, and `res_pjsip_pubsub`.
 As with the official DPMA, `pjsip.conf` also needs the endpoint named by
 `default_outbound_endpoint` in its `[global]` section; without it the
 module fails to load, and Asterisk does not start.
+
+### Log messages
+
+As the official DPMA, the module writes most of its messages at a log
+level of its own, `DPMA`, e.g., the reason a phone was refused a
+configuration.  Asterisk shows them only in a log channel of `logger.conf`
+that lists the level:
+
+```
+[logfiles]
+console => notice,warning,error,dpma
+messages.log => notice,warning,error,dpma
+```
 
 ## Configuration
 
 Configure it as the official DPMA, in `res_digium_phone.conf`; the
 official DPMA's documentation and sample configuration apply.
 
+These differ from the official DPMA:
+
+- A `config_auth` or `userlist_auth` value that is not one of the values
+  is reported as a warning.  The official DPMA ignores such a value
+  without a message, which leaves authentication disabled.
+- A wrong PIN in a request for a configuration token is recorded as an
+  authentication incident (`DPMAShowIncidents`), as a wrong PIN in a
+  request for the user list is.
+- A text that has a `"`, a `<`, or an `&` that begins no reference, e.g.,
+  in `idle_company_text`, is escaped in the phone's configuration.  The
+  official DPMA writes it as it is, which makes a document that no phone
+  can read.  A reference such as `&amp;` (written `&amp\;` in the file)
+  stays as written.
+- `enable_check_sync` is off again when its line is removed from the
+  file.
+- `network_vlan_qos` sets the RTP priority of a `type=network` section
+  that has no `rtp_qos`.
+- The options of a `type=line` section go before the line's values from
+  PJSIP at all times, also after a change in `pjsip.conf` or through
+  sorcery.
+
+### Additions
+
+These `[general]` options are not in the official DPMA:
+
+| Option | Meaning |
+|---|---|
+| `appserver_certificate=<file>` | A PEM file with the server certificate that the module sends to a phone in the handshake.  Default is the certificate of the official DPMA, which is built in. |
+| `phone_ca_file=<file>` | A PEM file with the CA certificates against which the module verifies a phone's certificate.  Default is the CA certificates of the official DPMA, which are built in. |
+
+When one of the files cannot be read, the module does not load; at a
+reload, the previous certificates stay in use.
+
 ### Additions for Open DPhone
 
 These options in a phone section (`type=phone`) apply to phones running
-Open DPhone.
+Open DPhone.  The module sends each as a frozen setting
+(`conflict="freeze"`): the phone uses the value of the configuration, and
+a value set on the phone, e.g., in its web configuration, has no effect
+while the option is there.  Stock firmware ignores the settings.
 
 | Option | Meaning |
 |---|---|
@@ -73,6 +126,7 @@ Open DPhone.
 | `dphone_static_dns=<address>[,<address>...]` | The DNS servers with the static address. |
 | `dphone_disabled_apps=<app>[,<app>...]` | The built-in apps the phone does not offer, e.g., `calendar,parking`.  Default is none. |
 | `dphone_idle_softkeys=<softkey>[,<softkey>...]` | The softkeys of the idle screen, in order: `call_log`, `contacts`, `status`, `menu`, `apps`, `dnd`, `forward`, `redial`, or `app:<app>` for an app, e.g., `call_log,contacts,app:parking,menu`.  Default is `call_log,contacts,status,menu,apps,dnd,forward`. |
+| `dphone_theme=<name>` | The built-in theme of a color model (D60, D62, or D65): the wallpaper and the colors of the phone's screens, e.g., `dusk`.  The phone's theme selector lists the names.  A `wallpaper_file` goes before the theme.  Default is the phone's theme. |
 | `dphone_palette_file=<file>` | The palette file for the wallpaper of `wallpaper_file`: the colors of the phone's screens, as Open DPhone's `palette.proto` describes, e.g., `lobby.txtpb`.  Default is the phone's own palette. |
 | `dphone_ignore_provisioned_firmware=yes\|no` | Whether the phone ignores the firmware this configuration offers it.  Default is no. |
 | `dphone_app_data_tenant=<key>` | The tenant whose app data the phone reads and writes (see "App data"): 1 to 32 letters, digits, `.`, `_`, or `-`.  Default is none: the phone shares the app data of the phones without a key. |

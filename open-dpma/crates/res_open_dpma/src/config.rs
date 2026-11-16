@@ -184,6 +184,16 @@ pub fn load() -> Result<(Option<Arc<General>>, Arc<General>), ()> {
                         g.auth_flags &= !auth::USERLIST_GLOBALPIN;
                     } else if value.eq_ignore_ascii_case(b"globalpin") {
                         g.auth_flags |= auth::USERLIST_GLOBALPIN;
+                    } else {
+                        // The official DPMA ignores such a value without a
+                        // word, which leaves the user list open.
+                        ast_log!(
+                            LOG_WARNING,
+                            "Invalid value '{}' for userlist_auth at line {} of {} is ignored: use disabled or globalpin",
+                            value,
+                            v.lineno,
+                            crate::CONFIG_FILE
+                        );
                     }
                 }
                 b"mdns_address" => g.mdns_address = value.into(),
@@ -209,8 +219,8 @@ pub fn load() -> Result<(Option<Arc<General>>, Arc<General>), ()> {
                     g.discovery_enabled = dpma_ast::util::ast_true(value)
                 }
                 b"config_auth" => {
-                    let v = value.to_ascii_lowercase();
-                    match v.as_slice() {
+                    let mode = value.to_ascii_lowercase();
+                    match mode.as_slice() {
                         b"mac_pin" => g.auth_flags |= auth::USER | auth::PIN | auth::MAC,
                         b"mac_globalpin" => {
                             g.auth_flags |= auth::USER | auth::GLOBALPIN | auth::MAC
@@ -219,7 +229,16 @@ pub fn load() -> Result<(Option<Arc<General>>, Arc<General>), ()> {
                         b"pin" => g.auth_flags |= auth::USER | auth::PIN,
                         b"globalpin" => g.auth_flags |= auth::USER | auth::GLOBALPIN,
                         b"disabled" => g.auth_flags |= auth::USER,
-                        _ => {}
+                        // The official DPMA ignores such a value without
+                        // a word, which leaves authentication as it was
+                        // (disabled, unless an earlier line set it).
+                        _ => ast_log!(
+                            LOG_WARNING,
+                            "Invalid value '{}' for config_auth at line {} of {} is ignored: use disabled, mac, pin, globalpin, mac_pin, or mac_globalpin",
+                            value,
+                            v.lineno,
+                            crate::CONFIG_FILE
+                        ),
                     }
                 }
                 b"file_directory" => g.file_directory = value.into(),

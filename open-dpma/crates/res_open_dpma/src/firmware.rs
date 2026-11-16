@@ -185,11 +185,11 @@ pub fn no_option_settings(append: &mut dyn FnMut(&[u8]), url_prefix: &[u8], netw
         };
         append(&bformat!(
             "<firmware model=\"{}\" version=\"{}\" url=\"{}{}\" network_id=\"{}\"{} />\n",
-            p.model,
-            p.version,
-            prefix,
-            p.file,
-            network,
+            dpma_proto::xml::attr_value(&p.model),
+            dpma_proto::xml::attr_value(&p.version),
+            dpma_proto::xml::attr_value(prefix),
+            dpma_proto::xml::attr_value(&p.file),
+            dpma_proto::xml::attr_value(network),
             checksum_attr(&package_dir, &p.file)
         ));
     }

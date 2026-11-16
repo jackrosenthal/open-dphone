@@ -242,6 +242,14 @@ fn set_line_option(line: &LineObj, option: &[u8], value: &CStr) {
 /// again, then the settings from `endpoint` (or, with a NULL endpoint, just
 /// clear the PJSIP settings).  The line is locked while its settings are
 /// replaced, so nobody sees it half updated.
+///
+/// Deviation: the line's sections are applied once more after the PJSIP
+/// settings (`users::load::apply_line_overrides`), so that a `[line]`
+/// section goes before PJSIP here as in a whole pass over the
+/// configuration, which applies the sections after this function.  The
+/// official DPMA does not, so a sorcery observer event (a changed or
+/// deleted endpoint, auth section, or AOR) replaces or clears what the
+/// section set, e.g., `callerid` or `mailbox`, until the next whole pass.
 unsafe fn process_pjsip_line_info(endpoint: *const c_void, line: &LineObj) {
     objects::process_line(line);
     let _locked = line.lock();
@@ -256,9 +264,15 @@ unsafe fn process_pjsip_line_info(endpoint: *const c_void, line: &LineObj) {
     ] {
         set_line_option(line, option, c"");
     }
-    if endpoint.is_null() {
-        return;
+    if !endpoint.is_null() {
+        set_pjsip_options(endpoint, line);
     }
+    line.with_line(crate::users::load::apply_line_overrides);
+}
+
+/// The settings of `endpoint`, its first auth section, and its AORs, for
+/// `line` (locked by the caller).
+unsafe fn set_pjsip_options(endpoint: *const c_void, line: &LineObj) {
     line.set_delme(false);
     set_line_option(line, b"tech", c"PJSIP");
 

@@ -77,6 +77,17 @@ fn expected_token_error(flags: u32, mac_ok: bool, pin: &str, cfgpass: &str) -> O
     None
 }
 
+/// The reason of the auth incident that a TokenRequest records: a wrong
+/// configuration password or pin where the mode asks for one.  A MAC that
+/// is not the phone's records none.
+fn expected_token_incident(flags: u32, pin: &str, cfgpass: &str) -> Option<&'static str> {
+    let cp_ok = cfgpass == GLOBALPIN || cfgpass == "7777";
+    if flags & GLOBAL != 0 && !cp_ok {
+        return Some("invalid config pass");
+    }
+    (flags & PIN != 0 && pin != "4321").then_some("invalid pin")
+}
+
 /// The token phonea gets from a phone with MAC `mac`.
 fn phonea_token(mac: &str) -> BString {
     format!(
@@ -108,12 +119,25 @@ pub fn token(ctx: &mut Ctx) -> Result<()> {
                     "token {mode} mac={} pin={pin:?} configpass={cfgpass:?}",
                     if mac_ok { "ok" } else { "bad" }
                 );
+                clear_incidents(ctx)?;
                 let ex = p
                     .get_token()
                     .user("phonea")
                     .pin(pin)
                     .config_password(cfgpass)
                     .send()?;
+                let inc = local_incident(ctx)?;
+                let reason = inc.as_ref().and_then(|i| field(i, "Reason"));
+                let count = inc.as_ref().and_then(|i| field(i, "IncidentCount"));
+                let want = expected_token_incident(flags, pin, cfgpass);
+                ctx.c.check(
+                    format!("{name} (incident)"),
+                    reason.as_deref() == want
+                        && count.as_deref() == want.map(|_| "1")
+                        && inc.as_ref().and_then(|i| field(i, "MAC")).as_deref()
+                            == want.map(|_| p.mac()),
+                    format!("{inc:?}"),
+                );
                 let body = if err.is_none() {
                     Body::Is(b"empty body")
                 } else {
@@ -131,6 +155,8 @@ pub fn token(ctx: &mut Ctx) -> Result<()> {
             }
         }
     }
+
+    clear_incidents(ctx)?;
 
     ctx.c
         .say("-- TokenRequest: selecting the phone, side effects");

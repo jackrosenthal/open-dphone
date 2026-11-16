@@ -376,6 +376,7 @@ fn show_phone(a: &CliArgs) -> CliResult {
         "Open DPhone idle softkeys: {}",
         p.dphone_idle_softkeys.len()
     );
+    bwriteln!(o, "Open DPhone theme: {}", or(&p.dphone_theme, "None"));
     bwriteln!(
         o,
         "Open DPhone palette file: {}",

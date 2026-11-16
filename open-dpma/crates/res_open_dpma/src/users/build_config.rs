@@ -37,6 +37,17 @@ fn esc(s: &[u8]) -> Vec<u8> {
     xmlutil::escape(s, ESC_BUF)
 }
 
+/// A text of the configuration for a place where the official DPMA writes
+/// the text as it is (see `dpma_proto::xml::attr_value`): the same bytes
+/// unless the document would not be well formed with them.
+///
+/// Deviation: the official DPMA writes these texts unchanged, so a `"`, a
+/// `<`, or an `&` that begins no reference, e.g., in `idle_company_text`,
+/// makes a document that no phone can read.
+fn val(s: impl AsRef<[u8]>) -> Vec<u8> {
+    dpma_proto::xml::attr_value(s.as_ref())
+}
+
 /// The output buffer.  Besides the text it tracks the allocation size the
 /// official DPMA's `ast_str` would have, because `insert_display_rules`
 /// stores the merged document with `ast_str_set(buf, len, ...)`, which
@@ -143,7 +154,7 @@ pub fn application_settings<'a>(
 fn app_account(o: &mut Out, server_uuid: &[u8], account_id: &[u8], phone: &Phone, net: &Network) {
     ap!(o, "<account ");
     if !server_uuid.is_empty() {
-        ap!(o, "server_uuid=\"{}\" ", server_uuid);
+        ap!(o, "server_uuid=\"{}\" ", val(server_uuid));
     }
     ap!(o, "account_id=\"{}\" ", esc(account_id));
     ap!(o, "username=\"{}\" ", esc(&phone.name));
@@ -151,7 +162,7 @@ fn app_account(o: &mut Out, server_uuid: &[u8], account_id: &[u8], phone: &Phone
     ap!(
         o,
         "appserver=\"dasp://{}/json\" apiformat=\"json\" />\n",
-        net.registration_address
+        val(&net.registration_address)
     );
 }
 
@@ -168,7 +179,7 @@ fn parking_settings(o: &mut Out, phone: &Phone) {
     ap!(
         o,
         "<setting id=\"parking_lot_extension\" value=\"{}\" />\n",
-        phone.parking_exten
+        val(&phone.parking_exten)
     );
     match phone.parking_transfer_type {
         ParkingTransfer::Blind => ap!(
@@ -231,9 +242,9 @@ fn add_internal_line_account(
 ) {
     ap!(o, "<account \n");
     if !server_uuid.is_empty() {
-        ap!(o, "server_uuid=\"{}\" ", server_uuid);
+        ap!(o, "server_uuid=\"{}\" ", val(server_uuid));
     }
-    ap!(o, "network_id=\"{}\"\n", net.name);
+    ap!(o, "network_id=\"{}\"\n", val(&net.name));
     ap!(o, "index=\"{}\"\n", index);
     if index == 0 {
         if line.voicemail_uri.is_empty() {
@@ -242,7 +253,7 @@ fn add_internal_line_account(
             }
         } else {
             ap!(o, "visual_voicemail=\"0\"\n");
-            ap!(o, "voicemail=\"{}\"\n", line.voicemail_uri);
+            ap!(o, "voicemail=\"{}\"\n", val(&line.voicemail_uri));
         }
     }
     ap!(o, "account_id=\"{}\"\n", esc(&line.name));
@@ -291,7 +302,7 @@ fn add_internal_line_account(
     };
     ap!(o, "transport=\"{}\" ", transport.string());
     if !line.media_encryption.is_empty() {
-        ap!(o, "media_encryption=\"{}\" ", line.media_encryption);
+        ap!(o, "media_encryption=\"{}\" ", val(&line.media_encryption));
     }
     registration_timers(o, line);
     ap!(o, "/>\n");
@@ -313,7 +324,7 @@ fn add_internal_line_account(
             ap!(
                 o,
                 "media_encryption=\"{}\" ",
-                line.secondary_media_encryption
+                val(&line.secondary_media_encryption)
             );
         }
         registration_timers(o, line);
@@ -342,10 +353,10 @@ fn add_internal_line_account(
 /// `add_external_line_account`.
 fn add_external_line_account(o: &mut Out, line: &Line, net: &Network, index: i32) {
     ap!(o, "<account \n");
-    ap!(o, "network_id=\"{}\"\n", net.name);
+    ap!(o, "network_id=\"{}\"\n", val(&net.name));
     ap!(o, "index=\"{}\"\n", index);
     ap!(o, "visual_voicemail=\"0\"\n");
-    ap!(o, "voicemail=\"{}\"\n", line.voicemail_uri);
+    ap!(o, "voicemail=\"{}\"\n", val(&line.voicemail_uri));
     ap!(o, "username=\"{}\"\n", esc(or(&line.userid, &line.name)));
     let authname = if !line.authname.is_empty() {
         &line.authname
@@ -387,7 +398,7 @@ fn add_external_line_account(o: &mut Out, line: &Line, net: &Network, index: i32
     ap!(o, "port=\"{}\" ", esc(&line.server_port));
     ap!(o, "transport=\"{}\" ", line.transport.string());
     if !line.media_encryption.is_empty() {
-        ap!(o, "media_encryption=\"{}\" ", line.media_encryption);
+        ap!(o, "media_encryption=\"{}\" ", val(&line.media_encryption));
     }
     registration_timers(o, line);
     ap!(o, "/>\n");
@@ -408,7 +419,7 @@ fn add_external_line_account(o: &mut Out, line: &Line, net: &Network, index: i32
             ap!(
                 o,
                 "media_encryption=\"{}\" ",
-                line.secondary_media_encryption
+                val(&line.secondary_media_encryption)
             );
         }
         registration_timers(o, line);
@@ -446,11 +457,11 @@ fn add_firmware_settings(o: &mut Out, reg: &Registry, phone: &Phone) {
                 ap!(
                     o,
                     "<firmware model=\"{}\" version=\"{}\" url=\"{}{}\" network_id=\"{}\"{} />\n",
-                    fw.model,
-                    fw.version,
-                    url_prefix(&fw.file, &net.file_url_prefix),
-                    fw.file,
-                    net.name,
+                    val(&fw.model),
+                    val(&fw.version),
+                    val(url_prefix(&fw.file, &net.file_url_prefix)),
+                    val(&fw.file),
+                    val(&net.name),
                     crate::firmware::checksum_attr(&file_dir, &fw.file)
                 );
             }
@@ -474,13 +485,13 @@ fn add_firmware_settings(o: &mut Out, reg: &Registry, phone: &Phone) {
                 ap!(
                     o,
                     "<public_firmware model=\"{}\" version=\"{}\" url=\"{}{}/{}_{}_firmware.eff\" network_id=\"{}\" />\n",
-                    fw.model,
-                    fw.version,
-                    prefix,
-                    fw.version,
-                    fw.version,
-                    fw.model,
-                    net.name
+                    val(&fw.model),
+                    val(&fw.version),
+                    val(prefix),
+                    val(&fw.version),
+                    val(&fw.version),
+                    val(&fw.model),
+                    val(&net.name)
                 );
             }
         }
@@ -515,7 +526,7 @@ fn user_image(
             o,
             "<setting id=\"{}\" value=\"user\" url=\"file://{}\" path=\"{}\" conflict=\"freeze\" />\n",
             id,
-            file,
+            val(file),
             path
         );
         return;
@@ -525,10 +536,10 @@ fn user_image(
             o,
             "<setting id=\"{}\" value=\"user\" url=\"{}{}\" path=\"{}\" conflict=\"freeze\" network_id=\"{}\" />\n",
             id,
-            url_prefix(file, &net.file_url_prefix),
-            file,
+            val(url_prefix(file, &net.file_url_prefix)),
+            val(file),
             path,
-            net.name
+            val(&net.name)
         );
     }
 }
@@ -617,10 +628,10 @@ fn build_config(
                     o,
                     "<key id=\"{}\" action=\"show_application\" label1=\"{}\">\n",
                     key,
-                    c.name
+                    val(&c.name)
                 );
                 key += 1;
-                ap!(o, "<arg>{}</arg>\n", c.name);
+                ap!(o, "<arg>{}</arg>\n", val(&c.name));
                 ap!(o, "</key>\n");
             }
         }
@@ -703,9 +714,9 @@ fn build_config(
         ap!(
             o,
             "<network id=\"{}\" display_name=\"{}\" cidr=\"{}\" />\n",
-            net.name,
-            net.alias,
-            net.cidr
+            val(&net.name),
+            val(&net.alias),
+            val(&net.cidr)
         );
     }
     ap!(o, "</networks>\n");
@@ -792,7 +803,11 @@ fn build_config(
         p.blf_page_return_timeout
     );
     if !p.timezone.is_empty() {
-        ap!(o, "<setting id=\"time_zone\" value=\"{}\" />\n", p.timezone);
+        ap!(
+            o,
+            "<setting id=\"time_zone\" value=\"{}\" />\n",
+            val(&p.timezone)
+        );
     }
     ap!(o, "<setting id=\"time_source\" value=\"ntp\" />\n");
     if p.ntp_resync != 0 {
@@ -823,7 +838,7 @@ fn build_config(
         );
         ap!(o, "can_transfer_vm=\"{}\" \n", i32::from(p.send_to_vm));
         if !p.name_format.is_empty() {
-            ap!(o, "name_format=\"{}\" \n", p.name_format);
+            ap!(o, "name_format=\"{}\" \n", val(&p.name_format));
         }
         ap!(o, "/>\n");
         ap!(o, "</appconfig>\n");
@@ -834,43 +849,43 @@ fn build_config(
         ap!(
             o,
             "<setting id=\"config_server_url\" value=\"sip:proxy@{}:{}{}\" network_id=\"{}\" />\n",
-            net.registration_address,
-            net.registration_port,
+            val(&net.registration_address),
+            val(&net.registration_port),
             transport.uri_option(),
-            net.name
+            val(&net.name)
         );
         if !net.ntp_server.is_empty() {
             ap!(
                 o,
                 "<setting id=\"ntp_server\" value=\"{}\" network_id=\"{}\" />\n",
-                net.ntp_server,
-                net.name
+                val(&net.ntp_server),
+                val(&net.name)
             );
         }
         if net.syslog_server.is_empty() || net.syslog_level.is_empty() {
             ap!(
                 o,
                 "<setting id=\"enable_logging\" value=\"0\" network_id=\"{}\" />\n",
-                net.name
+                val(&net.name)
             );
         } else {
             ap!(
                 o,
                 "<setting id=\"enable_logging\" value=\"1\" network_id=\"{}\" />\n",
-                net.name
+                val(&net.name)
             );
             ap!(
                 o,
                 "<setting id=\"log_server\" value=\"{}\" network_id=\"{}\" />\n",
-                net.syslog_server,
-                net.name
+                val(&net.syslog_server),
+                val(&net.name)
             );
             if !net.syslog_port.is_empty() {
                 ap!(
                     o,
                     "<setting id=\"log_port\" value=\"{}\" network_id=\"{}\" />\n",
-                    net.syslog_port,
-                    net.name
+                    val(&net.syslog_port),
+                    val(&net.name)
                 );
             }
         }
@@ -878,36 +893,36 @@ fn build_config(
             ap!(
                 o,
                 "<setting id=\"log_level\" value=\"{}\" network_id=\"{}\" />\n",
-                net.syslog_level,
-                net.name
+                val(&net.syslog_level),
+                val(&net.name)
             );
         }
         if !net.network_vlan_discovery_mode.is_empty() {
             ap!(
                 o,
                 "<setting id=\"network_vlan_discovery_mode\" value=\"{}\" network_id=\"{}\" />\n",
-                net.network_vlan_discovery_mode,
-                net.name
+                val(&net.network_vlan_discovery_mode),
+                val(&net.name)
             );
             if net.network_vlan_id > 0 {
                 ap!(
                     o,
                     "<setting id=\"network_vlan_id\" value=\"{}\" network_id=\"{}\" />\n",
                     net.network_vlan_id,
-                    net.name
+                    val(&net.name)
                 );
                 let rtp_qos = if net.rtp_qos == -1 { 6 } else { net.rtp_qos };
                 ap!(
                     o,
                     "<setting id=\"rtp_qos\" value=\"{}\" network_id=\"{}\" />\n",
                     rtp_qos,
-                    net.name
+                    val(&net.name)
                 );
                 ap!(
                     o,
                     "<setting id=\"sip_qos\" value=\"{}\" network_id=\"{}\" />\n",
                     net.sip_qos,
-                    net.name
+                    val(&net.name)
                 );
             }
         }
@@ -916,7 +931,7 @@ fn build_config(
                 o,
                 "<setting id=\"sip_dscp\" value=\"{}\" network_id=\"{}\" />\n",
                 net.sip_dscp,
-                net.name
+                val(&net.name)
             );
         }
         if net.rtp_dscp >= 0 {
@@ -924,7 +939,7 @@ fn build_config(
                 o,
                 "<setting id=\"rtp_dscp\" value=\"{}\" network_id=\"{}\" />\n",
                 net.rtp_dscp,
-                net.name
+                val(&net.name)
             );
         }
         if net.pc_vlan_id >= 0 {
@@ -932,7 +947,7 @@ fn build_config(
                 o,
                 "<setting id=\"pc_vlan_id\" value=\"{}\" network_id=\"{}\" />\n",
                 net.pc_vlan_id,
-                net.name
+                val(&net.name)
             );
         }
         if net.pc_qos >= 0 {
@@ -940,7 +955,7 @@ fn build_config(
                 o,
                 "<setting id=\"pc_qos\" value=\"{}\" network_id=\"{}\" />\n",
                 net.pc_qos,
-                net.name
+                val(&net.name)
             );
         }
         if net.udp_ka_interval >= 0 {
@@ -948,7 +963,7 @@ fn build_config(
                 o,
                 "<setting id=\"udp_ka_interval\" value=\"{}\" network_id=\"{}\" />\n",
                 net.udp_ka_interval,
-                net.name
+                val(&net.name)
             );
         }
     }
@@ -963,37 +978,40 @@ fn build_config(
         ap!(
             o,
             "<setting id=\"login_password\" value=\"{}\" />\n",
-            p.login_password
+            val(&p.login_password)
         );
     }
     // Open DPhone's own settings: only when set, so that the document for a
     // phone without them is what the official DPMA builds.  Stock firmware
-    // ignores them.
+    // ignores them.  Each is frozen: Open DPhone puts a value set on the
+    // phone ahead of a provisioned one that is not, and what the server's
+    // configuration says is not for the phone's user to change, e.g.,
+    // `dphone_ssh_enabled=no`.
     if !p.dphone_ssh_enabled.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_ssh_enabled\" value=\"{}\" />\n",
+            "<setting id=\"dphone_ssh_enabled\" value=\"{}\" conflict=\"freeze\" />\n",
             p.dphone_ssh_enabled
         );
     }
     if !p.dphone_ignore_provisioned_firmware.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_ignore_provisioned_firmware\" value=\"{}\" />\n",
+            "<setting id=\"dphone_ignore_provisioned_firmware\" value=\"{}\" conflict=\"freeze\" />\n",
             p.dphone_ignore_provisioned_firmware
         );
     }
     if !p.dphone_metrics_enabled.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_metrics_enabled\" value=\"{}\" />\n",
+            "<setting id=\"dphone_metrics_enabled\" value=\"{}\" conflict=\"freeze\" />\n",
             p.dphone_metrics_enabled
         );
     }
     if !p.dphone_serial_console.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_serial_console\" value=\"{}\" />\n",
+            "<setting id=\"dphone_serial_console\" value=\"{}\" conflict=\"freeze\" />\n",
             p.dphone_serial_console
         );
     }
@@ -1001,13 +1019,13 @@ fn build_config(
     if !p.dphone_static_address.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_static_address\" value=\"{}\" />\n",
+            "<setting id=\"dphone_static_address\" value=\"{}\" conflict=\"freeze\" />\n",
             p.dphone_static_address
         );
         if let Some(gateway) = p.dphone_static_gateway {
             ap!(
                 o,
-                "<setting id=\"dphone_static_gateway\" value=\"{}\" />\n",
+                "<setting id=\"dphone_static_gateway\" value=\"{}\" conflict=\"freeze\" />\n",
                 gateway.to_string()
             );
         }
@@ -1015,7 +1033,7 @@ fn build_config(
             let servers: Vec<String> = p.dphone_static_dns.iter().map(|a| a.to_string()).collect();
             ap!(
                 o,
-                "<setting id=\"dphone_static_dns\" value=\"{}\" />\n",
+                "<setting id=\"dphone_static_dns\" value=\"{}\" conflict=\"freeze\" />\n",
                 servers.join(",")
             );
         }
@@ -1023,43 +1041,50 @@ fn build_config(
     if !p.dphone_disabled_apps.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_disabled_apps\" value=\"{}\" />\n",
+            "<setting id=\"dphone_disabled_apps\" value=\"{}\" conflict=\"freeze\" />\n",
             p.dphone_disabled_apps.join(&b","[..])
         );
     }
     if !p.dphone_idle_softkeys.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_idle_softkeys\" value=\"{}\" />\n",
+            "<setting id=\"dphone_idle_softkeys\" value=\"{}\" conflict=\"freeze\" />\n",
             p.dphone_idle_softkeys.join(&b","[..])
+        );
+    }
+    if !p.dphone_theme.is_empty() {
+        ap!(
+            o,
+            "<setting id=\"dphone_theme\" value=\"{}\" conflict=\"freeze\" />\n",
+            p.dphone_theme
         );
     }
     if !p.accept_local_calls.is_empty() {
         ap!(
             o,
             "<setting id=\"accept_local_calls\" value=\"{}\" />\n",
-            p.accept_local_calls
+            val(&p.accept_local_calls)
         );
     }
     if !p.name_format.is_empty() {
         ap!(
             o,
             "<setting id=\"name_format\" value=\"{}\" />\n",
-            p.name_format
+            val(&p.name_format)
         );
     }
     if !p.lan_port_mode.is_empty() {
         ap!(
             o,
             "<setting id=\"lan_port_mode\" value=\"{}\" />\n",
-            p.lan_port_mode
+            val(&p.lan_port_mode)
         );
     }
     if !p.pc_port_mode.is_empty() {
         ap!(
             o,
             "<setting id=\"pc_port_mode\" value=\"{}\" />\n",
-            p.pc_port_mode
+            val(&p.pc_port_mode)
         );
     }
     if p.brightness >= 0 {
@@ -1117,7 +1142,7 @@ fn build_config(
         ap!(
             o,
             "<setting id=\"idle_company_text\" value=\"{}\" />\n",
-            p.idle_company_text
+            val(&p.idle_company_text)
         );
     }
     if p.small_clock {
@@ -1151,7 +1176,7 @@ fn build_config(
         ap!(
             o,
             "<setting id=\"locale\" value=\"{}\" conflict=\"{}\" />\n",
-            p.active_locale,
+            val(&p.active_locale),
             conflict
         );
     }
@@ -1236,7 +1261,7 @@ fn build_config(
         conflict
     );
     if !p.ehs.is_empty() {
-        ap!(o, "<setting id=\"ehs\" value=\"{}\" />\n", p.ehs);
+        ap!(o, "<setting id=\"ehs\" value=\"{}\" />\n", val(&p.ehs));
     }
     ap!(
         o,
@@ -1247,50 +1272,53 @@ fn build_config(
     ap!(
         o,
         "<setting id=\"8021x_passthrough\" value=\"{}\" />\n",
-        p.dot1x_passthrough
+        val(&p.dot1x_passthrough)
     );
     ap!(
         o,
         "<setting id=\"8021x_method\" value=\"{}\" />\n",
-        p.dot1x_method
+        val(&p.dot1x_method)
     );
     ap!(
         o,
         "<setting id=\"8021x_eapol_on_disconnect\" value=\"{}\" />\n",
-        or(&p.dot1x_eapol_on_disconnect, "0")
+        val(or(&p.dot1x_eapol_on_disconnect, "0"))
     );
     ap!(
         o,
         "<setting id=\"8021x_identity\" value=\"{}\" />\n",
-        p.dot1x_identity
+        val(&p.dot1x_identity)
     );
     ap!(
         o,
         "<setting id=\"8021x_anonymous_identity\" value=\"{}\" />\n",
-        p.dot1x_anonymous_identity
+        val(&p.dot1x_anonymous_identity)
     );
     ap!(
         o,
         "<setting id=\"8021x_password\" value=\"{}\" />\n",
-        p.dot1x_password
+        val(&p.dot1x_password)
     );
     ap!(
         o,
         "<setting id=\"8021x_client_cert\" url=\"{}\" value=\"{}\" />\n",
-        p.dot1x_client_cert_url,
-        file_value(&p.dot1x_client_cert_url, &p.dot1x_client_cert_value)
+        val(&p.dot1x_client_cert_url),
+        val(file_value(
+            &p.dot1x_client_cert_url,
+            &p.dot1x_client_cert_value
+        ))
     );
     ap!(
         o,
         "<setting id=\"8021x_root_cert\" url=\"{}\" value=\"{}\" />\n",
-        p.dot1x_root_cert_url,
-        file_value(&p.dot1x_root_cert_url, &p.dot1x_root_cert_value)
+        val(&p.dot1x_root_cert_url),
+        val(file_value(&p.dot1x_root_cert_url, &p.dot1x_root_cert_value))
     );
     if !p.dot1x_debug.is_empty() {
         ap!(
             o,
             "<setting id=\"8021x_debug\" value=\"{}\" />\n",
-            p.dot1x_debug
+            val(&p.dot1x_debug)
         );
     }
     ap!(
@@ -1301,38 +1329,54 @@ fn build_config(
     ap!(
         o,
         "<setting id=\"openvpn_config_file\" url=\"{}\" value=\"{}\" />\n",
-        p.openvpn_config_file_url,
-        file_value(&p.openvpn_config_file_url, &p.openvpn_config_file_value)
+        val(&p.openvpn_config_file_url),
+        val(file_value(
+            &p.openvpn_config_file_url,
+            &p.openvpn_config_file_value
+        ))
     );
     ap!(
         o,
         "<setting id=\"openvpn_root_cert\" url=\"{}\" value=\"{}\" />\n",
-        p.openvpn_root_cert_url,
-        file_value(&p.openvpn_root_cert_url, &p.openvpn_root_cert_value)
+        val(&p.openvpn_root_cert_url),
+        val(file_value(
+            &p.openvpn_root_cert_url,
+            &p.openvpn_root_cert_value
+        ))
     );
     ap!(
         o,
         "<setting id=\"openvpn_client_cert\" url=\"{}\" value=\"{}\" />\n",
-        p.openvpn_client_cert_url,
-        file_value(&p.openvpn_client_cert_url, &p.openvpn_client_cert_value)
+        val(&p.openvpn_client_cert_url),
+        val(file_value(
+            &p.openvpn_client_cert_url,
+            &p.openvpn_client_cert_value
+        ))
     );
     ap!(
         o,
         "<setting id=\"openvpn_client_key\" url=\"{}\" value=\"{}\" />\n",
-        p.openvpn_client_key_url,
-        file_value(&p.openvpn_client_key_url, &p.openvpn_client_key_value)
+        val(&p.openvpn_client_key_url),
+        val(file_value(
+            &p.openvpn_client_key_url,
+            &p.openvpn_client_key_value
+        ))
     );
     if !p.openvpn_logging.is_empty() {
         ap!(
             o,
             "<setting id=\"openvpn_logging\" value=\"{}\" />\n",
-            p.openvpn_logging
+            val(&p.openvpn_logging)
         );
     }
 
     // Status (and queues) applications, per network.
     for net in networks(reg, p) {
-        ap!(o, "<appconfig id=\"status\" network_id=\"{}\">\n", net.name);
+        ap!(
+            o,
+            "<appconfig id=\"status\" network_id=\"{}\">\n",
+            val(&net.name)
+        );
         if p.send486_custom {
             for state in 0..7 {
                 if p.send486_mask & (1 << state) != 0 {
@@ -1352,7 +1396,11 @@ fn build_config(
         ap!(o, "<full_application />\n");
         ap!(o, "</appconfig>\n");
         if has_queue {
-            ap!(o, "<appconfig id=\"queues\" network_id=\"{}\">\n", net.name);
+            ap!(
+                o,
+                "<appconfig id=\"queues\" network_id=\"{}\">\n",
+                val(&net.name)
+            );
             app_account(&mut o, uuid, slot0, p, net);
             ap!(o, "<auto_start />\n");
             ap!(o, "</appconfig>\n");
@@ -1375,17 +1423,17 @@ fn build_config(
             ap!(
                 o,
                 "<appconfig id=\"{}\" network_id=\"{}\">\n",
-                c.name,
-                net.name
+                val(&c.name),
+                val(&net.name)
             );
             ap!(
                 o,
                 "<url url=\"{}{}\" ",
-                url_prefix(&c.filename, &net.file_url_prefix),
-                c.filename
+                val(url_prefix(&c.filename, &net.file_url_prefix)),
+                val(&c.filename)
             );
             if !c.md5.is_empty() {
-                ap!(o, "md5=\"{}\" ", c.md5);
+                ap!(o, "md5=\"{}\" ", val(&c.md5));
             }
             ap!(o, "/>\n");
             app_account(&mut o, uuid, slot0, p, net);
@@ -1395,7 +1443,7 @@ fn build_config(
             if !c.settings.is_empty() {
                 ap!(o, "<settings \n");
                 for (k, v) in &c.settings {
-                    ap!(o, "{}=\"{}\" \n", k, v);
+                    ap!(o, "{}=\"{}\" \n", k, val(v));
                 }
                 ap!(o, "/>\n");
             }
@@ -1409,7 +1457,12 @@ fn build_config(
     }
     for (i, contact) in p.contacts.iter().enumerate() {
         if file_exists(dir, contact) {
-            ap!(o, "<contacts url=\"file://{}\" id=\"{}\" />\n", contact, i);
+            ap!(
+                o,
+                "<contacts url=\"file://{}\" id=\"{}\" />\n",
+                val(contact),
+                i
+            );
             continue;
         }
         for net in networks(reg, p) {
@@ -1417,9 +1470,9 @@ fn build_config(
                 o,
                 "<contacts id=\"{}\" url=\"{}{}\" network_id=\"{}\" />\n",
                 i,
-                url_prefix(contact, &net.file_url_prefix),
-                contact,
-                net.name
+                val(url_prefix(contact, &net.file_url_prefix)),
+                val(contact),
+                val(&net.name)
             );
         }
     }
@@ -1432,7 +1485,7 @@ fn build_config(
         ap!(
             o,
             "<setting id=\"blf_contact_group\" value=\"{}\" />\n",
-            p.blf_contact_group
+            val(&p.blf_contact_group)
         );
     }
     parking_settings(&mut o, p);
@@ -1452,11 +1505,11 @@ fn build_config(
             ap!(
                 o,
                 "<tone id=\"{}\" display=\"{}\" url=\"{}{}\" type=\"user\" network_id=\"{}\" />\n",
-                tone.name,
-                or(&tone.alias, &tone.name),
-                url_prefix(&tone.filename, &net.file_url_prefix),
-                tone.filename,
-                net.name
+                val(&tone.name),
+                val(or(&tone.alias, &tone.name)),
+                val(url_prefix(&tone.filename, &net.file_url_prefix)),
+                val(&tone.filename),
+                val(&net.name)
             );
         }
     }
@@ -1465,12 +1518,12 @@ fn build_config(
     ap!(
         o,
         "<alert alert_info=\"normal\" ringtone_id=\"{}\" ring_type=\"normal\" />\n",
-        active_ringtone
+        val(active_ringtone)
     );
     ap!(
         o,
         "<alert alert_info=\"ring-answer\" ringtone_id=\"{}\" ring_type=\"ring-answer\" />\n",
-        active_ringtone
+        val(active_ringtone)
     );
     ap!(
         o,
@@ -1488,9 +1541,9 @@ fn build_config(
             ap!(
                 o,
                 "<alert alert_info=\"{}\" ringtone_id=\"{}\" ring_type=\"{}\" />\n",
-                alert.alert_info,
-                alert.ringtone,
-                or(&alert.ring_type, "normal")
+                val(&alert.alert_info),
+                val(&alert.ringtone),
+                val(or(&alert.ring_type, "normal"))
             );
         }
     }
@@ -1499,7 +1552,7 @@ fn build_config(
     ap!(
         o,
         "<setting id=\"active_ringtone\" value=\"{}\" />\n",
-        active_ringtone
+        val(active_ringtone)
     );
 
     // Multicast pages.
@@ -1519,11 +1572,11 @@ fn build_config(
             o,
             "<listener id=\"{}\" name=\"{}\" addr=\"{}\" port=\"{}\" priority=\"{}\" interrupt_calls=\"{}\" />\n",
             listeners,
-            or(&page.alias, &page.name),
-            page.address,
-            page.port,
-            page.priority,
-            page.interrupt
+            val(or(&page.alias, &page.name)),
+            val(&page.address),
+            val(&page.port),
+            val(&page.priority),
+            val(&page.interrupt)
         );
     }
     if listeners != 0 {
@@ -1593,7 +1646,7 @@ fn build_config(
                 ap!(
                     o,
                     "<appconfig id=\"parking\" network_id=\"{}\">\n",
-                    net.name
+                    val(&net.name)
                 );
                 app_account(&mut o, uuid, &line.name, p, net);
                 ap!(o, "<auto_start />\n");
@@ -1608,7 +1661,7 @@ fn build_config(
                     ap!(
                         o,
                         "<appconfig id=\"voicemail\" network_id=\"{}\">\n",
-                        net.name
+                        val(&net.name)
                     );
                     app_account(&mut o, uuid, &line.name, p, net);
                     if require_password {
@@ -1664,9 +1717,9 @@ fn build_config(
             ap!(
                 o,
                 "<blf_items url=\"{}{}\" network_id=\"{}\"/>\n",
-                url_prefix(&p.blf_items, &net.file_url_prefix),
-                p.blf_items,
-                net.name
+                val(url_prefix(&p.blf_items, &net.file_url_prefix)),
+                val(&p.blf_items),
+                val(&net.name)
             );
         }
     }

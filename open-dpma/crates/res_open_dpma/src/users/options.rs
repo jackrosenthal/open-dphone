@@ -151,6 +151,19 @@ fn add_app_names(list: &mut Vec<Vec<u8>>, value: &[u8]) -> Res {
     Ok(())
 }
 
+/// The name of a built-in theme of Open DPhone, in lower case, as the
+/// firmware reads names: 1 to 32 letters, digits, `_`, and `-`.  Which
+/// names there are is the firmware's to say; a phone shows the default
+/// theme for a name that the phone does not have.
+pub(super) fn theme_name(value: &[u8]) -> Option<Vec<u8>> {
+    let name = value.trim_ascii();
+    let valid = (1..=32).contains(&name.len())
+        && name
+            .iter()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-'));
+    valid.then(|| name.to_ascii_lowercase())
+}
+
 /// Longest SSH public key line accepted (an RSA 16384 key is about 2800).
 const SSH_KEY_LINE_MAX: usize = 0x2000;
 
@@ -301,6 +314,10 @@ pub fn set_user_option(ctx: &mut UserCtx, phone: &mut Phone, name: &[u8], value:
         b"ring_headset_only" => phone.ring_headset_only = ast_true(value),
         b"call_waiting_tone" => phone.call_waiting_tone = ast_true(value),
         b"wallpaper_file" => phone.wallpaper_file = s,
+        b"dphone_theme" => match theme_name(value) {
+            Some(name) => phone.dphone_theme = name,
+            None => return Err(()),
+        },
         b"dphone_palette_file" => phone.dphone_palette_file = s,
         b"dphone_app_data_tenant" => {
             // A value that cannot be a key is kept, and reported: the
@@ -562,13 +579,19 @@ pub fn set_network_option(net: &mut Network, name: &[u8], value: &[u8]) -> Res {
         b"network_vlan_id" => return u32_opt(&mut net.network_vlan_id, value),
         b"network_vlan_qos" => {
             dpma_log!("network_vlan_qos is deprecated. Use rtp_qos and sip_qos instead.");
-            if net.rtp_qos != -1 {
+            // Deviation: the official DPMA takes any `rtp_qos` other than
+            // -1 as set.  A `type=network` section starts with 0, so the
+            // option never has an effect there.
+            if net.rtp_qos_set {
                 dpma_log!("rtp_qos already set. Ignoring network_vlan_qos.");
                 return Ok(());
             }
             return qos(&mut net.rtp_qos, value);
         }
-        b"rtp_qos" => return qos(&mut net.rtp_qos, value),
+        b"rtp_qos" => {
+            qos(&mut net.rtp_qos, value)?;
+            net.rtp_qos_set = true;
+        }
         b"sip_qos" => return qos(&mut net.sip_qos, value),
         b"sip_dscp" => return u32_opt(&mut net.sip_dscp, value),
         b"rtp_dscp" => return u32_opt(&mut net.rtp_dscp, value),
