@@ -433,7 +433,6 @@ async fn alarms() {
             st::Alarm { id: 2, hour: 0, minute: 5, days: 0, tone: "Marimba".into(), enabled: false },
         ];
         a.tones = vec!["Marimba".into(), "Chime".into()];
-        a.show_icon = true;
         a.icon = true;
         a.next = Some((1, 1_794_844_800));
         a.snoozed = Some((2, 1_794_800_000));
@@ -473,8 +472,6 @@ async fn alarms() {
             Command::SetAlarm { alarm: st::Alarm { id: 2, hour: 23, minute: 59, days: 0, tone: String::new(), enabled: false } },
         ),
         ("RemoveAlarm", json!({ "id": 1 }), Command::RemoveAlarm { id: 1 }),
-        ("SetAlarmIcon", json!({ "showIcon": true }), Command::SetAlarmIcon { on: true }),
-        ("SetAlarmIcon", json!({}), Command::SetAlarmIcon { on: false }),
         ("DismissAlarm", json!({}), Command::DismissAlarm),
     ];
     for (method, body, command) in cases {
@@ -518,6 +515,6 @@ async fn alarms() {
     assert_eq!(p.seen.lock().unwrap().len(), sent);
 
     // Not without a session.
-    let (status, _, _) = post(p.addr, "/dphone.v1.AlarmsService/SetAlarmIcon", &[("Content-Type", "application/json")], b"{}", false).await;
+    let (status, _, _) = post(p.addr, "/dphone.v1.AlarmsService/DismissAlarm", &[("Content-Type", "application/json")], b"{}", false).await;
     assert_eq!(status, 401);
 }

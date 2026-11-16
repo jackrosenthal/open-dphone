@@ -537,7 +537,6 @@ pub fn alarms(a: &st::Alarms) -> pb::AlarmsSnapshot {
     pb::AlarmsSnapshot {
         alarms: a.alarms.iter().map(alarm).collect(),
         tones: a.tones.clone(),
-        show_icon: a.show_icon,
         next: time(a.next),
         ringing: a.ringing.as_ref().map(|r| r.id),
         snoozed: time(a.snoozed),

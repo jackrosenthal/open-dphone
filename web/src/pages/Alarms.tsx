@@ -104,7 +104,6 @@ export function Alarms() {
   const opts = { onError: setError, onSuccess: () => setError(undefined) };
   const set = useMutation(AlarmsService.method.setAlarm, opts);
   const remove = useMutation(AlarmsService.method.removeAlarm, opts);
-  const icon = useMutation(AlarmsService.method.setAlarmIcon, opts);
   const snooze = useMutation(AlarmsService.method.snoozeAlarm, opts);
   const dismiss = useMutation(AlarmsService.method.dismissAlarm, opts);
 
@@ -181,9 +180,6 @@ export function Alarms() {
               })}
             </ul>
           )}
-        </Card>
-        <Card>
-          <Toggle label="Idle screen icon for upcoming alarms" checked={snap.showIcon} disabled={icon.isPending} onChange={(v) => icon.mutate({ showIcon: v })} />
         </Card>
       </div>
       {editing && <AlarmForm key={editing.id} draft={editing} tones={snap.tones} onClose={() => setEditing(undefined)} />}

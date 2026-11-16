@@ -2,8 +2,7 @@
 //! clock itself is the phone's (the interface `alarms`): it keeps the
 //! alarms, rings them, and shows the ringing alarm with Snooze and Dismiss,
 //! whether or not this app runs.  Here the user adds, changes, switches,
-//! and deletes alarms, chooses each one's days and ringtone, and says
-//! whether the idle screen shows an icon while an alarm is upcoming.
+//! and deletes alarms, and chooses each one's days and ringtone.
 
 use dphone_app_sdk::alarms::{self, Alarm};
 use dphone_app_sdk::prelude::*;
@@ -97,24 +96,20 @@ impl Alarms {
 
     // ------------------------------------------------------------ the list
 
-    /// The alarm of the highlighted row; the row after the alarms is the
-    /// idle screen's icon.
+    /// The alarm of the highlighted row.
     fn selected(&self) -> Option<&Alarm> {
         self.alarms.get(self.row as usize)
     }
 
     fn list_softkeys(&self) {
         let mut keys = vec![Softkey::new(SK_NEW, "New")];
-        match self.selected() {
-            Some(a) => {
-                keys.push(Softkey::new(SK_EDIT, "Edit"));
-                keys.push(Softkey::new(SK_SWITCH, if a.enabled { "Turn Off" } else { "Turn On" }));
-                if alarms::snoozed().is_some_and(|(id, _)| id == a.id) {
-                    keys.push(Softkey::new(SK_DISMISS, "Dismiss"));
-                }
-                keys.push(Softkey::new(SK_DELETE, "Delete"));
+        if let Some(a) = self.selected() {
+            keys.push(Softkey::new(SK_EDIT, "Edit"));
+            keys.push(Softkey::new(SK_SWITCH, if a.enabled { "Turn Off" } else { "Turn On" }));
+            if alarms::snoozed().is_some_and(|(id, _)| id == a.id) {
+                keys.push(Softkey::new(SK_DISMISS, "Dismiss"));
             }
-            None => keys.push(Softkey::new(SK_CHANGE, "Change")),
+            keys.push(Softkey::new(SK_DELETE, "Delete"));
         }
         keys.push(Softkey::new(SK_EXIT, "Exit"));
         ui::set_softkeys(ROOT, &keys);
@@ -125,7 +120,7 @@ impl Alarms {
         self.draft = None;
         self.alarms = alarms::list();
         let snoozed = alarms::snoozed().map(|(id, _)| id);
-        let mut items: Vec<ListItem> = self
+        let items: Vec<ListItem> = self
             .alarms
             .iter()
             .map(|a| {
@@ -139,8 +134,7 @@ impl Alarms {
                 ListItem::with_detail(time_text(a.hour, a.minute), detail)
             })
             .collect();
-        items.push(ListItem::with_detail("Idle screen icon", on_off(alarms::icon())));
-        self.row = self.row.min(items.len() as u32 - 1);
+        self.row = self.row.min(items.len().saturating_sub(1) as u32);
         self.list_widget("Alarms", &items, self.row);
         self.list_softkeys();
     }
@@ -377,10 +371,7 @@ impl Alarms {
     /// Select, or the first softkey, on the highlighted row.
     fn activate(&mut self) {
         match self.screen {
-            Screen::List => match self.selected() {
-                Some(_) => self.edit_alarm(),
-                None => self.after(alarms::set_icon(!alarms::icon())),
-            },
+            Screen::List => self.edit_alarm(),
             Screen::Edit => self.change_row(),
             Screen::Days => self.toggle_day(),
             Screen::Tones => self.tone_done(true),

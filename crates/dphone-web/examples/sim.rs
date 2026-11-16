@@ -319,7 +319,6 @@ fn fabricate(store: &Store, model: Model) {
             alarm(4, 14, 45, 0, "Marimba", true),
         ];
         a.tones = ["Marimba", "Classic", "Chime", "Pulse", "Rise", "Mellow"].map(String::from).to_vec();
-        a.show_icon = true;
         a.icon = true;
         a.snooze_secs = 600;
         a.next = Some((4, st::clock::unix_secs() + 2 * 3600));
@@ -589,7 +588,6 @@ fn spawn_handlers(store: &Store, hal: Hal, config: Arc<Mutex<ConfigStore>>) {
                 }
             }
             Command::RemoveAlarm { id } => a.alarms.retain(|x| x.id != *id),
-            Command::SetAlarmIcon { on } => a.show_icon = *on,
             Command::SnoozeAlarm => {
                 if let Some(r) = a.ringing.take() {
                     a.snoozed = Some((r.id, st::clock::unix_secs() + u64::from(a.snooze_secs)));

@@ -12,8 +12,6 @@ service AlarmsService {
   // until tomorrow.
   rpc SetAlarm(SetAlarmRequest) returns (SetAlarmResponse);
   rpc RemoveAlarm(RemoveAlarmRequest) returns (RemoveAlarmResponse);
-  // Sets whether the idle screen shows an icon while an alarm is upcoming.
-  rpc SetAlarmIcon(SetAlarmIconRequest) returns (SetAlarmIconResponse);
   // Silences the ringing alarm; it rings again after
   // AlarmsSnapshot.snooze_secs.
   rpc SnoozeAlarm(SnoozeAlarmRequest) returns (SnoozeAlarmResponse);
@@ -46,18 +44,15 @@ message AlarmsSnapshot {
   repeated Alarm alarms = 1;
   // The ringtones an alarm can ring with.
   repeated string tones = 2;
-  // The idle screen shows an icon while an alarm rings within 24 hours or
-  // is snoozed.
-  bool show_icon = 3;
   // The next time an alarm rings, a snoozed alarm included.
-  optional AlarmTime next = 4;
+  optional AlarmTime next = 3;
   // Alarm.id of the alarm that is ringing.
-  optional uint32 ringing = 5;
+  optional uint32 ringing = 4;
   // The snoozed alarm, and when it rings again.
-  optional AlarmTime snoozed = 6;
-  uint32 snooze_secs = 7;
+  optional AlarmTime snoozed = 5;
+  uint32 snooze_secs = 6;
   // The most alarms the phone keeps.
-  uint32 max_alarms = 8;
+  uint32 max_alarms = 7;
 }
 
 message GetAlarmsRequest {}
@@ -86,12 +81,6 @@ message RemoveAlarmRequest {
 }
 
 message RemoveAlarmResponse {}
-
-message SetAlarmIconRequest {
-  bool show_icon = 1;
-}
-
-message SetAlarmIconResponse {}
 
 message SnoozeAlarmRequest {}
 

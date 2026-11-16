@@ -63,10 +63,6 @@ impl Runner {
                 self.engine.set(alarm, now, &self.tones).map(|id| Reply::Id(id.into())).map_err(CommandError::Invalid)
             }
             Command::RemoveAlarm { id } => self.engine.remove(id).map(|()| Reply::Done).map_err(CommandError::Invalid),
-            Command::SetAlarmIcon { on } => {
-                self.engine.set_icon(on);
-                Ok(Reply::Done)
-            }
             Command::SnoozeAlarm => match self.engine.snooze(now, true) {
                 true => Ok(Reply::Done),
                 false => Err(CommandError::Invalid("no alarm is ringing".into())),
@@ -243,7 +239,6 @@ fn register_diag(ctx: &Context) {
             if let Some((id, at)) = st.next {
                 text.push_str(&format!("next: {id} at {at}\n"));
             }
-            text.push_str(&format!("idle screen icon: {}\n", if st.show_icon { "on" } else { "off" }));
             out.out(&text).await;
             0
         }

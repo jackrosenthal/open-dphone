@@ -1662,11 +1662,8 @@ pub struct Alarms {
     pub alarms: Vec<Alarm>,
     /// The ringtones an alarm can ring with.
     pub tones: Vec<String>,
-    /// The setting: show an icon on the idle screen while an alarm is
-    /// upcoming.
-    pub show_icon: bool,
-    /// The idle screen shows the alarm icon now: the setting is on, and an
-    /// alarm will ring within [`Alarms::UPCOMING_SECS`] or is snoozed.
+    /// The idle screen shows the alarm icon now: an alarm will ring
+    /// within [`Alarms::UPCOMING_SECS`] or is snoozed.
     pub icon: bool,
     /// The next time an alarm rings (a snoozed alarm included): the alarm
     /// and the Unix time.

@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/v1/alarms.proto.
  */
 export const file_dphone_v1_alarms: GenFile = /*@__PURE__*/
-  fileDesc("ChZkcGhvbmUvdjEvYWxhcm1zLnByb3RvEglkcGhvbmUudjEiXgoFQWxhcm0SCgoCaWQYASABKA0SDAoEaG91chgCIAEoDRIOCgZtaW51dGUYAyABKA0SDAoEZGF5cxgEIAEoDRIMCgR0b25lGAUgASgJEg8KB2VuYWJsZWQYBiABKAgiKgoJQWxhcm1UaW1lEgoKAmlkGAEgASgNEhEKCXVuaXhfc2VjcxgCIAEoBCKJAgoOQWxhcm1zU25hcHNob3QSIAoGYWxhcm1zGAEgAygLMhAuZHBob25lLnYxLkFsYXJtEg0KBXRvbmVzGAIgAygJEhEKCXNob3dfaWNvbhgDIAEoCBInCgRuZXh0GAQgASgLMhQuZHBob25lLnYxLkFsYXJtVGltZUgAiAEBEhQKB3JpbmdpbmcYBSABKA1IAYgBARIqCgdzbm9vemVkGAYgASgLMhQuZHBob25lLnYxLkFsYXJtVGltZUgCiAEBEhMKC3Nub296ZV9zZWNzGAcgASgNEhIKCm1heF9hbGFybXMYCCABKA1CBwoFX25leHRCCgoIX3JpbmdpbmdCCgoIX3Nub296ZWQiEgoQR2V0QWxhcm1zUmVxdWVzdCJAChFHZXRBbGFybXNSZXNwb25zZRIrCghzbmFwc2hvdBgBIAEoCzIZLmRwaG9uZS52MS5BbGFybXNTbmFwc2hvdCIUChJXYXRjaEFsYXJtc1JlcXVlc3QiQgoTV2F0Y2hBbGFybXNSZXNwb25zZRIrCghzbmFwc2hvdBgBIAEoCzIZLmRwaG9uZS52MS5BbGFybXNTbmFwc2hvdCIyCg9TZXRBbGFybVJlcXVlc3QSHwoFYWxhcm0YASABKAsyEC5kcGhvbmUudjEuQWxhcm0iHgoQU2V0QWxhcm1SZXNwb25zZRIKCgJpZBgBIAEoDSIgChJSZW1vdmVBbGFybVJlcXVlc3QSCgoCaWQYASABKA0iFQoTUmVtb3ZlQWxhcm1SZXNwb25zZSIoChNTZXRBbGFybUljb25SZXF1ZXN0EhEKCXNob3dfaWNvbhgBIAEoCCIWChRTZXRBbGFybUljb25SZXNwb25zZSIUChJTbm9vemVBbGFybVJlcXVlc3QiFQoTU25vb3plQWxhcm1SZXNwb25zZSIVChNEaXNtaXNzQWxhcm1SZXF1ZXN0IhYKFERpc21pc3NBbGFybVJlc3BvbnNlMqoECg1BbGFybXNTZXJ2aWNlEkYKCUdldEFsYXJtcxIbLmRwaG9uZS52MS5HZXRBbGFybXNSZXF1ZXN0GhwuZHBob25lLnYxLkdldEFsYXJtc1Jlc3BvbnNlEk4KC1dhdGNoQWxhcm1zEh0uZHBob25lLnYxLldhdGNoQWxhcm1zUmVxdWVzdBoeLmRwaG9uZS52MS5XYXRjaEFsYXJtc1Jlc3BvbnNlMAESQwoIU2V0QWxhcm0SGi5kcGhvbmUudjEuU2V0QWxhcm1SZXF1ZXN0GhsuZHBob25lLnYxLlNldEFsYXJtUmVzcG9uc2USTAoLUmVtb3ZlQWxhcm0SHS5kcGhvbmUudjEuUmVtb3ZlQWxhcm1SZXF1ZXN0Gh4uZHBob25lLnYxLlJlbW92ZUFsYXJtUmVzcG9uc2USTwoMU2V0QWxhcm1JY29uEh4uZHBob25lLnYxLlNldEFsYXJtSWNvblJlcXVlc3QaHy5kcGhvbmUudjEuU2V0QWxhcm1JY29uUmVzcG9uc2USTAoLU25vb3plQWxhcm0SHS5kcGhvbmUudjEuU25vb3plQWxhcm1SZXF1ZXN0Gh4uZHBob25lLnYxLlNub296ZUFsYXJtUmVzcG9uc2USTwoMRGlzbWlzc0FsYXJtEh4uZHBob25lLnYxLkRpc21pc3NBbGFybVJlcXVlc3QaHy5kcGhvbmUudjEuRGlzbWlzc0FsYXJtUmVzcG9uc2ViBnByb3RvMw");
+  fileDesc("ChZkcGhvbmUvdjEvYWxhcm1zLnByb3RvEglkcGhvbmUudjEiXgoFQWxhcm0SCgoCaWQYASABKA0SDAoEaG91chgCIAEoDRIOCgZtaW51dGUYAyABKA0SDAoEZGF5cxgEIAEoDRIMCgR0b25lGAUgASgJEg8KB2VuYWJsZWQYBiABKAgiKgoJQWxhcm1UaW1lEgoKAmlkGAEgASgNEhEKCXVuaXhfc2VjcxgCIAEoBCL2AQoOQWxhcm1zU25hcHNob3QSIAoGYWxhcm1zGAEgAygLMhAuZHBob25lLnYxLkFsYXJtEg0KBXRvbmVzGAIgAygJEicKBG5leHQYAyABKAsyFC5kcGhvbmUudjEuQWxhcm1UaW1lSACIAQESFAoHcmluZ2luZxgEIAEoDUgBiAEBEioKB3Nub296ZWQYBSABKAsyFC5kcGhvbmUudjEuQWxhcm1UaW1lSAKIAQESEwoLc25vb3plX3NlY3MYBiABKA0SEgoKbWF4X2FsYXJtcxgHIAEoDUIHCgVfbmV4dEIKCghfcmluZ2luZ0IKCghfc25vb3plZCISChBHZXRBbGFybXNSZXF1ZXN0IkAKEUdldEFsYXJtc1Jlc3BvbnNlEisKCHNuYXBzaG90GAEgASgLMhkuZHBob25lLnYxLkFsYXJtc1NuYXBzaG90IhQKEldhdGNoQWxhcm1zUmVxdWVzdCJCChNXYXRjaEFsYXJtc1Jlc3BvbnNlEisKCHNuYXBzaG90GAEgASgLMhkuZHBob25lLnYxLkFsYXJtc1NuYXBzaG90IjIKD1NldEFsYXJtUmVxdWVzdBIfCgVhbGFybRgBIAEoCzIQLmRwaG9uZS52MS5BbGFybSIeChBTZXRBbGFybVJlc3BvbnNlEgoKAmlkGAEgASgNIiAKElJlbW92ZUFsYXJtUmVxdWVzdBIKCgJpZBgBIAEoDSIVChNSZW1vdmVBbGFybVJlc3BvbnNlIhQKElNub296ZUFsYXJtUmVxdWVzdCIVChNTbm9vemVBbGFybVJlc3BvbnNlIhUKE0Rpc21pc3NBbGFybVJlcXVlc3QiFgoURGlzbWlzc0FsYXJtUmVzcG9uc2Uy2QMKDUFsYXJtc1NlcnZpY2USRgoJR2V0QWxhcm1zEhsuZHBob25lLnYxLkdldEFsYXJtc1JlcXVlc3QaHC5kcGhvbmUudjEuR2V0QWxhcm1zUmVzcG9uc2USTgoLV2F0Y2hBbGFybXMSHS5kcGhvbmUudjEuV2F0Y2hBbGFybXNSZXF1ZXN0Gh4uZHBob25lLnYxLldhdGNoQWxhcm1zUmVzcG9uc2UwARJDCghTZXRBbGFybRIaLmRwaG9uZS52MS5TZXRBbGFybVJlcXVlc3QaGy5kcGhvbmUudjEuU2V0QWxhcm1SZXNwb25zZRJMCgtSZW1vdmVBbGFybRIdLmRwaG9uZS52MS5SZW1vdmVBbGFybVJlcXVlc3QaHi5kcGhvbmUudjEuUmVtb3ZlQWxhcm1SZXNwb25zZRJMCgtTbm9vemVBbGFybRIdLmRwaG9uZS52MS5Tbm9vemVBbGFybVJlcXVlc3QaHi5kcGhvbmUudjEuU25vb3plQWxhcm1SZXNwb25zZRJPCgxEaXNtaXNzQWxhcm0SHi5kcGhvbmUudjEuRGlzbWlzc0FsYXJtUmVxdWVzdBofLmRwaG9uZS52MS5EaXNtaXNzQWxhcm1SZXNwb25zZWIGcHJvdG8z");
 
 /**
  * @generated from message dphone.v1.Alarm
@@ -105,43 +105,35 @@ export type AlarmsSnapshot = Message<"dphone.v1.AlarmsSnapshot"> & {
   tones: string[];
 
   /**
-   * The idle screen shows an icon while an alarm rings within 24 hours or
-   * is snoozed.
-   *
-   * @generated from field: bool show_icon = 3;
-   */
-  showIcon: boolean;
-
-  /**
    * The next time an alarm rings, a snoozed alarm included.
    *
-   * @generated from field: optional dphone.v1.AlarmTime next = 4;
+   * @generated from field: optional dphone.v1.AlarmTime next = 3;
    */
   next?: AlarmTime | undefined;
 
   /**
    * Alarm.id of the alarm that is ringing.
    *
-   * @generated from field: optional uint32 ringing = 5;
+   * @generated from field: optional uint32 ringing = 4;
    */
   ringing?: number | undefined;
 
   /**
    * The snoozed alarm, and when it rings again.
    *
-   * @generated from field: optional dphone.v1.AlarmTime snoozed = 6;
+   * @generated from field: optional dphone.v1.AlarmTime snoozed = 5;
    */
   snoozed?: AlarmTime | undefined;
 
   /**
-   * @generated from field: uint32 snooze_secs = 7;
+   * @generated from field: uint32 snooze_secs = 6;
    */
   snoozeSecs: number;
 
   /**
    * The most alarms the phone keeps.
    *
-   * @generated from field: uint32 max_alarms = 8;
+   * @generated from field: uint32 max_alarms = 7;
    */
   maxAlarms: number;
 };
@@ -280,36 +272,6 @@ export const RemoveAlarmResponseSchema: GenMessage<RemoveAlarmResponse> = /*@__P
   messageDesc(file_dphone_v1_alarms, 10);
 
 /**
- * @generated from message dphone.v1.SetAlarmIconRequest
- */
-export type SetAlarmIconRequest = Message<"dphone.v1.SetAlarmIconRequest"> & {
-  /**
-   * @generated from field: bool show_icon = 1;
-   */
-  showIcon: boolean;
-};
-
-/**
- * Describes the message dphone.v1.SetAlarmIconRequest.
- * Use `create(SetAlarmIconRequestSchema)` to create a new message.
- */
-export const SetAlarmIconRequestSchema: GenMessage<SetAlarmIconRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_alarms, 11);
-
-/**
- * @generated from message dphone.v1.SetAlarmIconResponse
- */
-export type SetAlarmIconResponse = Message<"dphone.v1.SetAlarmIconResponse"> & {
-};
-
-/**
- * Describes the message dphone.v1.SetAlarmIconResponse.
- * Use `create(SetAlarmIconResponseSchema)` to create a new message.
- */
-export const SetAlarmIconResponseSchema: GenMessage<SetAlarmIconResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_alarms, 12);
-
-/**
  * @generated from message dphone.v1.SnoozeAlarmRequest
  */
 export type SnoozeAlarmRequest = Message<"dphone.v1.SnoozeAlarmRequest"> & {
@@ -320,7 +282,7 @@ export type SnoozeAlarmRequest = Message<"dphone.v1.SnoozeAlarmRequest"> & {
  * Use `create(SnoozeAlarmRequestSchema)` to create a new message.
  */
 export const SnoozeAlarmRequestSchema: GenMessage<SnoozeAlarmRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_alarms, 13);
+  messageDesc(file_dphone_v1_alarms, 11);
 
 /**
  * @generated from message dphone.v1.SnoozeAlarmResponse
@@ -333,7 +295,7 @@ export type SnoozeAlarmResponse = Message<"dphone.v1.SnoozeAlarmResponse"> & {
  * Use `create(SnoozeAlarmResponseSchema)` to create a new message.
  */
 export const SnoozeAlarmResponseSchema: GenMessage<SnoozeAlarmResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_alarms, 14);
+  messageDesc(file_dphone_v1_alarms, 12);
 
 /**
  * @generated from message dphone.v1.DismissAlarmRequest
@@ -346,7 +308,7 @@ export type DismissAlarmRequest = Message<"dphone.v1.DismissAlarmRequest"> & {
  * Use `create(DismissAlarmRequestSchema)` to create a new message.
  */
 export const DismissAlarmRequestSchema: GenMessage<DismissAlarmRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_alarms, 15);
+  messageDesc(file_dphone_v1_alarms, 13);
 
 /**
  * @generated from message dphone.v1.DismissAlarmResponse
@@ -359,7 +321,7 @@ export type DismissAlarmResponse = Message<"dphone.v1.DismissAlarmResponse"> & {
  * Use `create(DismissAlarmResponseSchema)` to create a new message.
  */
 export const DismissAlarmResponseSchema: GenMessage<DismissAlarmResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_alarms, 16);
+  messageDesc(file_dphone_v1_alarms, 14);
 
 /**
  * The phone's alarm clock.  The phone keeps the alarms and rings them; the
@@ -403,16 +365,6 @@ export const AlarmsService: GenService<{
     methodKind: "unary";
     input: typeof RemoveAlarmRequestSchema;
     output: typeof RemoveAlarmResponseSchema;
-  },
-  /**
-   * Sets whether the idle screen shows an icon while an alarm is upcoming.
-   *
-   * @generated from rpc dphone.v1.AlarmsService.SetAlarmIcon
-   */
-  setAlarmIcon: {
-    methodKind: "unary";
-    input: typeof SetAlarmIconRequestSchema;
-    output: typeof SetAlarmIconResponseSchema;
   },
   /**
    * Silences the ringing alarm; it rings again after

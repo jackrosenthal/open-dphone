@@ -289,7 +289,6 @@ An `Alarm` has an `id`, a time of day (`hour` and `minute`, in the phone's time 
 | `next()` | The next time an alarm rings: its `id` and the time, in seconds since the Unix epoch. |
 | `snoozed()` | The snoozed alarm, if one is, and when it rings again. |
 | `dismiss()` | Ends the alarm that is ringing or snoozed. |
-| `icon()`, `set_icon(on)` | Whether the idle screen shows an icon while an alarm is upcoming (one rings within 24 hours, or is snoozed). |
 
 `Event::AlarmsChanged` comes to every running app that uses `alarms` whenever the alarm clock changed: an alarm was set, changed, or removed, from any side, or rang, or was snoozed or dismissed.
 

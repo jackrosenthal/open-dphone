@@ -788,10 +788,6 @@ interface alarms {
   snoozed: func() -> option<tuple<u32, u64>>;
   /// Ends the alarm that is ringing or snoozed.
   dismiss: func() -> result<_, error>;
-  /// Whether the idle screen shows an icon while an alarm is upcoming
-  /// (one rings within 24 hours, or is snoozed).
-  icon: func() -> bool;
-  set-icon: func(on: bool) -> result<_, error>;
 }
 
 interface guest {

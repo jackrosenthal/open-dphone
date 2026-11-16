@@ -50,28 +50,16 @@ struct Pending {
     unattended: u8,
 }
 
-fn yes() -> bool {
-    true
-}
-
 /// What is kept across restarts (`/nvdata/alarms.json`).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 struct Saved {
     #[serde(default)]
     alarms: Vec<Entry>,
-    #[serde(default = "yes")]
-    show_icon: bool,
     /// The last identifier given out.
     #[serde(default)]
     last_id: u32,
     #[serde(default)]
     pending: Option<Pending>,
-}
-
-impl Default for Saved {
-    fn default() -> Self {
-        Saved { alarms: Vec::new(), show_icon: true, last_id: 0, pending: None }
-    }
 }
 
 struct Ringing {
@@ -232,13 +220,6 @@ impl Engine {
         Ok(())
     }
 
-    pub fn set_icon(&mut self, on: bool) {
-        if self.saved.show_icon != on {
-            self.saved.show_icon = on;
-            self.effects.save = true;
-        }
-    }
-
     fn changed(&mut self) {
         self.effects.save = true;
         self.looked = None;
@@ -394,8 +375,7 @@ impl Engine {
         Alarms {
             alarms: self.saved.alarms.iter().map(|e| e.alarm.clone()).collect(),
             tones: tones.to_vec(),
-            show_icon: self.saved.show_icon,
-            icon: self.saved.show_icon && upcoming,
+            icon: upcoming,
             next,
             ringing,
             snoozed,
@@ -699,13 +679,11 @@ mod tests {
         let mut r = Rig::new("America/Los_Angeles", utc(2026, 11, 16, 15, 0));
         let daily = r.add(alarm(8, 0, Alarm::EVERY_DAY));
         let once = r.add(Alarm { tone: "marimba".into(), ..alarm(9, 0, 0) });
-        r.e.set_icon(false);
         r.collect();
         r.restart(utc(2026, 11, 16, 15, 30));
         let st = r.state();
         assert_eq!(st.alarms.len(), 2);
         assert_eq!(st.alarms[1], Alarm { id: once, hour: 9, minute: 0, days: 0, tone: "Marimba".into(), enabled: true });
-        assert!(!st.show_icon && !st.icon);
         // It rings after the restart, without anything else being done.
         r.run_to(utc(2026, 11, 16, 16, 0));
         assert_eq!(r.ringing(), Some(daily));
@@ -785,9 +763,20 @@ mod tests {
         assert!(!r.state().icon);
         assert_eq!(r.state().next, None);
         r.e.set(Alarm { id, ..alarm(8, 0, WED) }, r.now, &tones()).unwrap();
-        r.e.set_icon(false);
+        assert!(r.state().icon);
+    }
+
+    #[test]
+    fn a_file_with_the_former_icon_setting_loads() {
+        let mut r = Rig::new("America/Los_Angeles", utc(2026, 11, 16, 15, 0));
+        let id = r.add(alarm(8, 0, Alarm::EVERY_DAY));
+        // As the firmware that had the setting wrote the file.
+        let mut saved: serde_json::Value = serde_json::from_str(&r.e.saved()).unwrap();
+        saved["show_icon"] = false.into();
+        r.e = Engine::load(Some(&saved.to_string()));
         let st = r.state();
-        assert!(!st.icon && !st.show_icon && st.next.is_some());
+        assert_eq!(st.next, Some((id, utc(2026, 11, 16, 16, 0))));
+        assert!(st.icon);
     }
 
     #[test]

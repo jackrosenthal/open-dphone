@@ -30,7 +30,6 @@ const WEEKDAYS: u8 = 0b0111110;
 fn alarm_clock(store: &Store) -> Arc<Mutex<Vec<Command>>> {
     store.update::<Alarms, _>(|a| {
         a.tones = ["Marimba", "Classic", "Chime"].map(String::from).to_vec();
-        a.show_icon = true;
         a.snooze_secs = 600;
     });
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -54,7 +53,6 @@ fn alarm_clock(store: &Store) -> Arc<Mutex<Vec<Command>>> {
                     None => reply = Err(CommandError::Invalid("no such alarm".into())),
                 },
                 Command::RemoveAlarm { id } => a.alarms.retain(|x| x.id != *id),
-                Command::SetAlarmIcon { on } => a.show_icon = *on,
                 Command::DismissAlarm => a.snoozed = None,
                 _ => {}
             });
@@ -102,9 +100,9 @@ fn the_app_uses_the_alarm_clock_and_keeps_nothing_itself() {
 fn an_alarm_is_added_with_a_time_days_and_a_ringtone() {
     let (mut r, log) = rig();
     r.launch(APP);
-    // No alarms: only the setting of the idle screen's icon.
-    assert_eq!(rows(&r), [row("Idle screen icon", "On")]);
-    assert_eq!(r.ui.softkeys(APP), ["New", "Change", "Exit"]);
+    // No alarms: an empty list.
+    assert_eq!(rows(&r), []);
+    assert_eq!(r.ui.softkeys(APP), ["New", "Exit"]);
 
     r.softkey(APP, "New");
     assert_eq!(r.ui.texts(APP), ["New Alarm"]);
@@ -156,7 +154,7 @@ fn an_alarm_is_added_with_a_time_days_and_a_ringtone() {
     assert!(log.lock().unwrap().is_empty(), "nothing is set before Save");
     r.softkey(APP, "Save");
     assert_eq!(*log.lock().unwrap(), [Command::SetAlarm { alarm: alarm(6, 30, WEEKDAYS, "Chime") }]);
-    assert_eq!(rows(&r), [row("6:30 AM", "Weekdays"), row("Idle screen icon", "On")]);
+    assert_eq!(rows(&r), [row("6:30 AM", "Weekdays")]);
     assert_eq!(r.ui.softkeys(APP), ["New", "Edit", "Turn Off", "Delete", "Exit"]);
 }
 
@@ -186,7 +184,7 @@ fn alarms_are_changed_switched_and_deleted() {
     }
     log.lock().unwrap().clear();
     r.launch(APP);
-    assert_eq!(rows(&r), [row("8:00 AM", "Mon"), row("1:15 PM", "Once"), row("Idle screen icon", "On")]);
+    assert_eq!(rows(&r), [row("8:00 AM", "Mon"), row("1:15 PM", "Once")]);
 
     // Off, and on again.
     r.softkey(APP, "Turn Off");
@@ -220,13 +218,8 @@ fn alarms_are_changed_switched_and_deleted() {
 
     // Deleted.
     r.softkey(APP, "Delete");
-    assert_eq!(rows(&r), [row("8:00 AM", "Mon"), row("Idle screen icon", "On")]);
-    // The icon's row: Select or Change switches it.
-    assert_eq!(r.ui.softkeys(APP), ["New", "Change", "Exit"]);
-    r.softkey(APP, "Change");
-    assert_eq!(rows(&r)[1], row("Idle screen icon", "Off"));
-    r.key(APP, Key::Select);
-    assert_eq!(rows(&r)[1], row("Idle screen icon", "On"));
+    assert_eq!(rows(&r), [row("8:00 AM", "Mon")]);
+    assert_eq!(r.ui.softkeys(APP), ["New", "Edit", "Turn Off", "Delete", "Exit"]);
 
     let sent = log.lock().unwrap().clone();
     let on = Alarm { id: 1, ..alarm(8, 0, 0b0000010, "Marimba") };
@@ -237,8 +230,6 @@ fn alarms_are_changed_switched_and_deleted() {
             Command::SetAlarm { alarm: on },
             Command::SetAlarm { alarm: Alarm { id: 2, enabled: false, ..alarm(13, 15, 0, "Classic") } },
             Command::RemoveAlarm { id: 2 },
-            Command::SetAlarmIcon { on: false },
-            Command::SetAlarmIcon { on: true },
         ]
     );
     // Cancel on the list leaves the app.
@@ -250,11 +241,11 @@ fn alarms_are_changed_switched_and_deleted() {
 fn the_list_follows_changes_made_elsewhere() {
     let (mut r, _log) = rig();
     r.launch(APP);
-    assert_eq!(rows(&r).len(), 1);
+    assert_eq!(rows(&r), []);
     // From the web interface.
     r.store.send(Command::SetAlarm { alarm: alarm(7, 5, 0x7f, "Chime") }).wait().unwrap();
     r.settle();
-    assert_eq!(rows(&r), [row("7:05 AM", "Every day"), row("Idle screen icon", "On")]);
+    assert_eq!(rows(&r), [row("7:05 AM", "Every day")]);
     // It rang and was snoozed: the list says so, and can end the snooze.
     r.store.update::<Alarms, _>(|a| a.snoozed = Some((1, 1_800_000_000)));
     r.settle();
@@ -268,7 +259,7 @@ fn the_list_follows_changes_made_elsewhere() {
     r.settle();
     assert_eq!(r.ui.texts(APP), ["Edit Alarm"]);
     r.softkey(APP, "Cancel");
-    assert_eq!(rows(&r).len(), 3);
+    assert_eq!(rows(&r).len(), 2);
 }
 
 #[test]
@@ -282,7 +273,7 @@ fn a_refusal_of_the_alarm_clock_is_shown() {
     r.softkey(APP, "Save");
     assert!(r.ui.shows(APP, "The phone keeps at most 16 alarms."), "{:?}", r.ui.texts(APP));
     r.softkey(APP, "OK");
-    assert_eq!(rows(&r).len(), Alarms::MAX + 1);
+    assert_eq!(rows(&r).len(), Alarms::MAX);
 }
 
 /// A simulated phone with the app on screen, drawn by the phone UI.

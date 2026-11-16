@@ -228,7 +228,6 @@ service!(AlarmsService {
     stream watch_alarms(WatchAlarmsRequest) -> WatchAlarmsResponse = alarms::watch_alarms;
     unary set_alarm(SetAlarmRequest) -> SetAlarmResponse = alarms::set_alarm;
     unary remove_alarm(RemoveAlarmRequest) -> RemoveAlarmResponse = alarms::remove_alarm;
-    unary set_alarm_icon(SetAlarmIconRequest) -> SetAlarmIconResponse = alarms::set_alarm_icon;
     unary snooze_alarm(SnoozeAlarmRequest) -> SnoozeAlarmResponse = alarms::snooze_alarm;
     unary dismiss_alarm(DismissAlarmRequest) -> DismissAlarmResponse = alarms::dismiss_alarm;
 });

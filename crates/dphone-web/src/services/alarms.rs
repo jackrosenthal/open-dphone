@@ -70,11 +70,6 @@ pub async fn remove_alarm(ctx: Ctx, req: pb::RemoveAlarmRequest) -> Result<pb::R
     Ok(pb::RemoveAlarmResponse {})
 }
 
-pub async fn set_alarm_icon(ctx: Ctx, req: pb::SetAlarmIconRequest) -> Result<pb::SetAlarmIconResponse, ConnectError> {
-    command(&ctx.app.store, Command::SetAlarmIcon { on: req.show_icon }).await?;
-    Ok(pb::SetAlarmIconResponse {})
-}
-
 pub async fn snooze_alarm(ctx: Ctx, _req: pb::SnoozeAlarmRequest) -> Result<pb::SnoozeAlarmResponse, ConnectError> {
     command(&ctx.app.store, Command::SnoozeAlarm).await?;
     Ok(pb::SnoozeAlarmResponse {})

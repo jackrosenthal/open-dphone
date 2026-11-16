@@ -238,9 +238,6 @@ pub enum Command {
     /// identifier) or change the alarm with that identifier.
     SetAlarm { alarm: crate::Alarm },
     RemoveAlarm { id: u32 },
-    /// Show an icon on the idle screen while an alarm is upcoming, or
-    /// never.
-    SetAlarmIcon { on: bool },
     /// Silence the ringing alarm; it rings again after
     /// [`crate::Alarms::snooze_secs`].
     SnoozeAlarm,
@@ -287,9 +284,7 @@ impl Command {
             SetBluetooth { .. } | BluetoothDiscovery { .. } | BluetoothPair { .. }
             | BluetoothAnswerPairing { .. } | BluetoothUnpair { .. } | BluetoothConnect { .. }
             | BluetoothDisconnect => Domain::Bluetooth,
-            SetAlarm { .. } | RemoveAlarm { .. } | SetAlarmIcon { .. } | SnoozeAlarm | DismissAlarm => {
-                Domain::Alarms
-            }
+            SetAlarm { .. } | RemoveAlarm { .. } | SnoozeAlarm | DismissAlarm => Domain::Alarms,
         }
     }
 }

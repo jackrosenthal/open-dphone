@@ -1371,12 +1371,6 @@ impl api::alarms::Host for AppCtx {
     fn dismiss(&mut self) -> Result<(), Error> {
         self.alarm_command(Command::DismissAlarm).map(|_| ())
     }
-    fn icon(&mut self) -> bool {
-        self.store.get::<dphone_state::Alarms>().show_icon
-    }
-    fn set_icon(&mut self, on: bool) -> Result<(), Error> {
-        self.alarm_command(Command::SetAlarmIcon { on }).map(|_| ())
-    }
 }
 
 /// The most operations one `canvas.draw` may carry.
