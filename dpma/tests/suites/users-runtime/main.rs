@@ -1,0 +1,393 @@
+//! The users-runtime suite: the phone users' runtime without sessions.
+//!
+//! ```text
+//! cargo xtask test users-runtime
+//! ```
+//!
+//! runs it in the test container after building the devtest module, as
+//!
+//! ```text
+//! cargo test -p dpma-tests --test users-runtime -- --ignored [--no-prepare] [PART...]
+//! ```
+//!
+//! The suite prepares the instance (`--no-prepare` skips this).
+//!
+//! Each check runs a CLI command and looks for fixed strings in its
+//! output.
+
+use std::process::ExitCode;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
+use anyhow::Result;
+use bstr::ByteSlice;
+use dpma_tests::harness::{fixtures, setup, Ctx, Suite};
+
+/// Whether the runtime state was reset (once per run, before the first
+/// part).
+static RESET: AtomicBool = AtomicBool::new(false);
+
+/// Deletes the test phones' AstDB entries and restarts Asterisk, once.
+fn reset(ctx: &mut Ctx) -> Result<()> {
+    if RESET.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+    for p in ["testphone", "testphone2", "testnolines", "1001"] {
+        ctx.cli(&format!("database del DigiumPhoneUsers {p}"));
+    }
+    ctx.drop_ami();
+    ctx.inst.stop()?;
+    ctx.inst.start()
+}
+
+/// Runs a CLI command and checks that its output contains every one of
+/// `wanted` (as `grep -F` found each on some line).
+fn expect(ctx: &mut Ctx, cmd: &str, wanted: &[&str]) {
+    let out = ctx.cli(cmd);
+    ctx.c.contains(cmd, &out, wanted);
+}
+
+fn presence(ctx: &mut Ctx) -> Result<()> {
+    reset(ctx)?;
+    ctx.cli("presencestate change CustomPresence:testline available");
+    ctx.cli("presencestate change CustomPresence:testline3 available");
+
+    expect(
+        ctx,
+        "digium_phones show status testphone2",
+        &[
+            "(*) 1: available  ",
+            "    2: unavailable  ",
+            "    3: away  ",
+            "    4: xa  ",
+            "    5: chat  ",
+            "    6: dnd  ",
+        ],
+    );
+    expect(
+        ctx,
+        "digium_phones show status testphone",
+        &[
+            "    1: dnd  ",
+            "    2: dnd - In a meeting",
+            "    3: dnd - ",
+            "(*) 4: available  ",
+        ],
+    );
+    // The name is matched case sensitively: nothing is printed.
+    let out = ctx.cli("digium_phones show status Testphone");
+    ctx.c.check(
+        "digium_phones show status Testphone (empty)",
+        out.iter().all(|&b| b == b'\n'),
+        format!("printed: {out:?}"),
+    );
+    expect(
+        ctx,
+        "dpmadev config testphone D65",
+        &[r#"<send_dnd status="available" /><send_dnd status="xa" />"#],
+    );
+    expect(
+        ctx,
+        "dpmadev config testphone2 D65",
+        &[r#"<send_dnd status="dnd" /><send_dnd status="xa" />"#],
+    );
+    expect(
+        ctx,
+        "dpmadev method call testphone switchvox.users.presence.options.getList {}",
+        &[
+            r#"{"response":{"method":"switchvox.users.presence.options.getList","result":{"presence_options":{"presence_option":[{"id":"1","presence":"dnd","sub_presence":"","owner":"system","active":"0"},{"id":"2","presence":"dnd","sub_presence":"In a meeting","owner":"system","active":"0"},{"id":"3","presence":"dnd","sub_presence":"","owner":"system","active":"0"},{"id":"4","presence":"available","sub_presence":"","owner":"system","active":"1"}]}}}}"#,
+        ],
+    );
+    expect(
+        ctx,
+        r#"dpmadev method call testphone switchvox.users.presence.update {\"presence_option_id\":\"2\",\"message\":\"back at 3\"}"#,
+        &[r#"{"response":{"method":"switchvox.users.presence.update","result":{"success":{}}}}"#],
+    );
+    expect(
+        ctx,
+        "presencestate list",
+        &[
+            "'CustomPresence:testline'",
+            "State: 'dnd'",
+            "Subtype: 'In a meeting'",
+            "Message: 'back at 3'",
+        ],
+    );
+    expect(
+        ctx,
+        "digium_phones show status testphone",
+        &["(*) 2: dnd - In a meeting"],
+    );
+    expect(
+        ctx,
+        "dpmadev method call testphone switchvox.users.presence.getInfo {}",
+        &[
+            r#"{"response":{"method":"switchvox.users.presence.getInfo","result":{"presence":{"id":"2","presence":"dnd","sub_presence":"In a meeting","message":"back at 3"}}}}"#,
+        ],
+    );
+    expect(
+        ctx,
+        r#"dpmadev method call testphone switchvox.users.presence.update {\"presence_option_id\":2}"#,
+        &[r#""code":10011,"message":"Parameters not found: j_option_id ""#],
+    );
+    expect(
+        ctx,
+        r#"dpmadev method call testphone switchvox.users.presence.update {\"presence_option_id\":\"x\"}"#,
+        &[r#""code":10011,"message":"Parameters not found: option_id_str ""#],
+    );
+    expect(
+        ctx,
+        r#"dpmadev method call testphone switchvox.users.presence.update {\"presence_option_id\":\" 9z\"}"#,
+        &[
+            r#""code":42013,"message":"The account id does not match the owners presence option: phone_presence_update ""#,
+        ],
+    );
+    ctx.cli("presencestate change CustomPresence:testline away,,gone");
+    expect(
+        ctx,
+        "dpmadev method call testphone switchvox.users.presence.getInfo {}",
+        &[r#""code":10002,"message":"Error parsing request: presence_option ""#],
+    );
+    ctx.cli("presencestate change CustomPresence:testline available");
+    Ok(())
+}
+
+fn tokens(ctx: &mut Ctx) -> Result<()> {
+    reset(ctx)?;
+    // Tokens and last-seen information.
+    let t = "testphone/000fd3000801/2087735778/1706321644";
+    expect(
+        ctx,
+        "dpmadev token build testphone 000fd3000801 sess1 pjsip:127.0.0.1:5061",
+        &[&format!("token: {t}")],
+    );
+    expect(
+        ctx,
+        "dpmadev token info testphone",
+        &[
+            "last_mac='000fd3000801' last_uri='pjsip:127.0.0.1:5061' last_session_id='sess1' token_state=1",
+            "AstDB: last_mac=000fd3000801;last_uri=pjsip:127.0.0.1:5061;last_session_id=sess1",
+        ],
+    );
+    expect(
+        ctx,
+        &format!("dpmadev token find {t} 000fd3000801 sess1 pjsip:127.0.0.1:5061"),
+        &["phone: testphone  previous_token: false"],
+    );
+    expect(
+        ctx,
+        "dpmadev token find testphone/000fd3000801XYZ . . pjsip:127.0.0.1:5061",
+        &["phone: testphone "],
+    );
+    expect(
+        ctx,
+        "dpmadev token find testphone-000fd3000801-1 . . pjsip:127.0.0.1:5061",
+        &["phone: testphone "],
+    );
+    expect(
+        ctx,
+        "dpmadev token find Testphone/000fd3000801/1/2 . . u",
+        &["phone: (none)"],
+    );
+    expect(ctx, "dpmadev token find /x . . u", &["phone: (none)"]);
+    expect(
+        ctx,
+        "dpmadev token build testphone 000fd3000801 sess1 pjsip:127.0.0.1:5061 other",
+        &["token: testphone/000fd3000801/2087735778/182229153"],
+    );
+    // Same character sum as the token before the latest one, but no
+    // match.
+    expect(
+        ctx,
+        "dpmadev token find testphone/000fd3000810/2087735778/1706321644 . . u",
+        &["phone: (none)  previous_token: true"],
+    );
+    // Orphaned by MAC, then a MAC mismatch, then a stale location.
+    expect(
+        ctx,
+        "dpmadev token build testphone2 000fd3000801 sess2 pjsip:127.0.0.1:5062",
+        &["token: testphone2/000fd3000801/"],
+    );
+    expect(
+        ctx,
+        "dpmadev token info testphone",
+        &[
+            "last_mac='' last_uri='' last_session_id=''",
+            "AstDB: (none)",
+        ],
+    );
+    expect(
+        ctx,
+        "dpmadev token lastinfo testphone2 pjsip:127.0.0.1:5062 sess2 000fd3000802",
+        &["last_mac='000fd3000802' last_uri='pjsip:127.0.0.1:5062'"],
+    );
+    expect(
+        ctx,
+        "dpmadev token lastinfo testphone2 pjsip:127.0.0.1:5062;transport=udp - -",
+        &["last_uri='pjsip:127.0.0.1:5062' last_session_id='sess2'"],
+    );
+    expect(
+        ctx,
+        "dpmadev token lastinfo testphone2 pjsip:127.0.0.1:5062;transport=tcp - -",
+        &["last_uri='pjsip:127.0.0.1:5062;transport=tcp' last_session_id='sess2'"],
+    );
+    expect(
+        ctx,
+        "dpmadev token build testphone 000fd3000801 sess3 pjsip:127.0.0.1:5062;transport=tcp",
+        &[&format!("token: {t}")],
+    );
+    expect(
+        ctx,
+        "dpmadev token info testphone2",
+        &[
+            "last_mac='' last_uri='' last_session_id=''",
+            "AstDB: (none)",
+        ],
+    );
+    expect(
+        ctx,
+        "digium_phones show tokens",
+        &["testphone  MAC:000fd3000801  URI:pjsip:127.0.0.1:5062;transport=tcp SessionID:sess3"],
+    );
+    expect(
+        ctx,
+        "dpmadev token event testphone2 digium.test <x/>",
+        &[r#"Err("Phone has not contacted server")"#],
+    );
+    expect(
+        ctx,
+        "dpmadev token event nosuch digium.test <x/>",
+        &[r#"Err("Memory allocation error")"#],
+    );
+
+    // Lookups.
+    for (cmd, want) in [
+        ("dpmadev token lookup auth TESTPHONE 1111", "testphone"),
+        ("dpmadev token lookup auth testphone 111", "(none)"),
+        ("dpmadev token lookup auth testnolines .", "testnolines"),
+        (
+            "dpmadev token lookup authmac testphone 1111 000FD3000801",
+            "testphone",
+        ),
+        ("dpmadev token lookup mac testphone 000fd3000802", "(none)"),
+        ("dpmadev token lookup grouppin testphone gp8", "testphone"),
+        ("dpmadev token lookup lastmac 000FD3000801", "testphone"),
+        ("dpmadev token lookup username 8101 .", "testphone"),
+        ("dpmadev token lookup username testline2 .", "(none)"),
+        ("dpmadev token lookup username . 000fd3000802", "testphone2"),
+        ("dpmadev token lookup username testnolines .", "testnolines"),
+        ("dpmadev token lookup line testline s3cret", "testline"),
+        ("dpmadev token lookup line testline S3cret", "(none)"),
+        ("dpmadev token lookup lineuser TESTLINE2", "testphone"),
+        ("dpmadev token lookup mailbox testline", "8001@default"),
+        ("dpmadev token lookup hasline testphone testline3", "false"),
+        (
+            "dpmadev token lookup apps testphone Status",
+            r#"["test-avail", "test-dnd"]"#,
+        ),
+    ] {
+        expect(ctx, cmd, &[want]);
+    }
+    Ok(())
+}
+
+fn incidents(ctx: &mut Ctx) -> Result<()> {
+    reset(ctx)?;
+    expect(
+        ctx,
+        "dpmadev auth alert [2001:db8::1]:5060 000fd3000801 UA1 invalid credentials",
+        &["recorded"],
+    );
+    expect(
+        ctx,
+        "dpmadev auth alert [2001:db8::2]:5060 000fd3000802 UA2 invalid credentials",
+        &["recorded"],
+    );
+    let found = fixtures::incidents(ctx.ami()?);
+    for ip in ["2001:db8::1", "2001:db8::2"] {
+        ctx.c.check(
+            format!("incident for {ip}"),
+            found.contains_key(ip.as_bytes()),
+            format!("incidents: {:?}", found.keys().collect::<Vec<_>>()),
+        );
+    }
+    for ip in ["2001:db8::1", "2001:db8::2"] {
+        ctx.ami()?.action("DPMARemoveIncident", [("IPAddress", ip)]);
+    }
+
+    // From the fifth failure on, the log line says ALERT and
+    // DPMAShowIncidents reports the incident as blocking (" Yes", with the
+    // official DPMA's space).
+    let ip = "192.0.2.5";
+    let log = ctx.log();
+    for n in 1..=5 {
+        let mark = log.mark();
+        expect(
+            ctx,
+            &format!("dpmadev auth alert {ip}:5060 000fd3000805 UA5 invalid credentials"),
+            &["recorded"],
+        );
+        if n < 4 {
+            continue;
+        }
+        let alert = if n == 5 { " ALERT" } else { "" };
+        let line = format!(
+            "Auth failed for ip '{ip}' mac '000fd3000805' reason 'invalid credentials' count={n}{alert}\n"
+        );
+        let ok = log.wait_for(mark, &line, Duration::from_secs(2));
+        ctx.c
+            .check(format!("failure {n}: logged{alert}"), ok, line.trim_end());
+        let raw = fixtures::incidents(ctx.ami()?)
+            .remove(ip.as_bytes())
+            .map(|m| m.raw().to_str_lossy().into_owned())
+            .unwrap_or_default();
+        let blocking = if n == 5 {
+            "Blocking:  Yes\r\n"
+        } else {
+            "Blocking: No\r\n"
+        };
+        ctx.c.check(
+            format!("failure {n}: {}", blocking.trim_end()),
+            raw.contains(&format!("IncidentCount: {n}\r\n")) && raw.contains(blocking),
+            &raw,
+        );
+    }
+
+    // An incident expires once its latest failure is more than 600 s old.
+    let present = |ctx: &mut Ctx| -> Result<bool> {
+        Ok(fixtures::incidents(ctx.ami()?).contains_key(ip.as_bytes()))
+    };
+    ctx.cli(&format!("dpmadev auth age {ip} 599"));
+    ctx.cli("dpmadev auth expire");
+    let kept = present(ctx)?;
+    ctx.c
+        .check("incident kept 599 s after the latest failure", kept, "");
+    let mark = log.mark();
+    ctx.cli(&format!("dpmadev auth age {ip} 2"));
+    ctx.cli("dpmadev auth expire");
+    let kept = present(ctx)?;
+    ctx.c
+        .check("incident expired 601 s after the latest failure", !kept, "");
+    let line = format!("Expiring auth incident for ip '{ip}' at count=5");
+    let ok = log.wait_for(mark, &line, Duration::from_secs(2));
+    ctx.c.check("incident expiry logged", ok, line);
+    Ok(())
+}
+
+fn main() -> ExitCode {
+    Suite::new("users-runtime")
+        .prepare(|inst| {
+            fixtures::prepare(inst, |inst| {
+                setup::install_snippet(
+                    inst,
+                    "res_digium_phone_users.conf",
+                    "res_digium_phone.conf",
+                    include_bytes!("../../data/users-runtime/res_digium_phone_users.conf"),
+                )
+            })
+        })
+        .part("presence", presence)
+        .part("tokens", tokens)
+        .part("incidents", incidents)
+        .main()
+}

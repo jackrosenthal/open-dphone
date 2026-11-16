@@ -1,0 +1,30 @@
+[package]
+name = "dpma-proto"
+description = "The protocol of Digium phones and the Digium Phone Module for Asterisk (DPMA): message encryption, SIP MESSAGE framing, certificate checks, and SIP URI parsing"
+readme = "README.md"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+
+[dependencies]
+aes.workspace = true
+base64.workspace = true
+cbc.workspace = true
+dpma-bytes.workspace = true
+getrandom.workspace = true
+md-5.workspace = true
+log.workspace = true
+rsa.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+x509-cert = { workspace = true, features = ["builder", "hazmat", "pem"] }
+
+[dev-dependencies]
+# For the examples, which run the protocol over a SIP stack.
+rsipstack = "0.8.4"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+rand.workspace = true
+rand_chacha.workspace = true

@@ -1,0 +1,207 @@
+//! Asterisk thread pools (`ast_threadpool_*`) and thread registration
+//! (`ast_register_thread`).
+//!
+//! A task pushed onto a pool is a boxed Rust closure.  The closure is kept
+//! in a table here and only its id travels through Asterisk, so tasks still
+//! queued when a pool is shut down (Asterisk frees those without running
+//! them) are dropped properly instead of leaking.
+
+use crate::sys;
+use crate::util::{ast_strdup, cstr};
+use std::collections::HashMap;
+use std::ffi::CStr;
+use std::os::raw::{c_int, c_void};
+use std::sync::{Mutex, OnceLock};
+
+type AstThreadpool = sys::ast_threadpool;
+
+/// Pool sizing (the fields of `struct ast_threadpool_options`).
+#[derive(Debug, Clone, Copy)]
+pub struct Options {
+    /// Seconds before an idle thread exits (0 or less: never).
+    pub idle_timeout: i32,
+    /// Threads added when a task finds no idle thread.
+    pub auto_increment: i32,
+    pub initial_size: i32,
+    /// 0 means unlimited.
+    pub max_size: i32,
+}
+
+/// A task run on a pool thread.
+pub type Task = Box<dyn FnOnce() + Send + 'static>;
+
+/// Where a push came from, for Asterisk's taskprocessor bookkeeping.  The
+/// strings must be static: the taskprocessor keeps the pointers with the
+/// queued task and in its statistics (`core show taskprocessor`).
+#[derive(Debug, Clone, Copy)]
+pub struct Origin {
+    pub file: &'static CStr,
+    pub line: i32,
+    pub function: &'static CStr,
+}
+
+struct Pending {
+    pool: usize,
+    task: Task,
+}
+
+struct Tasks {
+    next: usize,
+    pending: HashMap<usize, Pending>,
+}
+
+fn tasks() -> &'static Mutex<Tasks> {
+    static T: OnceLock<Mutex<Tasks>> = OnceLock::new();
+    T.get_or_init(|| {
+        Mutex::new(Tasks {
+            next: 1,
+            pending: HashMap::new(),
+        })
+    })
+}
+
+unsafe extern "C" fn run_task(data: *mut c_void) -> c_int {
+    crate::guard((), || {
+        let id = data as usize;
+        let task = tasks()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .pending
+            .remove(&id);
+        if let Some(p) = task {
+            (p.task)();
+        }
+    });
+    0
+}
+
+/// An Asterisk thread pool; shut down (waiting for running tasks) on drop.
+pub struct ThreadPool {
+    ptr: *mut AstThreadpool,
+    name: String,
+}
+
+// The ast_threadpool API is thread safe.
+unsafe impl Send for ThreadPool {}
+unsafe impl Sync for ThreadPool {}
+
+impl ThreadPool {
+    /// `ast_threadpool_create(name, NULL, &options)`.  The pool's
+    /// taskprocessors are named "<name>/pool" and "<name>/pool-control".
+    pub fn create(name: &str, opts: &Options) -> Option<ThreadPool> {
+        let o = sys::ast_threadpool_options {
+            version: sys::AST_THREADPOOL_OPTIONS_VERSION as c_int,
+            idle_timeout: opts.idle_timeout,
+            auto_increment: opts.auto_increment,
+            initial_size: opts.initial_size,
+            max_size: opts.max_size,
+            thread_start: None,
+            thread_end: None,
+        };
+        let n = cstr(name);
+        // SAFETY: the options are read during the call; no listener.
+        let ptr = unsafe { sys::ast_threadpool_create(n.as_ptr(), std::ptr::null_mut(), &o) };
+        if ptr.is_null() {
+            None
+        } else {
+            Some(ThreadPool {
+                ptr,
+                name: name.to_string(),
+            })
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Queue `task`.  On failure (the pool is shutting down or out of
+    /// memory) the task is handed back unrun.
+    pub fn push(&self, task: Task, origin: Origin) -> Result<(), Task> {
+        let id = {
+            let mut t = tasks().lock().unwrap();
+            let id = t.next;
+            t.next = t.next.wrapping_add(1).max(1);
+            t.pending.insert(
+                id,
+                Pending {
+                    pool: self.ptr as usize,
+                    task,
+                },
+            );
+            id
+        };
+        // SAFETY: the task's data is an id into the task table, which
+        // `run_task` looks up; the origin strings are static.
+        let res = unsafe {
+            sys::__ast_threadpool_push(
+                self.ptr,
+                Some(run_task),
+                id as *mut c_void,
+                origin.file.as_ptr(),
+                origin.line,
+                origin.function.as_ptr(),
+            )
+        };
+        if res == 0 {
+            return Ok(());
+        }
+        match tasks().lock().unwrap().pending.remove(&id) {
+            Some(p) => Err(p.task),
+            // Cannot happen: a task that was not queued cannot have run.
+            None => Ok(()),
+        }
+    }
+}
+
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        // Stops the workers and waits for the running tasks; queued tasks
+        // are discarded by Asterisk without running.
+        // SAFETY: the pool this wrapper owns.
+        unsafe { sys::ast_threadpool_shutdown(self.ptr) };
+        let pool = self.ptr as usize;
+        let dropped: Vec<Pending> = {
+            let mut t = tasks().lock().unwrap();
+            let ids: Vec<usize> = t
+                .pending
+                .iter()
+                .filter(|(_, p)| p.pool == pool)
+                .map(|(id, _)| *id)
+                .collect();
+            ids.into_iter()
+                .filter_map(|id| t.pending.remove(&id))
+                .collect()
+        };
+        // Drop the tasks outside the table lock (their captures may run
+        // arbitrary destructors).
+        drop(dropped);
+    }
+}
+
+/// The name `ast_pthread_create_stack` gives a thread in `core show
+/// threads`: "<start_fn padded to 20> started at [<line>] <file> <caller>()".
+pub fn thread_name(start_fn: &str, line: i32, file: &str, caller: &str) -> String {
+    format!(
+        "{:<20} started at [{:5}] {} {}()",
+        start_fn, line, file, caller
+    )
+}
+
+/// Register the calling thread with Asterisk (`ast_register_thread`) so it
+/// is listed by `core show threads`.  Pair with [`unregister_thread`] on
+/// the same thread before it exits.
+pub fn register_thread(name: &str) {
+    // Asterisk takes ownership of the name and frees it with ast_free.
+    let n = ast_strdup(name);
+    if !n.is_null() {
+        // SAFETY: Asterisk takes ownership of the ast_malloc'ed name.
+        unsafe { sys::ast_register_thread(n) };
+    }
+}
+
+/// `ast_unregister_thread(pthread_self())`.
+pub fn unregister_thread() {
+    // SAFETY: the calling thread's id, as registered.
+    unsafe { sys::ast_unregister_thread(libc::pthread_self() as *mut c_void) };
+}

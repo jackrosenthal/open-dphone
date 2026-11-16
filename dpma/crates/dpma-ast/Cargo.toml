@@ -1,0 +1,11 @@
+[package]
+name = "dpma-ast"
+description = "Safe wrappers over the Asterisk C API for the dpma-rs module"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+dpma-bytes.workspace = true
+dpma-sys.workspace = true
+libc.workspace = true
