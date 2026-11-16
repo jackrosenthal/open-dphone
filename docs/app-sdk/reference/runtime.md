@@ -36,7 +36,7 @@ pub fn set_exit_after_background(exit: bool)
 
 WIT name: `set-exit-after-background`.
 
-With `false`, an app of kind `Foreground` keeps running when the window leaves the screen.  The setting starts as `true` in every new instance.  Apps of kind `Background` or `Idle` and apps with an idle window keep running in either case.
+With `false`, an app of kind `Foreground` keeps running when the window leaves the screen.  The setting starts as `true` in every new instance.  Apps of kind `Background` and apps with an idle window keep running in either case.
 
 ## `show_app`
 
