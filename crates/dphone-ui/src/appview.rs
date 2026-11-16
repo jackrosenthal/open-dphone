@@ -877,12 +877,17 @@ impl Tree {
 
 type Waker = Box<dyn Fn() + Send + Sync>;
 
+/// A theme that can be changed under those who use it.
+pub(crate) type ThemeCell = Arc<Mutex<&'static crate::skin::Theme>>;
+
 pub(crate) struct Inner {
     pub name: String,
     pub model: Model,
-    /// The theme whose colors `theme_color` answers with: the model's
-    /// skin, in the palette in use once the view is on a phone's screen.
-    theme: Mutex<&'static crate::skin::Theme>,
+    /// The theme whose colors `theme_color` answers with.  A view made
+    /// by a UI ([`crate::UiHandle::new_view`]) has that UI's theme, as it
+    /// is at any time; a view made without one has the model's skin
+    /// until it is on a phone's screen.
+    theme: ThemeCell,
     pub tree: Mutex<Tree>,
     pub dirty: AtomicBool,
     queue: Mutex<VecDeque<AppEvent>>,
@@ -933,10 +938,15 @@ impl AppView {
     /// Creates the view for app `name` (the manifest name) and its event
     /// receiver.
     pub fn new(name: &str, model: Model) -> (AppView, AppEvents) {
+        AppView::with_theme(name, model, Arc::new(Mutex::new(crate::skin::Theme::for_model(model))))
+    }
+
+    /// A view whose theme is the one in `theme`, whatever is put there.
+    pub(crate) fn with_theme(name: &str, model: Model, theme: ThemeCell) -> (AppView, AppEvents) {
         let inner = Arc::new(Inner {
             name: name.to_string(),
             model,
-            theme: Mutex::new(crate::skin::Theme::for_model(model)),
+            theme,
             tree: Mutex::new(Tree::new(model)),
             dirty: AtomicBool::new(true),
             queue: Mutex::new(VecDeque::new()),

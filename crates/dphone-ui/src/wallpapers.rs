@@ -5,7 +5,7 @@ const fn vertical(stops: Stops) -> Base {
 }
 
 const fn solid(id: &'static str, name: &'static str, color: Rgb, scheme: Scheme) -> Wallpaper {
-    Wallpaper { id, name, family: Family::Solids, scheme, tweaks: &[], spec: Spec { base: Base::Grad(Grad::Solid(color)), layers: &[], dither: false } }
+    Wallpaper { id, name, family: Family::Solids, scheme, tweaks: &[], spec: Spec { base: Base::Grad(Grad::Solid(color)), layers: &[], dither: false, moves: None } }
 }
 
 /// The facets of the first wallpaper, leaning right and leaning left.
@@ -29,6 +29,7 @@ macro_rules! facets {
                     Layer::Bands { num: -3, den: 5, add: true, color: $light, bands: FACETS_LEFT },
                 ],
                 dither: true,
+                moves: None,
             },
         }
     };
@@ -67,7 +68,7 @@ static ALL: [Wallpaper; 42] = [
         family: Family::Facets,
         scheme: Scheme::Skin,
         tweaks: &[],
-        spec: Spec { base: Base::Original, layers: &[], dither: false },
+        spec: Spec { base: Base::Original, layers: &[], dither: false, moves: None },
     },
     facets!(
         "evergreen",
@@ -122,6 +123,7 @@ static ALL: [Wallpaper; 42] = [
             base: vertical(&[(0, 0x141A3A), (38, 0x2B2452), (68, 0x5A2C56), (88, 0x8A3E48), (100, 0x9A5540)]),
             layers: &[],
             dither: true,
+            moves: None,
         },
     },
     Wallpaper {
@@ -139,6 +141,7 @@ static ALL: [Wallpaper; 42] = [
                 Layer::Glow { cx: 200, cy: -40, r: 220, color: 0x16506E, alpha: 110 },
             ],
             dither: true,
+            moves: None,
         },
     },
     Wallpaper {
@@ -156,6 +159,7 @@ static ALL: [Wallpaper; 42] = [
             }),
             layers: &[],
             dither: true,
+            moves: None,
         },
     },
     Wallpaper {
@@ -168,6 +172,7 @@ static ALL: [Wallpaper; 42] = [
             base: Base::Grad(Grad::Linear { ax: 3, ay: 4, stops: &[(0, 0x3A4654), (55, 0x28313C), (100, 0x181D25)] }),
             layers: &[],
             dither: true,
+            moves: None,
         },
     },
     Wallpaper {
@@ -185,6 +190,7 @@ static ALL: [Wallpaper; 42] = [
                 Layer::Glow { cx: 470, cy: 0, r: 200, color: 0xA83A58, alpha: 80 },
             ],
             dither: true,
+            moves: None,
         },
     },
     Wallpaper {
@@ -197,6 +203,7 @@ static ALL: [Wallpaper; 42] = [
             base: vertical(&[(0, 0xBFD3E6), (40, 0xE9D3D6), (72, 0xF6CDB4), (100, 0xF3B58E)]),
             layers: &[],
             dither: true,
+            moves: None,
         },
     },
     Wallpaper {
@@ -209,6 +216,7 @@ static ALL: [Wallpaper; 42] = [
             base: Base::Grad(Grad::Linear { ax: 2, ay: 5, stops: &[(0, 0xE9EDF1), (60, 0xD3DAE2), (100, 0xBCC6D1)] }),
             layers: &[],
             dither: true,
+            moves: None,
         },
     },
     Wallpaper {
@@ -230,6 +238,9 @@ static ALL: [Wallpaper; 42] = [
             },
             layers: &[],
             dither: true,
+            // The bends travel along the ribbons, each at its own pace, so
+            // the flame and the red edge fold into the yellow and the navy.
+            moves: Some(Moves { every_ms: 250, motion: Motion::Run(&[1, 2, -1]) }),
         },
     },
     // ------------------------------------------------------------ Bubbles
@@ -246,6 +257,7 @@ static ALL: [Wallpaper; 42] = [
                 Layer::Bubbles { seed: 21, count: 14, r: (14, 34), alpha: (26, 50), soft: 30, rim: 0, colors: &[0x7C9CE0, 0xC89A6A, 0x9C84D8, 0x5AB0C8] },
             ],
             dither: true,
+            moves: Some(Moves { every_ms: 250, motion: Motion::Wander { reach: (7, 5), turns: (2, 4) } }),
         },
     },
     Wallpaper {
@@ -261,6 +273,8 @@ static ALL: [Wallpaper; 42] = [
                 Layer::Bubbles { seed: 11, count: 6, r: (20, 34), alpha: (8, 16), soft: 0, rim: 28, colors: &[0x7CC4C0] },
             ],
             dither: true,
+            // Up and down more than across, as bubbles in a glass.
+            moves: Some(Moves { every_ms: 125, motion: Motion::Wander { reach: (3, 7), turns: (3, 6) } }),
         },
     },
     Wallpaper {
@@ -276,6 +290,7 @@ static ALL: [Wallpaper; 42] = [
                 Layer::Bubbles { seed: 17, count: 12, r: (12, 28), alpha: (30, 56), soft: 40, rim: 0, colors: &[0xE89A40, 0xD86444, 0xF0C060] },
             ],
             dither: true,
+            moves: Some(Moves { every_ms: 250, motion: Motion::Wander { reach: (5, 7), turns: (2, 4) } }),
         },
     },
     Wallpaper {
@@ -298,6 +313,7 @@ static ALL: [Wallpaper; 42] = [
                 ],
             }],
             dither: true,
+            moves: Some(Moves { every_ms: 125, motion: Motion::Wander { reach: (8, 8), turns: (2, 3) } }),
         },
     },
     Wallpaper {
@@ -312,6 +328,7 @@ static ALL: [Wallpaper; 42] = [
                 Layer::Bubbles { seed: 9, count: 12, r: (26, 64), alpha: (36, 70), soft: 0, rim: 0, colors: &[0xC8B8A0, 0xB4C0B8, 0xD8C0B0, 0xF4F0EA] },
             ],
             dither: true,
+            moves: None,
         },
     },
     // ------------------------------------------------------------- Modern
@@ -331,6 +348,7 @@ static ALL: [Wallpaper; 42] = [
                 Layer::Bands { num: -1, den: 1, add: false, color: 0xC89A48, bands: &[(326, 8, 220, 220)] },
             ],
             dither: true,
+            moves: None,
         },
     },
     Wallpaper {
@@ -349,6 +367,7 @@ static ALL: [Wallpaper; 42] = [
             },
             layers: &[],
             dither: true,
+            moves: None,
         },
     },
     Wallpaper {
@@ -367,6 +386,7 @@ static ALL: [Wallpaper; 42] = [
             },
             layers: &[],
             dither: true,
+            moves: None,
         },
     },
     Wallpaper {
@@ -384,6 +404,9 @@ static ALL: [Wallpaper; 42] = [
                 Wave { y: 240, amp: 10, period: 340, phase: 210, amp2: 3, period2: 110, color: 0x1A6C7C, alpha: 256, fade: 0 },
             ])],
             dither: true,
+            // Each wave rises and falls a few pixels, the nearer ones a
+            // little more, no two in step.
+            moves: Some(Moves { every_ms: 125, motion: Motion::Bob(&[(48, 3, 0), (56, 4, 90), (64, 5, 170), (72, 4, 220)]) }),
         },
     },
     Wallpaper {
@@ -400,6 +423,7 @@ static ALL: [Wallpaper; 42] = [
                 Wave { y: 208, amp: 14, period: 560, phase: 130, amp2: 0, period2: 0, color: 0xAE6C40, alpha: 110, fade: 70 },
             ])],
             dither: true,
+            moves: Some(Moves { every_ms: 250, motion: Motion::Bob(&[(56, 2, 40), (64, 3, 150), (72, 2, 230)]) }),
         },
     },
     Wallpaper {
@@ -412,6 +436,7 @@ static ALL: [Wallpaper; 42] = [
             base: Base::Grad(Grad::Linear { ax: 2, ay: 3, stops: &[(0, 0x1C2E28), (100, 0x10201C)] }),
             layers: &[Layer::Contours { seed: 8, scale: 150, levels: 14, color: 0x7CB094, alpha: 60, major: 4, major_alpha: 120 }],
             dither: true,
+            moves: None,
         },
     },
     Wallpaper {
@@ -424,6 +449,7 @@ static ALL: [Wallpaper; 42] = [
             base: Base::Grad(Grad::Radial { cx: 150, cy: 136, r: 420, stops: &[(0, 0x2A2D33), (100, 0x16181C)] }),
             layers: &[Layer::Dots { px: 16, py: 16, r: 22, stagger: false, color: 0x8C96A6, alpha: 90 }],
             dither: true,
+            moves: None,
         },
     },
     Wallpaper {
@@ -442,6 +468,7 @@ static ALL: [Wallpaper; 42] = [
                 },
             ],
             dither: true,
+            moves: Some(Moves { every_ms: 250, motion: Motion::Wander { reach: (16, 12), turns: (1, 2) } }),
         },
     },
     Wallpaper {
@@ -457,6 +484,7 @@ static ALL: [Wallpaper; 42] = [
                 Layer::Circles { soft: 0, rim: 0, circles: &[(60, -30, 120, 0x2E2632, 256)] },
             ],
             dither: true,
+            moves: None,
         },
     },
     // ------------------------------------------------------------ Classic
@@ -470,6 +498,7 @@ static ALL: [Wallpaper; 42] = [
             base: Base::Grad(Grad::Solid(0x47423C)),
             layers: &[Layer::Weave { kind: Weave::Houndstooth { unit: 4 }, color: 0x322F2B, alpha: 256, color2: 0, alpha2: 0 }],
             dither: false,
+            moves: None,
         },
     },
     Wallpaper {
@@ -482,6 +511,7 @@ static ALL: [Wallpaper; 42] = [
             base: Base::Grad(Grad::Solid(0x34404E)),
             layers: &[Layer::Weave { kind: Weave::Herringbone { col: 30, period: 15 }, color: 0x2C3744, alpha: 256, color2: 0, alpha2: 0 }],
             dither: false,
+            moves: None,
         },
     },
     Wallpaper {
@@ -494,6 +524,7 @@ static ALL: [Wallpaper; 42] = [
             base: Base::Grad(Grad::Solid(0x2C4541)),
             layers: &[Layer::Weave { kind: Weave::Chevron { px: 56, py: 32 }, color: 0x35524D, alpha: 256, color2: 0, alpha2: 0 }],
             dither: false,
+            moves: None,
         },
     },
     Wallpaper {
@@ -517,6 +548,7 @@ static ALL: [Wallpaper; 42] = [
                 },
             ],
             dither: false,
+            moves: None,
         },
     },
     Wallpaper {
@@ -529,6 +561,7 @@ static ALL: [Wallpaper; 42] = [
             base: Base::Grad(Grad::Solid(0x34293C)),
             layers: &[Layer::Weave { kind: Weave::Argyle { w: 60, h: 90, line: 16 }, color: 0x4A3450, alpha: 256, color2: 0xA8946C, alpha2: 90 }],
             dither: false,
+            moves: None,
         },
     },
     Wallpaper {
@@ -541,6 +574,7 @@ static ALL: [Wallpaper; 42] = [
             base: Base::Grad(Grad::Solid(0x1C2A44)),
             layers: &[Layer::Dots { px: 36, py: 18, r: 80, stagger: true, color: 0xC8B8A0, alpha: 48 }],
             dither: false,
+            moves: None,
         },
     },
     Wallpaper {
@@ -553,6 +587,7 @@ static ALL: [Wallpaper; 42] = [
             base: Base::Grad(Grad::Solid(0x1A1E2A)),
             layers: &[Layer::Stripes { vertical: true, repeat: 12, stripes: &[(5, 1, 0xA8B0C4, 70)] }],
             dither: false,
+            moves: None,
         },
     },
     // The one joke: ketchup and mustard, as loud as they come, on every
@@ -598,6 +633,7 @@ static ALL: [Wallpaper; 42] = [
             base: Base::Grad(Grad::Solid(KETCHUP_MUSTARD.0)),
             layers: &[Layer::Stripes { vertical: true, repeat: 80, stripes: &[(40, 40, KETCHUP_MUSTARD.1, 256)] }],
             dither: false,
+            moves: None,
         },
     },
     // ------------------------------------------------------------- Solids

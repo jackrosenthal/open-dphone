@@ -25,7 +25,7 @@ mod pb {
     include!(concat!(env!("OUT_DIR"), "/dphone.settings.v1.rs"));
 }
 
-pub use pb::{App, DisabledApps, DphoneSettings};
+pub use pb::{App, DisabledApps, DphoneSettings, ThemeSync};
 
 /// The settings file, relative to the nvdata root.
 pub const SETTINGS_FILE: &str = "dphone_settings.txtpb";
@@ -35,7 +35,7 @@ pub const SETTINGS_FILE_BAD: &str = "dphone_settings.txtpb.bad";
 /// Field names of [`DphoneSettings`]; anything else in the file is carried
 /// through as text.  A test checks this list against the generated code.
 const KNOWN_FIELDS: &[&str] =
-    &["ssh_enabled", "ignore_provisioned_firmware", "serial_console", "metrics_enabled", "idle_softkeys", "disabled_apps", "wallpaper"];
+    &["ssh_enabled", "ignore_provisioned_firmware", "serial_console", "metrics_enabled", "idle_softkeys", "disabled_apps", "theme", "theme_sync"];
 
 const HEADER: &str = "# Open DPhone settings (dphone.settings.v1.DphoneSettings, protobuf text format).\n\
                       # A field that is absent takes its default.\n";
@@ -79,14 +79,14 @@ pub const PROVISIONED_SERIAL_CONSOLE: &str = "dphone_serial_console";
 pub const PROVISIONED_METRICS_ENABLED: &str = "dphone_metrics_enabled";
 pub const PROVISIONED_IDLE_SOFTKEYS: &str = "dphone_idle_softkeys";
 pub const PROVISIONED_DISABLED_APPS: &str = "dphone_disabled_apps";
-pub const PROVISIONED_WALLPAPER: &str = "dphone_wallpaper";
+pub const PROVISIONED_THEME: &str = "dphone_theme";
 
-/// What the wallpaper of a color model is.
+/// What the theme of a color model is.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum WallpaperChoice {
-    /// A built-in wallpaper by name; empty is the default one.  The name
+pub enum ThemeChoice {
+    /// A built-in theme by name; empty is the default one.  The name
     /// is as it was set, trimmed and in lower case: whether the firmware
-    /// has such a wallpaper is the UI's to say (it shows the default one
+    /// has such a theme is the UI's to say (it shows the default one
     /// for a name it does not know).
     Builtin(String),
     /// The provisioning server's picture (`wallpaper_file`), with the
@@ -94,14 +94,14 @@ pub enum WallpaperChoice {
     Picture,
 }
 
-/// The wallpaper in effect, where the choice came from, and whether the
+/// The theme in effect, where the choice came from, and whether the
 /// provisioning server froze it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Wallpaper {
-    pub choice: WallpaperChoice,
+pub struct Theme {
+    pub choice: ThemeChoice,
     pub source: SettingSource,
     pub locked: bool,
-    /// The built-in wallpaper shown while a chosen picture cannot be (not
+    /// The built-in theme shown while a chosen picture cannot be (not
     /// downloaded yet, or not a picture): the name set on the phone, else
     /// the provisioned name, else empty.
     pub builtin: String,
@@ -138,12 +138,15 @@ pub enum IdleFunction {
     /// The call forwarding menu.
     Forward = 7,
     Redial = 8,
+    /// The theme selector.  Only the color models have themes; on the
+    /// others the softkey is not shown.
+    Theme = 9,
 }
 
 impl IdleFunction {
-    pub const ALL: [IdleFunction; 8] = {
+    pub const ALL: [IdleFunction; 9] = {
         use IdleFunction::*;
-        [CallLog, Contacts, Status, Menu, Apps, Dnd, Forward, Redial]
+        [CallLog, Contacts, Status, Menu, Apps, Dnd, Forward, Redial, Theme]
     };
 
     /// The function's name in the provisioned (XML) list.
@@ -157,6 +160,7 @@ impl IdleFunction {
             IdleFunction::Dnd => "dnd",
             IdleFunction::Forward => "forward",
             IdleFunction::Redial => "redial",
+            IdleFunction::Theme => "theme",
         }
     }
 
@@ -168,6 +172,12 @@ impl IdleFunction {
     /// The function a protobuf `IdleSoftkey.Function` value stands for.
     pub fn from_number(number: i32) -> Option<IdleFunction> {
         Self::ALL.into_iter().find(|f| f.number() == number)
+    }
+
+    /// Whether `model` has the function: every model has every one but
+    /// the theme selector, which only the color models have.
+    pub fn on_model(self, model: crate::Model) -> bool {
+        self != IdleFunction::Theme || model.is_new_family()
     }
 }
 
@@ -214,13 +224,21 @@ impl DphoneSettings {
     /// (`disabled_apps {}`) equals an absent one, and those are different
     /// settings.
     pub fn same_as(&self, other: &DphoneSettings) -> bool {
-        self == other && self.disabled_apps.is_set() == other.disabled_apps.is_set()
+        self == other
+            && self.disabled_apps.is_set() == other.disabled_apps.is_set()
+            && self.theme_sync.is_set() == other.theme_sync.is_set()
     }
 
     /// The idle softkeys set in the file; entries that say nothing are
     /// skipped.
     pub fn local_idle_softkeys(&self) -> Vec<IdleSoftkey> {
         self.idle_softkeys.iter().filter_map(IdleSoftkey::from_setting).collect()
+    }
+
+    /// The theme chosen on the phone, as the configuration reads it
+    /// (trimmed, in lower case); `None` when none is.
+    pub fn local_theme(&self) -> Option<String> {
+        self.theme.as_deref().map(|v| v.trim().to_ascii_lowercase()).filter(|v| !v.is_empty())
     }
 
     /// Set the idle softkeys; none puts the provisioned or default ones
@@ -252,19 +270,17 @@ impl DphoneSettings {
     }
 }
 
-/// The idle softkeys when none are set.
-pub const DEFAULT_IDLE_SOFTKEYS: [IdleSoftkey; 7] = {
+/// The idle softkeys of `model` when none are set: Call Log, Contacts,
+/// Status, Menu, Apps, DND, Forward, and, on the color models (which have
+/// themes), Theme.
+pub fn default_idle_softkeys(model: crate::Model) -> Vec<IdleSoftkey> {
     use IdleFunction::*;
-    [
-        IdleSoftkey::Function(CallLog),
-        IdleSoftkey::Function(Contacts),
-        IdleSoftkey::Function(Status),
-        IdleSoftkey::Function(Menu),
-        IdleSoftkey::Function(Apps),
-        IdleSoftkey::Function(Dnd),
-        IdleSoftkey::Function(Forward),
-    ]
-};
+    [CallLog, Contacts, Status, Menu, Apps, Dnd, Forward, Theme]
+        .into_iter()
+        .filter(|f| f.on_model(model))
+        .map(IdleSoftkey::Function)
+        .collect()
+}
 
 /// The idle screen's softkeys in effect, where they came from, and whether
 /// the provisioning server froze them.
@@ -412,7 +428,8 @@ mod tests {
             metrics_enabled: Some(true),
             idle_softkeys: vec![IdleSoftkey::Function(IdleFunction::Menu).to_setting()],
             disabled_apps: Some(DisabledApps::default()).into(),
-            wallpaper: Some("dusk".into()),
+            theme: Some("dusk".into()),
+            theme_sync: Some(ThemeSync::default()).into(),
         };
         let text = encode_to_string_pretty(&all);
         // The top-level lines, `name: value` and `name {`; the encoder

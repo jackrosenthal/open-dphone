@@ -34,7 +34,7 @@ pub use merge::NetContext;
 pub use model::Model;
 pub use nvdata::{parse_authorized_key, AuthorizedKey, EnetCfg, Nvdata, SavedTime};
 pub use palette::PaletteFile;
-pub use settings::{DphoneSettings, IdleFunction, IdleSoftkey, IdleSoftkeys, Resolved, SettingSource, SettingsDocument, Wallpaper, WallpaperChoice};
+pub use settings::{DphoneSettings, IdleFunction, IdleSoftkey, IdleSoftkeys, Resolved, SettingSource, SettingsDocument, Theme, ThemeChoice, ThemeSync};
 pub use store::{ConfigError, ConfigStore, Layer};
 pub use view::Config;
 pub use xml::{Element, Node};

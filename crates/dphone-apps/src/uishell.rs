@@ -348,7 +348,9 @@ impl Shell for UiShell {
         kind: WindowKind,
         wake: Arc<dyn Fn() + Send + Sync>,
     ) -> Box<dyn AppWindow> {
-        let (view, events) = AppView::new(app, self.model);
+        // With the UI's theme from the start: an app asks for the theme's
+        // colors before its window is first on screen.
+        let (view, events) = self.ui.new_view(app, self.model);
         events.set_waker(move || wake());
         match kind {
             WindowKind::App => {

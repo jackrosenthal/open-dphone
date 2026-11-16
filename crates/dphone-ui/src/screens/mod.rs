@@ -135,6 +135,11 @@ pub(crate) trait Screen: Send {
     fn wallpaper(&self) -> bool {
         false
     }
+    /// The wallpaper behind this screen moves, if it is one that does
+    /// (the idle screen, and the theme selector, which shows it).
+    fn motion(&self) -> bool {
+        false
+    }
     /// A built-in wallpaper whose picture and palette this screen is
     /// shown with, instead of the configured ones (color skin only).
     fn look(&self, _cx: &Cx) -> Option<&'static crate::wallpaper::Wallpaper> {

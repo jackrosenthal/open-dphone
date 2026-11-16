@@ -1,23 +1,27 @@
-//! The built-in wallpapers of the color models, by name: what the
-//! configuration can name and the web UI lists.  The pictures and the
-//! palettes are the UI's (`dphone_ui::wallpaper`, whose tests hold this
-//! list to its own).
+//! The built-in themes of the color models, by name: what the
+//! configuration can name and the web UI lists.  A theme is a wallpaper
+//! and a palette for every screen; both are the UI's
+//! (`dphone_ui::wallpaper`, whose tests hold this list to its own).
 
-/// One built-in wallpaper: its name in the configuration, the name shown,
+/// The theme when none is chosen.
+pub const DEFAULT_THEME: &str = "tides";
+
+/// One built-in theme: its name in the configuration, the name shown,
 /// and the family it is listed under.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct WallpaperName {
+pub struct ThemeName {
     pub id: &'static str,
     pub name: &'static str,
     pub family: &'static str,
 }
 
-const fn w(id: &'static str, name: &'static str, family: &'static str) -> WallpaperName {
-    WallpaperName { id, name, family }
+const fn w(id: &'static str, name: &'static str, family: &'static str) -> ThemeName {
+    ThemeName { id, name, family }
 }
 
-/// Every built-in wallpaper, grouped by family.  The first is the default.
-pub const WALLPAPERS: [WallpaperName; 42] = [
+/// Every built-in theme, grouped by family.  The default is
+/// [`DEFAULT_THEME`].
+pub const THEMES: [ThemeName; 42] = [
     w("harbor", "Harbor", "Facets"),
     w("evergreen", "Evergreen", "Facets"),
     w("merlot", "Merlot", "Facets"),

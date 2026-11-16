@@ -8,8 +8,12 @@
 //! Each wallpaper comes with a palette for the whole system
 //! ([`Wallpaper::palette`]): while it is selected, every screen of the
 //! color skin is drawn in its colors.  The palette is derived from two
-//! colors by one rule ([`Scheme`]); the default wallpaper's is the skin's
-//! own.
+//! colors by one rule ([`Scheme`]); the first wallpaper's is the skin's
+//! own.  The two together are what the phone calls a theme: the user
+//! chooses a theme, and this module has its picture and its colors.
+//!
+//! Some wallpapers move, slowly, on the idle screen (the submodule
+//! `motion`).
 //!
 //! The panel's depth is not known (the frame buffer has eight bits per
 //! channel; the panel may show six), so gradients are computed with two
@@ -208,6 +212,58 @@ impl Wallpaper {
         }
         f(&kept.as_ref().expect("just set").1)
     }
+
+    /// The time from one frame to the next, in milliseconds, of a
+    /// wallpaper that moves on the idle screen; `None` for one that is
+    /// still.
+    pub fn frame_ms(&self) -> Option<u32> {
+        self.spec.moves.as_ref().map(|m| m.every_ms)
+    }
+
+    /// The picture at `t_ms` (any clock that counts milliseconds) of a
+    /// wallpaper that moves; the still picture of one that does not.
+    /// The same pixels for the same time, and again one [`CYCLE_MS`]
+    /// later.
+    pub fn render_at(&'static self, t_ms: u64) -> Vec<u32> {
+        match motion::Moving::new(self.id, &self.spec) {
+            Some(mut moving) => moving.frame(t_ms).to_vec(),
+            None => self.render(),
+        }
+    }
+
+    /// Calls `f` with the picture at `t_ms`, as [`Wallpaper::render_at`]
+    /// has it.  What one frame needs from the frame before is kept (for
+    /// one wallpaper), so that a frame draws only what moved.
+    pub fn with_frame<R>(&'static self, t_ms: u64, f: impl FnOnce(&[u32]) -> R) -> R {
+        static MOVING: Mutex<Option<motion::Moving>> = Mutex::new(None);
+        /// The frames drawn and the microseconds they took, for the log.
+        static COST: Mutex<(u32, u64)> = Mutex::new((0, 0));
+        let mut moving = MOVING.lock().unwrap_or_else(|p| p.into_inner());
+        if moving.as_ref().is_none_or(|m| m.id != self.id) {
+            *moving = None;
+            *moving = motion::Moving::new(self.id, &self.spec);
+            *COST.lock().unwrap_or_else(|p| p.into_inner()) = (0, 0);
+        }
+        let Some(m) = moving.as_mut() else {
+            drop(moving);
+            return self.with_pixels(f);
+        };
+        let start = std::time::Instant::now();
+        let frame = m.frame(t_ms);
+        let mut cost = COST.lock().unwrap_or_else(|p| p.into_inner());
+        if cost.0 == 0 {
+            log::debug!("wallpaper {}: the first frame drawn in {} ms", self.id, start.elapsed().as_millis());
+            cost.0 = 1;
+        } else {
+            *cost = (cost.0 + 1, cost.1 + start.elapsed().as_micros() as u64);
+            if cost.0 > 256 {
+                log::debug!("wallpaper {}: {} us a frame", self.id, cost.1 / 256);
+                *cost = (1, 0);
+            }
+        }
+        drop(cost);
+        f(frame)
+    }
 }
 
 /// The palette a palette file describes: derived from its `primary` and
@@ -292,17 +348,27 @@ impl Picture {
 #[derive(Clone, Copy)]
 pub enum Backdrop<'a> {
     Builtin(&'static Wallpaper),
+    /// A built-in wallpaper in motion, at a time in milliseconds
+    /// ([`Wallpaper::with_frame`]).
+    Moving(&'static Wallpaper, u64),
     Picture(&'a Picture),
 }
 
 /// Every wallpaper, grouped by family in the order of [`Family::ALL`].
-/// The first is the default.
 pub fn all() -> &'static [Wallpaper] {
     &ALL
 }
 
-/// The wallpaper used when none, or an unknown one, is named.
+/// The wallpaper used when none, or an unknown one, is named
+/// ([`dphone_state::DEFAULT_THEME`]).
 pub fn default() -> &'static Wallpaper {
+    static DEFAULT: std::sync::OnceLock<&'static Wallpaper> = std::sync::OnceLock::new();
+    DEFAULT.get_or_init(|| find(dphone_state::DEFAULT_THEME).unwrap_or(&ALL[0]))
+}
+
+/// The first wallpaper this firmware had, whose palette is the color
+/// skin's own: the start-up screen's artwork is drawn for it.
+pub fn first() -> &'static Wallpaper {
     &ALL[0]
 }
 
@@ -418,10 +484,36 @@ enum Layer {
     Weave { kind: Weave, color: Rgb, alpha: i32, color2: Rgb, alpha2: i32 },
 }
 
+/// How a wallpaper moves on the idle screen.  Each motion comes back to
+/// where it began: its speed is a whole number of turns in one cycle
+/// ([`CYCLE_MS`]).
+enum Motion {
+    /// The waves of a [`Layer::Waves`] rise and fall.  For each wave:
+    /// (how far each way in sixteenths of a pixel, turns in a cycle, where
+    /// in its turn it begins in 1/256 turn).
+    Bob(&'static [(i32, i32, i32)]),
+    /// The circles of [`Layer::Circles`] and [`Layer::Bubbles`] wander
+    /// around their places, each on a path of its own: at most `reach`
+    /// pixels to either side (across, up and down), `turns.0` to
+    /// `turns.1` turns in a cycle.
+    Wander { reach: (i32, i32), turns: (i32, i32) },
+    /// The waves of a [`Flow::Ribbons`] run on: for each wave, the turns
+    /// in a cycle (negative: the other way).
+    Run(&'static [i32]),
+}
+
+/// A wallpaper's motion, and the time from one frame to the next.
+struct Moves {
+    every_ms: u32,
+    motion: Motion,
+}
+
 struct Spec {
     base: Base,
     layers: &'static [Layer],
     dither: bool,
+    /// The motion on the idle screen, for the wallpapers that have one.
+    moves: Option<Moves>,
 }
 
 // ---------------------------------------------------------------- drawing
@@ -541,9 +633,31 @@ impl Grad {
     }
 }
 
-fn render(spec: &Spec) -> Vec<u32> {
+/// The circles of a [`Layer::Bubbles`], in the order they are drawn: the
+/// same circles every time (a xorshift generator).
+fn bubbles(seed: u32, count: u32, r: (i32, i32), alpha: (i32, i32), colors: &[Rgb]) -> Vec<Circle> {
+    let mut s = seed.wrapping_mul(0x9E37_79B9) | 1;
+    let mut next = |n: i32| {
+        s ^= s << 13;
+        s ^= s >> 17;
+        s ^= s << 5;
+        ((s >> 8) % n.max(1) as u32) as i32
+    };
+    (0..count)
+        .map(|_| {
+            let rad = r.0 + next(r.1 - r.0 + 1);
+            let (cx, cy) = (next(WIDTH + rad) - rad / 2, next(HEIGHT + rad) - rad / 2);
+            let color = colors[next(colors.len() as i32) as usize];
+            let a = alpha.0 + next(alpha.1 - alpha.0 + 1);
+            (cx, cy, rad, color, a)
+        })
+        .collect()
+}
+
+/// The base of a wallpaper, under its layers, as [`Px`] colors.
+fn render_base(base: &Base) -> Vec<u32> {
     let mut buf = vec![0u32; (WIDTH * HEIGHT) as usize];
-    match &spec.base {
+    match base {
         Base::Grad(g) => {
             for y in 0..HEIGHT {
                 for x in 0..WIDTH {
@@ -565,6 +679,22 @@ fn render(spec: &Spec) -> Vec<u32> {
             }
         }
     }
+    buf
+}
+
+/// A [`Px`] color (packed) as the frame buffer's eight bits a channel.
+/// With `dither`, noise that spans one step of a six-bit panel (four of
+/// the frame buffer's, sixteen of ours) is added first, from a
+/// low-discrepancy sequence so that it has no visible grain.
+#[inline]
+fn to_frame(p: u32, x: i32, y: i32, dither: bool) -> u32 {
+    let n = if dither { (((x * 49471 + y * 37345) & 0xFFFF) >> 12) - 8 } else { 0 };
+    let c = unpack(p).map(|v| ((v + n + 2) >> 2).clamp(0, 255) as u32);
+    (c[0] << 16) | (c[1] << 8) | c[2]
+}
+
+fn render(spec: &Spec) -> Vec<u32> {
+    let mut buf = render_base(&spec.base);
     for layer in spec.layers {
         match layer {
             Layer::Bands { num, den, add, color, bands } => draw_bands(&mut buf, *num, *den, *add, px(*color), bands),
@@ -575,19 +705,7 @@ fn render(spec: &Spec) -> Vec<u32> {
                 }
             }
             Layer::Bubbles { seed, count, r, alpha, soft, rim, colors } => {
-                // A xorshift generator: the same circles every time.
-                let mut s = seed.wrapping_mul(0x9E37_79B9) | 1;
-                let mut next = |n: i32| {
-                    s ^= s << 13;
-                    s ^= s >> 17;
-                    s ^= s << 5;
-                    ((s >> 8) % n.max(1) as u32) as i32
-                };
-                for _ in 0..*count {
-                    let rad = r.0 + next(r.1 - r.0 + 1);
-                    let (cx, cy) = (next(WIDTH + rad) - rad / 2, next(HEIGHT + rad) - rad / 2);
-                    let color = colors[next(colors.len() as i32) as usize];
-                    let a = alpha.0 + next(alpha.1 - alpha.0 + 1);
+                for (cx, cy, rad, color, a) in bubbles(*seed, *count, *r, *alpha, colors) {
                     disc(&mut buf, cx * 16, cy * 16, rad * 16, soft_edge(rad, *soft), px(color), a, *rim);
                 }
             }
@@ -640,15 +758,11 @@ fn render(spec: &Spec) -> Vec<u32> {
             }
         }
     }
-    // To the frame buffer's eight bits.  The noise spans one step of a
-    // six-bit panel (four of the frame buffer's, sixteen of ours), from a
-    // low-discrepancy sequence so that it has no visible grain.
+    // To the frame buffer's eight bits.
     for y in 0..HEIGHT {
         for x in 0..WIDTH {
             let p = &mut buf[(y * WIDTH + x) as usize];
-            let n = if spec.dither { (((x * 49471 + y * 37345) & 0xFFFF) >> 12) - 8 } else { 0 };
-            let c = unpack(*p).map(|v| ((v + n + 2) >> 2).clamp(0, 255) as u32);
-            *p = (c[0] << 16) | (c[1] << 8) | c[2];
+            *p = to_frame(*p, x, y, spec.dither);
         }
     }
     buf
@@ -662,6 +776,23 @@ fn soft_edge(r: i32, percent: i32) -> i32 {
 /// A circle at (`cx`, `cy`) with radius `r`, all in sixteenths of a pixel;
 /// its opacity falls from `alpha` to nothing across `soft`, centered on
 /// the radius.
+/// The opacity (of [`ONE`]) of a circle at distance `d` from its center
+/// (see [`disc`]).
+#[inline]
+fn disc_opacity(d: i32, r: i32, soft: i32, alpha: i32, rim: i32) -> i32 {
+    let mut cov = ((r + soft / 2 - d) * ONE / soft).clamp(0, ONE);
+    if soft > 32 {
+        // A smooth step across a wide edge.
+        cov = (((cov * cov) >> 12) * (3 * ONE - 2 * cov)) >> 12;
+    }
+    let mut t = (cov * alpha) >> 8;
+    if rim > 0 {
+        let ring = (20 - (d - (r - 16)).abs()).clamp(0, 20) * ONE / 20;
+        t += (ring * rim) >> 8;
+    }
+    t
+}
+
 fn disc(buf: &mut [u32], cx: i32, cy: i32, r: i32, soft: i32, color: Px, alpha: i32, rim: i32) {
     let reach = r + soft / 2 + 16;
     let (x0, x1) = (((cx - reach) >> 4).max(0), ((cx + reach) >> 4).min(WIDTH - 1));
@@ -671,17 +802,7 @@ fn disc(buf: &mut [u32], cx: i32, cy: i32, r: i32, soft: i32, color: Px, alpha: 
         for x in x0..=x1 {
             let dx = x * 16 + 8 - cx;
             let d = ((dx * dx + dy * dy) as u32).isqrt() as i32;
-            let mut cov = ((r + soft / 2 - d) * ONE / soft).clamp(0, ONE);
-            if soft > 32 {
-                // A smooth step across a wide edge.
-                cov = (((cov * cov) >> 12) * (3 * ONE - 2 * cov)) >> 12;
-            }
-            let mut t = (cov * alpha) >> 8;
-            if rim > 0 {
-                let ring = (20 - (d - (r - 16)).abs()).clamp(0, 20) * ONE / 20;
-                t += (ring * rim) >> 8;
-            }
-            over(&mut buf[(y * WIDTH + x) as usize], color, t);
+            over(&mut buf[(y * WIDTH + x) as usize], color, disc_opacity(d, r, soft, alpha, rim));
         }
     }
 }
@@ -935,6 +1056,11 @@ fn original() -> impl Iterator<Item = Rgb> {
         })
     })
 }
+
+// ------------------------------------------------------------- the motion
+
+mod motion;
+pub use motion::CYCLE_MS;
 
 // ---------------------------------------------------------- the wallpapers
 

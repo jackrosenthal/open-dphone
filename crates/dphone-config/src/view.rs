@@ -487,7 +487,7 @@ impl Config {
     /// The idle screen's softkeys.  The sources combine as for the other
     /// Open DPhone settings: a frozen provisioned list wins, then the local
     /// list, then an ordinary provisioned list; with none of those, the
-    /// default list ([`settings::DEFAULT_IDLE_SOFTKEYS`]).  A provisioned
+    /// model's default list ([`settings::default_idle_softkeys`]).  A provisioned
     /// list that does not parse counts as not set.  The `idle` keymap
     /// state is not used: a DPMA server sends one to every phone, whatever
     /// its administrator set, so it does not count as a list that was set.
@@ -501,7 +501,7 @@ impl Config {
             (_, Some(keys)) => IdleSoftkeys { keys, source: SettingSource::Local, locked: false },
             (Some(keys), None) => IdleSoftkeys { keys, source: SettingSource::Provisioned, locked: false },
             (None, None) => IdleSoftkeys {
-                keys: settings::DEFAULT_IDLE_SOFTKEYS.to_vec(),
+                keys: settings::default_idle_softkeys(self.model),
                 source: SettingSource::Default,
                 locked: false,
             },
@@ -520,35 +520,35 @@ impl Config {
         settings::resolve(local, provisioned, frozen, Vec::new())
     }
 
-    /// The wallpaper of a color model.  The provisioning server can name a
-    /// built-in one (`dphone_wallpaper`) or supply a picture (stock's
+    /// The theme of a color model.  The provisioning server can name a
+    /// built-in one (`dphone_theme`) or supply a picture (stock's
     /// `wallpaper_file`, with a `url`); of the two, the picture goes
     /// first.  Otherwise the sources combine as for the other Open DPhone
     /// settings: what the server froze wins, then the name chosen on the
     /// phone, then what the server supplies unfrozen, then the default.
-    pub fn wallpaper(&self) -> settings::Wallpaper {
-        use settings::{Wallpaper, WallpaperChoice};
+    pub fn theme(&self) -> settings::Theme {
+        use settings::{Theme, ThemeChoice};
         let name = |v: Option<&str>| v.map(|v| v.trim().to_ascii_lowercase()).filter(|v| !v.is_empty());
         let picture = self.setting_attr(crate::palette::WALLPAPER_SETTING, "url").is_some_and(|u| !u.trim().is_empty());
         let picture_frozen = picture && self.setting_frozen(crate::palette::WALLPAPER_SETTING);
-        let provisioned = name(self.setting(settings::PROVISIONED_WALLPAPER));
-        let name_frozen = provisioned.is_some() && self.setting_frozen(settings::PROVISIONED_WALLPAPER);
-        let local = name(self.settings.wallpaper.as_deref());
+        let provisioned = name(self.setting(settings::PROVISIONED_THEME));
+        let name_frozen = provisioned.is_some() && self.setting_frozen(settings::PROVISIONED_THEME);
+        let local = self.settings.local_theme();
         let builtin = local.clone().or_else(|| provisioned.clone()).unwrap_or_default();
         let (choice, source, locked) = if picture_frozen {
-            (WallpaperChoice::Picture, SettingSource::Provisioned, true)
+            (ThemeChoice::Picture, SettingSource::Provisioned, true)
         } else if let (Some(p), true) = (&provisioned, name_frozen) {
-            (WallpaperChoice::Builtin(p.clone()), SettingSource::Provisioned, true)
+            (ThemeChoice::Builtin(p.clone()), SettingSource::Provisioned, true)
         } else if let Some(l) = local {
-            (WallpaperChoice::Builtin(l), SettingSource::Local, false)
+            (ThemeChoice::Builtin(l), SettingSource::Local, false)
         } else if picture {
-            (WallpaperChoice::Picture, SettingSource::Provisioned, false)
+            (ThemeChoice::Picture, SettingSource::Provisioned, false)
         } else if let Some(p) = provisioned {
-            (WallpaperChoice::Builtin(p), SettingSource::Provisioned, false)
+            (ThemeChoice::Builtin(p), SettingSource::Provisioned, false)
         } else {
-            (WallpaperChoice::Builtin(String::new()), SettingSource::Default, false)
+            (ThemeChoice::Builtin(String::new()), SettingSource::Default, false)
         };
-        Wallpaper { choice, source, locked, builtin }
+        Theme { choice, source, locked, builtin }
     }
 
     /// Whether the provisioning server names a palette file for its

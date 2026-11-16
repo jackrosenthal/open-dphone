@@ -161,18 +161,21 @@ fn function_label(function: IdleFunction) -> &'static str {
         IdleFunction::Dnd => "DND",
         IdleFunction::Forward => "Forward",
         IdleFunction::Redial => "Redial",
+        IdleFunction::Theme => "Theme",
     }
 }
 
 /// The softkeys in effect and every softkey the phone offers: the
-/// functions, then an entry per app (the contacts app is "contacts").
+/// functions the model has (the theme selector only on a color model),
+/// then an entry per app (the contacts app is "contacts").
 fn idle_softkeys(app: &App, cfg: &dphone_config::Config) -> pb::IdleSoftkeys {
     let set = cfg.idle_softkeys();
     let choice =
         |key: &IdleSoftkey, label: &str| pb::IdleSoftkeyChoice { softkey: Some(pb_softkey(key)).into(), label: label.to_owned() };
-    let mut offered: Vec<IdleSoftkey> = IdleFunction::ALL.map(IdleSoftkey::Function).to_vec();
+    let functions = IdleFunction::ALL.into_iter().filter(|f| f.on_model(cfg.model()));
+    let mut offered: Vec<IdleSoftkey> = functions.clone().map(IdleSoftkey::Function).collect();
     let mut choices: Vec<pb::IdleSoftkeyChoice> =
-        IdleFunction::ALL.iter().map(|f| choice(&IdleSoftkey::Function(*f), function_label(*f))).collect();
+        functions.map(|f| choice(&IdleSoftkey::Function(f), function_label(f))).collect();
     // The apps the phone has (one that is switched off is not among them).
     let apps = app.store.get::<st::Apps>();
     for a in apps.installed.iter().filter(|a| a.name != "contacts") {
@@ -227,48 +230,48 @@ pub async fn set_idle_softkeys(
     Ok(pb::SetIdleSoftkeysResponse { idle_softkeys: Some(keys).into() })
 }
 
-// -------------------------------------------------------------- wallpaper
+// ------------------------------------------------------------------ theme
 
-/// The wallpaper in effect and every built-in one.  A name the firmware
-/// does not have is the default wallpaper, as on the phone's screen.
-fn wallpaper(cfg: &dphone_config::Config) -> pb::Wallpaper {
-    let set = cfg.wallpaper();
+/// The theme in effect and every built-in one.  A name the firmware does
+/// not have is the default theme, as on the phone's screen.
+fn theme(cfg: &dphone_config::Config) -> pb::Theme {
+    let set = cfg.theme();
     let (name, picture) = match &set.choice {
-        dphone_config::WallpaperChoice::Builtin(name) => (name.as_str(), false),
-        dphone_config::WallpaperChoice::Picture => (set.builtin.as_str(), true),
+        dphone_config::ThemeChoice::Builtin(name) => (name.as_str(), false),
+        dphone_config::ThemeChoice::Picture => (set.builtin.as_str(), true),
     };
-    let id = st::WALLPAPERS.iter().find(|w| w.id == name).unwrap_or(&st::WALLPAPERS[0]).id;
-    pb::Wallpaper {
+    let id = st::THEMES.iter().find(|w| w.id == name).map_or(st::DEFAULT_THEME, |w| w.id);
+    pb::Theme {
         id: id.to_owned(),
         source: super::ssh::setting_source(set.source).into(),
         locked: set.locked,
-        choices: st::WALLPAPERS
+        choices: st::THEMES
             .iter()
-            .map(|w| pb::WallpaperChoice { id: w.id.to_owned(), name: w.name.to_owned(), family: w.family.to_owned() })
+            .map(|w| pb::ThemeChoice { id: w.id.to_owned(), name: w.name.to_owned(), family: w.family.to_owned() })
             .collect(),
         picture,
     }
 }
 
-pub async fn get_wallpaper(ctx: Ctx, _req: pb::GetWallpaperRequest) -> Result<pb::GetWallpaperResponse, ConnectError> {
-    Ok(pb::GetWallpaperResponse { wallpaper: Some(wallpaper(&config_of(&ctx.app))).into() })
+pub async fn get_theme(ctx: Ctx, _req: pb::GetThemeRequest) -> Result<pb::GetThemeResponse, ConnectError> {
+    Ok(pb::GetThemeResponse { theme: Some(theme(&config_of(&ctx.app))).into() })
 }
 
-pub async fn set_wallpaper(ctx: Ctx, req: pb::SetWallpaperRequest) -> Result<pb::SetWallpaperResponse, ConnectError> {
+pub async fn set_theme(ctx: Ctx, req: pb::SetThemeRequest) -> Result<pb::SetThemeResponse, ConnectError> {
     let id = req.id;
-    if !id.is_empty() && !st::WALLPAPERS.iter().any(|w| w.id == id) {
-        return Err(ConnectError::invalid_argument("not a wallpaper"));
+    if !id.is_empty() && !st::THEMES.iter().any(|w| w.id == id) {
+        return Err(ConnectError::invalid_argument("not a theme"));
     }
     let set = with_config(&ctx.app, true, move |c| {
-        if c.config().wallpaper().locked {
+        if c.config().theme().locked {
             return Err(super::ssh::locked());
         }
         let config =
-            c.update_dphone_settings(|s| s.wallpaper = (!id.is_empty()).then_some(id)).map_err(crate::services::config_error)?;
-        Ok(wallpaper(&config))
+            c.update_dphone_settings(|s| s.theme = (!id.is_empty()).then_some(id)).map_err(crate::services::config_error)?;
+        Ok(theme(&config))
     })
     .await?;
-    Ok(pb::SetWallpaperResponse { wallpaper: Some(set).into() })
+    Ok(pb::SetThemeResponse { theme: Some(set).into() })
 }
 
 // --------------------------------------------------------------- network

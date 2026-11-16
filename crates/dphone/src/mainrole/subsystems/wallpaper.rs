@@ -1,4 +1,4 @@
-//! The wallpaper the configuration asks for, as the UI takes it: a
+//! The theme the configuration asks for, as the UI takes it: a
 //! built-in one by name, or the provisioning server's picture
 //! (`/nvdata/user_wallpaper.png`) with the palette file that came with it
 //! (`/nvdata/open/wallpaper_palette.txtpb`).
@@ -12,7 +12,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 
 use dphone_config::palette::{PALETTE_FILE, WALLPAPER_FILE};
-use dphone_config::{Config, Nvdata, PaletteFile, WallpaperChoice};
+use dphone_config::{Config, Nvdata, PaletteFile, ThemeChoice};
 use dphone_ui::skin::Palette;
 use dphone_ui::wallpaper::Picture;
 use dphone_ui::UiConfig;
@@ -76,15 +76,15 @@ fn picture(nv: &Nvdata, with_palette: bool) -> Option<Arc<Picture>> {
     made
 }
 
-/// Sets the wallpaper fields of the UI's configuration.
+/// Sets the theme fields of the UI's configuration.
 pub fn apply(cfg: &Config, nv: &Nvdata, out: &mut UiConfig) {
-    let wallpaper = cfg.wallpaper();
-    out.wallpaper_locked = wallpaper.locked;
+    let theme = cfg.theme();
+    out.theme_locked = theme.locked;
     out.wallpaper_picture = None;
-    match wallpaper.choice {
-        WallpaperChoice::Builtin(name) => out.wallpaper = name,
-        WallpaperChoice::Picture => {
-            out.wallpaper = wallpaper.builtin;
+    match theme.choice {
+        ThemeChoice::Builtin(name) => out.theme = name,
+        ThemeChoice::Picture => {
+            out.theme = theme.builtin;
             if cfg.model().is_new_family() {
                 out.wallpaper_picture = picture(nv, cfg.palette_file_named());
             }
@@ -146,7 +146,7 @@ mod tests {
     }
 
     #[test]
-    fn the_configured_wallpaper() {
+    fn the_configured_theme() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("nvdata");
         std::fs::create_dir_all(dir.join("open")).unwrap();
@@ -157,19 +157,19 @@ mod tests {
             apply(&store.config(), &nv, &mut out);
             out
         };
-        // Nothing set: the default wallpaper.
+        // Nothing set: the default theme.
         let c = ui(&store);
-        assert_eq!((c.wallpaper.as_str(), c.wallpaper_locked, c.wallpaper_picture.is_none()), ("", false, true));
+        assert_eq!((c.theme.as_str(), c.theme_locked, c.wallpaper_picture.is_none()), ("", false, true));
         // A name chosen on the phone.
-        store.update_dphone_settings(|s| s.wallpaper = Some("dusk".into())).unwrap();
-        assert_eq!(ui(&store).wallpaper, "dusk");
+        store.update_dphone_settings(|s| s.theme = Some("dusk".into())).unwrap();
+        assert_eq!(ui(&store).theme, "dusk");
 
         // A provisioned picture that is not there yet: the built-in one
         // goes on showing, and the choice is the server's (locked).
         let picture = r#"<setting id="wallpaper_file" value="user" url="file://wall.png" path="/user_wallpaper.png" conflict="freeze"/>"#;
         store.apply_fetched(&format!("<config>{picture}</config>")).unwrap();
         let c = ui(&store);
-        assert_eq!((c.wallpaper.as_str(), c.wallpaper_locked, c.wallpaper_picture.is_none()), ("dusk", true, true));
+        assert_eq!((c.theme.as_str(), c.theme_locked, c.wallpaper_picture.is_none()), ("dusk", true, true));
         // Downloaded: the picture, in the default palette.
         nv.write(WALLPAPER_FILE, PNG).unwrap();
         let c = ui(&store);
@@ -197,11 +197,11 @@ mod tests {
         // A file that is not a picture: the built-in wallpaper.
         nv.write(WALLPAPER_FILE, b"not a png").unwrap();
         let c = ui(&store);
-        assert_eq!((c.wallpaper.as_str(), c.wallpaper_picture.is_none()), ("dusk", true));
+        assert_eq!((c.theme.as_str(), c.wallpaper_picture.is_none()), ("dusk", true));
         // No longer named: back to the phone's own choice, unlocked.
         store.apply_fetched("<config></config>").unwrap();
         let c = ui(&store);
-        assert_eq!((c.wallpaper.as_str(), c.wallpaper_locked, c.wallpaper_picture.is_none()), ("dusk", false, true));
+        assert_eq!((c.theme.as_str(), c.theme_locked, c.wallpaper_picture.is_none()), ("dusk", false, true));
         // A gray model has no wallpaper picture.
         let mut gray = ConfigStore::open(Nvdata::new(&dir), Model::D50, tmp.path().join("tmp")).unwrap();
         nv.write(WALLPAPER_FILE, PNG).unwrap();

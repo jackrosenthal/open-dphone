@@ -260,6 +260,9 @@ impl Screen for Idle {
     fn wallpaper(&self) -> bool {
         true
     }
+    fn motion(&self) -> bool {
+        true
+    }
     /// The configured softkeys ([`UiConfig::idle_softkeys`]); an action's
     /// id is its place in that list, from 1.
     fn softkeys(&self, cx: &Cx) -> Vec<Soft> {
@@ -276,6 +279,9 @@ impl Screen for Idle {
                 IdleSoftkey::Dnd => tr::DND,
                 IdleSoftkey::Forward => tr::FORWARD,
                 IdleSoftkey::Redial => tr::REDIAL,
+                // Only the color models have themes.
+                IdleSoftkey::Theme if cx.th.gray => return None,
+                IdleSoftkey::Theme => tr::THEME,
                 IdleSoftkey::App(name) => {
                     // An app the phone does not have, or one that is
                     // switched off, has no softkey.
@@ -309,6 +315,8 @@ impl Screen for Idle {
                 cx.post(Command::Redial);
                 Nav::Stay
             }
+            IdleSoftkey::Theme if cx.th.gray => Nav::Stay,
+            IdleSoftkey::Theme => Nav::Push(menus::themes(cx.cfg)),
             IdleSoftkey::App(name) => {
                 cx.post(Command::LaunchApp { name: name.clone() });
                 Nav::Stay

@@ -411,6 +411,16 @@ async fn idle_softkeys() {
     assert_eq!(v["idleSoftkeys"]["locked"], true);
     let (status, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({ "softkeys": functions(&["MENU"]) })).await;
     assert_eq!((status, v["code"].as_str()), (400, Some("failed_precondition")));
+    // A color model has themes: the theme selector ends its default list
+    // and is among the softkeys it offers.  (The D40 above has neither.)
+    let p = phone(Model::D60).await;
+    let l = login(p.addr).await;
+    let (_, v) = call(&p, &l, "ConfigService/GetIdleSoftkeys", json!({})).await;
+    let v = &v["idleSoftkeys"];
+    assert_eq!(v["softkeys"], functions(&["CALL_LOG", "CONTACTS", "STATUS", "MENU", "APPS", "DND", "FORWARD", "THEME"]));
+    let offered: serde_json::Value = v["choices"].as_array().unwrap().iter().map(|c| c["softkey"].clone()).collect();
+    assert_eq!(offered, functions(&["CALL_LOG", "CONTACTS", "STATUS", "MENU", "APPS", "DND", "FORWARD", "REDIAL", "THEME"]));
+    assert_eq!(v["choices"][8]["label"], "Theme");
 }
 
 #[tokio::test]

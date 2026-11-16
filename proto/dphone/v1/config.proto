@@ -12,9 +12,10 @@ service ConfigService {
   // The softkeys of the phone's idle screen, in order.
   rpc GetIdleSoftkeys(GetIdleSoftkeysRequest) returns (GetIdleSoftkeysResponse);
   rpc SetIdleSoftkeys(SetIdleSoftkeysRequest) returns (SetIdleSoftkeysResponse);
-  // The wallpaper of a color model, which sets the colors of every screen.
-  rpc GetWallpaper(GetWallpaperRequest) returns (GetWallpaperResponse);
-  rpc SetWallpaper(SetWallpaperRequest) returns (SetWallpaperResponse);
+  // The theme of a color model: its wallpaper and the colors of every
+  // screen.
+  rpc GetTheme(GetThemeRequest) returns (GetThemeResponse);
+  rpc SetTheme(SetThemeRequest) returns (SetThemeResponse);
 }
 
 message Setting {
@@ -103,8 +104,8 @@ message BoolSetting {
   bool locked = 3;
 }
 
-// A built-in wallpaper.
-message WallpaperChoice {
+// A built-in theme.
+message ThemeChoice {
   // Its name in the configuration, e.g., "dusk".
   string id = 1;
   // The name shown.
@@ -113,31 +114,32 @@ message WallpaperChoice {
   string family = 3;
 }
 
-message Wallpaper {
-  // The built-in wallpaper in effect (the `id` of one of `choices`).  Not
+message Theme {
+  // The built-in theme in effect (the `id` of one of `choices`).  Not
   // what is shown while `picture` is set.
   string id = 1;
   SettingSource source = 2;
-  // The provisioning server fixed the wallpaper; it cannot be changed here.
+  // The provisioning server fixed the theme; it cannot be changed here.
   bool locked = 3;
-  // Every built-in wallpaper, grouped by family.
-  repeated WallpaperChoice choices = 4;
-  // The provisioning server's picture is the wallpaper, not a built-in one.
+  // Every built-in theme, grouped by family.
+  repeated ThemeChoice choices = 4;
+  // The provisioning server's picture is the wallpaper, with its palette,
+  // not a built-in theme.
   bool picture = 5;
 }
 
-message GetWallpaperRequest {}
+message GetThemeRequest {}
 
-message GetWallpaperResponse {
-  Wallpaper wallpaper = 1;
+message GetThemeResponse {
+  Theme theme = 1;
 }
 
-message SetWallpaperRequest {
-  // The `id` of a built-in wallpaper.  Empty: drop the choice made on the
-  // phone, which puts the provisioned or default wallpaper back.
+message SetThemeRequest {
+  // The `id` of a built-in theme.  Empty: drop the choice made on the
+  // phone, which puts the provisioned or default theme back.
   string id = 1;
 }
 
-message SetWallpaperResponse {
-  Wallpaper wallpaper = 1;
+message SetThemeResponse {
+  Theme theme = 1;
 }

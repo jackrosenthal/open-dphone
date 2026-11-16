@@ -32,7 +32,9 @@ fn idle(model: Model, accounts: u8) -> Ui {
             a.accounts.push(acct);
         }
     });
-    let mut ui = Ui::from_hal(&mut hal, store, UiConfig::default());
+    // The first theme: its palette is the color skin's own, which is the
+    // one measured from stock.
+    let mut ui = Ui::from_hal(&mut hal, store, UiConfig { theme: "harbor".into(), ..UiConfig::default() });
     ui.set_fixed_time(Some((5_000_000, UNIX)));
     ui.pump();
     ui

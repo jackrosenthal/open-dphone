@@ -367,13 +367,41 @@ fn provisioned_ssh_keys_combine_with_local_ones() {
     assert_eq!(s3.ssh_authorized_keys().unwrap(), [KEY_LOCAL]);
 }
 
+/// The default softkeys end with the theme selector on the models that
+/// have themes (the color ones), and with Forward on the others.
+#[test]
+fn default_idle_softkeys_by_model() {
+    use dphone_config::IdleFunction::*;
+    let common = [CallLog, Contacts, Status, Menu, Apps, Dnd, Forward].map(IdleSoftkey::Function);
+    for model in [Model::D40, Model::D45, Model::D50, Model::D60, Model::D62, Model::D65, Model::D70] {
+        let dir = TempDir::new("softkeys");
+        let nv = Nvdata::new(dir.path().join("nvdata"));
+        nv.ensure_layout().unwrap();
+        let mut s = ConfigStore::open(nv, model, dir.path().join("tmp")).unwrap();
+        let keys = s.config().idle_softkeys().keys;
+        let color = matches!(model, Model::D60 | Model::D62 | Model::D65);
+        assert_eq!(keys[..7], common, "{model:?}");
+        if color {
+            assert_eq!(keys[7..], [IdleSoftkey::Function(Theme)], "{model:?}: Theme after Forward");
+        } else {
+            assert_eq!(keys.len(), 7, "{model:?}: no theme selector");
+        }
+        // A list that names it is the list on every model (a gray
+        // model's screen leaves the softkey out).
+        s.apply_fetched(r#"<config><setting id="dphone_idle_softkeys" value="menu,theme"/></config>"#).unwrap();
+        assert_eq!(s.config().idle_softkeys().keys, [IdleSoftkey::Function(Menu), IdleSoftkey::Function(Theme)]);
+        assert_eq!(Theme.on_model(model), color);
+    }
+}
+
 #[test]
 fn idle_softkeys_sources() {
     let (_d, nv, mut s) = store();
     use dphone_config::IdleFunction::*;
     let f = IdleSoftkey::Function;
-    let default = [f(CallLog), f(Contacts), f(Status), f(Menu), f(Apps), f(Dnd), f(Forward)];
-    // Nothing set: the default list.
+    // Nothing set: the default list, which on this color model ends with
+    // the theme selector.
+    let default = [f(CallLog), f(Contacts), f(Status), f(Menu), f(Apps), f(Dnd), f(Forward), f(Theme)];
     let c = s.config();
     assert_eq!(c.idle_softkeys().keys, default);
     assert_eq!((c.idle_softkeys().source, c.idle_softkeys().locked), (SettingSource::Default, false));
@@ -465,68 +493,68 @@ fn a_provisioned_allow_app_dev_is_carried_and_unused() {
 }
 
 #[test]
-fn wallpaper_sources() {
-    use dphone_config::{Wallpaper, WallpaperChoice};
+fn theme_sources() {
+    use dphone_config::{Theme, ThemeChoice};
     use SettingSource::*;
     let (dir, nv, mut s) = store();
-    let builtin = |name: &str, source, locked, fallback: &str| Wallpaper {
-        choice: WallpaperChoice::Builtin(name.into()),
+    let builtin = |name: &str, source, locked, fallback: &str| Theme {
+        choice: ThemeChoice::Builtin(name.into()),
         source,
         locked,
         builtin: fallback.into(),
     };
-    let picture = |source, locked, fallback: &str| Wallpaper { choice: WallpaperChoice::Picture, source, locked, builtin: fallback.into() };
-    // Nothing set: the default wallpaper (no name).
-    assert_eq!(s.config().wallpaper(), builtin("", Default, false, ""));
+    let picture = |source, locked, fallback: &str| Theme { choice: ThemeChoice::Picture, source, locked, builtin: fallback.into() };
+    // Nothing set: the default theme (no name).
+    assert_eq!(s.config().theme(), builtin("", Default, false, ""));
     assert!(!s.config().palette_file_named());
 
     // A name chosen on the phone is kept in the settings file, and comes
     // back after a restart.
-    let c = s.update_dphone_settings(|d| d.wallpaper = Some(" Dusk ".into())).unwrap();
-    assert_eq!(c.wallpaper(), builtin("dusk", Local, false, "dusk"));
-    assert!(nv.read_string(FILE).unwrap().unwrap().contains("wallpaper: \" Dusk \""));
-    assert_eq!(reopen(&dir, &nv).config().wallpaper(), builtin("dusk", Local, false, "dusk"));
+    let c = s.update_dphone_settings(|d| d.theme = Some(" Dusk ".into())).unwrap();
+    assert_eq!(c.theme(), builtin("dusk", Local, false, "dusk"));
+    assert!(nv.read_string(FILE).unwrap().unwrap().contains("theme: \" Dusk \""));
+    assert_eq!(reopen(&dir, &nv).config().theme(), builtin("dusk", Local, false, "dusk"));
     // It is not a stock setting ID.
-    assert!(s.set("dphone_wallpaper", "tides").is_err());
+    assert!(s.set("dphone_theme", "tides").is_err());
 
     // A provisioned name: the name chosen on the phone goes first, unless
     // the server froze its own.
-    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_wallpaper" value="Tides"/>"#)).unwrap();
-    assert_eq!(c.wallpaper(), builtin("dusk", Local, false, "dusk"));
-    let c = s.update_dphone_settings(|d| d.wallpaper = None).unwrap();
-    assert_eq!(c.wallpaper(), builtin("tides", Provisioned, false, "tides"));
+    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_theme" value="Tides"/>"#)).unwrap();
+    assert_eq!(c.theme(), builtin("dusk", Local, false, "dusk"));
+    let c = s.update_dphone_settings(|d| d.theme = None).unwrap();
+    assert_eq!(c.theme(), builtin("tides", Provisioned, false, "tides"));
     // An empty name on the phone is no choice.
-    let c = s.update_dphone_settings(|d| d.wallpaper = Some("  ".into())).unwrap();
-    assert_eq!(c.wallpaper(), builtin("tides", Provisioned, false, "tides"));
-    let c = s.update_dphone_settings(|d| d.wallpaper = Some("slate".into())).unwrap();
-    assert_eq!(c.wallpaper(), builtin("slate", Local, false, "slate"));
-    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_wallpaper" value="tides" conflict="freeze"/>"#)).unwrap();
-    assert_eq!(c.wallpaper(), builtin("tides", Provisioned, true, "slate"));
+    let c = s.update_dphone_settings(|d| d.theme = Some("  ".into())).unwrap();
+    assert_eq!(c.theme(), builtin("tides", Provisioned, false, "tides"));
+    let c = s.update_dphone_settings(|d| d.theme = Some("slate".into())).unwrap();
+    assert_eq!(c.theme(), builtin("slate", Local, false, "slate"));
+    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_theme" value="tides" conflict="freeze"/>"#)).unwrap();
+    assert_eq!(c.theme(), builtin("tides", Provisioned, true, "slate"));
     // A name the configuration layer does not judge: the UI shows the
-    // default wallpaper for one it does not have.
-    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_wallpaper" value="no-such"/>"#)).unwrap();
-    assert_eq!(c.wallpaper(), builtin("slate", Local, false, "slate"));
+    // default theme for one it does not have.
+    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_theme" value="no-such"/>"#)).unwrap();
+    assert_eq!(c.theme(), builtin("slate", Local, false, "slate"));
 
     // A provisioned picture (stock's setting, as a DPMA server sends it:
     // frozen) goes before everything; unfrozen, after the phone's choice;
     // and before a provisioned name.
     let file = r#"<setting id="wallpaper_file" value="user" url="file://wall.png" path="/user_wallpaper.png" conflict="freeze"/>"#;
     let c = s.apply_fetched(&provisioned(file)).unwrap();
-    assert_eq!(c.wallpaper(), picture(Provisioned, true, "slate"));
+    assert_eq!(c.theme(), picture(Provisioned, true, "slate"));
     assert!(!c.palette_file_named());
-    let unfrozen = r#"<setting id="wallpaper_file" value="user" url="http://pbx/wall.png"/><setting id="dphone_wallpaper" value="tides"/>"#;
+    let unfrozen = r#"<setting id="wallpaper_file" value="user" url="http://pbx/wall.png"/><setting id="dphone_theme" value="tides"/>"#;
     let c = s.apply_fetched(&provisioned(unfrozen)).unwrap();
-    assert_eq!(c.wallpaper(), builtin("slate", Local, false, "slate"));
-    let c = s.update_dphone_settings(|d| d.wallpaper = None).unwrap();
-    assert_eq!(c.wallpaper(), picture(Provisioned, false, "tides"));
+    assert_eq!(c.theme(), builtin("slate", Local, false, "slate"));
+    let c = s.update_dphone_settings(|d| d.theme = None).unwrap();
+    assert_eq!(c.theme(), picture(Provisioned, false, "tides"));
     // The setting without a URL names no picture.
     let c = s.apply_fetched(&provisioned(r#"<setting id="wallpaper_file" value="user" url=""/>"#)).unwrap();
-    assert_eq!(c.wallpaper(), builtin("", Default, false, ""));
+    assert_eq!(c.theme(), builtin("", Default, false, ""));
 
     // The palette file is named beside the picture.
     let both = format!(r#"{file}<setting id="dphone_palette_file" value="user" url="file://wall.txtpb" conflict="freeze"/>"#);
     let c = s.apply_fetched(&provisioned(&both)).unwrap();
-    assert_eq!(c.wallpaper(), picture(Provisioned, true, ""));
+    assert_eq!(c.theme(), picture(Provisioned, true, ""));
     assert!(c.palette_file_named());
     assert_eq!(c.setting_attr("dphone_palette_file", "url"), Some("file://wall.txtpb"));
 }

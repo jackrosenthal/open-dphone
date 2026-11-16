@@ -4,7 +4,9 @@
 //! the idle screen's text against the wallpaper behind it); the colors
 //! with a meaning keep it; an unknown name is the default; a new
 //! wallpaper re-themes every screen at once, apps included; and the
-//! default wallpaper leaves every screen as it was.
+//! first wallpaper leaves every screen as it was.  The wallpapers that
+//! move do so on the idle screen and in the theme selector, and nowhere
+//! else; the theme selector is on a softkey.
 //!
 //! `contact_sheets` writes one picture per family, and one of them all,
 //! of the idle screen and a menu over every wallpaper: into the directory
@@ -13,7 +15,7 @@
 
 use dphone_hal::{Hal, Screen};
 use dphone_state::*;
-use dphone_state::{WallpaperName, WALLPAPERS};
+use dphone_state::{ThemeName, DEFAULT_THEME, THEMES};
 use dphone_ui::appview::{AppEvent, AppView, Font, ThemeColor};
 use dphone_ui::gfx::{Canvas, HAlign, IRect, Rgb};
 use dphone_ui::skin::Theme;
@@ -88,7 +90,7 @@ impl Rig {
     }
 
     fn named(wallpaper: &str) -> Rig {
-        Rig::new(UiConfig { wallpaper: wallpaper.into(), ..UiConfig::default() })
+        Rig::new(UiConfig { theme: wallpaper.into(), ..UiConfig::default() })
     }
 
     fn tap(&mut self, key: Key) {
@@ -143,7 +145,10 @@ fn at(pixels: &[u32], x: i32, y: i32) -> Rgb {
 fn the_list_is_well_formed() {
     let all = wallpaper::all();
     assert!((30..=45).contains(&all.len()), "{} wallpapers", all.len());
-    assert_eq!(wallpaper::default().id, all[0].id);
+    // The default theme is Tides; the first in the list is the picture
+    // the firmware first had.
+    assert_eq!((wallpaper::default().id, DEFAULT_THEME), ("tides", "tides"));
+    assert_eq!(wallpaper::first().id, all[0].id);
     for (i, w) in all.iter().enumerate() {
         assert!(!w.id.is_empty() && w.id.bytes().all(|c| c.is_ascii_lowercase() || c == b'-'), "{}", w.id);
         assert!(!w.name.is_empty() && w.name.len() <= 14, "{}", w.name);
@@ -152,8 +157,8 @@ fn the_list_is_well_formed() {
     }
     // The list by name that the configuration and the web UI use is this
     // list.
-    let names: Vec<WallpaperName> = all.iter().map(|w| WallpaperName { id: w.id, name: w.name, family: w.family.name() }).collect();
-    assert_eq!(names, WALLPAPERS);
+    let names: Vec<ThemeName> = all.iter().map(|w| ThemeName { id: w.id, name: w.name, family: w.family.name() }).collect();
+    assert_eq!(names, THEMES);
     // Grouped by family, in the families' order, none empty.
     let order: Vec<usize> = all.iter().map(|w| Family::ALL.iter().position(|f| *f == w.family).unwrap()).collect();
     assert!(order.is_sorted(), "{order:?}");
@@ -162,13 +167,13 @@ fn the_list_is_well_formed() {
     }
 }
 
-/// The default wallpaper's palette is the color skin's own, role for
-/// role, and its theme is the skin's theme itself: every screen is drawn
-/// as it was before there were palettes.
+/// The first wallpaper's palette is the color skin's own, role for
+/// role, and its theme is the skin's theme itself: with it, every screen
+/// is drawn as it was before there were palettes.
 #[test]
-fn the_default_wallpaper_keeps_the_skins_palette() {
+fn the_first_wallpaper_keeps_the_skins_palette() {
     let skin = Theme::for_model(Model::D65);
-    let default = wallpaper::default();
+    let default = wallpaper::first();
     assert_eq!(default.scheme, Scheme::Skin);
     assert_eq!(default.palette(), skin.palette());
     assert!(std::ptr::eq(Theme::for_wallpaper(default), skin));
@@ -245,8 +250,8 @@ fn pinned_pictures() {
 /// pinned hash above and these pixels are of that picture as the code
 /// before this one drew it (worked out from that code, separately).
 #[test]
-fn the_default_is_the_original_picture() {
-    let p = wallpaper::default().render();
+fn the_first_is_the_original_picture() {
+    let p = wallpaper::first().render();
     for (x, y, want) in
         [(0, 0, 0x152031), (479, 0, 0x151E2C), (60, 0, 0x172846), (100, 100, 0x10274C), (300, 200, 0x0D2144), (0, 271, 0x202122)]
     {
@@ -442,14 +447,14 @@ fn every_screen_is_drawn_in_the_wallpapers_palette() {
 /// palette, and an app in the foreground is told to draw again.
 #[test]
 fn a_new_wallpaper_rethemes_at_once() {
-    let mut r = Rig::named("");
+    let mut r = Rig::named("harbor");
     let handle = r.ui.handle();
     r.show("settings");
     let skin = Theme::for_model(Model::D65);
     assert_eq!(at(&r.frame(), 470, 5), skin.title_bg);
     let dusk = Theme::for_wallpaper(wallpaper::find("dusk").unwrap());
     assert_ne!(dusk.title_bg, skin.title_bg);
-    handle.set_config(UiConfig { wallpaper: "dusk".into(), utc_offset_secs: -7 * 3600, backlight_timeout_secs: 0, ..UiConfig::default() });
+    handle.set_config(UiConfig { theme: "dusk".into(), utc_offset_secs: -7 * 3600, backlight_timeout_secs: 0, ..UiConfig::default() });
     let frame = r.frame();
     assert_eq!(at(&frame, 470, 5), dusk.title_bg);
     assert_eq!(at(&frame, 440, dusk.title_h + 8), dusk.sel_bg);
@@ -468,15 +473,51 @@ fn a_new_wallpaper_rethemes_at_once() {
     // The palette changes under it: the colors follow, and the app is
     // told it is in the foreground (again), on which apps draw.
     let tides = Theme::for_wallpaper(wallpaper::find("tides").unwrap());
-    handle.set_config(UiConfig { wallpaper: "tides".into(), utc_offset_secs: -7 * 3600, backlight_timeout_secs: 0, ..UiConfig::default() });
+    handle.set_config(UiConfig { theme: "tides".into(), utc_offset_secs: -7 * 3600, backlight_timeout_secs: 0, ..UiConfig::default() });
     r.ui.pump();
     assert_eq!(view.theme_color(ThemeColor::TitleBackground), rgb(tides.title_bg));
     assert_eq!(view.theme_color(ThemeColor::Background), rgb(tides.bg));
     assert_eq!(events.try_recv(), Some(AppEvent::Foreground));
     // The same configuration again changes nothing and tells no one.
-    handle.set_config(UiConfig { wallpaper: "tides".into(), utc_offset_secs: -7 * 3600, backlight_timeout_secs: 0, ..UiConfig::default() });
+    handle.set_config(UiConfig { theme: "tides".into(), utc_offset_secs: -7 * 3600, backlight_timeout_secs: 0, ..UiConfig::default() });
     r.ui.pump();
     assert_eq!(events.try_recv(), None);
+    // A view made by the UI (as the app host makes them) has the theme's
+    // colors from the start, before it is on screen, for every role: an
+    // app asks for its colors as it starts.  They follow a new theme
+    // while the view is still not on screen.
+    let roles = |th: &'static Theme| {
+        [
+            (ThemeColor::Background, th.bg),
+            (ThemeColor::Foreground, th.fg),
+            (ThemeColor::TitleBackground, th.title_bg),
+            (ThemeColor::TitleForeground, th.title_fg),
+            (ThemeColor::SelectBackground, th.sel_bg),
+            (ThemeColor::SelectForeground, th.sel_fg),
+            (ThemeColor::Secondary, th.secondary),
+            (ThemeColor::Border, th.border),
+        ]
+    };
+    let (made, _events) = handle.new_view("early", Model::D65);
+    for (role, color) in roles(tides) {
+        assert_eq!(made.theme_color(role), rgb(color), "{role:?} before the view is on screen");
+    }
+    assert_ne!(tides.bg, skin.bg);
+    handle.set_config(UiConfig { theme: "merlot".into(), utc_offset_secs: -7 * 3600, backlight_timeout_secs: 0, ..UiConfig::default() });
+    r.ui.pump();
+    let merlot = Theme::for_wallpaper(wallpaper::find("merlot").unwrap());
+    for (role, color) in roles(merlot) {
+        assert_eq!(made.theme_color(role), rgb(color), "{role:?} after the theme changed");
+    }
+    // The default theme, with nothing configured, is no exception.
+    let mut fresh = Rig::named("");
+    let (made, _events) = fresh.ui.handle().new_view("early", Model::D65);
+    fresh.ui.pump();
+    assert_eq!(made.theme_color(ThemeColor::Background), rgb(tides.bg));
+    // A gray model has its skin's colors, as ever.
+    let gray = Rig::with_model(Model::D50, UiConfig::default());
+    let (made, _events) = gray.ui.handle().new_view("early", Model::D50);
+    assert_eq!(made.theme_color(ThemeColor::Background), (255, 255, 255));
 }
 
 /// The wallpaper selector, in the Display menu on the color models: it
@@ -484,13 +525,13 @@ fn a_new_wallpaper_rethemes_at_once() {
 /// wallpaper's palette, with a bubble at the bottom that names it between
 /// two arrows; Left and Right step through the wallpapers; Select saves.
 #[test]
-fn the_wallpaper_selector_is_the_idle_screen_with_a_bubble() {
-    let mut r = Rig::named("");
+fn the_theme_selector_is_the_idle_screen_with_a_bubble() {
+    let mut r = Rig::named("harbor");
     r.show("settings");
     r.tap(Key::Digit(3)); // Display
     assert_eq!(r.ui.screen_name(), "display");
-    r.tap(Key::Digit(4)); // Wallpaper
-    assert_eq!(r.ui.screen_name(), "wallpaper");
+    r.tap(Key::Digit(4)); // Theme
+    assert_eq!(r.ui.screen_name(), "theme");
     let all = wallpaper::all();
     let skin = Theme::for_model(Model::D65);
     // The bubble: centered under the date, left of the tabs, above the
@@ -531,7 +572,7 @@ fn the_wallpaper_selector_is_the_idle_screen_with_a_bubble() {
         let name = (bubble.y..bubble.bottom()).flat_map(|y| (bubble.x + 30..bubble.right() - 30).map(move |x| (x, y)));
         assert!(name.filter(|(x, y)| at(frame, *x, *y) == th.sk_fg).count() > 60, "{}: the name", w.id);
     };
-    assert_eq!(at(&idle_frame(""), 400, 200), at(&all[0].render(), 400, 200));
+    assert_eq!(at(&idle_frame("harbor"), 400, 200), at(&all[0].render(), 400, 200));
     is_idle_with_bubble(&r.frame(), &all[0]);
     // Right: the next wallpaper fills the screen, in its palette, at once.
     r.tap(Key::Right);
@@ -560,7 +601,7 @@ fn the_wallpaper_selector_is_the_idle_screen_with_a_bubble() {
     r.tap(Key::Right);
     r.tap(Key::Right);
     r.tap(Key::Soft(1));
-    assert_eq!(r.commands(), vec![Command::SetWallpaper { name: all[2].id.into() }]);
+    assert_eq!(r.commands(), vec![Command::SetTheme { name: all[2].id.into() }]);
     assert_eq!(r.ui.screen_name(), "display");
     // No family is named anywhere on the screen: nothing but the idle
     // screen and the bubble is drawn (checked above, pixel for pixel).
@@ -569,15 +610,15 @@ fn the_wallpaper_selector_is_the_idle_screen_with_a_bubble() {
 /// A wallpaper the provisioning server fixed can be looked at, not set.
 #[test]
 fn a_fixed_wallpaper_cannot_be_changed_in_the_menu() {
-    let mut r = Rig::new(UiConfig { wallpaper: "slate".into(), wallpaper_locked: true, ..UiConfig::default() });
+    let mut r = Rig::new(UiConfig { theme: "slate".into(), theme_locked: true, ..UiConfig::default() });
     r.show("settings");
     r.tap(Key::Digit(3));
     r.tap(Key::Digit(4));
-    assert_eq!(r.ui.screen_name(), "wallpaper");
+    assert_eq!(r.ui.screen_name(), "theme");
     r.tap(Key::Right);
     r.tap(Key::Soft(1));
     r.tap(Key::Select);
-    assert_eq!(r.ui.screen_name(), "wallpaper");
+    assert_eq!(r.ui.screen_name(), "theme");
     assert!(r.commands().is_empty());
 }
 
@@ -596,12 +637,12 @@ fn a_wallpaper_picture_and_its_palette() {
     assert_eq!(plain.pixels().len(), (WIDTH * HEIGHT) as usize);
     assert_eq!((at(plain.pixels(), 10, 10), at(plain.pixels(), 470, 260)), (0x401010, 0x101040));
     // It wins over a built-in wallpaper's name, palette and all.
-    let mut r = Rig::new(UiConfig { wallpaper: "dusk".into(), wallpaper_picture: Some(plain), ..UiConfig::default() });
+    let mut r = Rig::new(UiConfig { theme: "dusk".into(), wallpaper_picture: Some(plain), ..UiConfig::default() });
     let frame = r.frame();
     assert_eq!((at(&frame, 4, 250), at(&frame, 400, 200)), (0x401010, 0x101040));
     assert_eq!(at(&frame, skin.softkey_rect(0).x + 1, skin.soft_y + 3), skin.sk_bg);
     r.show("settings");
-    assert_eq!(r.frame(), menu_frame(""), "the skin's own palette");
+    assert_eq!(r.frame(), menu_frame("harbor"), "the skin's own palette");
     // With a palette of its own.
     let mut palette = wallpaper::find("merlot").unwrap().palette();
     palette.title_bg = 0x123456;
@@ -623,7 +664,7 @@ fn gray_models_are_unaffected() {
         let image = dphone_ui::image::Image { width: 1, height: 1, pixels: vec![255, 0, 0, 255].into() };
         let picture = std::sync::Arc::new(Picture::new(&image, Some(wallpaper::find("sunrise").unwrap().palette())));
         let mut plain = Rig::with_model(model, UiConfig::default());
-        let mut named = Rig::with_model(model, UiConfig { wallpaper: "sunrise".into(), ..UiConfig::default() });
+        let mut named = Rig::with_model(model, UiConfig { theme: "sunrise".into(), ..UiConfig::default() });
         let mut pictured = Rig::with_model(model, UiConfig { wallpaper_picture: Some(picture), ..UiConfig::default() });
         assert_eq!(named.frame(), plain.frame(), "{model}: idle");
         assert_eq!(pictured.frame(), plain.frame(), "{model}: idle");
@@ -642,6 +683,293 @@ fn gray_models_are_unaffected() {
 }
 
 // ---------------------------------------------------------- contact sheets
+
+/// The wallpapers that move.
+const MOVING: [&str; 8] = ["regatta", "bokeh", "fizz", "lanterns", "orbit", "tides", "dunes", "drift"];
+
+/// How many pixels differ, and the largest difference of a channel.
+fn difference(a: &[u32], b: &[u32]) -> (usize, u32) {
+    let mut most = 0;
+    let count = a
+        .iter()
+        .zip(b)
+        .filter(|(p, q)| p != q)
+        .inspect(|(p, q)| {
+            for shift in [16, 8, 0] {
+                most = most.max(((*p >> shift) & 255).abs_diff((*q >> shift) & 255));
+            }
+        })
+        .count();
+    (count, most)
+}
+
+/// Eight wallpapers move, slowly: a frame is the picture of a time and
+/// nothing else, it comes back after a cycle, and drawing only what
+/// moved since the frame before gives the picture drawn whole.  The text
+/// of the idle screen can be read on every frame.
+#[test]
+fn the_moving_wallpapers() {
+    let moving: Vec<&str> = wallpaper::all().iter().filter(|w| w.frame_ms().is_some()).map(|w| w.id).collect();
+    assert_eq!(moving, MOVING);
+    for w in wallpaper::all().iter().filter(|w| w.frame_ms().is_none()) {
+        // The others are their still pictures at every time.
+        if ["harbor", "dusk", "pebbles", "houndstooth"].contains(&w.id) {
+            assert_eq!(w.render_at(12_345), w.render(), "{}", w.id);
+        }
+    }
+    let mut failures = Vec::new();
+    for id in MOVING {
+        let w = wallpaper::find(id).unwrap();
+        let every = u64::from(w.frame_ms().unwrap());
+        // Four to ten frames a second.
+        assert!((100..=250).contains(&every), "{id}: a frame every {every} ms");
+        let th = Theme::for_wallpaper(w);
+        // The picture of a time: the same every time, and a cycle later.
+        let start = 7_000;
+        let first = w.render_at(start);
+        assert_eq!(first, w.render_at(start), "{id}");
+        assert_eq!(first, w.render_at(start + wallpaper::CYCLE_MS), "{id}: after a cycle");
+        assert_eq!(first, w.render_at(start + 5 * wallpaper::CYCLE_MS), "{id}: after five cycles");
+        // Frame after frame, each drawn from the one before, is the
+        // picture drawn whole; each differs from the one before, and by
+        // little (the motion is slow), and after a few seconds by more.
+        let mut last = first.clone();
+        assert!(w.with_frame(start, |f| f == first.as_slice()), "{id}");
+        for n in 1..=24 {
+            let t = start + n * every;
+            let whole = w.render_at(t);
+            assert!(w.with_frame(t, |f| f == whole.as_slice()), "{id}: frame {n} drawn from the one before");
+            let (count, most) = difference(&last, &whole);
+            assert!(count > 0, "{id}: frame {n} is the frame before");
+            assert!(most <= 96, "{id}: frame {n} differs from the one before by {most} in a channel");
+            last = whole;
+        }
+        // A frame that is skipped to (the UI was busy), and one before.
+        for t in [start + 31_000, start + 2_000] {
+            let whole = w.render_at(t);
+            assert!(w.with_frame(t, |f| f == whole.as_slice()), "{id}: the frame of {t}");
+        }
+        assert!(difference(&first, &w.render_at(start + 5_000)).0 > 2_000, "{id}: five seconds later");
+        // Every frame is the wallpaper still: no pixel far from the
+        // still picture's, and the idle screen's text can be read.
+        for t in (0..wallpaper::CYCLE_MS).step_by(1_500) {
+            let frame = w.render_at(t);
+            for (what, area) in text_areas(th) {
+                let ratio = least_contrast(&frame, area, th.wallpaper_fg);
+                if ratio < TEXT {
+                    failures.push(format!("{id} at {t} ms: {what}: {ratio:.2}, under {TEXT}"));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "frames on which text cannot be read:\n{}", failures.join("\n"));
+    // The flow's frame at the start of a cycle is its still picture, to
+    // within two steps of a channel (the frames keep a channel away from
+    // its ends, and take the waves from tables).
+    let regatta = wallpaper::find("regatta").unwrap();
+    let (_, most) = difference(&regatta.render_at(0), &regatta.render());
+    assert!(most <= 2, "regatta at the start of a cycle: {most} from its still picture");
+}
+
+/// The wallpaper moves on the idle screen and in the theme selector, and
+/// nowhere else: not under a menu, not behind a call, not on a gray
+/// model, not while the backlight is off.  A new frame is due a frame's
+/// time after the last.
+#[test]
+fn the_wallpaper_moves_on_the_idle_screen_only() {
+    let tides = wallpaper::find("tides").unwrap();
+    let mut r = Rig::with_model(Model::D60, UiConfig { theme: "tides".into(), ..UiConfig::default() });
+    // Where no text or tab is: the wallpaper itself.
+    let spot = |frame: &[u32]| -> Vec<u32> { (100..244).flat_map(|y| (0..30).map(move |x| (x, y))).map(|(x, y)| at(frame, x, y)).collect() };
+    // The time is fixed (as in every other test here): the still picture.
+    let still = r.frame();
+    assert_eq!(spot(&still), spot(&tides.render()));
+    assert_eq!(r.ui.motion_deadline(), None);
+    // With a time for the motion: the frame of that time, and the next
+    // is due.
+    r.ui.set_motion_time(Some(3_000));
+    let a = r.frame();
+    assert_eq!(spot(&a), spot(&tides.render_at(3_000)));
+    assert_ne!(spot(&a), spot(&still));
+    let due = r.ui.motion_deadline().expect("the next frame is due");
+    let now = clock::mono_ms();
+    assert!(due <= now + 125 && due + 125 >= now, "due {due} at {now}");
+    r.ui.set_motion_time(Some(9_000));
+    let b = r.frame();
+    assert_eq!(spot(&b), spot(&tides.render_at(9_000)));
+    assert_ne!(spot(&a), spot(&b), "frames differ over time");
+    // The clock, the tabs, and the softkeys are where they were.
+    assert_eq!(at(&a, 400, 20), at(&b, 400, 20));
+    let key = Theme::for_wallpaper(tides).softkey_rect(0);
+    assert_eq!(at(&b, key.x + 1, key.y + 3), Theme::for_wallpaper(tides).sk_bg);
+
+    // Under a menu nothing moves, and no frame is due.
+    r.show("settings");
+    r.ui.set_motion_time(Some(12_000));
+    let menu = r.frame();
+    assert_eq!(r.ui.motion_deadline(), None);
+    r.ui.set_motion_time(Some(15_000));
+    assert_eq!(r.frame(), menu);
+    assert_eq!(r.ui.motion_deadline(), None);
+    // The theme selector shows the wallpaper as the idle screen does.
+    r.show("theme");
+    assert_eq!(r.ui.screen_name(), "theme");
+    assert_eq!(spot(&r.frame()), spot(&tides.render_at(15_000)));
+    assert!(r.ui.motion_deadline().is_some());
+    // The selection on a theme that does not move (Glacier, before
+    // Tides): nothing is due.  Back on Tides, a frame is.
+    r.tap(Key::Left);
+    assert_eq!(r.ui.motion_deadline(), None);
+    r.tap(Key::Right);
+    assert!(r.ui.motion_deadline().is_some());
+    r.show("idle");
+    assert!(r.ui.motion_deadline().is_some());
+
+    // Behind a call the wallpaper is its still picture.
+    let id = r.store.next_call_id();
+    r.store.update::<Calls, _>(|c| {
+        let mut call = Call::new(id, AccountId(0), Direction::Incoming, Party { number: "1002".into(), ..Default::default() });
+        call.state = CallState::Ringing;
+        c.calls.push(call);
+        c.focused = Some(id);
+    });
+    let call = r.frame();
+    assert_ne!(r.ui.screen_name(), "idle");
+    assert_eq!(r.ui.motion_deadline(), None);
+    assert_eq!(at(&call, 2, 242), at(&tides.render(), 2, 242));
+    r.store.update::<Calls, _>(|c| {
+        c.calls.clear();
+        c.focused = None;
+    });
+    r.show("idle");
+    assert_eq!(spot(&r.frame()), spot(&tides.render_at(15_000)));
+
+    // A theme that does not move; a provisioned picture; a gray model.
+    let mut dusk = Rig::named("dusk");
+    dusk.ui.set_motion_time(Some(3_000));
+    assert_eq!(dusk.frame(), idle_frame("dusk"));
+    assert_eq!(dusk.ui.motion_deadline(), None);
+    let image = dphone_ui::image::Image { width: 2, height: 2, pixels: vec![0x40; 16].into() };
+    let picture = std::sync::Arc::new(Picture::new(&image, None));
+    let mut pictured = Rig::new(UiConfig { theme: "tides".into(), wallpaper_picture: Some(picture), ..UiConfig::default() });
+    pictured.ui.set_motion_time(Some(3_000));
+    pictured.frame();
+    assert_eq!(pictured.ui.motion_deadline(), None);
+    let mut gray = Rig::with_model(Model::D50, UiConfig { theme: "tides".into(), ..UiConfig::default() });
+    let before = gray.frame();
+    gray.ui.set_motion_time(Some(3_000));
+    assert_eq!(gray.frame(), before);
+    assert_eq!(gray.ui.motion_deadline(), None);
+}
+
+/// By the clock: frames follow one another on the idle screen, and stop
+/// when the backlight goes off (dimmed to nothing), until a key lights it
+/// again.  A backlight that is dimmed and still gives light leaves the
+/// wallpaper moving.
+#[test]
+fn the_motion_stops_while_the_backlight_is_off() {
+    let tides = wallpaper::find("tides").unwrap();
+    let spot = |frame: &[u32]| -> Vec<u32> { (100..244).flat_map(|y| (0..30).map(move |x| (x, y))).map(|(x, y)| at(frame, x, y)).collect() };
+    let wait = |ms| std::thread::sleep(std::time::Duration::from_millis(ms));
+    for (dim_level, moves_when_dim) in [(0, false), (2, true)] {
+        let cfg = UiConfig { theme: "tides".into(), dim_backlight: true, backlight_dim_level: dim_level, ..UiConfig::default() };
+        let mut r = Rig::with_model(Model::D60, cfg.clone());
+        // The clock runs; the backlight dims after a second without a key.
+        r.ui.set_fixed_time(None);
+        r.ui.handle().set_config(UiConfig { utc_offset_secs: -7 * 3600, backlight_timeout_secs: 1, ..cfg });
+        r.tap(Key::Cancel);
+        let first = r.frame();
+        assert!(r.ui.motion_deadline().is_some());
+        assert!(r.store.read::<dphone_state::Ui, _>(|u| u.backlight_on));
+        // Half a second on, the frame is another: the UI drew it because
+        // it was due, with nothing else to do.
+        wait(500);
+        let second = r.frame();
+        assert_ne!(spot(&first), spot(&second), "dim level {dim_level}: frames differ over time");
+        // Past the timeout the backlight is dimmed.
+        wait(1_000);
+        let dimmed = r.frame();
+        assert_eq!(r.store.read::<dphone_state::Ui, _>(|u| u.backlight_on), moves_when_dim);
+        assert_eq!(r.ui.motion_deadline().is_some(), moves_when_dim, "dim level {dim_level}");
+        wait(400);
+        let later = r.frame();
+        if moves_when_dim {
+            assert_ne!(spot(&dimmed), spot(&later), "dimmed, with light: the wallpaper moves");
+        } else {
+            // Dark: nothing is drawn, and what is there is the still
+            // picture.
+            assert_eq!(later, dimmed);
+            assert_eq!(spot(&later), spot(&tides.render()));
+            // A key lights the screen, and the motion goes on.
+            r.tap(Key::Cancel);
+            assert!(r.store.read::<dphone_state::Ui, _>(|u| u.backlight_on));
+            assert!(r.ui.motion_deadline().is_some());
+            assert_ne!(spot(&r.frame()), spot(&tides.render()));
+        }
+    }
+}
+
+/// The theme selector is on a softkey of the color models, after
+/// Forward; a gray model, which has no themes, leaves the softkey out.
+#[test]
+fn the_theme_softkey() {
+    use dphone_ui::IdleSoftkey::{Apps, CallLog, Contacts, Dnd, Forward, Menu, Redial, Status};
+    const THEME: dphone_ui::IdleSoftkey = dphone_ui::IdleSoftkey::Theme;
+    // The default softkeys of a color model (`dphone-config` has them
+    // for each model): three to a page behind "More".
+    let keys = vec![CallLog, Contacts, Status, Menu, Apps, Dnd, Forward, THEME];
+    let mut r = Rig::new(UiConfig { theme: "dusk".into(), idle_softkeys: keys, ..UiConfig::default() });
+    r.tap(Key::Soft(4));
+    r.tap(Key::Soft(4));
+    r.tap(Key::Soft(1));
+    assert_eq!(r.ui.screen_name(), "forward");
+    r.tap(Key::Cancel);
+    r.tap(Key::Soft(4));
+    r.tap(Key::Soft(4));
+    r.tap(Key::Soft(2));
+    assert_eq!(r.ui.screen_name(), "theme");
+    // The selector, on the theme in use: Right and Select choose the
+    // next one, and Back and Select both lead back to the idle screen.
+    let all = wallpaper::all();
+    let dusk = all.iter().position(|w| w.id == "dusk").unwrap();
+    r.tap(Key::Right);
+    r.tap(Key::Select);
+    assert_eq!(r.commands(), vec![Command::SetTheme { name: all[dusk + 1].id.into() }]);
+    assert_eq!(r.ui.screen_name(), "idle");
+    // The softkey says "Theme": the page with it differs from the same
+    // page without it only in the second softkey.
+    let labels = |cfg_keys: Vec<dphone_ui::IdleSoftkey>| {
+        let mut r = Rig::new(UiConfig { theme: "dusk".into(), idle_softkeys: cfg_keys, ..UiConfig::default() });
+        r.tap(Key::Soft(4));
+        r.tap(Key::Soft(4));
+        r.frame()
+    };
+    let th = Theme::for_wallpaper(wallpaper::find("dusk").unwrap());
+    let (with, without) = (labels(vec![CallLog, Contacts, Status, Menu, Apps, Dnd, Forward, THEME]), labels(vec![CallLog, Contacts, Status, Menu, Apps, Dnd, Forward, Redial]));
+    let key = th.softkey_rect(1);
+    let label = |f: &[u32]| (key.y..key.bottom()).flat_map(|y| (key.x..key.right()).map(move |x| (x, y))).filter(|(x, y)| at(f, *x, *y) == th.sk_fg).count();
+    assert!(label(&with) > 30 && label(&with) != label(&without));
+
+    // A gray model: the softkey is not there, so the second softkey is
+    // the one after it, and there is no third.
+    let mut gray = Rig::with_model(Model::D50, UiConfig { idle_softkeys: vec![Menu, THEME, Forward], ..UiConfig::default() });
+    gray.tap(Key::Soft(2));
+    assert_eq!(gray.ui.screen_name(), "forward");
+    gray.tap(Key::Cancel);
+    gray.tap(Key::Soft(3));
+    assert_eq!(gray.ui.screen_name(), "idle");
+    // Nor can the selector be asked for, and the Display menu has no
+    // such item (its last is the backlight timeout).
+    let asked = gray.store.send(Command::ShowScreen { name: "theme".into() });
+    gray.ui.pump();
+    assert!(asked.wait().is_err());
+    assert_ne!(gray.ui.screen_name(), "theme");
+    gray.show("settings");
+    gray.tap(Key::Digit(3));
+    assert_eq!(gray.ui.screen_name(), "display");
+    gray.tap(Key::Digit(5));
+    assert_ne!(gray.ui.screen_name(), "theme");
+}
 
 fn write_png(path: &std::path::Path, c: &Canvas) {
     let rgb: Vec<u8> = c.pixels().iter().flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8]).collect();
@@ -733,7 +1061,7 @@ fn contact_sheets() {
     let mut c = Canvas::new((12 + 2 * (WIDTH + 12)) as u16, (12 + 3 * (HEIGHT + 12)) as u16, false);
     c.clear(0x2B2B2B);
     for (i, id) in shown.iter().enumerate() {
-        let mut r = Rig::named("");
+        let mut r = Rig::named("harbor");
         r.show("settings");
         r.tap(Key::Digit(3));
         r.tap(Key::Digit(4));
@@ -745,6 +1073,145 @@ fn contact_sheets() {
     }
     write_png(&dir.join("wallpaper-menu.png"), &c);
     assert!(dir.join("overview.png").metadata().unwrap().len() > 10_000);
+}
+
+/// The motion, to look at: for each wallpaper that moves, the idle screen
+/// of a D60 over one whole cycle as an animated PNG file (`<id>.png`,
+/// frame after frame at the phone's pace, repeating without a seam), and
+/// a sheet (`<id>-sheet.png`) of six frames ten seconds apart, each
+/// beside what differs from the first of them, eight times as strong.
+/// Into the directory named by `WALLPAPER_PREVIEWS`; `WALLPAPER_ONLY`
+/// names one wallpaper.  Run with
+/// `--release -- --ignored --nocapture motion_previews`.
+#[test]
+#[ignore = "pictures to look at, not a check"]
+fn motion_previews() {
+    let dir = PathBuf::from(std::env::var_os("WALLPAPER_PREVIEWS").expect("WALLPAPER_PREVIEWS names a directory"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let only = std::env::var("WALLPAPER_ONLY").ok();
+    for id in MOVING.into_iter().filter(|id| only.as_deref().is_none_or(|o| o == *id)) {
+        let w = wallpaper::find(id).unwrap();
+        let every = u64::from(w.frame_ms().unwrap());
+        let mut r = Rig::with_model(Model::D60, UiConfig { theme: id.into(), ..UiConfig::default() });
+        let mut frame_at = |t: u64| {
+            r.ui.set_motion_time(Some(t));
+            r.frame()
+        };
+        let rgb = |frame: &[u32]| -> Vec<u8> { frame.iter().flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8]).collect() };
+        // The cycle.
+        let frames = (wallpaper::CYCLE_MS / every) as u32;
+        let file = std::io::BufWriter::new(std::fs::File::create(dir.join(format!("{id}.png"))).unwrap());
+        let mut enc = png::Encoder::new(file, WIDTH as u32, HEIGHT as u32);
+        enc.set_color(png::ColorType::Rgb);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.set_compression(png::Compression::High);
+        enc.set_animated(frames, 0).unwrap();
+        enc.set_frame_delay(every as u16, 1000).unwrap();
+        let mut writer = enc.write_header().unwrap();
+        for n in 0..frames {
+            writer.write_image_data(&rgb(&frame_at(u64::from(n) * every))).unwrap();
+        }
+        writer.finish().unwrap();
+        // The sheet: three across, two down; each cell a frame and its
+        // difference from the first.
+        let (gap, label) = (12, 22);
+        let th = Theme::for_model(Model::D65);
+        let mut c = Canvas::new((gap + 3 * (2 * WIDTH + 2 + gap)) as u16, (gap + 2 * (HEIGHT + label + gap)) as u16, false);
+        c.clear(0x2B2B2B);
+        let first = frame_at(0);
+        for i in 0..6 {
+            let t = i as u64 * 10_000;
+            let frame = frame_at(t);
+            let (x0, y0) = (gap + (i % 3) * (2 * WIDTH + 2 + gap), gap + (i / 3) * (HEIGHT + label + gap));
+            let rgba: Vec<u8> = frame.iter().flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8, 255]).collect();
+            c.rgba(x0, y0, WIDTH, HEIGHT, &rgba);
+            let diff: Vec<u8> = frame
+                .iter()
+                .zip(&first)
+                .flat_map(|(p, q)| {
+                    let d = |shift: u32| (((p >> shift) & 255).abs_diff((q >> shift) & 255) * 8).min(255) as u8;
+                    [d(16), d(8), d(0), 255]
+                })
+                .collect();
+            c.rgba(x0 + WIDTH + 2, y0, WIDTH, HEIGHT, &diff);
+            let text = format!("{} at {} s, and what differs from 0 s (8 x); a frame every {every} ms", w.name, t / 1000);
+            c.text_in(th.font(Font::Normal), IRect::new(x0, y0 + HEIGHT, 2 * WIDTH, label), &text, 0xDDDDDD, HAlign::Left);
+        }
+        write_png(&dir.join(format!("{id}-sheet.png")), &c);
+        println!("{id}: {frames} frames");
+    }
+}
+
+/// What the motion costs: prints, for each wallpaper that moves, the time
+/// to draw a frame from the one before (on this machine), the same with
+/// the idle screen drawn over it and presented, and how much of the
+/// picture a frame changes.  Run with
+/// `--release -- --ignored --nocapture motion_costs`.
+///
+/// For counting instructions (e.g., under `qemu-arm`, built for the
+/// phone): `WALLPAPER_FRAMES=tides:40` draws the first frame and 40 more
+/// and nothing else, and `WALLPAPER_UI_FRAMES=tides:40` does the same
+/// through the UI, on the idle screen of a D60.  The difference between
+/// two counts of frames is what the frames cost.
+#[test]
+#[ignore = "a measurement, not a check"]
+fn motion_costs() {
+    let parse = |v: String| {
+        let (id, n) = v.split_once(':').expect("id:frames");
+        (wallpaper::find(id).expect("a wallpaper"), n.parse::<u64>().expect("frames"))
+    };
+    if let Ok(v) = std::env::var("WALLPAPER_FRAMES") {
+        let (w, n) = parse(v);
+        let every = u64::from(w.frame_ms().expect("a wallpaper that moves"));
+        let mut sum = 0u64;
+        for i in 0..=n {
+            sum = sum.wrapping_add(w.with_frame(i * every, |f| u64::from(f[i as usize * 97 % f.len()])));
+        }
+        println!("{}: {sum:x}", w.id);
+        return;
+    }
+    if let Ok(v) = std::env::var("WALLPAPER_UI_FRAMES") {
+        let (w, n) = parse(v);
+        let every = u64::from(w.frame_ms().expect("a wallpaper that moves"));
+        let mut r = Rig::with_model(Model::D60, UiConfig { theme: w.id.into(), ..UiConfig::default() });
+        for i in 0..=n {
+            r.ui.set_motion_time(Some(i * every));
+            r.ui.pump();
+        }
+        println!("{}: {}", w.id, r.ui.screen_name());
+        return;
+    }
+    for id in MOVING {
+        let w = wallpaper::find(id).unwrap();
+        let every = u64::from(w.frame_ms().unwrap());
+        let frames = 200;
+        let mut last = w.render_at(0);
+        let mut changed = 0;
+        for i in 1..=20 {
+            let frame = w.render_at(i * every);
+            changed += difference(&last, &frame).0;
+            last = frame;
+        }
+        w.with_frame(0, |_| ());
+        let start = std::time::Instant::now();
+        for i in 1..=frames {
+            w.with_frame(i * every, |_| ());
+        }
+        let alone = start.elapsed().as_secs_f64() * 1000.0 / frames as f64;
+        let mut r = Rig::with_model(Model::D60, UiConfig { theme: id.into(), ..UiConfig::default() });
+        r.ui.set_motion_time(Some(0));
+        r.ui.pump();
+        let start = std::time::Instant::now();
+        for i in 1..=frames {
+            r.ui.set_motion_time(Some(i * every));
+            r.ui.pump();
+        }
+        let shown = start.elapsed().as_secs_f64() * 1000.0 / frames as f64;
+        println!(
+            "{id:9} every {every:3} ms: {alone:5.2} ms a frame here, {shown:5.2} ms on the idle screen; a frame changes {:4.1} % of the pixels",
+            changed as f64 * 100.0 / 20.0 / (WIDTH * HEIGHT) as f64
+        );
+    }
 }
 
 /// What the wallpapers cost: prints the time to draw each (on this

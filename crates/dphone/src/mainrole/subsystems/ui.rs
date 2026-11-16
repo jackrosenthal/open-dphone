@@ -157,6 +157,7 @@ fn idle_softkeys(keys: &[dphone_config::IdleSoftkey]) -> Vec<dphone_ui::IdleSoft
             IdleSoftkey::Function(IdleFunction::Dnd) => dphone_ui::IdleSoftkey::Dnd,
             IdleSoftkey::Function(IdleFunction::Forward) => dphone_ui::IdleSoftkey::Forward,
             IdleSoftkey::Function(IdleFunction::Redial) => dphone_ui::IdleSoftkey::Redial,
+            IdleSoftkey::Function(IdleFunction::Theme) => dphone_ui::IdleSoftkey::Theme,
             IdleSoftkey::App(name) => dphone_ui::IdleSoftkey::App(name.clone()),
         })
         .collect()

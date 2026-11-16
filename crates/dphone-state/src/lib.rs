@@ -66,7 +66,7 @@ mod store;
 mod sync;
 mod types;
 mod version;
-mod wallpapers;
+mod themes;
 
 pub use command::{
     Command, CommandError, CommandReceiver, CommandResult, Domain, Envelope, ForwardKind,
@@ -79,7 +79,7 @@ pub use model::{Family, Model, Size, Skin, Soc, UnknownModel};
 pub use store::{CallbackGuard, Changed, Store, Subscription, Wake};
 pub use types::*;
 pub use version::{BadVersion, FirmwareVersion};
-pub use wallpapers::{WallpaperName, WALLPAPERS};
+pub use themes::{ThemeName, DEFAULT_THEME, THEMES};
 
 #[cfg(test)]
 mod tests {

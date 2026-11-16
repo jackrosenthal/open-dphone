@@ -648,42 +648,43 @@ fn display_menu() -> Box<dyn Screen> {
             .value(if dim { tr::ON } else { tr::OFF }),
         );
         v.push(edit_setting(tr::BACKLIGHT_TIMEOUT, "backlight_timeout", cx.cfg.backlight_timeout_secs.to_string(), InputMode::Pin));
-        // Gray screens have no wallpaper.
+        // Gray screens have no themes.
         if !cx.th.gray {
             v.push(
-                Item::new(tr::WALLPAPER, |cx| Nav::Push(wallpapers(cx)))
-                    .value(crate::wallpaper::find_or_default(&cx.cfg.wallpaper).name),
+                Item::new(tr::THEME, |cx| Nav::Push(themes(cx.cfg)))
+                    .value(crate::wallpaper::find_or_default(&cx.cfg.theme).name),
             );
         }
         v
     })
 }
 
-/// The wallpaper selector: the idle screen itself (its clock, status
-/// icons, and line-key tabs, drawn by the idle screen's own code) over the
-/// wallpaper the selection is on, in that wallpaper's palette, with one
-/// small bubble at the bottom that names the wallpaper between a left and
-/// a right arrow.  Left and Right (and Up and Down) step through the
-/// wallpapers, around the ends; Select saves, Back leaves the setting as
-/// it was.
-struct Wallpapers {
+/// The theme selector: the idle screen itself (its clock, status icons,
+/// and line-key tabs, drawn by the idle screen's code) over the wallpaper
+/// of the theme the selection is on, in that theme's palette, with one
+/// small bubble at the bottom that names the theme between a left and a
+/// right arrow.  A wallpaper that moves on the idle screen moves here.
+/// Left and Right (and Up and Down) step through the themes, around the
+/// ends; Select saves, Back leaves the setting as it was.
+struct Themes {
     selected: usize,
 }
 
-fn wallpapers(cx: &Cx) -> Box<dyn Screen> {
-    let current = crate::wallpaper::find_or_default(&cx.cfg.wallpaper).id;
+/// The theme selector, with the theme in use selected.
+pub(crate) fn themes(cfg: &crate::UiConfig) -> Box<dyn Screen> {
+    let current = crate::wallpaper::find_or_default(&cfg.theme).id;
     let selected = crate::wallpaper::all().iter().position(|w| w.id == current).unwrap_or(0);
-    Box::new(Wallpapers { selected })
+    Box::new(Themes { selected })
 }
 
 /// Where the selector's bubble is: centered under the clock and the date,
 /// left of the line-key tabs, just above the softkeys.
-pub(crate) fn wallpaper_bubble(th: &Theme) -> IRect {
+pub(crate) fn theme_bubble(th: &Theme) -> IRect {
     let (w, h) = (220, 28);
     IRect::new((th.idle_tab_x - w) / 2, th.soft_y - 6 - h, w, h)
 }
 
-impl Wallpapers {
+impl Themes {
     fn selected(&self) -> &'static crate::wallpaper::Wallpaper {
         let all = crate::wallpaper::all();
         &all[self.selected.min(all.len() - 1)]
@@ -695,25 +696,28 @@ impl Wallpapers {
     }
 }
 
-impl Screen for Wallpapers {
+impl Screen for Themes {
     fn name(&self) -> String {
-        "wallpaper".into()
+        "theme".into()
     }
     fn wallpaper(&self) -> bool {
+        true
+    }
+    fn motion(&self) -> bool {
         true
     }
     fn look(&self, _cx: &Cx) -> Option<&'static crate::wallpaper::Wallpaper> {
         Some(self.selected())
     }
     fn softkeys(&self, cx: &Cx) -> Vec<Soft> {
-        // A wallpaper the provisioning server fixed can be looked at only.
-        let select = if cx.cfg.wallpaper_locked { soft(0, "") } else { soft(1, tr::SELECT) };
+        // A theme the provisioning server fixed can be looked at only.
+        let select = if cx.cfg.theme_locked { soft(0, "") } else { soft(1, tr::SELECT) };
         vec![select, soft(0, ""), soft(0, ""), soft(4, tr::BACK)]
     }
     fn softkey(&mut self, cx: &Cx, id: u32) -> Nav {
         match id {
-            1 if !cx.cfg.wallpaper_locked => {
-                cx.post(Command::SetWallpaper { name: self.selected().id.into() });
+            1 if !cx.cfg.theme_locked => {
+                cx.post(Command::SetTheme { name: self.selected().id.into() });
                 Nav::Pop
             }
             4 => Nav::Pop,
@@ -738,7 +742,7 @@ impl Screen for Wallpapers {
         idle::Idle.draw(&Cx { idle_view: None, ..*cx }, c, area);
         // The bubble: a bar with round ends in the softkeys' colors, the
         // name in the middle, an arrow at each end.
-        let r = wallpaper_bubble(th);
+        let r = theme_bubble(th);
         c.fill_round_aa(r, r.h / 2, th.sk_edge);
         c.fill_round_aa(r.inset(1), r.h / 2 - 1, th.sk_bg);
         let (arrow_w, arrow_h, inset): (i32, i32, i32) = (7, 13, 14);

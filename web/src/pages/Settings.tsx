@@ -3,7 +3,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Button, Card, Dpma, Input, PageHeader, Select, Toggle } from "../components/ui";
 import type { IdleSoftkey } from "../gen/dphone/settings/v1/settings_pb";
 import { ConfigService, SettingSource, type IdleSoftkeys as IdleSoftkeysMessage, type Setting } from "../gen/dphone/v1/config_pb";
-import type { Wallpaper as WallpaperMessage } from "../gen/dphone/v1/config_pb";
+import type { Theme as ThemeMessage } from "../gen/dphone/v1/config_pb";
 import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
 
@@ -219,36 +219,36 @@ function IdleSoftkeys() {
   );
 }
 
-/// The wallpaper of a color model, which sets the colors of every screen
-/// of the phone.  A change is saved as it is made.
-function WallpaperSelect() {
+/// The theme of a color model: its wallpaper and the colors of every
+/// screen of the phone.  A change is saved as it is made.
+function ThemeSelect() {
   const [error, setError] = useState<unknown>();
-  const [saved, setSaved] = useState<WallpaperMessage>();
+  const [saved, setSaved] = useState<ThemeMessage>();
   const skin = useStatus().status?.system?.skin;
-  const loaded = useQuery(ConfigService.method.getWallpaper, {});
-  const set = useMutation(ConfigService.method.setWallpaper, {
+  const loaded = useQuery(ConfigService.method.getTheme, {});
+  const set = useMutation(ConfigService.method.setTheme, {
     onError: setError,
     onSuccess: (r) => {
       setError(undefined);
-      setSaved(r.wallpaper);
+      setSaved(r.theme);
     },
   });
   if (skin !== "color") return null;
-  const wallpaper = saved ?? loaded.data?.wallpaper;
-  const choices = wallpaper?.choices ?? [];
+  const theme = saved ?? loaded.data?.theme;
+  const choices = theme?.choices ?? [];
   const families = [...new Set(choices.map((c) => c.family))];
-  const dpma = viaDpma(wallpaper);
+  const dpma = viaDpma(theme);
   return (
     <Dpma on={dpma}>
       <ErrorNote error={error ?? loaded.error} />
       <label className="block">
-        <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Wallpaper</span>
+        <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Theme</span>
         <Select
-          value={wallpaper?.picture ? "" : (wallpaper?.id ?? "")}
-          disabled={!wallpaper || dpma || set.isPending}
+          value={theme?.picture ? "" : (theme?.id ?? "")}
+          disabled={!theme || dpma || set.isPending}
           onChange={(e) => e.target.value && set.mutate({ id: e.target.value })}
         >
-          {wallpaper?.picture && <option value="">Provisioned picture</option>}
+          {theme?.picture && <option value="">Provisioned picture</option>}
           {families.map((family) => (
             <optgroup key={family} label={family}>
               {choices
@@ -280,7 +280,7 @@ export function Preferences() {
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <SettingsCard title="Sound" items={sound} />
         <div className="space-y-5">
-          <SettingsCard title="Display" items={display} after={<WallpaperSelect />} />
+          <SettingsCard title="Display" items={display} after={<ThemeSelect />} />
           <IdleSoftkeys />
         </div>
       </div>

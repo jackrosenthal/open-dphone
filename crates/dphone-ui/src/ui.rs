@@ -38,6 +38,9 @@ pub enum IdleSoftkey {
     /// The call forwarding menu.
     Forward,
     Redial,
+    /// The theme selector; not shown on a gray model, which has no
+    /// themes.
+    Theme,
     /// Opens the app of this name, and is labeled with its display name;
     /// not shown while the phone has no such app (absent, or switched
     /// off).
@@ -85,17 +88,18 @@ pub struct UiConfig {
     pub idle_cycle_secs: u32,
     /// The idle screen's softkeys, in order.
     pub idle_softkeys: Vec<IdleSoftkey>,
-    /// The built-in wallpaper of the color skin, by its configuration
-    /// name ([`crate::wallpaper::Wallpaper::id`]); an empty or unknown
-    /// name is the default wallpaper.  Every screen is drawn in the
-    /// wallpaper's palette.
-    pub wallpaper: String,
+    /// The theme of the color skin, by its configuration name (the
+    /// [`crate::wallpaper::Wallpaper::id`] of a built-in wallpaper); an
+    /// empty or unknown name is the default theme.  Its wallpaper is
+    /// behind the idle and call screens, and every screen is drawn in its
+    /// palette.
+    pub theme: String,
     /// A wallpaper picture from the provisioning server, shown instead of
     /// the built-in one, with its palette (the skin's own if it has none).
     pub wallpaper_picture: Option<Arc<wallpaper::Picture>>,
-    /// The provisioning server fixed the wallpaper: the phone's menu
+    /// The provisioning server fixed the theme: the phone's selector
     /// shows the choices and changes nothing.
-    pub wallpaper_locked: bool,
+    pub theme_locked: bool,
 }
 
 impl Default for UiConfig {
@@ -119,9 +123,9 @@ impl Default for UiConfig {
                 use IdleSoftkey::*;
                 vec![CallLog, Contacts, Status, Menu, Apps, Dnd, Forward]
             },
-            wallpaper: String::new(),
+            theme: String::new(),
             wallpaper_picture: None,
-            wallpaper_locked: false,
+            theme_locked: false,
         }
     }
 }
@@ -136,7 +140,7 @@ fn configured_theme(model: dphone_state::Model, cfg: &UiConfig) -> &'static Them
     }
     match &cfg.wallpaper_picture {
         Some(picture) => picture.palette.as_ref().map_or(skin, Theme::color_in),
-        None => Theme::for_wallpaper(wallpaper::find_or_default(&cfg.wallpaper)),
+        None => Theme::for_wallpaper(wallpaper::find_or_default(&cfg.theme)),
     }
 }
 
@@ -157,9 +161,20 @@ enum Msg {
 #[derive(Clone)]
 pub struct UiHandle {
     tx: Sender<Msg>,
+    /// The UI's theme, as it is now.
+    theme: crate::appview::ThemeCell,
 }
 
 impl UiHandle {
+    /// A view for the app `name` on this UI: [`AppView::new`], with the
+    /// UI's theme from the start.  Its [`AppView::theme_color`] answers
+    /// in the palette in use before the view is first on screen (an app
+    /// asks for its colors as it starts), and goes on following the
+    /// theme while the view is not on screen.
+    pub fn new_view(&self, name: &str, model: Model) -> (AppView, crate::AppEvents) {
+        AppView::with_theme(name, model, self.theme.clone())
+    }
+
     /// Puts an app's view on top of the navigation stack (or raises it if
     /// already there).  The app gets `AppEvent::Foreground`.
     pub fn open_app(&self, view: AppView) {
@@ -653,6 +668,8 @@ pub struct Ui {
     store: Store,
     model: Model,
     th: &'static Theme,
+    /// `th`, for the views of apps (see [`UiHandle::new_view`]).
+    theme_cell: crate::appview::ThemeCell,
     display: Box<dyn Display>,
     backlight: Box<dyn Backlight>,
     lamps: Box<dyn Lamps>,
@@ -670,8 +687,16 @@ pub struct Ui {
     /// then nothing is written to the panels or the backlight.
     lit: bool,
     level: u8,
+    /// The main screen's backlight gives light (it is lit, or dimmed to a
+    /// level above none).
+    backlight_on: bool,
     last_activity_ms: u64,
     fixed_time: Option<(u64, u64)>,
+    /// The time the wallpaper's motion is drawn for, when a test sets it.
+    motion_time: Option<u64>,
+    /// When the next frame of the wallpaper's motion is due; `None` while
+    /// nothing on screen moves.
+    motion_deadline: Option<u64>,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
     commands: Option<ds::CommandReceiver>,
@@ -739,6 +764,7 @@ impl Ui {
             store,
             model,
             th,
+            theme_cell: Arc::new(std::sync::Mutex::new(th)),
             display,
             backlight,
             lamps,
@@ -756,6 +782,9 @@ impl Ui {
             level: 0,
             last_activity_ms: clock::mono_ms(),
             fixed_time: None,
+            motion_time: None,
+            motion_deadline: None,
+            backlight_on: true,
             tx,
             rx,
             commands,
@@ -782,7 +811,7 @@ impl Ui {
 
     /// A handle for other threads.
     pub fn handle(&self) -> UiHandle {
-        UiHandle { tx: self.tx.clone() }
+        UiHandle { tx: self.tx.clone(), theme: self.theme_cell.clone() }
     }
 
     /// Freezes the clock the screens see (snapshot tests): monotonic
@@ -790,6 +819,20 @@ impl Ui {
     pub fn set_fixed_time(&mut self, time: Option<(u64, u64)>) {
         self.fixed_time = time;
         self.needs_draw = true;
+    }
+
+    /// Draws the wallpaper's motion as it is at `ms` (of any clock), or,
+    /// with `None`, as the time has it.  While the time is fixed
+    /// ([`Ui::set_fixed_time`]) and none is set here, nothing moves: the
+    /// wallpaper is its still picture.
+    pub fn set_motion_time(&mut self, ms: Option<u64>) {
+        self.motion_time = ms;
+        self.needs_draw = true;
+    }
+
+    /// When the wallpaper's next frame is due, if it is moving (tests).
+    pub fn motion_deadline(&self) -> Option<u64> {
+        self.motion_deadline
     }
 
     fn now(&self) -> (u64, u64) {
@@ -854,6 +897,11 @@ impl Ui {
             if s == dphone_hal::Screen::Main {
                 main = (on, level);
             }
+        }
+        // The wallpaper moves only while there is light to see it by.
+        if self.backlight_on != (main.1 > 0) {
+            self.backlight_on = main.1 > 0;
+            self.needs_draw = true;
         }
         self.store.update::<ds::Ui, _>(|u| {
             u.backlight_on = main.1 > 0;
@@ -1055,6 +1103,8 @@ impl Ui {
                     "paging" => Some(Some(menus::paging())),
                     "bluetooth" => Some(Some(crate::screens::bluetooth::menu())),
                     "settings" => Some(Some(menus::settings())),
+                    // A gray model has no themes.
+                    "theme" if !self.th.gray => Some(Some(menus::themes(&self.cfg))),
                     "network" => Some(Some(menus::network_menu())),
                     "status" | "about" => Some(Some(menus::about())),
                     "dialer" => Some(Some(Box::new(Dialer::new(Purpose::Call, None)))),
@@ -1131,11 +1181,11 @@ impl Ui {
         let bounds = c.bounds();
         let top = self.nav.stack.last_mut().unwrap_or(&mut self.nav.base);
         // The configured wallpaper and palette, unless the screen is shown
-        // with a wallpaper of its own (the boot screen, and the wallpaper
-        // menu, which previews the one its selection is on).
+        // with a wallpaper of its own (the boot screen, and the theme
+        // selector, which shows the one its selection is on).
         let mut backdrop = match &cfg.wallpaper_picture {
             Some(picture) => Backdrop::Picture(picture),
-            None => Backdrop::Builtin(wallpaper::find_or_default(&cfg.wallpaper)),
+            None => Backdrop::Builtin(wallpaper::find_or_default(&cfg.theme)),
         };
         if !th.gray
             && let Some(own) = top.look(&cx)
@@ -1143,6 +1193,23 @@ impl Ui {
             backdrop = Backdrop::Builtin(own);
             th = Theme::for_wallpaper(own);
             cx.th = th;
+        }
+        // A wallpaper that moves does so on the idle screen, while the
+        // backlight gives light: the frame of this time now, and the next
+        // one when its time has come.
+        let started = clock::mono_ms();
+        let mut frame_ms = None;
+        let motion_time = self.motion_time.or(self.fixed_time.is_none().then_some(now_ms));
+        if let (Backdrop::Builtin(wallpaper), Some(t)) = (backdrop, motion_time)
+            && !th.gray
+            && self.backlight_on
+            && top.motion()
+            && top.wallpaper()
+            && !top.full_screen()
+            && let Some(every) = wallpaper.frame_ms()
+        {
+            backdrop = Backdrop::Moving(wallpaper, t);
+            frame_ms = Some(u64::from(every));
         }
         if top.full_screen() {
             top.draw(&cx, c, bounds);
@@ -1233,6 +1300,13 @@ impl Ui {
         if !self.lit {
             self.light_up();
         }
+        // The next frame is due one frame's time after this one began,
+        // and never sooner than half of that after it was done, however
+        // long drawing takes: the phone has other things to do.
+        self.motion_deadline = frame_ms.map(|every| {
+            let done = clock::mono_ms();
+            (started + every).max(done + every / 2)
+        });
         self.store.update::<ds::Ui, _>(|u| {
             if u.screen != name {
                 u.screen = name;
@@ -1280,10 +1354,11 @@ impl Ui {
                 let dimming_changed = cfg.dim_backlight != self.cfg.dim_backlight
                     || cfg.backlight_dim_level != self.cfg.backlight_dim_level;
                 let contrast_changed = cfg.contrast != self.cfg.contrast;
-                // A new wallpaper is a new palette, on every screen, now.
+                // A new theme is a new palette, on every screen, now.
                 let th = configured_theme(self.model, &cfg);
                 if !std::ptr::eq(th, self.th) {
                     self.th = th;
+                    *self.theme_cell.lock().unwrap_or_else(|p| p.into_inner()) = th;
                     for screen in std::iter::once(&mut self.nav.base).chain(&mut self.nav.stack) {
                         screen.theme_changed(th);
                     }
@@ -1338,6 +1413,7 @@ impl Ui {
     fn timers(&mut self) {
         let (now_ms, _) = self.now();
         let real_now = now_ms;
+        let real_now_mono = clock::mono_ms();
         if self.popup.as_ref().is_some_and(|p| real_now >= p.until_ms) {
             self.popup = None;
             self.needs_draw = true;
@@ -1362,6 +1438,9 @@ impl Ui {
         if self.nav.top_ref().dirty() {
             self.needs_draw = true;
         }
+        if self.motion_deadline.is_some_and(|d| real_now_mono >= d) {
+            self.needs_draw = true;
+        }
         self.check_light();
     }
 
@@ -1376,6 +1455,7 @@ impl Ui {
         add(self.popup.as_ref().map(|p| p.until_ms));
         add(self.notice_deadlines.iter().map(|(_, t)| *t).min());
         add(self.light_deadline());
+        add(self.motion_deadline);
         if self.idle_views.len() > 1 {
             add(Some(self.idle_turn_ms));
         }

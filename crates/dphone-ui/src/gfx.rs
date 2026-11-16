@@ -104,10 +104,19 @@ fn blend(dst: Rgb, src: Rgb, a: u32, max: u32) -> Rgb {
         return src;
     }
     let na = max - a;
+    // The division by `max`, without dividing where it is 255 (glyphs)
+    // or a power of two (shapes): the phone's processor has no divide
+    // instruction, and this is done for every blended pixel.  The same
+    // quotients either way.
+    let over = |v: u32| match max {
+        255 => (v + 1 + (v >> 8)) >> 8,
+        _ if max.is_power_of_two() => v >> max.trailing_zeros(),
+        _ => v / max,
+    };
     let ch = |shift: u32| {
         let d = (dst >> shift) & 255;
         let s = (src >> shift) & 255;
-        ((d * na + s * a + max / 2) / max) << shift
+        over(d * na + s * a + max / 2) << shift
     };
     ch(16) | ch(8) | ch(0)
 }
@@ -461,7 +470,9 @@ impl Canvas {
         }
         let w = self.w as usize;
         let rows = self.h as usize;
-        let differs = |y: usize| self.pix[y * w..(y + 1) * w] != self.front[y * w..(y + 1) * w];
+        // Pixel by pixel (a comparison of the slices is one of their
+        // bytes, one at a time, in the phone's C library).
+        let differs = |y: usize| self.pix[y * w..(y + 1) * w].iter().zip(&self.front[y * w..(y + 1) * w]).any(|(a, b)| a != b);
         let top = (0..rows).find(|&y| differs(y))?;
         let bottom = (top..rows).rev().find(|&y| differs(y)).unwrap_or(top);
         let (mut left, mut right) = (w, 0);
@@ -480,9 +491,9 @@ impl Canvas {
     /// Copies the damaged area to the display and flushes it.  Returns the
     /// damage, or `None` when nothing changed (no flush happens).
     pub fn present(&mut self, display: &mut dyn Display, screen: Screen) -> dphone_hal::Result<Option<IRect>> {
-        let Some(d) = self.damage() else { return Ok(None) };
+        let Some(all) = self.damage() else { return Ok(None) };
         let Some(info) = display.info(screen) else { return Ok(None) };
-        let d = d.intersect(&IRect::new(0, 0, info.width as i32, info.height as i32));
+        let d = all.intersect(&IRect::new(0, 0, info.width as i32, info.height as i32));
         if d.is_empty() {
             return Ok(None);
         }
@@ -513,7 +524,16 @@ impl Canvas {
             screen,
             &[dphone_hal::Rect::new(d.x as u16, d.y as u16, d.w as u16, d.h as u16)],
         )?;
-        self.front.copy_from_slice(&self.pix);
+        if self.presented {
+            // Nothing outside the damage differs.
+            let w = self.w as usize;
+            for y in all.y as usize..all.bottom() as usize {
+                let row = y * w + all.x as usize..y * w + all.right() as usize;
+                self.front[row.clone()].copy_from_slice(&self.pix[row]);
+            }
+        } else {
+            self.front.copy_from_slice(&self.pix);
+        }
         self.presented = true;
         Ok(Some(d))
     }
@@ -547,6 +567,7 @@ impl Canvas {
         };
         match backdrop {
             Backdrop::Builtin(wallpaper) => wallpaper.with_pixels(copy),
+            Backdrop::Moving(wallpaper, t_ms) => wallpaper.with_frame(t_ms, copy),
             Backdrop::Picture(picture) => copy(picture.pixels()),
         }
     }
@@ -600,23 +621,37 @@ impl Canvas {
         // How much of a pixel lies inside an outline whose edge is `d`
         // from the pixel's center (negative inside), out of `ONE`.
         let coverage = |d: i32| (ONE / 2 - d).clamp(0, ONE) as u32;
-        for j in 0..r.h {
-            let py = j * ONE + ONE / 2;
-            for x in 0..r.w {
-                // The shape is symmetric: fold onto the left half.
-                let px = x.min(r.w - 1 - x) * ONE + ONE / 2;
-                let side = -px;
-                let top = -py;
-                let slant = ((py - body * ONE) * r.w - 2 * POINT * px) * ONE / slant_len;
-                // The signed distance from the pixel's center to the
-                // outline, and to the inner edge of the one-pixel border.
-                let d = round(side, top).max(round(side, slant));
-                let outer = coverage(d);
-                if outer == 0 {
-                    continue;
+        // How much of each pixel is inside the outline, and inside its
+        // border: worked out once for a size (the softkeys are all one
+        // size, and they are drawn with every frame).
+        static COVERAGE: std::sync::Mutex<Option<((i32, i32), Vec<(u16, u16)>)>> = std::sync::Mutex::new(None);
+        let mut kept = COVERAGE.lock().unwrap_or_else(|p| p.into_inner());
+        if kept.as_ref().is_none_or(|(size, _)| *size != (r.w, r.h)) {
+            let mut table = Vec::with_capacity((r.w * r.h) as usize);
+            for j in 0..r.h {
+                let py = j * ONE + ONE / 2;
+                for x in 0..r.w {
+                    // The shape is symmetric: fold onto the left half.
+                    let px = x.min(r.w - 1 - x) * ONE + ONE / 2;
+                    let side = -px;
+                    let top = -py;
+                    let slant = ((py - body * ONE) * r.w - 2 * POINT * px) * ONE / slant_len;
+                    // The signed distance from the pixel's center to the
+                    // outline, and to the inner edge of the one-pixel
+                    // border.
+                    let d = round(side, top).max(round(side, slant));
+                    table.push((coverage(d) as u16, coverage(d + ONE) as u16));
                 }
-                let inner = coverage(d + ONE);
-                self.put_blend(r.x + x, r.y + j, blend(edge, fill, inner, outer), outer, ONE as u32);
+            }
+            *kept = Some(((r.w, r.h), table));
+        }
+        let table = &kept.as_ref().expect("just set").1;
+        for j in 0..r.h {
+            for x in 0..r.w {
+                let (outer, inner) = table[(j * r.w + x) as usize];
+                if outer != 0 {
+                    self.put_blend(r.x + x, r.y + j, blend(edge, fill, u32::from(inner), u32::from(outer)), u32::from(outer), ONE as u32);
+                }
             }
         }
     }

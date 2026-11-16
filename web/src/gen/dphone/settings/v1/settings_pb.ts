@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/settings/v1/settings.proto.
  */
 export const file_dphone_settings_v1_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSKUAwoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBARIbCg5zZXJpYWxfY29uc29sZRgDIAEoCEgCiAEBEhwKD21ldHJpY3NfZW5hYmxlZBgEIAEoCEgDiAEBEjYKDWlkbGVfc29mdGtleXMYBSADKAsyHy5kcGhvbmUuc2V0dGluZ3MudjEuSWRsZVNvZnRrZXkSPAoNZGlzYWJsZWRfYXBwcxgGIAEoCzIgLmRwaG9uZS5zZXR0aW5ncy52MS5EaXNhYmxlZEFwcHNIBIgBARIWCgl3YWxscGFwZXIYByABKAlIBYgBAUIOCgxfc3NoX2VuYWJsZWRCHgocX2lnbm9yZV9wcm92aXNpb25lZF9maXJtd2FyZUIRCg9fc2VyaWFsX2NvbnNvbGVCEgoQX21ldHJpY3NfZW5hYmxlZEIQCg5fZGlzYWJsZWRfYXBwc0IMCgpfd2FsbHBhcGVyIhMKA0FwcBIMCgRuYW1lGAEgASgJIsoCCgtJZGxlU29mdGtleRI8CghmdW5jdGlvbhgBIAEoDjIoLmRwaG9uZS5zZXR0aW5ncy52MS5JZGxlU29mdGtleS5GdW5jdGlvbkgAEiYKA2FwcBgCIAEoCzIXLmRwaG9uZS5zZXR0aW5ncy52MS5BcHBIACLKAQoIRnVuY3Rpb24SGAoURlVOQ1RJT05fVU5TUEVDSUZJRUQQABIVChFGVU5DVElPTl9DQUxMX0xPRxABEhUKEUZVTkNUSU9OX0NPTlRBQ1RTEAISEwoPRlVOQ1RJT05fU1RBVFVTEAMSEQoNRlVOQ1RJT05fTUVOVRAEEhEKDUZVTkNUSU9OX0FQUFMQBRIQCgxGVU5DVElPTl9ETkQQBhIUChBGVU5DVElPTl9GT1JXQVJEEAcSEwoPRlVOQ1RJT05fUkVESUFMEAhCCAoGYWN0aW9uIjUKDERpc2FibGVkQXBwcxIlCgRhcHBzGAEgAygLMhcuZHBob25lLnNldHRpbmdzLnYxLkFwcGIGcHJvdG8z");
+  fileDesc("CiFkcGhvbmUvc2V0dGluZ3MvdjEvc2V0dGluZ3MucHJvdG8SEmRwaG9uZS5zZXR0aW5ncy52MSLTAwoORHBob25lU2V0dGluZ3MSGAoLc3NoX2VuYWJsZWQYASABKAhIAIgBARIoChtpZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmUYAiABKAhIAYgBARIbCg5zZXJpYWxfY29uc29sZRgDIAEoCEgCiAEBEhwKD21ldHJpY3NfZW5hYmxlZBgEIAEoCEgDiAEBEjYKDWlkbGVfc29mdGtleXMYBSADKAsyHy5kcGhvbmUuc2V0dGluZ3MudjEuSWRsZVNvZnRrZXkSPAoNZGlzYWJsZWRfYXBwcxgGIAEoCzIgLmRwaG9uZS5zZXR0aW5ncy52MS5EaXNhYmxlZEFwcHNIBIgBARISCgV0aGVtZRgHIAEoCUgFiAEBEjYKCnRoZW1lX3N5bmMYCCABKAsyHS5kcGhvbmUuc2V0dGluZ3MudjEuVGhlbWVTeW5jSAaIAQFCDgoMX3NzaF9lbmFibGVkQh4KHF9pZ25vcmVfcHJvdmlzaW9uZWRfZmlybXdhcmVCEQoPX3NlcmlhbF9jb25zb2xlQhIKEF9tZXRyaWNzX2VuYWJsZWRCEAoOX2Rpc2FibGVkX2FwcHNCCAoGX3RoZW1lQg0KC190aGVtZV9zeW5jIl4KCVRoZW1lU3luYxIMCgR1c2VyGAEgASgJEhIKBXRoZW1lGAIgASgJSACIAQESDwoHdmVyc2lvbhgDIAEoBBIUCgxjaGFuZ2VkX3VuaXgYBCABKARCCAoGX3RoZW1lIhMKA0FwcBIMCgRuYW1lGAEgASgJIt4CCgtJZGxlU29mdGtleRI8CghmdW5jdGlvbhgBIAEoDjIoLmRwaG9uZS5zZXR0aW5ncy52MS5JZGxlU29mdGtleS5GdW5jdGlvbkgAEiYKA2FwcBgCIAEoCzIXLmRwaG9uZS5zZXR0aW5ncy52MS5BcHBIACLeAQoIRnVuY3Rpb24SGAoURlVOQ1RJT05fVU5TUEVDSUZJRUQQABIVChFGVU5DVElPTl9DQUxMX0xPRxABEhUKEUZVTkNUSU9OX0NPTlRBQ1RTEAISEwoPRlVOQ1RJT05fU1RBVFVTEAMSEQoNRlVOQ1RJT05fTUVOVRAEEhEKDUZVTkNUSU9OX0FQUFMQBRIQCgxGVU5DVElPTl9ETkQQBhIUChBGVU5DVElPTl9GT1JXQVJEEAcSEwoPRlVOQ1RJT05fUkVESUFMEAgSEgoORlVOQ1RJT05fVEhFTUUQCUIICgZhY3Rpb24iNQoMRGlzYWJsZWRBcHBzEiUKBGFwcHMYASADKAsyFy5kcGhvbmUuc2V0dGluZ3MudjEuQXBwYgZwcm90bzM");
 
 /**
  * Settings that only Open DPhone has.  Stored on the phone in protobuf text
@@ -70,14 +70,14 @@ export type DphoneSettings = Message<"dphone.settings.v1.DphoneSettings"> & {
 
   /**
    * The idle screen's softkeys, in order.  Default (also when there are
-   * none here): Call Log, Contacts, Status, Menu, Apps, DND, Forward.  The
-   * softkeys of the "idle" keymap state in the XML configuration are not
-   * used.  In this file, one entry per softkey:
+   * none here): Call Log, Contacts, Status, Menu, Apps, DND, Forward, and,
+   * on the color models (D60, D62, D65), Theme.  The softkeys of the
+   * "idle" keymap state in the XML configuration are not used.  In this file, one entry per softkey:
    *   idle_softkeys { function: FUNCTION_CALL_LOG }
    *   idle_softkeys { app { name: "parking" } }
    * The provisioned form is the XML configuration's own, a comma-separated
    * value of call_log, contacts, status, menu, apps, dnd, forward, redial,
-   * and app:<name>:
+   * theme, and app:<name>:
    * <setting id="dphone_idle_softkeys" value="call_log,contacts,menu"/>.
    *
    * @generated from field: repeated dphone.settings.v1.IdleSoftkey idle_softkeys = 5;
@@ -102,21 +102,33 @@ export type DphoneSettings = Message<"dphone.settings.v1.DphoneSettings"> & {
   disabledApps?: DisabledApps | undefined;
 
   /**
-   * The wallpaper of the color models (D60, D62, D65), by the name of a
-   * built-in one (e.g., "dusk"; the phone's Display menu and the web UI
-   * list them).  Every screen is drawn in the wallpaper's palette.
-   * Default: "harbor".  An unknown name is the default wallpaper.  The
-   * provisioned form carries the same name:
-   * <setting id="dphone_wallpaper" value="dusk"/>.  A provisioning server
+   * The theme of the color models (D60, D62, D65), by the name of a
+   * built-in one (e.g., "dusk"; the phone's theme selector and the web UI
+   * list them).  A theme is a wallpaper and the palette every screen is
+   * drawn in.  Default: "tides".  An unknown name is the default theme.
+   * The provisioned form carries the same name:
+   * <setting id="dphone_theme" value="dusk"/>.  A provisioning server
    * can instead supply a picture (stock's wallpaper_file setting), and a
    * palette for it (dphone_palette_file; see
    * proto/dphone/palette/v1/palette.proto).  Of what the server supplies,
    * the picture goes before the name; a name chosen on the phone goes
    * before both unless the server marked its own conflict="freeze".
    *
-   * @generated from field: optional string wallpaper = 7;
+   * A theme chosen on the phone is also kept on the PBX, for the phone's
+   * user, when the PBX has Open DPMA's store of app data: a phone that
+   * was reset, and another phone of the same user, take it from there.
+   *
+   * @generated from field: optional string theme = 7;
    */
-  wallpaper?: string | undefined;
+  theme?: string | undefined;
+
+  /**
+   * What the phone and the PBX last agreed the theme is.  The phone
+   * writes it; it is not a setting, and is not to be edited.
+   *
+   * @generated from field: optional dphone.settings.v1.ThemeSync theme_sync = 8;
+   */
+  themeSync?: ThemeSync | undefined;
 };
 
 /**
@@ -125,6 +137,63 @@ export type DphoneSettings = Message<"dphone.settings.v1.DphoneSettings"> & {
  */
 export const DphoneSettingsSchema: GenMessage<DphoneSettings> = /*@__PURE__*/
   messageDesc(file_dphone_settings_v1_settings, 0);
+
+/**
+ * The theme as the phone and the PBX last agreed on it.  The PBX keeps
+ * the theme a user chose in its store of app data (Open DPMA), in the
+ * user's keys of the name "dphone", which no app can have, under the key
+ * "theme"; the value is the theme's name.
+ *
+ * While `theme` (above) is what `theme` here says, the phone has nothing
+ * to send, and takes a newer entry of the PBX as the user's choice (made
+ * on another phone, or before this phone was reset).  When `theme` is
+ * something else, it was chosen on this phone since, and the phone sends
+ * it.  When both changed, the later choice stays: the entry's time on
+ * the PBX against `changed_unix`; the phone's, if the phone did not know
+ * the time when the choice was made.
+ *
+ * @generated from message dphone.settings.v1.ThemeSync
+ */
+export type ThemeSync = Message<"dphone.settings.v1.ThemeSync"> & {
+  /**
+   * The PBX's id of the user this is about.  With another user on the
+   * phone, a theme that user has on the PBX is taken, and the theme of
+   * the phone is not sent as theirs.
+   *
+   * @generated from field: string user = 1;
+   */
+  user: string;
+
+  /**
+   * The theme both had; absent: none was chosen.
+   *
+   * @generated from field: optional string theme = 2;
+   */
+  theme?: string | undefined;
+
+  /**
+   * The version of the PBX's entry; 0: the PBX had none.
+   *
+   * @generated from field: uint64 version = 3;
+   */
+  version: bigint;
+
+  /**
+   * When `theme` (above) was first seen to differ from the theme here, in
+   * seconds since the Unix epoch; 0: it does not differ, or the phone's
+   * clock was not set.
+   *
+   * @generated from field: uint64 changed_unix = 4;
+   */
+  changedUnix: bigint;
+};
+
+/**
+ * Describes the message dphone.settings.v1.ThemeSync.
+ * Use `create(ThemeSyncSchema)` to create a new message.
+ */
+export const ThemeSyncSchema: GenMessage<ThemeSync> = /*@__PURE__*/
+  messageDesc(file_dphone_settings_v1_settings, 1);
 
 /**
  * An app, by its name (e.g., "calendar").
@@ -143,7 +212,7 @@ export type App = Message<"dphone.settings.v1.App"> & {
  * Use `create(AppSchema)` to create a new message.
  */
 export const AppSchema: GenMessage<App> = /*@__PURE__*/
-  messageDesc(file_dphone_settings_v1_settings, 1);
+  messageDesc(file_dphone_settings_v1_settings, 2);
 
 /**
  * A softkey of the idle screen.  The web interface's messages use this
@@ -179,7 +248,7 @@ export type IdleSoftkey = Message<"dphone.settings.v1.IdleSoftkey"> & {
  * Use `create(IdleSoftkeySchema)` to create a new message.
  */
 export const IdleSoftkeySchema: GenMessage<IdleSoftkey> = /*@__PURE__*/
-  messageDesc(file_dphone_settings_v1_settings, 2);
+  messageDesc(file_dphone_settings_v1_settings, 3);
 
 /**
  * The built-in functions a softkey can have.
@@ -241,13 +310,21 @@ export enum IdleSoftkey_Function {
    * @generated from enum value: FUNCTION_REDIAL = 8;
    */
   REDIAL = 8,
+
+  /**
+   * The theme selector.  Only the color models (D60, D62, D65) have
+   * themes; on the others the softkey is not shown.
+   *
+   * @generated from enum value: FUNCTION_THEME = 9;
+   */
+  THEME = 9,
 }
 
 /**
  * Describes the enum dphone.settings.v1.IdleSoftkey.Function.
  */
 export const IdleSoftkey_FunctionSchema: GenEnum<IdleSoftkey_Function> = /*@__PURE__*/
-  enumDesc(file_dphone_settings_v1_settings, 2, 0);
+  enumDesc(file_dphone_settings_v1_settings, 3, 0);
 
 /**
  * The built-in apps that are switched off.
@@ -266,5 +343,5 @@ export type DisabledApps = Message<"dphone.settings.v1.DisabledApps"> & {
  * Use `create(DisabledAppsSchema)` to create a new message.
  */
 export const DisabledAppsSchema: GenMessage<DisabledApps> = /*@__PURE__*/
-  messageDesc(file_dphone_settings_v1_settings, 3);
+  messageDesc(file_dphone_settings_v1_settings, 4);
 
