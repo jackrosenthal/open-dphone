@@ -265,6 +265,100 @@ fn dphone_options(ctx: &mut Ctx) -> Result<()> {
     Ok(())
 }
 
+/// The registration port of each network of the `port*` phones, by
+/// phone: the network, its address, the port, and the transport.  A
+/// network section without `registration_port` has the default port of
+/// the transport that is sent with it (the line's, or else the
+/// network's; none is UDP): 5061 for TLS, otherwise 5060.  (The official
+/// DPMA sends an empty port.)  A port that is set stays, and so does the
+/// port of the network that `[general]` gives every phone.
+type Port = (&'static str, &'static str, &'static str, &'static str);
+const PORTS: [(&str, &str, &[Port]); 3] = [
+    (
+        "portphone",
+        "",
+        &[
+            ("port-udp", "10.20.1.1", "5060", "udp"),
+            ("port-udp-set", "10.20.2.1", "5071", "udp"),
+            ("port-tcp", "10.20.3.1", "5060", "tcp"),
+            ("port-tcp-set", "10.20.4.1", "5072", "tcp"),
+            ("port-tls", "10.20.5.1", "5061", "tls"),
+            ("port-tls-set", "10.20.6.1", "5073", "tls"),
+            ("port-none", "10.20.7.1", "5060", ""),
+            ("portphone", "192.0.2.10", "5070", ""),
+        ],
+    ),
+    // The line's transport goes before the network's.
+    (
+        "porttlsphone",
+        "tls",
+        &[
+            ("port-udp", "10.20.1.1", "5061", "tls"),
+            ("port-udp-set", "10.20.2.1", "5071", "tls"),
+            ("port-none", "10.20.7.1", "5061", "tls"),
+            ("porttlsphone", "192.0.2.10", "5070", "tls"),
+        ],
+    ),
+    (
+        "porttcpphone",
+        "tcp",
+        &[
+            ("port-tls", "10.20.5.1", "5060", "tcp"),
+            ("port-tls-set", "10.20.6.1", "5073", "tcp"),
+            ("porttcpphone", "192.0.2.10", "5070", "tcp"),
+        ],
+    ),
+];
+
+/// The registration port that a phone is sent for each of its networks,
+/// in the line's account and in the configuration server's URL.
+fn ports(ctx: &mut Ctx) -> Result<()> {
+    for (phone, line_transport, networks) in PORTS {
+        let doc = plain(document(ctx, &format!("dpmadev config {phone} D65"))?);
+        let hosts = find_all(&doc, "<host_primary ");
+        let urls = find_all(&doc, "<setting id=\"config_server_url\"");
+        ctx.c.same(
+            format!("{phone}: an account and a server URL for each network"),
+            (hosts.len(), urls.len()),
+            (networks.len(), networks.len()),
+        );
+        for (network, address, port, transport) in networks {
+            // No transport at all is sent as UDP, and not named in a URL.
+            let (name, option) = match *transport {
+                "" => ("udp", String::new()),
+                t => (t, format!(";transport={t}")),
+            };
+            let host = format!(
+                "<host_primary server=\"{address}\" port=\"{port}\" transport=\"{name}\"/>"
+            );
+            let of = if line_transport.is_empty() {
+                String::new()
+            } else {
+                format!(" (line transport {line_transport})")
+            };
+            ctx.c.check(
+                format!("{phone}: {network} registers to port {port}{of}"),
+                hosts.iter().filter(|h| **h == host).count() == 1,
+                hosts.join(" | "),
+            );
+            let url = format!(
+                "<setting id=\"config_server_url\" value=\"sip:proxy@{address}:{port}{option}\" network_id=\"{network}\"/>"
+            );
+            ctx.c.check(
+                format!("{phone}: {network} has the server URL with port {port}{of}"),
+                urls.contains(&url),
+                urls.join(" | "),
+            );
+        }
+        ctx.c.check(
+            format!("{phone}: no empty port"),
+            !doc.contains_str("port=\"\"") && !doc.contains_str(":\" network_id="),
+            "",
+        );
+    }
+    Ok(())
+}
+
 /// The `[general]` options of the instance's `res_digium_phone.conf` set
 /// to `options` (`None` removes one), and the module reloaded.
 fn set_options(ctx: &Ctx, section: &str, options: &[(&str, Option<&str>)]) -> Result<()> {
@@ -362,7 +456,7 @@ fn contacts(ctx: &mut Ctx) -> Result<()> {
 fn userlist(ctx: &mut Ctx) -> Result<()> {
     for (args, count, line) in [
         ("", 0, "0 user(s), group pin filter on"),
-        (" 344486", 5, "5 user(s), group pin filter off"),
+        (" 344486", 8, "8 user(s), group pin filter off"),
     ] {
         let out = document(ctx, &format!("dpmadev userlist{args}"))?;
         let (first, body) = out.split_once_str("\n").unwrap_or((&out, b""));
@@ -382,6 +476,7 @@ fn main() -> ExitCode {
     Suite::new("config-xml")
         .prepare(|inst| fixtures::prepare(inst, setup::config_xml))
         .part("config", config)
+        .part("ports", ports)
         .part("contacts", contacts)
         .part("userlist", userlist)
         .part("reload", reload)

@@ -646,6 +646,22 @@ impl Network {
         }
     }
 
+    /// The registration port to send next to `transport`, the transport
+    /// in effect for the line (the line's, or else this network's).
+    ///
+    /// Deviation: the official DPMA sends an empty port for a
+    /// `type=network` section without `registration_port`.  Here the port
+    /// is then the default of the transport: 5061 for TLS, otherwise 5060.
+    pub fn registration_port_for(&self, transport: Transport) -> &[u8] {
+        if !self.registration_port.is_empty() {
+            &self.registration_port
+        } else if transport == Transport::Tls {
+            b"5061"
+        } else {
+            crate::config::DEFAULT_PORT.as_bytes()
+        }
+    }
+
     /// The reset applied before a `type=network` section is (re)read.
     pub fn reset_for_section(&mut self) {
         let name = std::mem::take(&mut self.name);

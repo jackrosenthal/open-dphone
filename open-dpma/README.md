@@ -104,6 +104,10 @@ These differ from the official DPMA:
   file.
 - `network_vlan_qos` sets the RTP priority of a `type=network` section
   that has no `rtp_qos`.
+- A `type=network` section without `registration_port` sends the phone
+  the default port of the transport that is sent with it (the line's
+  `transport`, or else the network's): 5061 for TLS, otherwise 5060.
+  The official DPMA sends an empty port.
 - The options of a `type=line` section go before the line's values from
   PJSIP at all times, also after a change in `pjsip.conf` or through
   sorcery.

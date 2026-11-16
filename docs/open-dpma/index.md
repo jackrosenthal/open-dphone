@@ -49,6 +49,7 @@ Open DPMA reads the configuration file of the original module, `res_digium_phone
 - A text value with a `"`, a `<`, or an `&` is escaped in the phone's configuration.  The original module writes such a value unchanged, which makes a document that a phone cannot read.
 - `enable_check_sync` is off again after the line is removed from the configuration file.  With the original module the option stays on until the file says `enable_check_sync=no`.
 - `network_vlan_qos` takes effect in a network section.
+- A network section without `registration_port` sends the phone the default port of the transport: 5061 for TLS, otherwise 5060.  The original module sends an empty port.
 - An option of a `type=line` section keeps going before the line's value from PJSIP after a change of the PJSIP endpoint.  With the original module, such a change replaces or clears the section's `context`, `callerid`, `mailbox`, `secret`, and `authname` until the next reload.
 
 **Added**

@@ -267,7 +267,7 @@ A network section says which server addresses a phone uses while the phone's add
 | `cidr` | Network in CIDR form, e.g., `10.10.0.0/16` | None | The addresses for which the phone uses this network. |
 | `alias` | Text | None | The network's name on the phone. |
 | `registration_address` | Host name or address | None | The address of this server as seen from the network. |
-| `registration_port` | Port | None | The SIP port of this server.  A network section has no default port: set the option. |
+| `registration_port` | Port | `5061` with TLS, otherwise `5060` | The SIP port of this server.  Without the option, the module sends the default port of the transport that the module sends for the line: the line's `transport`, or else the network's. |
 | `transport` | `udp`, `tcp`, or `tls` | None | The SIP transport, for lines without `transport`. |
 | `alternate_registration_address` | Host name or address | None | A second server that the phone registers to when the first does not answer. |
 | `alternate_registration_port` | Port | None | The SIP port of the second server. |

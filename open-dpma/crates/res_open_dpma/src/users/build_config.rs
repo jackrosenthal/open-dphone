@@ -294,12 +294,12 @@ fn add_internal_line_account(
         "<host_primary server=\"{}\" ",
         esc(&net.registration_address)
     );
-    ap!(o, "port=\"{}\" ", esc(&net.registration_port));
     let transport = if line.transport == Transport::Unset {
         net.transport
     } else {
         line.transport
     };
+    ap!(o, "port=\"{}\" ", esc(net.registration_port_for(transport)));
     ap!(o, "transport=\"{}\" ", transport.string());
     if !line.media_encryption.is_empty() {
         ap!(o, "media_encryption=\"{}\" ", val(&line.media_encryption));
@@ -850,7 +850,7 @@ fn build_config(
             o,
             "<setting id=\"config_server_url\" value=\"sip:proxy@{}:{}{}\" network_id=\"{}\" />\n",
             val(&net.registration_address),
-            val(&net.registration_port),
+            val(net.registration_port_for(transport)),
             transport.uri_option(),
             val(&net.name)
         );
