@@ -56,8 +56,7 @@ pub struct Manifest {
     /// phone shows its model's icon if there is one, else `icon`.  The
     /// models are D40, D45, D50, D60, D62, D65, and D70.
     pub icon_for: &'static [(&'static str, &'static [u8])],
-    /// The name of one of the phone's own icons, for an app without an
-    /// icon of its own.
+    /// The name of one of the phone's icons, for an app without an icon.
     pub phone_icon: &'static str,
     /// The most memory the app may have, in KiB.  The default (0) is
     /// 4 MiB, and the phone gives no app more than 16 MiB.
@@ -274,7 +273,7 @@ impl Manifest {
         );
         assert!(
             self.icon.is_empty() || png_ok(self.icon),
-            "export_app!: `icon` is not a PNG file's content (for one of the phone's own icons, give its name as `phone_icon`)"
+            "export_app!: `icon` is not a PNG file's content (for one of the phone's icons, give its name as `phone_icon`)"
         );
         let mut i = 0;
         while i < self.icon_for.len() {

@@ -924,7 +924,7 @@ impl api::presence::Host for AppCtx {
             .find(|e| entry_matches(e, &target))
             .map(|e| presence_of(e, &target))
     }
-    fn set_own(&mut self, status: String, text: String) -> Result<(), Error> {
+    fn set_status(&mut self, status: String, text: String) -> Result<(), Error> {
         let status = PresenceStatus::from_token(&status);
         if status == PresenceStatus::Unknown {
             return Err(Error::Invalid("unknown presence status".into()));
@@ -932,7 +932,7 @@ impl api::presence::Host for AppCtx {
         self.command(Command::SetPresence { status, text })
             .map(|_| ())
     }
-    fn get_own(&mut self) -> Presence {
+    fn get_status(&mut self) -> Presence {
         let p = self.store.get::<dphone_state::Presence>();
         Presence {
             target: String::new(),

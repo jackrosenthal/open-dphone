@@ -178,7 +178,7 @@ impl Status {
             match &outcome {
                 PbxOutcome::Ok(_) => {
                     if let Some(c) = self.applying.take() {
-                        let _ = presence::set_own(&c.presence, &self.message);
+                        let _ = presence::set_status(&c.presence, &self.message);
                         for o in &mut self.options {
                             o.active = o.id == c.id;
                         }

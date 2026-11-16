@@ -9,7 +9,7 @@ The app runtime of Open DPhone: WebAssembly components run by Wasmtime's Pulley 
 
 ## Building apps
 
-Apps are plain `cdylib` crates for `wasm32-unknown-unknown`.  An app maker builds one with cargo and makes a component of the module with `wasm-tools component new`, which is the file the phone installs (the SDK's README has the commands).  For the firmware's own apps, the host tool `dphone-apps-build` (feature `build-tool`) makes the component itself (`src/build.rs`) and compiles it to Pulley bytecode for the phone:
+Apps are plain `cdylib` crates for `wasm32-unknown-unknown`.  An app maker builds one with cargo and makes a component of the module with `wasm-tools component new`, which is the file the phone installs (the SDK's README has the commands).  For the built-in apps, the host tool `dphone-apps-build` (feature `build-tool`) makes the component itself (`src/build.rs`) and compiles it to Pulley bytecode for the phone:
 
 ```text
 cd apps && cargo build --release                      # modules in <target>/wasm32-unknown-unknown/release
@@ -28,7 +28,7 @@ The `.cwasm` files are tied to the Wasmtime version and to the settings in `src/
 | `/nvdata/wasmapps/<name>/` | Installed apps (beside the stock `/nvdata/jsapps`, which is left alone): `app.pb`, `<name>.wasm`, `.code.cwasm` |
 | `/nvdata/appdata/<name>/` | The app's store (the interface `storage`): a file for each key, removed with the app |
 
-`app.pb` is the phone's record of an app: its manifest (the message `dphone.app.v1.Manifest` of `crates/dphone-app-sdk/proto/manifest.proto`, icons included) with the interfaces its component imports.  The launcher's icon comes from there: the one for the phone's model if the manifest has one, else the app's, else one of the phone's own by the name the manifest gives.  `<name>.wasm` is the component as it was installed.
+`app.pb` is the phone's record of an app: its manifest (the message `dphone.app.v1.Manifest` of `crates/dphone-app-sdk/proto/manifest.proto`, icons included) with the interfaces its component imports.  The launcher's icon comes from there: the one for the phone's model if the manifest has one, else the app's, else the icon of the phone that the manifest names.  `<name>.wasm` is the component as it was installed.
 
 ## Installing
 
@@ -42,7 +42,7 @@ Measured on a D60 (ARM1176, 2026-11-15; the web interface's "Install App", a dia
 | Status | 50 KiB | 7.9 s | 2.3 MB | 100 |
 | Light Up | 119 KiB | 16.4 s | 6.2 MB | 100 |
 
-So a compilation takes about 2 s and 0.12 s for every KiB, far too long for the manager's thread (the running apps would stand still, and the liveness check would report the subsystem dead).  A worker thread (`src/prepare.rs`) does it, at the lowest priority (nice 19; the audio thread is `SCHED_FIFO`), one app at a time; the command `InstallApp` is answered when it is done, and the web interface waits up to ten minutes.  An app file may be 8 MiB with 1 MiB of code in it (`MAX_COMPONENT`; the code sections, since the compiler only copies data): about three minutes by these figures (the phone's own binary under `qemu-arm` takes 11 times as long for a 1,011 KiB component as for Light Up; such a component has not been timed on a phone).
+So a compilation takes about 2 s and 0.12 s for every KiB, far too long for the manager's thread (the running apps would stand still, and the liveness check would report the subsystem dead).  A worker thread (`src/prepare.rs`) does it, at the lowest priority (nice 19; the audio thread is `SCHED_FIFO`), one app at a time; the command `InstallApp` is answered when it is done, and the web interface waits up to ten minutes.  An app file may be 8 MiB with 1 MiB of code in it (`MAX_COMPONENT`; the code sections, since the compiler only copies data): about three minutes by these figures (the phone's binary under `qemu-arm` takes 11 times as long for a 1,011 KiB component as for Light Up; such a component has not been timed on a phone).
 
 After a firmware update that changes the engine, the compiled code of the installed apps no longer loads.  The manager finds that when it starts and has the worker compile each such app again; until an app's turn is over, opening it fails with a message that says so.
 
@@ -52,7 +52,7 @@ The cost of the compiler in the phone binary: 12.99 MB without it, 17.65 MB with
 
 `cargo test -p dphone-apps` builds the apps and a misbehaving test guest, stages them for the 64-bit interpreter, and runs them under the real manager with a fake screen and a scripted PBX.  Set `DPHONE_APPS_STAGED` to a directory staged with `--target pulley64` (apps and `tests/guests`) to skip the build step.
 
-The apps' own tests (the unit tests of each app crate, and the tests of a game's library, which lies in the app's directory, e.g., `apps/lightup/game`) are in the `apps/` workspace, which `cargo test` in the firmware workspace does not reach.  Run them with `cargo host-test` in `apps/`: an alias for `cargo test --target host-tuple`, because that workspace otherwise builds for WebAssembly.  The Nix check `tests` runs both.
+The unit tests of the apps (those of each app crate, and those of a game's library, which lies in the app's directory, e.g., `apps/lightup/game`) are in the `apps/` workspace, which `cargo test` in the firmware workspace does not reach.  Run them with `cargo host-test` in `apps/`: an alias for `cargo test --target host-tuple`, because that workspace otherwise builds for WebAssembly.  The Nix check `tests` runs both.
 
 ## Spike S1 (measured 2026-11-13)
 
@@ -69,8 +69,8 @@ Sizes are stripped ARMv6 binaries at `opt-level = "s"` with LTO; times are under
 | `fib(27)` | 172 to 252 ms | 94 to 114 ms |
 | Component model | Yes | No (hand-written ABI needed) |
 
-With the real apps: loading, instantiating, and starting the precompiled Status app takes 32 to 37 ms; rebuilding a screen (about 12 host calls with strings and lists) takes about 0.2 ms; compiling the 51 KiB Status component on the device takes 0.73 s.  One instance adds about 1.8 MiB of resident memory, measured natively with the 64-bit interpreter; the `qemu-arm` figure (5 to 7 MiB) includes the emulator's own translation cache and is not meaningful.
+With the real apps: loading, instantiating, and starting the precompiled Status app takes 32 to 37 ms; rebuilding a screen (about 12 host calls with strings and lists) takes about 0.2 ms; compiling the 51 KiB Status component on the device takes 0.73 s.  One instance adds about 1.8 MiB of resident memory, measured natively with the 64-bit interpreter; the `qemu-arm` figure (5 to 7 MiB) includes the emulator's translation cache and is not meaningful.
 
 Decision: Wasmtime with Pulley, as the plan prefers; it meets the no-C constraint and the size is acceptable.  wasmi interprets about twice as fast in this test and needs no separate compiler for installed apps, so it remains the fallback if phone measurements disappoint.  Pulley is markedly slower at `opt-level = "s"`; the phone build should set `opt-level = 3` for the `pulley-interpreter` package (the better figures above).
 
-Re-run on hardware with `dphone-apps-s1 <apps root>` (features `test-util` and `cli`).  The phone's own figures for compiling are under "Installing" above.
+Re-run on hardware with `dphone-apps-s1 <apps root>` (features `test-util` and `cli`).  The figures for compiling on a phone are under "Installing" above.

@@ -4,8 +4,8 @@
 /// calls `guest.start` once and then `guest.handle` for every event; all
 /// host services that take time (PBX requests, HTTP, timers) return an id
 /// at once and deliver their result later as an event, so an app never
-/// blocks the phone.  An app receives only the imports its manifest
-/// declares under `capabilities`.
+/// blocks the phone.  An app is given the interfaces its component
+/// imports, and no others.
 package dphone:app@3.0.0;
 
 interface types {
@@ -217,7 +217,7 @@ interface runtime {
   log: func(level: u8, message: string);
   in-foreground: func() -> bool;
   /// 64 random bits from the phone's random source, e.g., to seed a
-  /// game's own generator.
+  /// game's generator.
   random: func() -> u64;
 }
 
@@ -260,7 +260,7 @@ interface ui {
 
   /// Gives a picture of the app's a name, for `set-image` and for the
   /// icons of list items: `png` is a PNG file's content, which the app
-  /// holds in its own data (e.g., with `include_bytes!`).  At most 512 KiB
+  /// holds in its data (e.g., with `include_bytes!`).  At most 512 KiB
   /// a picture, and 32 pictures.  Defining a name again replaces the
   /// picture.
   define-image: func(name: string, png: list<u8>) -> result<_, error>;
@@ -378,10 +378,11 @@ interface presence {
   subscribe: func(target: string);
   unsubscribe: func(target: string);
   get: func(target: string) -> option<presence>;
-  /// Set this user's own presence on the phone (line display and SIP
-  /// PUBLISH where configured).
-  set-own: func(status: string, text: string) -> result<_, error>;
-  get-own: func() -> presence;
+  /// Set the presence of the phone's user (line display and SIP PUBLISH
+  /// where configured).
+  set-status: func(status: string, text: string) -> result<_, error>;
+  /// The presence of the phone's user.
+  get-status: func() -> presence;
 }
 
 /// Capability `events`.
@@ -396,7 +397,7 @@ interface events {
 /// Capability `audio`.
 interface audio {
   use types.{error};
-  /// Play a sound the app holds in its own data (e.g., with
+  /// Play a sound the app holds in its data (e.g., with
   /// `include_bytes!`), from `start` seconds: `sound` is the content of a
   /// sound file, either headerless 16 kHz mono signed 16-bit
   /// little-endian samples (stock `.sln16`) or a WAVE file (PCM, mu-law,
@@ -430,7 +431,7 @@ interface hotdesk {
   current-user: func() -> string;
 }
 
-/// Capability `diagnostics`: the phone's own state.
+/// Capability `diagnostics`: the state of the phone.
 interface diagnostics {
   /// Every subsystem of the phone and its state: `ok`, `starting`,
   /// `stopped`, `degraded: <why>`, or `failed: <why>`.
@@ -464,9 +465,9 @@ interface input {
   /// the app's window is on screen, and every change of the hookswitch
   /// as `event.hook`: also the keys an app's window never gets otherwise
   /// (line key 1, the volume keys, `mute`, `spkr`, and `hdst`), the
-  /// softkeys, and the keys a widget would use.  The phone does nothing
-  /// of its own with them: no volume change, no softkey, and no dial
-  /// tone when the handset is lifted.  With `false`, keys go the usual
+  /// softkeys, and the keys a widget would use.  The phone itself does
+  /// nothing with them: no volume change, no softkey, and no dial tone
+  /// when the handset is lifted.  With `false`, keys go the usual
   /// way again.
   ///
   /// The user can always leave: `cancel` three times in a row leaves the

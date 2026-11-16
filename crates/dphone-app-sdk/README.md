@@ -83,7 +83,7 @@ The manifest is what the phone has to know about an app before it runs it.  It i
 | `hidden` | `true` marks the app as hidden. |
 | `icon` | The app's icon: the content of a PNG file, `include_bytes!("hello.png")`.  At most 256 KiB. |
 | `icon_for` | Icons for particular models of phone, each as `icon` is: `&[("D60", include_bytes!("color.png"))]`.  A phone shows its model's icon if there is one, else `icon`.  The models are D40, D45, D50, D60, D62, D65, and D70. |
-| `phone_icon` | The name of one of the phone's own icons, for an app without an icon of its own. |
+| `phone_icon` | The name of one of the phone's icons, for an app without an icon. |
 | `memory_kib` | The most memory the app may have, in KiB.  The default is 4 MiB, and the phone gives no app more than 16 MiB. |
 
 A manifest with everything:
@@ -114,7 +114,7 @@ The manifest travels in the app's file: `export_app!` writes it, when the app is
 
 An app's data (pictures, sounds, tables) is in its code: `include_bytes!` and `include_str!`, as in any Rust program.  The phone unpacks nothing.
 
-- A picture: `ui::define_image("logo", include_bytes!("logo.png"))` gives a PNG a name, once; `ui::set_image` and the `icon` of a list item then take that name.  A name the app did not define is one of the phone's own icons.  At most 512 KiB a picture, and 32 pictures.  An app that wants another picture on another model of phone chooses by `ui::metrics()`.
+- A picture: `ui::define_image("logo", include_bytes!("logo.png"))` gives a PNG a name, once; `ui::set_image` and the `icon` of a list item then take that name.  A name the app did not define is one of the phone's icons.  At most 512 KiB a picture, and 32 pictures.  An app that wants another picture on another model of phone chooses by `ui::metrics()`.
 - A sound: `audio::play(include_bytes!("tone.wav"), 0)`.
 - The data counts toward the app's memory (`memory_kib`), since it is part of the program.
 
@@ -132,12 +132,12 @@ Each interface of the phone except `runtime` is a capability, and each is a modu
 | `pbx` | Requests to the PBX. |
 | `http` | HTTP requests. |
 | `calls` | Placing and controlling calls, and call events. |
-| `presence` | The presence of other extensions, and the user's own status. |
+| `presence` | The presence of other extensions, and the status of the phone's user. |
 | `events` | Events pushed to the phone, and messages between apps. |
 | `audio` | Playing a sound file. |
 | `l10n` | The locale, common words, and the text of dates and times. |
 | `hotdesk` | Changing which user the phone is provisioned for. |
-| `diagnostics` | The phone's own state: its subsystems and its log. |
+| `diagnostics` | The state of the phone: its subsystems and its log. |
 | `lamps` | The phone's lamps, while the app is on screen. |
 | `input` | Every key and the hookswitch, while the app is on screen and asks for them. |
 

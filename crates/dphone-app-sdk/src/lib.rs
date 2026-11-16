@@ -23,8 +23,8 @@
 //!
 //! The interface is defined once, in `wit/app.wit` in this crate; the
 //! modules re-exported here ([`ui`], [`pbx`], [`calls`], ...) are generated
-//! from it.  An app gets only the interfaces its manifest lists under
-//! `capabilities`; using another one makes the app fail to load.
+//! from it.  An app is given the interfaces its component imports, and no
+//! others.
 
 #![allow(clippy::too_many_arguments)]
 

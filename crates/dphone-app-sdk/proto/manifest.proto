@@ -13,7 +13,7 @@
 //
 // The interfaces of the phone an app uses are not in the manifest: the
 // phone takes them from the imports of the WebAssembly component.  Nor are
-// an app's data files: an app holds its data in its own code.
+// an app's data files: an app holds its data in its code.
 
 syntax = "proto3";
 
@@ -36,8 +36,8 @@ message Manifest {
   bool has_idle = 7;
   // The app is marked as hidden.
   bool hidden = 8;
-  // The name of one of the phone's own icons, for an app that has no icon
-  // of its own (or whose icon the phone cannot show).
+  // The name of one of the phone's icons, for an app that has no icon (or
+  // whose icon the phone cannot show).
   string phone_icon = 9;
   // The most memory the app may have, in KiB; 0 is the phone's default.
   uint32 memory_kib = 10;
