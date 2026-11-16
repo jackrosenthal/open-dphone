@@ -805,7 +805,7 @@ impl LightUp {
             Screen::Scores => {}
             Screen::Choose => {
                 self.scores_from_list = true;
-                self.row = self.list.map(ui::selected);
+                self.row = self.list.and_then(ui::selected);
             }
             _ => self.scores_from_list = false,
         }
@@ -1108,7 +1108,9 @@ impl App for LightUp {
             Event::Softkey(SK_SCORES) => {
                 // Of the row of the list of sizes, or of the puzzle.
                 let kind = match (&self.screen, self.list) {
-                    (Screen::Choose, Some(list)) => Kind::from_index(ui::selected(list) as usize),
+                    (Screen::Choose, Some(list)) => {
+                        Kind::from_index(ui::selected(list).unwrap_or(0) as usize)
+                    }
                     _ => self.kind(),
                 };
                 self.show_scores(kind);
@@ -1131,8 +1133,8 @@ impl App for LightUp {
             Event::Softkey(SK_NEXT) => self.show_help(self.page + 1),
             Event::Softkey(SK_RETRY) => self.generate(),
             Event::Softkey(SK_PLAY) => {
-                if let Some(list) = self.list {
-                    self.choose(ui::selected(list) as usize);
+                if let Some(row) = self.list.and_then(ui::selected) {
+                    self.choose(row as usize);
                 }
             }
             Event::Widget((_, WidgetEvent::Activated(row))) if self.screen == Screen::Choose => {

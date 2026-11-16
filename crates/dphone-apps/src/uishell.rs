@@ -178,8 +178,11 @@ impl AppWindow for UiWindow {
     fn set_selected(&mut self, w: u32, index: u32) {
         self.view.list_select(id(w), index);
     }
-    fn selected(&self, w: u32) -> u32 {
-        self.view.list_selected(id(w)).unwrap_or(0)
+    fn selected(&self, w: u32) -> Option<u32> {
+        self.view.list_selected(id(w))
+    }
+    fn hold_changes(&mut self, on: bool) {
+        self.view.hold_changes(on);
     }
     fn set_value(&mut self, w: u32, value: &str) {
         self.view.set_text(id(w), value);

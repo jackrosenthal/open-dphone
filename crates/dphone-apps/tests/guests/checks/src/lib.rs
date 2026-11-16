@@ -6,7 +6,7 @@
 
 use dphone_app_sdk::canvas::{Color, Op};
 use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{CallState, alarms, canvas, lamps};
+use dphone_app_sdk::{CallState, InputMode, alarms, canvas, hotdesk, lamps};
 
 /// The app's data is in its code.
 const TONE: &[u8] = include_bytes!("../../probe/data/tone.wav");
@@ -53,7 +53,55 @@ impl Checks {
             "observe" => until_refused(70, |n| events::observe(&format!("name.{n}"))),
             // A name that is already observed is not one more.
             "observe-again" => format!("{:?}", events::observe("name.0")),
-            "subscribe" => until_refused(260, |n| presence::subscribe(&format!("{}", 1000 + n))),
+            "presence" => until_refused(260, |n| presence::observe(&format!("{}", 1000 + n))),
+            "presence-again" => {
+                let again = presence::observe("1000");
+                presence::stop_observing("1001");
+                format!("{again:?} {:?}", presence::observe("2000"))
+            }
+            "selected" => {
+                let list = ui::create(WidgetKind::TextList, ROOT, Rect::new(0, 40, 10, 10));
+                let empty = ui::selected(list);
+                ui::set_items(list, &[ListItem::new("a"), ListItem::new("b"), ListItem::new("c")]);
+                let first = ui::selected(list);
+                ui::set_selected(list, 2);
+                let set = ui::selected(list);
+                // Past the end: the last row.
+                ui::set_selected(list, 9);
+                let past = ui::selected(list);
+                let text = ui::selected(self.out);
+                ui::destroy(list);
+                let dead = ui::selected(list);
+                format!("empty={empty:?} first={first:?} set={set:?} past={past:?} text={text:?} dead={dead:?} window={:?}", ui::selected(ROOT))
+            }
+            // A group with an input in it, focused: `arg` says what is
+            // then hidden.
+            "hide" => {
+                let group = ui::create(WidgetKind::Group, ROOT, Rect::new(0, 40, 50, 20));
+                let input = ui::create(WidgetKind::Input, group, Rect::new(0, 0, 50, 20));
+                let other = ui::create(WidgetKind::Input, ROOT, Rect::new(0, 60, 50, 20));
+                ui::set_input_mode(input, InputMode::Numeric);
+                ui::set_focus(input);
+                match arg {
+                    "group" => ui::set_visible(group, false),
+                    "input" => ui::set_visible(input, false),
+                    "other" => ui::set_visible(other, false),
+                    _ => {}
+                }
+                format!("input={input}")
+            }
+            "times" => {
+                // 2026-11-13 22:05:00 UTC.
+                let t = 1_794_607_500;
+                [TimeStyle::Time, TimeStyle::Date, TimeStyle::DateAndTime]
+                    .map(|style| l10n::format_time(t, style))
+                    .join("|")
+            }
+            "login" => format!("{:?}", hotdesk::login(arg, "0000")),
+            "logout" => format!("{:?}", hotdesk::logout()),
+            "set" => format!("{:?}", storage::set(arg, b"v")),
+            "get" => format!("{:?}", storage::get(arg)),
+            "panic" => panic!("{arg}"),
             "watch" => format!("{:?}", events::observe(arg)),
             "calls" => {
                 calls::observe(true);
@@ -127,6 +175,7 @@ impl App for Checks {
                 p.name, p.kind, p.data, p.method, p.call
             )),
             Event::PlaybackStopped(at) => self.log.push(format!("stopped {at}")),
+            Event::HotdeskDone(result) => self.log.push(format!("hotdesk {result:?}")),
             _ => return,
         }
         ui::set_text(self.seen, &self.log.join("; "));

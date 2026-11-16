@@ -76,10 +76,9 @@ The manifest is what the phone has to know about an app before it runs it.  It i
 | `name` | The app's name on the phone: 1 to 64 characters, the first a letter or digit, the rest letters, digits, `_`, `.`, or `,`.  It cannot be the name of a built-in app, or `dphone`, which is the phone's.  Installing an app replaces the installed app of the same name. |
 | `id` | An identifier of the app, e.g., in reverse domain form (`"org.example.hello"`). |
 | `display_name` | What the phone calls the app on screen. |
-| `display_name_in` | The same in other languages, by locale: `&[("de_de", "Hallo"), ("es_mx", "Hola")]`. |
-| `description`, `description_in` | A line about the app, and the same in other languages. |
-| `kind` | `AppKind::Foreground` (the default): the app runs while it is on screen.  `AppKind::Background`: it starts with the phone and runs without being on screen.  `AppKind::Idle`: it provides the idle screen. |
-| `has_idle` | `true` if the app draws on the idle screen. |
+| `description` | A line about the app. |
+| `kind` | `AppKind::Foreground` (the default): the app runs while it is on screen.  `AppKind::Background`: it starts with the phone and runs without being on screen. |
+| `has_idle` | `true` if the app has a window on the idle screen (`ui::idle_root`).  Such an app starts with the phone, and keeps running when it leaves the screen, whatever its `kind`. |
 | `hidden` | `true` marks the app as hidden. |
 | `icon` | The app's icon: the content of a PNG file, `include_bytes!("hello.png")`.  At most 256 KiB. |
 | `icon_for` | Icons for particular models of phone, each as `icon` is: `&[("D60", include_bytes!("color.png"))]`.  A phone shows its model's icon if there is one, else `icon`.  The models are D40, D45, D50, D60, D62, D65, and D70. |
@@ -94,9 +93,7 @@ dphone_app_sdk::export_app! {
     name: "weather",
     id: "org.example.weather",
     display_name: "Weather",
-    display_name_in: &[("de_de", "Wetter")],
     description: "The weather where the phone is",
-    description_in: &[("de_de", "Das Wetter am Ort des Telefons")],
     kind: AppKind::Background,
     has_idle: true,
     icon: include_bytes!("weather.png"),
@@ -145,7 +142,9 @@ Each interface of the phone except `runtime` is a capability, and each is a modu
 
 `runtime` (logging, leaving the screen, exiting, random numbers) is not a capability: every app has it.
 
-The phone stops an app that takes more than two seconds to handle one event, or that asks for more memory than its limit.
+The phone stops an app that takes more than two seconds to handle one event, that asks for more memory than its limit, or that panics.  A panic's message, with the file and the line, is in the phone's log (`export_app!` sees to that).  An app that starts with the phone (`AppKind::Background`, or `has_idle`) is started again after such a fault: after 10 seconds, and after twice as long for each further fault in a row, up to an hour.  The count starts over when the user opens the app, and when the app has run for an hour without a fault.
+
+What an app changes in its window while it handles one event appears together, when `handle` returns.
 
 ## Data on the PBX
 

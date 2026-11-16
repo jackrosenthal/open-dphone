@@ -216,12 +216,47 @@ fn hotdesking_logs_in_and_out() {
             .iter()
             .any(|c| matches!(c, Command::SelectUser { id, pin } if id == "101" && pin == "4321"))
     );
-    assert_eq!(r.ui.top(), None);
-
+    // The app stays on screen until the phone says how the login ended.
+    assert_eq!(r.ui.top().as_deref(), Some("hotdesking"));
+    assert!(r.ui.shows("hotdesking", "Logging in 101..."));
+    // A change of the provisioning state that is not the end of the login
+    // is not taken for it.
     r.store
-        .update::<dphone_state::Provisioning, _>(|p| p.assigned_user = "101".into());
-    r.launch("hotdesking");
+        .update::<dphone_state::Provisioning, _>(|p| p.phase = dphone_state::ProvisionPhase::Handshaking);
+    r.settle();
+    assert!(r.ui.shows("hotdesking", "Logging in 101..."));
+
+    // The PBX refuses the PIN: the app says so, with the PBX's reason.
+    r.store.update::<dphone_state::Provisioning, _>(|p| {
+        p.selection = Some(Err("Invalid password (-199)".into()));
+    });
+    r.settle();
+    assert_eq!(r.ui.top().as_deref(), Some("hotdesking"));
+    assert!(r.ui.shows("hotdesking", "Invalid password (-199)"));
+    assert_eq!(r.ui.softkeys("hotdesking"), ["Back"]);
+    // The result is told once: another change of the state brings nothing.
+    r.softkey("hotdesking", "Back");
+    r.store
+        .update::<dphone_state::Provisioning, _>(|p| p.phase = dphone_state::ProvisionPhase::Provisioned);
+    r.settle();
+    assert_eq!(r.ui.softkeys("hotdesking"), ["Log In", "Cancel"]);
+
+    // Again, and the PBX takes the user.
+    r.store.update::<dphone_state::Provisioning, _>(|p| p.selection = None);
+    r.ui.type_text("hotdesking", "101");
+    r.settle();
+    r.key("hotdesking", Key::Select);
+    r.ui.type_text("hotdesking", "1234");
+    r.settle();
+    r.softkey("hotdesking", "Log In");
+    r.store.update::<dphone_state::Provisioning, _>(|p| {
+        p.assigned_user = "101".into();
+        p.selection = Some(Ok(()));
+    });
+    r.settle();
     assert!(r.ui.shows("hotdesking", "Logged in as 101"));
+
+    r.store.update::<dphone_state::Provisioning, _>(|p| p.selection = None);
     r.softkey("hotdesking", "Log Out");
     r.softkey("hotdesking", "Yes");
     assert!(
@@ -229,6 +264,13 @@ fn hotdesking_logs_in_and_out() {
             .iter()
             .any(|c| matches!(c, Command::SelectUser { id, .. } if id.is_empty()))
     );
+    assert!(r.ui.shows("hotdesking", "Logging out..."));
+    r.store.update::<dphone_state::Provisioning, _>(|p| {
+        p.assigned_user.clear();
+        p.selection = Some(Ok(()));
+    });
+    r.settle();
+    assert_eq!(r.ui.softkeys("hotdesking"), ["Log In", "Cancel"]);
 }
 
 const CONTACTS: &str = r#"<contacts group_name="Internal Extensions" editable="0" >

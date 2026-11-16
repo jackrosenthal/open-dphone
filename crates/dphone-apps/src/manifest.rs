@@ -121,7 +121,6 @@ impl Capability {
 pub enum AppType {
     Foreground,
     Background,
-    Idle,
 }
 
 impl AppType {
@@ -129,7 +128,6 @@ impl AppType {
         match self {
             AppType::Foreground => "foreground",
             AppType::Background => "background",
-            AppType::Idle => "idle",
         }
     }
 }
@@ -195,14 +193,12 @@ impl std::error::Error for ManifestError {}
 pub struct Manifest {
     pub name: String,
     pub id: String,
-    /// The display name for `en_us`, or else the unlocalized one; the app
-    /// name if there is none.
+    /// What the phone calls the app on screen; the app's name if the
+    /// manifest gives none.
     pub display_name: String,
     pub description: String,
-    /// The display names and descriptions as the app gives them.
-    pub display_names: Text,
-    pub descriptions: Text,
     pub kind: AppType,
+    /// The app has a window on the idle screen, and starts with the phone.
     pub has_idle: bool,
     pub hidden: bool,
     /// The name of one of the phone's own icons, for an app without an
@@ -221,25 +217,6 @@ pub struct Manifest {
     /// Requested linear-memory cap in KiB (0: the default); never above
     /// the manager's hard cap.
     pub memory_kib: u32,
-}
-
-/// A text with its translations.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Text {
-    pub text: String,
-    /// (locale, text).
-    pub localized: Vec<(String, String)>,
-}
-
-impl Text {
-    /// As stock chooses: `en_us`, or else the unlocalized text.
-    fn shown(&self) -> &str {
-        self.localized
-            .iter()
-            .find(|(l, _)| l.eq_ignore_ascii_case("en_us"))
-            .map(|(_, t)| t.as_str())
-            .unwrap_or(&self.text)
-    }
 }
 
 /// The name the phone itself has in the PBX's store of app data, where
@@ -396,37 +373,19 @@ fn put_number(out: &mut Vec<u8>, field: u64, v: u64) {
     }
 }
 
-fn put_text(out: &mut Vec<u8>, field: u64, t: &Text) {
+/// A `Text` message: the text is the message's first field.
+fn put_text(out: &mut Vec<u8>, field: u64, text: &str) {
     let mut m = Vec::new();
-    put_string(&mut m, 1, &t.text);
-    for (locale, text) in &t.localized {
-        let mut l = Vec::new();
-        put_string(&mut l, 1, locale);
-        put_string(&mut l, 2, text);
-        put_bytes(&mut m, 2, &l);
-    }
+    put_string(&mut m, 1, text);
     if !m.is_empty() {
         put_bytes(out, field, &m);
     }
 }
 
-fn read_text(b: &[u8], into: &mut Text) -> Result<(), ManifestError> {
+fn read_text(b: &[u8], into: &mut String) -> Result<(), ManifestError> {
     fields(b, |n, v| {
-        match n {
-            1 => into.text = string(v)?,
-            2 => {
-                let mut pair = (String::new(), String::new());
-                fields(message(v)?, |n, v| {
-                    match n {
-                        1 => pair.0 = string(v)?,
-                        2 => pair.1 = string(v)?,
-                        _ => {}
-                    }
-                    Ok(())
-                })?;
-                into.localized.push(pair);
-            }
-            _ => {}
+        if n == 1 {
+            *into = string(v)?;
         }
         Ok(())
     })
@@ -544,8 +503,6 @@ impl Manifest {
             id: String::new(),
             display_name: String::new(),
             description: String::new(),
-            display_names: Text::default(),
-            descriptions: Text::default(),
             kind: AppType::Foreground,
             has_idle: false,
             hidden: false,
@@ -562,13 +519,12 @@ impl Manifest {
                 1 => format = number(v)?,
                 2 => m.name = string(v)?,
                 3 => m.id = string(v)?,
-                4 => read_text(message(v)?, &mut m.display_names)?,
-                5 => read_text(message(v)?, &mut m.descriptions)?,
+                4 => read_text(message(v)?, &mut m.display_name)?,
+                5 => read_text(message(v)?, &mut m.description)?,
                 6 => {
                     m.kind = match number(v)? {
                         0 | 1 => AppType::Foreground,
                         2 => AppType::Background,
-                        3 => AppType::Idle,
                         other => return Err(ManifestError::BadKind(other)),
                     }
                 }
@@ -618,12 +574,9 @@ impl Manifest {
             }
             validate_icon(png)?;
         }
-        m.has_idle |= m.kind == AppType::Idle;
-        m.display_name = match m.display_names.shown() {
-            "" => m.name.clone(),
-            s => s.to_string(),
-        };
-        m.description = m.descriptions.shown().to_string();
+        if m.display_name.is_empty() {
+            m.display_name = m.name.clone();
+        }
         m.wasm = format!("{}.wasm", m.name);
         Ok(m)
     }
@@ -634,15 +587,14 @@ impl Manifest {
         put_number(&mut out, 1, u64::from(FORMAT));
         put_string(&mut out, 2, &self.name);
         put_string(&mut out, 3, &self.id);
-        put_text(&mut out, 4, &self.display_names);
-        put_text(&mut out, 5, &self.descriptions);
+        put_text(&mut out, 4, &self.display_name);
+        put_text(&mut out, 5, &self.description);
         put_number(
             &mut out,
             6,
             match self.kind {
                 AppType::Foreground => 1,
                 AppType::Background => 2,
-                AppType::Idle => 3,
             },
         );
         put_number(&mut out, 7, u64::from(self.has_idle));
@@ -752,18 +704,16 @@ mod tests {
     #[test]
     fn a_record_round_trips_and_only_a_record_carries_capabilities() {
         let mut m = sample();
-        m.display_names = Text {
-            text: "Voicemail".into(),
-            localized: vec![("de_de".into(), "VM".into())],
-        };
-        m.kind = AppType::Idle;
+        m.display_name = "Voicemail".into();
+        m.kind = AppType::Background;
+        m.has_idle = true;
         m.icon = "voicemail".into();
         m.icon_png = PNG.to_vec();
         m.icons_for = vec![("D60".into(), [PNG, b"color"].concat())];
         m.capabilities = vec![Capability::Ui, Capability::Pbx];
         let back = Manifest::from_record(&m.record()).unwrap();
         assert_eq!(back.display_name, "Voicemail");
-        assert!(back.has_idle);
+        assert_eq!((back.kind, back.has_idle), (AppType::Background, true));
         assert!(back.has(Capability::Pbx) && !back.has(Capability::Calls));
         assert_eq!(back.icon, "voicemail");
         // A phone shows its model's icon, else the app's.
@@ -817,6 +767,11 @@ mod tests {
             Manifest::from_wasm(&module_with(&[8, 1, 0x12, 1, b'-'])),
             Err(ManifestError::BadName(_))
         ));
+        // Kind 3 was "idle", which `has_idle` says.
+        assert_eq!(
+            Manifest::from_wasm(&module_with(&[8, 1, 0x12, 1, b'x', 0x30, 3])),
+            Err(ManifestError::BadKind(3))
+        );
         let mut m = sample();
         m.icon_png = b"GIF89a".to_vec();
         assert!(matches!(

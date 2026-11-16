@@ -376,7 +376,7 @@ fn install_run_upgrade_and_remove() {
 
     // A well-formed app file installs through the command bus and runs.
     let pkg3 = variant(&dir.0, "status", "mystatus", |m| {
-        m.display_names.text = "My Status".into()
+        m.display_name = "My Status".into()
     });
     assert!(matches!(
         r.mgr.install(&pkg3, Some("other")).unwrap_err(),
@@ -602,4 +602,143 @@ fn install_refuses_a_component_too_large_to_compile() {
         "{err}"
     );
     assert!(!r.nvdata.join("wasmapps/large").exists());
+}
+
+/// Keeps the lines the phone logs, for the tests that read what an app
+/// logged.
+fn logged() -> &'static std::sync::Mutex<Vec<(log::Level, String)>> {
+    static LINES: std::sync::Mutex<Vec<(log::Level, String)>> = std::sync::Mutex::new(Vec::new());
+    struct Keep;
+    impl log::Log for Keep {
+        fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+            true
+        }
+        fn log(&self, record: &log::Record<'_>) {
+            LINES.lock().unwrap().push((record.level(), record.args().to_string()));
+        }
+        fn flush(&self) {}
+    }
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        log::set_logger(&Keep).unwrap();
+        log::set_max_level(log::LevelFilter::Info);
+    });
+    &LINES
+}
+
+/// Makes the test guest `probe` panic with `why`.
+fn panic_probe(r: &mut Rig, why: &str) {
+    r.store.emit(Event::App { app: "probe".into(), name: "panic".into(), payload: why.into() });
+    r.settle();
+}
+
+#[test]
+fn a_panic_of_an_app_is_in_the_log_with_its_place() {
+    let lines = logged();
+    let mut r = rig();
+    r.launch("probe");
+    panic_probe(&mut r, "the probe fell over (log test)");
+    assert!(!r.mgr.is_running("probe"));
+    let lines = lines.lock().unwrap();
+    let line = lines
+        .iter()
+        .find(|(_, l)| l.contains("the probe fell over (log test)"))
+        .unwrap_or_else(|| panic!("the panic is not in the log: {lines:?}"));
+    assert_eq!(line.0, log::Level::Error);
+    // The app, the file, and the line of the `panic!`.
+    assert!(line.1.starts_with("probe: panicked at "), "{}", line.1);
+    assert!(line.1.contains("probe/src/lib.rs:"), "{}", line.1);
+}
+
+/// What the manager waits for when nothing else is due: the restart of a
+/// faulted app.
+fn restart_in(r: &mut Rig) -> Option<std::time::Duration> {
+    r.mgr.pump()
+}
+
+fn wait_until_running(r: &mut Rig, app: &str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !r.mgr.is_running(app) {
+        assert!(std::time::Instant::now() < deadline, "{app} was not started again");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        r.mgr.pump();
+    }
+}
+
+#[test]
+fn a_faulted_app_that_starts_with_the_phone_is_started_again_with_backoff() {
+    use std::time::Duration;
+    let ms = Duration::from_millis;
+    let mut r = Rig::with_manager(|cfg| {
+        cfg.restart_delay = ms(500);
+        cfg.restart_delay_max = ms(750);
+        cfg.restart_forgiven = Duration::from_secs(3600);
+    });
+    // `probe` has an idle window, and so starts with the phone.
+    r.mgr.autostart();
+    r.settle();
+    assert!(r.mgr.is_running("probe"));
+    assert_eq!(restart_in(&mut r), None);
+
+    // The first fault: the app is gone, and comes back after the delay.
+    panic_probe(&mut r, "first");
+    assert!(!r.mgr.is_running("probe"));
+    assert!(!r.store.get::<dphone_state::Apps>().installed.iter().any(|a| a.name == "probe" && a.running));
+    let wait = restart_in(&mut r).expect("a restart is due");
+    assert!(wait <= ms(500), "{wait:?}");
+    wait_until_running(&mut r, "probe");
+    assert_eq!(r.ui.idle_texts("probe"), ["idle=unknown"], "a fresh instance, with its idle window");
+    assert!(r.store.get::<dphone_state::Apps>().installed.iter().any(|a| a.name == "probe" && a.running));
+
+    // The second fault in a row: twice the delay, up to the most.
+    panic_probe(&mut r, "second");
+    let wait = restart_in(&mut r).expect("a restart is due");
+    assert!(wait > ms(500) && wait <= ms(750), "{wait:?}");
+    wait_until_running(&mut r, "probe");
+
+    // Opened by the user, the app starts over at the first delay.
+    panic_probe(&mut r, "third");
+    r.launch("probe");
+    assert_eq!(restart_in(&mut r), None, "opening the app is the restart");
+    panic_probe(&mut r, "fourth");
+    let wait = restart_in(&mut r).expect("a restart is due");
+    assert!(wait <= ms(500), "{wait:?}");
+
+    // An app that is closed on purpose is not started again.
+    wait_until_running(&mut r, "probe");
+    panic_probe(&mut r, "fifth");
+    r.mgr.close("probe");
+    assert_eq!(restart_in(&mut r), None);
+}
+
+#[test]
+fn an_app_that_ran_long_enough_without_a_fault_starts_over_at_the_first_delay() {
+    use std::time::Duration;
+    let ms = Duration::from_millis;
+    let mut r = Rig::with_manager(|cfg| {
+        cfg.restart_delay = ms(400);
+        cfg.restart_delay_max = Duration::from_secs(3600);
+        // Any run at all is long enough.
+        cfg.restart_forgiven = Duration::ZERO;
+    });
+    r.mgr.autostart();
+    r.settle();
+    for why in ["first", "second", "third"] {
+        panic_probe(&mut r, why);
+        let wait = restart_in(&mut r).expect("a restart is due");
+        assert!(wait <= ms(400), "{why}: {wait:?}");
+        wait_until_running(&mut r, "probe");
+    }
+}
+
+#[test]
+fn a_faulted_app_that_the_user_opens_is_not_started_again() {
+    let mut r = Rig::with_manager(|cfg| cfg.restart_delay = std::time::Duration::from_millis(1));
+    r.launch("faulty");
+    r.softkey("faulty", "Hog");
+    assert!(!r.mgr.is_running("faulty"));
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    r.settle();
+    assert!(!r.mgr.is_running("faulty"));
+    assert_eq!(r.mgr.pump(), None);
 }

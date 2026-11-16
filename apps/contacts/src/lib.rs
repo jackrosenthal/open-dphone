@@ -195,13 +195,13 @@ impl Contacts {
     fn reload(&mut self) {
         self.groups = load_groups();
         for w in self.watched.drain(..) {
-            presence::unsubscribe(&w);
+            presence::stop_observing(&w);
         }
         for c in self.groups.iter().flat_map(|g| &g.contacts) {
             if !c.watch.is_empty()
                 && !self.watched.contains(&c.watch)
                 && self.watched.len() < 200
-                && presence::subscribe(&c.watch).is_ok()
+                && presence::observe(&c.watch).is_ok()
             {
                 self.watched.push(c.watch.clone());
             }
@@ -346,7 +346,7 @@ impl Contacts {
             Screen::Search { list } => list,
             _ => return None,
         };
-        self.view.get(ui::selected(list) as usize).cloned()
+        self.view.get(ui::selected(list)? as usize).cloned()
     }
 
     fn show_details(&mut self, c: Contact) {
@@ -385,7 +385,7 @@ impl Contacts {
             let n = self
                 .detail
                 .as_ref()
-                .and_then(|c| c.numbers.get(ui::selected(list) as usize))
+                .and_then(|c| c.numbers.get(ui::selected(list)? as usize))
                 .map(|n| n.dial.clone());
             if let Some(n) = n {
                 self.dial(&n);
@@ -435,7 +435,9 @@ impl App for Contacts {
                 if let Screen::List(l) | Screen::Search { list: l } = self.screen {
                     let keep = ui::selected(l);
                     ui::set_items(l, &Self::rows(&self.view));
-                    ui::set_selected(l, keep);
+                    if let Some(keep) = keep {
+                        ui::set_selected(l, keep);
+                    }
                 }
             }
             Event::Widget((w, WidgetEvent::Activated(i))) => match self.screen {
@@ -459,8 +461,10 @@ impl App for Contacts {
                 }
             }
             Event::Softkey(SK_OPEN) => {
-                if let Screen::Groups(l) = self.screen {
-                    self.group = Some(ui::selected(l) as usize);
+                if let Screen::Groups(l) = self.screen
+                    && let Some(row) = ui::selected(l)
+                {
+                    self.group = Some(row as usize);
                     self.show_list();
                 }
             }

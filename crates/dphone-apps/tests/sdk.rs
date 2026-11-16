@@ -32,9 +32,7 @@ fn every_field_arrives() {
         name: "probe",
         id: "org.example.probe",
         display_name: "Probe",
-        display_name_in: &[("de_de", "Sonde"), ("en_us", "The Probe")],
         description: "Looks around",
-        description_in: &[("de_de", "Sieht sich um")],
         kind: AppKind::Background,
         has_idle: true,
         hidden: true,
@@ -50,15 +48,8 @@ fn every_field_arrives() {
     let m = Manifest::from_wasm(&module(&SECTION)).unwrap();
     assert_eq!(m.name, "probe");
     assert_eq!(m.id, "org.example.probe");
-    // As stock: the `en_us` text before the unlocalized one.
-    assert_eq!(m.display_name, "The Probe");
-    assert_eq!(m.display_names.text, "Probe");
-    assert_eq!(
-        m.display_names.localized[0],
-        ("de_de".into(), "Sonde".into())
-    );
+    assert_eq!(m.display_name, "Probe");
     assert_eq!(m.description, "Looks around");
-    assert_eq!(m.descriptions.localized.len(), 1);
     assert_eq!(m.kind, AppType::Background);
     assert!(m.has_idle && m.hidden);
     assert_eq!(m.icon, "status");

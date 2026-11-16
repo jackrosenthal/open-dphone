@@ -20,8 +20,6 @@ pub enum AppKind {
     Foreground,
     /// From the phone's start, without being on screen.
     Background,
-    /// As the idle screen.
-    Idle,
 }
 
 /// The fields of [`export_app!`](crate::export_app), after `app`.  Only
@@ -36,15 +34,11 @@ pub struct Manifest {
     pub id: &'static str,
     /// What the phone calls the app on screen.
     pub display_name: &'static str,
-    /// The same in other languages: (locale, text), e.g.,
-    /// `&[("de_de", "Kalender")]`.
-    pub display_name_in: &'static [(&'static str, &'static str)],
     /// A line about the app.
     pub description: &'static str,
-    /// The same in other languages.
-    pub description_in: &'static [(&'static str, &'static str)],
     pub kind: AppKind,
-    /// The app draws on the idle screen.
+    /// The app has a window on the idle screen, and starts with the phone
+    /// to draw there.
     pub has_idle: bool,
     /// The app is marked as hidden.
     pub hidden: bool,
@@ -125,18 +119,9 @@ const fn string_len(s: &str) -> usize {
     }
 }
 
-const fn localized_len(l: &(&str, &str)) -> usize {
-    string_len(l.0) + string_len(l.1)
-}
-
-const fn text_len(text: &str, localized: &[(&str, &str)]) -> usize {
-    let mut n = string_len(text);
-    let mut i = 0;
-    while i < localized.len() {
-        n += delimited_len(localized_len(&localized[i]));
-        i += 1;
-    }
-    n
+/// A `Text` message: the text is the first field of it.
+const fn text_len(text: &str) -> usize {
+    string_len(text)
 }
 
 /// A cursor over the section being written.
@@ -187,19 +172,12 @@ impl<const N: usize> Out<N> {
         }
     }
 
-    const fn text(mut self, field: u32, text: &str, localized: &[(&str, &str)]) -> Self {
-        let len = text_len(text, localized);
+    const fn text(self, field: u32, text: &str) -> Self {
+        let len = text_len(text);
         if len == 0 {
             return self;
         }
-        self = self.open(field, len).string(1, text);
-        let mut i = 0;
-        while i < localized.len() {
-            let l = &localized[i];
-            self = self.open(2, localized_len(l)).string(1, l.0).string(2, l.1);
-            i += 1;
-        }
-        self
+        self.open(field, len).string(1, text)
     }
 }
 
@@ -218,26 +196,13 @@ const fn name_ok(name: &str) -> bool {
     true
 }
 
-const fn locales_ok(localized: &[(&str, &str)]) -> bool {
-    let mut i = 0;
-    while i < localized.len() {
-        if localized[i].0.is_empty() || localized[i].1.is_empty() {
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
-
 impl Manifest {
     /// Every field at its default; `name` and `display_name` are missing.
     pub const EMPTY: Manifest = Manifest {
         name: "",
         id: "",
         display_name: "",
-        display_name_in: &[],
         description: "",
-        description_in: &[],
         kind: AppKind::Foreground,
         has_idle: false,
         hidden: false,
@@ -258,10 +223,6 @@ impl Manifest {
         assert!(
             !self.display_name.is_empty(),
             "export_app!: `display_name` is missing"
-        );
-        assert!(
-            locales_ok(self.display_name_in) && locales_ok(self.description_in),
-            "export_app!: a localized text needs a locale and a text, e.g., (\"de_de\", \"Kalender\")"
         );
         assert!(
             self.memory_kib <= 16 << 10,
@@ -303,11 +264,11 @@ impl Manifest {
     pub const fn encoded_len(&self) -> usize {
         let mut n = 1 + varint_len(FORMAT as u64);
         n += string_len(self.name) + string_len(self.id);
-        let t = text_len(self.display_name, self.display_name_in);
+        let t = text_len(self.display_name);
         if t > 0 {
             n += delimited_len(t);
         }
-        let t = text_len(self.description, self.description_in);
+        let t = text_len(self.description);
         if t > 0 {
             n += delimited_len(t);
         }
@@ -334,7 +295,6 @@ impl Manifest {
         let kind = match self.kind {
             AppKind::Foreground => 1,
             AppKind::Background => 2,
-            AppKind::Idle => 3,
         };
         let mut out = Out {
             bytes: [0; N],
@@ -343,8 +303,8 @@ impl Manifest {
         .number(1, FORMAT as u64)
         .string(2, self.name)
         .string(3, self.id)
-        .text(4, self.display_name, self.display_name_in)
-        .text(5, self.description, self.description_in)
+        .text(4, self.display_name)
+        .text(5, self.description)
         .number(6, kind)
         .number(7, self.has_idle as u64)
         .number(8, self.hidden as u64)

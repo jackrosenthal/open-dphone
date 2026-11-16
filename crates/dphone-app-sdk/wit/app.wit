@@ -70,13 +70,13 @@ interface types {
   }
 
   variant error {
-    /// The manifest does not grant this.
-    denied,
     not-found,
     /// Bad argument (e.g., a path separator in a storage key).
     invalid(string),
     /// No space left (the 2 MiB reserve counts as used).
     no-space,
+    /// The phone could not do what was asked, or would not; the text says
+    /// why.
     failed(string),
   }
 
@@ -252,7 +252,10 @@ interface types {
     /// with the state `ended`.
     call(call-info),
     push(push),
+    /// The message counts of an account changed.  For every app that
+    /// uses `calls`, without asking.
     mwi(mwi),
+    /// A target the app observes (`presence.observe`) changed.
     presence(presence),
     /// New merged configuration; re-read `config`.
     new-config,
@@ -278,6 +281,11 @@ interface types {
     /// removed (from this app, another, or the web interface), rang, or
     /// was snoozed or dismissed.  For apps that use `alarms`.
     alarms-changed,
+    /// How the `hotdesk.login` or `hotdesk.logout` this app called
+    /// ended: the phone has the configuration asked for, or the reason
+    /// the PBX or the phone gave against it (e.g., a wrong PIN), after
+    /// which the phone is assigned as it was before.
+    hotdesk-done(result<_, string>),
   }
 }
 
@@ -322,6 +330,8 @@ interface ui {
   /// Destroys every child of the widget.
   clear: func(w: widget);
   set-bounds: func(w: widget, bounds: rect);
+  /// Shows or hides the widget and its children.  Hiding the focused
+  /// widget, or a widget the focused one is in, leaves no widget focused.
   set-visible: func(w: widget, visible: bool);
   set-focus: func(w: widget);
 
@@ -336,7 +346,9 @@ interface ui {
 
   set-items: func(w: widget, items: list<list-item>);
   set-selected: func(w: widget, index: u32);
-  selected: func(w: widget) -> u32;
+  /// The highlighted row of a list; `none` for a list without rows, a
+  /// widget of another kind, and a widget that no longer exists.
+  selected: func(w: widget) -> option<u32>;
 
   set-value: func(w: widget, value: string);
   value: func(w: widget) -> string;
@@ -394,9 +406,9 @@ interface timers {
 
 /// Capability `storage`: the app's store of keys and values.  The phone
 /// keeps it across restarts and firmware updates, no other app can reach
-/// it, and it is deleted when the app is removed.  A key is a name that
-/// does not start with `.`, has no `/`, `\`, or NUL in it, and is short
-/// enough to be a file name (about 250 bytes); a value is at most 1 MiB.
+/// it, and it is deleted when the app is removed.  A key is a name of 1
+/// to 64 bytes that does not start with `.` and has no `/`, `\`, or NUL
+/// in it; a value is at most 1 MiB.  Another key is refused (`invalid`).
 interface storage {
   use types.{error};
   /// The value of a key, if the key is set.
@@ -517,13 +529,25 @@ interface calls {
   dial-voicemail: func(account: option<u8>) -> result<_, error>;
 }
 
-/// Capability `presence`.
+/// Capability `presence`: the presence and line state of the contacts
+/// the phone watches, and the presence of the phone's user.  The phone
+/// watches the contacts on the rapid-dial (BLF) keys that have
+/// `subscribe_to` in the contact list: the keys the configuration's
+/// `blf_items` name, or, without any, the contacts of the group
+/// `blf_contact_group` on the unused keys.  The phone watches at most
+/// `contacts_max_subscriptions` targets (40 unless set).  A contact that
+/// is on no key is not watched, and an app cannot make the phone watch
+/// one.
 interface presence {
   use types.{presence, error};
-  /// Watch an extension; changes arrive as `event.presence`.  An app
-  /// watches at most 256 targets; one more is refused (`failed`).
-  subscribe: func(target: string) -> result<_, error>;
-  unsubscribe: func(target: string);
+  /// Have the changes of a target the phone watches arrive as
+  /// `event.presence`: an extension, a contact's id, or a URI.  A target
+  /// the phone does not watch is accepted and never has an event.  An
+  /// app observes at most 256 targets; one more is refused (`failed`).
+  observe: func(target: string) -> result<_, error>;
+  stop-observing: func(target: string);
+  /// What the phone knows of a target (`none`: the phone does not watch
+  /// it).
   get: func(target: string) -> option<presence>;
   /// Set the presence of the phone's user (line display and SIP PUBLISH
   /// where configured).
@@ -552,8 +576,10 @@ interface audio {
   /// `include_bytes!`), from `start` seconds: `sound` is the content of a
   /// sound file, either headerless 16 kHz mono signed 16-bit
   /// little-endian samples (stock `.sln16`) or a WAVE file (PCM, mu-law,
-  /// or A-law).  At most five minutes.  One sound plays at a time;
-  /// `event.playback-stopped` follows when it is over.
+  /// or A-law).  At most five minutes.  The phone plays one sound at a
+  /// time: a new sound replaces the one that plays, whichever app
+  /// started it, and that app gets `event.playback-stopped`.
+  /// `event.playback-stopped` follows when the sound is over.
   play: func(sound: list<u8>, start: u32) -> result<_, error>;
   /// Stops the sound this app started with `play`, if it still plays.
   /// Another app's sound and a ringtone preview play on.
@@ -566,9 +592,12 @@ interface l10n {
   locale: func() -> string;
   /// Host-provided common strings (`ok`, `cancel`, `back`, ...).
   common: func(key: string) -> string;
-  /// Local date and time text for a Unix time: style 0 time, 1 date,
-  /// 2 date and time.
-  format-time: func(unix: u64, style: u8) -> string;
+  /// What `format-time` writes.
+  enum time-style { time, date, date-and-time }
+  /// Local date and time text for a Unix time.  The time follows the
+  /// phone's 12- or 24-hour setting; the date is written as `Nov 13,
+  /// 2026` whatever the phone's date format setting says.
+  format-time: func(unix: u64, style: time-style) -> string;
   /// Offset of local time from UTC now, in seconds (east is positive).
   utc-offset: func() -> s32;
 }
@@ -576,9 +605,12 @@ interface l10n {
 /// Capability `hotdesk`: change which user this phone is provisioned for.
 interface hotdesk {
   use types.{error};
-  /// Log a user in with their extension and PIN; the phone reprovisions.
+  /// Log a user in with their extension and PIN.  `ok` says only that
+  /// the phone has begun to ask the PBX; how the login ended arrives as
+  /// `event.hotdesk-done`.
   login: func(extension: string, pin: string) -> result<_, error>;
-  /// Return the phone to its unassigned configuration.
+  /// Return the phone to its unassigned configuration.  `ok` and
+  /// `event.hotdesk-done` as for `login`.
   logout: func() -> result<_, error>;
   /// The user the phone is assigned to ("" if none).
   current-user: func() -> string;

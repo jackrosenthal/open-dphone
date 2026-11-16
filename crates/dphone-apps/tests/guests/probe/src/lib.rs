@@ -1,7 +1,8 @@
 //! A test guest that calls host services on request and shows what came
 //! back: softkey 1 dials with headers, 2 plays a sound it carries, 3 stops
 //! it, 4 resets the idle timer, 5 shows a picture it carries.
-//! Its idle window says whether the idle screen is showing.
+//! Its idle window says whether the idle screen is showing.  The message
+//! `panic` makes the app panic with the message's payload.
 //!
 //! Softkeys 6 to 11 use the app's store on the PBX: 6 watches it and
 //! lists the shared keys under `best/`, 7 adds the user's name to the
@@ -179,6 +180,7 @@ impl App for Probe {
                 format!("changed={:?}:{}", change.scope, change.key)
             }
             Event::PbxStorageOnline => "online".to_string(),
+            Event::Message((what, why)) if what == "panic" => panic!("{why}"),
             Event::PlaybackStopped(at) => format!("stopped={at}"),
             Event::IdleScreenShow => {
                 ui::set_text(self.idle, "idle=shown");

@@ -537,8 +537,9 @@ impl Diagnostics {
             }
             Page::Keys { .. } => self.key_tested(name, true),
             Page::Menu { list } if name == "right" => {
-                let row = ui::selected(*list);
-                self.activate(row);
+                if let Some(row) = ui::selected(*list) {
+                    self.activate(row);
+                }
             }
             Page::Menu { list } if name.len() == 1 && name != "0" => {
                 let row = u32::from(name.as_bytes()[0] - b'1');
@@ -564,8 +565,10 @@ impl App for Diagnostics {
             Event::Widget((_, WidgetEvent::Highlighted(row))) => self.selected = row,
             Event::Widget((_, WidgetEvent::Activated(row))) => self.activate(row),
             Event::Softkey(SK_SELECT) => {
-                if let Page::Menu { list } = self.page {
-                    self.activate(ui::selected(list));
+                if let Page::Menu { list } = self.page
+                    && let Some(row) = ui::selected(list)
+                {
+                    self.activate(row);
                 }
             }
             Event::Softkey(SK_BACK) => self.back(),

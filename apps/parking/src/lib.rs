@@ -59,7 +59,7 @@ impl Parking {
             self.list = None;
             return;
         }
-        let keep = self.list.map(ui::selected).unwrap_or(0);
+        let keep = self.list.and_then(ui::selected).unwrap_or(0);
         let list = ui::create(WidgetKind::TextList, ROOT, r);
         let items: Vec<ListItem> = self
             .calls
@@ -164,8 +164,8 @@ impl App for Parking {
             }
             Event::Widget((_, WidgetEvent::Activated(i))) => self.retrieve(i as usize),
             Event::Softkey(SK_RETRIEVE) => {
-                if let Some(l) = self.list {
-                    self.retrieve(ui::selected(l) as usize);
+                if let Some(row) = self.list.and_then(ui::selected) {
+                    self.retrieve(row as usize);
                 }
             }
             Event::Softkey(SK_REFRESH) => self.refresh(),

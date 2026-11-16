@@ -104,6 +104,8 @@ pub trait AppWindow: Send {
     /// resets the window's softkeys and key claims).
     fn clear(&mut self, w: Option<u32>);
     fn set_bounds(&mut self, w: u32, bounds: Rect);
+    /// Hiding the focused widget, or one the focused widget is in, leaves
+    /// no widget focused.
     fn set_visible(&mut self, w: u32, visible: bool);
     fn set_focus(&mut self, w: Option<u32>);
     fn set_text(&mut self, w: u32, text: &str);
@@ -114,7 +116,8 @@ pub trait AppWindow: Send {
     fn set_highlight(&mut self, w: u32, on: bool);
     fn set_items(&mut self, w: u32, items: &[ListItem]);
     fn set_selected(&mut self, w: u32, index: u32);
-    fn selected(&self, w: u32) -> u32;
+    /// The highlighted row of a list that has rows.
+    fn selected(&self, w: u32) -> Option<u32>;
     fn set_value(&mut self, w: u32, value: &str);
     fn value(&self, w: u32) -> String;
     fn set_input_mode(&mut self, w: u32, mode: InputMode);
@@ -157,6 +160,10 @@ pub trait AppWindow: Send {
     fn draw(&mut self, _w: u32, _ops: Vec<DrawOp>) -> bool {
         false
     }
+    /// With `true`, what is changed in the window from now on is not
+    /// shown until this is called with `false`: the app's handler runs,
+    /// and the changes the handler makes appear together.
+    fn hold_changes(&mut self, _on: bool) {}
     fn set_softkeys(&mut self, w: Option<u32>, keys: &[Softkey]);
     fn claim_keys(&mut self, w: Option<u32>, keys: &[Key]);
     /// Next pending user event, if any.

@@ -611,8 +611,11 @@ impl AppWindow for WatchedWindow {
     fn set_selected(&mut self, w: u32, index: u32) {
         self.inner.set_selected(w, index)
     }
-    fn selected(&self, w: u32) -> u32 {
+    fn selected(&self, w: u32) -> Option<u32> {
         self.inner.selected(w)
+    }
+    fn hold_changes(&mut self, on: bool) {
+        self.inner.hold_changes(on)
     }
     fn set_value(&mut self, w: u32, value: &str) {
         self.inner.set_value(w, value)

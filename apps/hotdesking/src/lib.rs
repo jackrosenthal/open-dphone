@@ -1,5 +1,6 @@
 //! Hot desking: log a user in to this phone with an extension and PIN, or
-//! log the current user out.  The phone reprovisions for the new user.
+//! log the current user out.  The phone reprovisions for the new user, and
+//! the app stays on screen until the phone says how that ended.
 
 use dphone_app_sdk::prelude::*;
 use dphone_app_sdk::{InputMode, hotdesk};
@@ -18,6 +19,8 @@ enum Screen {
     Login(Form),
     LoggedIn,
     Confirm,
+    /// Waiting for the phone to say how a login or logout ended.
+    Working,
     Failed,
 }
 
@@ -69,12 +72,26 @@ impl HotDesk {
             return;
         }
         match hotdesk::login(&ext, &pin) {
-            Ok(()) => {
-                Message::show("Hot Desking", &format!("Logging in {ext}..."), &[]);
-                self.screen = Screen::None;
-                runtime::background();
-            }
+            Ok(()) => self.wait(&format!("Logging in {ext}...")),
             Err(_) => self.fail("The phone could not start the login."),
+        }
+    }
+
+    /// Shows what the phone is doing until `Event::HotdeskDone` comes.
+    fn wait(&mut self, text: &str) {
+        Message::show("Hot Desking", text, &[Softkey::new(SK_EXIT, "Exit")]);
+        self.screen = Screen::Working;
+    }
+
+    /// The phone said how the login or logout ended.
+    fn done(&mut self, result: Result<(), String>) {
+        if !matches!(self.screen, Screen::Working) {
+            return;
+        }
+        match result {
+            // Logged in: who the phone is now for.  Logged out: the form.
+            Ok(()) => self.show(),
+            Err(why) => self.fail(&format!("The PBX did not allow that:\n{why}")),
         }
     }
 }
@@ -104,13 +121,10 @@ impl App for HotDesk {
                 self.screen = Screen::Confirm;
             }
             Event::Softkey(SK_YES) => match hotdesk::logout() {
-                Ok(()) => {
-                    Message::show("Hot Desking", "Logging out...", &[]);
-                    self.screen = Screen::None;
-                    runtime::background();
-                }
+                Ok(()) => self.wait("Logging out..."),
                 Err(_) => self.fail("The phone could not log out."),
             },
+            Event::HotdeskDone(result) => self.done(result),
             Event::Softkey(SK_NO | SK_BACK) => self.show(),
             Event::Softkey(SK_EXIT) => runtime::background(),
             Event::Key(k) if k == "cancel" => match self.screen {

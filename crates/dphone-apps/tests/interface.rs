@@ -52,8 +52,80 @@ fn a_limit_that_is_reached_is_reported() {
     let observed = ask(&mut r, "observe", "");
     assert!(observed.starts_with("64 then ") && observed.contains("Failed("), "{observed}");
     assert_eq!(ask(&mut r, "observe-again", ""), "Ok(())");
-    let watched = ask(&mut r, "subscribe", "");
+    let watched = ask(&mut r, "presence", "");
     assert!(watched.starts_with("256 then ") && watched.contains("Failed("), "{watched}");
+    // A target that is already observed is not one more, and one that is
+    // no longer observed makes room.
+    assert_eq!(ask(&mut r, "presence-again", ""), "Ok(()) Ok(())");
+}
+
+#[test]
+fn the_selected_row_is_none_where_there_is_no_row() {
+    let mut r = rig();
+    assert_eq!(
+        ask(&mut r, "selected", ""),
+        "empty=None first=Some(0) set=Some(2) past=Some(2) text=None dead=None window=None"
+    );
+}
+
+#[test]
+fn hiding_a_widget_drops_the_focus_inside() {
+    for (hidden, keeps) in [("none", true), ("other", true), ("input", false), ("group", false)] {
+        let mut r = rig();
+        let answer = ask(&mut r, "hide", hidden);
+        let input: u32 = answer.strip_prefix("input=").unwrap().parse().unwrap();
+        assert_eq!(r.ui.focused("checks"), keeps.then_some(input), "hiding {hidden}");
+    }
+}
+
+#[test]
+fn the_styles_of_a_time_have_names() {
+    let mut r = rig();
+    assert_eq!(ask(&mut r, "times", ""), "10:05 PM|Nov 13, 2026|Nov 13, 2026 10:05 PM");
+}
+
+#[test]
+fn what_a_handler_changes_is_held_until_the_handler_returns() {
+    let mut r = rig();
+    let (held, before) = r.ui.holds("checks");
+    assert!(!held);
+    // One event, one handler: the window's changes are held once, and
+    // let go when the handler has returned.
+    r.store.emit(Event::App { app: "checks".into(), name: "selected".into(), payload: String::new() });
+    r.settle();
+    assert_eq!(r.ui.holds("checks"), (false, before + 1));
+}
+
+#[test]
+fn a_login_tells_the_app_that_asked_how_it_ended() {
+    let mut r = rig();
+    r.launch("probe");
+    assert_eq!(ask(&mut r, "login", "200"), "Ok(())");
+    assert!(commands(&r).iter().any(|c| matches!(c, Command::SelectUser { id, .. } if id == "200")));
+    assert_eq!(seen(&r), "");
+    r.store.update::<dphone_state::Provisioning, _>(|p| p.selection = Some(Err("Invalid password (-199)".into())));
+    r.settle();
+    assert_eq!(seen(&r), r#"hotdesk Err("Invalid password (-199)")"#);
+    // Once, and only for a login that the app asked for.
+    r.store.update::<dphone_state::Provisioning, _>(|p| p.assigned_user = "100".into());
+    r.settle();
+    assert_eq!(seen(&r), r#"hotdesk Err("Invalid password (-199)")"#);
+
+    r.store.update::<dphone_state::Provisioning, _>(|p| p.selection = None);
+    assert_eq!(ask(&mut r, "logout", ""), "Ok(())");
+    r.store.update::<dphone_state::Provisioning, _>(|p| p.selection = Some(Ok(())));
+    r.settle();
+    assert_eq!(seen(&r), r#"hotdesk Err("Invalid password (-199)"); hotdesk Ok(())"#);
+}
+
+#[test]
+fn a_login_that_is_refused_at_once_has_no_result_later() {
+    // No extension: the phone asks the PBX nothing, and no event follows.
+    let mut r = rig();
+    assert!(ask(&mut r, "login", "").starts_with("Err(Error::Invalid("));
+    r.store.update::<dphone_state::Provisioning, _>(|p| p.selection = Some(Ok(())));
+    r.settle();
+    assert_eq!(seen(&r), "");
 }
 
 #[test]
@@ -119,6 +191,38 @@ fn a_key_too_long_to_store_is_a_bad_argument() {
     let answer = ask(&mut r, "long-key", "300");
     assert!(answer.starts_with("Err(Error::Invalid("), "{answer}");
     assert_eq!(ask(&mut r, "long-key", "40"), "Ok(())");
+}
+
+#[test]
+fn a_storage_key_is_at_most_64_bytes() {
+    let mut r = rig();
+    assert_eq!(ask(&mut r, "long-key", "64"), "Ok(())");
+    let answer = ask(&mut r, "long-key", "65");
+    assert!(answer.starts_with("Err(Error::Invalid(") && answer.contains("64 bytes"), "{answer}");
+    // Bytes: 33 two-byte letters are 66.
+    let answer = ask(&mut r, "set", &"\u{e9}".repeat(33));
+    assert!(answer.starts_with("Err(Error::Invalid("), "{answer}");
+    assert_eq!(ask(&mut r, "set", &"\u{e9}".repeat(32)), "Ok(())");
+    // Refused before the file system is touched: no file, and no file
+    // that the phone made on the way to one.
+    let store = r.nvdata.join("appdata/checks");
+    let names: Vec<String> =
+        std::fs::read_dir(&store).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(names.len(), 2, "{names:?}");
+    // A key that long reads as not set.
+    assert_eq!(ask(&mut r, "get", &"k".repeat(65)), "None");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_key_whose_file_is_a_symbolic_link_fails_with_the_reason() {
+    let mut r = rig();
+    assert_eq!(ask(&mut r, "set", "plain"), "Ok(())");
+    let store = r.nvdata.join("appdata/checks");
+    std::os::unix::fs::symlink(store.join("plain"), store.join("link")).unwrap();
+    let answer = ask(&mut r, "set", "link");
+    assert!(answer.starts_with("Err(Error::Failed(") && answer.contains("symbolic link"), "{answer}");
+    assert_eq!(ask(&mut r, "get", "link"), "None");
 }
 
 #[test]

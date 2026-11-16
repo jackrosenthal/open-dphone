@@ -47,6 +47,10 @@ pub struct Win {
     pub images: Vec<(String, usize)>,
     /// How many times the app has drawn on a canvas.
     pub draws: u32,
+    /// The host holds the window's changes back (a handler runs), and how
+    /// many times it has begun to.
+    pub held: bool,
+    pub holds: u32,
     /// The window has the whole display.
     pub full_screen: bool,
     /// The window takes every key and hookswitch change.
@@ -162,6 +166,17 @@ impl FakeUi {
             .get_mut(&(app.to_string(), WindowKind::App))
             .unwrap_or_else(|| panic!("no window for app {app}"));
         f(win)
+    }
+
+    /// The widget that has the keyboard in the app's window.
+    pub fn focused(&self, app: &str) -> Option<u32> {
+        self.with(app, |w| w.focus)
+    }
+
+    /// Whether the host holds the window's changes back now, and how many
+    /// times it has begun to.
+    pub fn holds(&self, app: &str) -> (bool, u32) {
+        self.with(app, |w| (w.held, w.holds))
     }
 
     pub fn has_window(&self, app: &str) -> bool {
@@ -560,7 +575,20 @@ impl AppWindow for FakeWindow {
         self.node(w, |n| n.bounds = bounds)
     }
     fn set_visible(&mut self, w: u32, visible: bool) {
-        self.node(w, |n| n.visible = visible)
+        self.node(w, |n| n.visible = visible);
+        self.with(|win| {
+            if !visible && win.focus.is_some_and(|f| f == w || win.descendants(w).contains(&f)) {
+                win.focus = None;
+            }
+        })
+    }
+    fn hold_changes(&mut self, on: bool) {
+        self.with(|w| {
+            w.held = on;
+            if on {
+                w.holds += 1;
+            }
+        })
     }
     fn set_focus(&mut self, id: Option<u32>) {
         self.with(|w| w.focus = id.filter(|i| w.nodes.contains_key(i)))
@@ -589,8 +617,13 @@ impl AppWindow for FakeWindow {
             n.selected = index.min(n.items.len().saturating_sub(1) as u32)
         })
     }
-    fn selected(&self, w: u32) -> u32 {
-        self.with(|win| win.nodes.get(&w).map(|n| n.selected).unwrap_or(0))
+    fn selected(&self, w: u32) -> Option<u32> {
+        self.with(|win| {
+            win.nodes
+                .get(&w)
+                .filter(|n| !n.items.is_empty())
+                .map(|n| n.selected)
+        })
     }
     fn set_value(&mut self, w: u32, value: &str) {
         self.node(w, |n| n.value = value.to_string())

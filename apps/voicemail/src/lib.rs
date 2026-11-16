@@ -146,7 +146,7 @@ impl Voicemail {
         if self.screen != Screen::List || self.messages.is_empty() {
             return None;
         }
-        self.messages.get(ui::selected(self.list) as usize).cloned()
+        self.messages.get(ui::selected(self.list)? as usize).cloned()
     }
 
     fn list_keys(&self) -> Vec<Softkey> {
@@ -193,7 +193,10 @@ impl Voicemail {
             .iter()
             .map(|m| {
                 let mark = if m.read { "" } else { "* " };
-                ListItem::with_detail(format!("{mark}{}", m.who()), l10n::format_time(m.date, 2))
+                ListItem::with_detail(
+                    format!("{mark}{}", m.who()),
+                    l10n::format_time(m.date, TimeStyle::DateAndTime),
+                )
             })
             .collect();
         ui::set_items(list, &items);
@@ -245,7 +248,7 @@ impl Voicemail {
         let text = format!(
             "{}\n{}\n{}:{:02}\n\nConnecting...",
             m.who(),
-            l10n::format_time(m.date, 2),
+            l10n::format_time(m.date, TimeStyle::DateAndTime),
             m.duration / 60,
             m.duration % 60
         );
@@ -509,8 +512,9 @@ impl App for Voicemail {
             }
             Event::Softkey(SK_FOLDERS) => self.draw_folders(false),
             Event::Softkey(SK_OPEN) => {
-                let i = ui::selected(self.list);
-                self.handle(Event::Widget((self.list, WidgetEvent::Activated(i))));
+                if let Some(i) = ui::selected(self.list) {
+                    self.handle(Event::Widget((self.list, WidgetEvent::Activated(i))));
+                }
             }
             Event::Softkey(SK_CALL) => {
                 if let Some(m) = self.selected()

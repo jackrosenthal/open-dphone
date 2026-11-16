@@ -146,7 +146,11 @@ pub(crate) struct AppCtx {
     pub observe_calls: bool,
     /// The app wants `event.pbx-storage-changed`.
     pub store_watch: bool,
-    pub presence_subs: HashSet<String>,
+    /// The presence targets the app observes.
+    pub presence_observed: HashSet<String>,
+    /// The app called `hotdesk.login` or `logout`, and has not been told
+    /// how it ended.
+    pub hotdesk_pending: bool,
     pub exit_after_background: bool,
     pub foreground: bool,
     /// The pictures the app defined (`ui.define-image`), by name.
@@ -166,7 +170,7 @@ const PREVIEW_MS: u64 = 4000;
 
 /// The most timers an app may have at a time.
 const TIMERS_MAX: usize = 32;
-/// The most presence targets an app may watch, and the most push names.
+/// The most presence targets an app may observe, and the most push names.
 const PRESENCE_MAX: usize = 256;
 const OBSERVED_MAX: usize = 64;
 
@@ -180,19 +184,18 @@ fn bad_name(name: &str) -> bool {
 
 /// The largest value of a storage key.
 const VALUE_MAX: usize = 1 << 20;
+/// The longest storage key, in bytes: as long as a key of the store on
+/// the PBX may be.
+pub(crate) const KEY_MAX: usize = 64;
 
 fn bad_key(key: &str) -> bool {
-    bad_name(key) || key.starts_with('.')
+    bad_name(key) || key.starts_with('.') || key.len() > KEY_MAX
 }
 
 fn io_error(e: std::io::Error) -> Error {
     match e.kind() {
         std::io::ErrorKind::NotFound => Error::NotFound,
         std::io::ErrorKind::StorageFull => Error::NoSpace,
-        // A key longer than a file name can be.
-        std::io::ErrorKind::InvalidFilename => {
-            Error::Invalid("the key is longer than the store can keep".into())
-        }
         _ => Error::Failed(e.to_string()),
     }
 }
@@ -297,7 +300,8 @@ fn civil(days: i64) -> (i64, u32, u32) {
     (yoe + era * 400 + i64::from(m <= 2), m, d)
 }
 
-pub(crate) fn format_time(unix: u64, offset: i32, h24: bool, style: u8) -> String {
+pub(crate) fn format_time(unix: u64, offset: i32, h24: bool, style: api::l10n::TimeStyle) -> String {
+    use api::l10n::TimeStyle;
     let t = unix as i64 + offset as i64;
     let (days, secs) = (t.div_euclid(86_400), t.rem_euclid(86_400));
     let (y, m, d) = civil(days);
@@ -316,9 +320,9 @@ pub(crate) fn format_time(unix: u64, offset: i32, h24: bool, style: u8) -> Strin
     ];
     let date = format!("{} {d}, {y}", MONTHS[(m - 1) as usize]);
     match style {
-        0 => time,
-        1 => date,
-        _ => format!("{date} {time}"),
+        TimeStyle::Time => time,
+        TimeStyle::Date => date,
+        TimeStyle::DateAndTime => format!("{date} {time}"),
     }
 }
 
@@ -328,7 +332,7 @@ pub(crate) fn command_error(e: dphone_state::CommandError) -> Error {
     use dphone_state::CommandError;
     match e {
         CommandError::Invalid(why) => Error::Invalid(why),
-        CommandError::Denied(_) => Error::Denied,
+        CommandError::Denied(why) => Error::Failed(format!("the phone refused: {why}")),
         CommandError::Failed(why) => Error::Failed(why),
         CommandError::Timeout => Error::Failed(
             "the phone did not answer in time; what was asked may still happen".into(),
@@ -358,6 +362,10 @@ impl AppCtx {
 
     /// The file of a storage key.
     fn key_path(&self, key: &str) -> Result<PathBuf, Error> {
+        // Before the file system is asked anything.
+        if key.len() > KEY_MAX {
+            return Err(Error::Invalid(format!("a key is at most {KEY_MAX} bytes")));
+        }
         if bad_key(key) {
             return Err(Error::Invalid(
                 "a key cannot be empty, start with `.`, or contain a path separator".into(),
@@ -367,7 +375,10 @@ impl AppCtx {
         if let Ok(meta) = std::fs::symlink_metadata(&path)
             && meta.file_type().is_symlink()
         {
-            return Err(Error::Denied);
+            return Err(Error::Failed(
+                "the key's file in the store is a symbolic link, which the phone does not follow"
+                    .into(),
+            ));
         }
         Ok(path)
     }
@@ -534,10 +545,10 @@ impl api::ui::Host for AppCtx {
     fn set_selected(&mut self, w: u32, index: u32) {
         self.on_widget(w, |win, id| win.set_selected(id, index));
     }
-    fn selected(&mut self, w: u32) -> u32 {
+    fn selected(&mut self, w: u32) -> Option<u32> {
         match self.win(w) {
             Some((win, Some(id))) => win.selected(id),
-            _ => 0,
+            _ => None,
         }
     }
     fn set_value(&mut self, w: u32, value: String) {
@@ -1089,15 +1100,16 @@ impl api::calls::Host for AppCtx {
 }
 
 impl api::presence::Host for AppCtx {
-    fn subscribe(&mut self, target: String) -> Result<(), Error> {
-        if !self.presence_subs.contains(&target) && self.presence_subs.len() >= PRESENCE_MAX {
-            return Err(Error::Failed(format!("an app may watch {PRESENCE_MAX} targets")));
+    fn observe(&mut self, target: String) -> Result<(), Error> {
+        if !self.presence_observed.contains(&target) && self.presence_observed.len() >= PRESENCE_MAX
+        {
+            return Err(Error::Failed(format!("an app may observe {PRESENCE_MAX} targets")));
         }
-        self.presence_subs.insert(target);
+        self.presence_observed.insert(target);
         Ok(())
     }
-    fn unsubscribe(&mut self, target: String) {
-        self.presence_subs.remove(&target);
+    fn stop_observing(&mut self, target: String) {
+        self.presence_observed.remove(&target);
     }
     fn get(&mut self, target: String) -> Option<Presence> {
         let p = self.store.get::<dphone_state::Presence>();
@@ -1197,7 +1209,7 @@ impl api::l10n::Host for AppCtx {
         }
         .to_string()
     }
-    fn format_time(&mut self, unix: u64, style: u8) -> String {
+    fn format_time(&mut self, unix: u64, style: api::l10n::TimeStyle) -> String {
         let c = &self.services.config;
         format_time(unix, c.utc_offset_secs(), c.clock_24h(), style)
     }
@@ -1212,7 +1224,7 @@ impl api::hotdesk::Host for AppCtx {
             return Err(Error::Invalid("bad extension or PIN".into()));
         }
         self.command(Command::SelectUser { id: extension, pin })
-            .map(|_| ())
+            .map(|_| self.hotdesk_pending = true)
     }
     fn logout(&mut self) -> Result<(), Error> {
         // An empty user means "the phone's own, MAC-keyed configuration".
@@ -1220,7 +1232,7 @@ impl api::hotdesk::Host for AppCtx {
             id: String::new(),
             pin: String::new(),
         })
-        .map(|_| ())
+        .map(|_| self.hotdesk_pending = true)
     }
     fn current_user(&mut self) -> String {
         self.store
@@ -1478,11 +1490,12 @@ mod tests {
     fn time_formats() {
         // 2026-11-13 22:05:00 UTC
         let t = 1_794_607_500;
-        assert_eq!(format_time(t, 0, true, 0), "22:05");
-        assert_eq!(format_time(t, 0, false, 0), "10:05 PM");
-        assert_eq!(format_time(t, 0, true, 1), "Nov 13, 2026");
-        assert_eq!(format_time(t, -6 * 3600, false, 2), "Nov 13, 2026 4:05 PM");
-        assert_eq!(format_time(0, 0, false, 2), "Jan 1, 1970 12:00 AM");
+        use api::l10n::TimeStyle::{Date, DateAndTime, Time};
+        assert_eq!(format_time(t, 0, true, Time), "22:05");
+        assert_eq!(format_time(t, 0, false, Time), "10:05 PM");
+        assert_eq!(format_time(t, 0, true, Date), "Nov 13, 2026");
+        assert_eq!(format_time(t, -6 * 3600, false, DateAndTime), "Nov 13, 2026 4:05 PM");
+        assert_eq!(format_time(0, 0, false, DateAndTime), "Jan 1, 1970 12:00 AM");
     }
 
     #[test]
@@ -1554,7 +1567,12 @@ mod tests {
             command_error(CommandError::Invalid("no such call".into())),
             Error::Invalid(why) if why == "no such call"
         ));
-        assert!(matches!(command_error(CommandError::Denied("policy".into())), Error::Denied));
+        // The interface has no kind of its own for a refusal: the reason
+        // is in the text.
+        assert!(matches!(
+            command_error(CommandError::Denied("policy".into())),
+            Error::Failed(why) if why.contains("policy")
+        ));
         assert!(matches!(
             command_error(CommandError::Failed("no route".into())),
             Error::Failed(why) if why == "no route"
@@ -1581,5 +1599,14 @@ mod tests {
             assert!(bad_name(n), "{n}");
         }
         assert!(!bad_name("settings.json"));
+    }
+
+    #[test]
+    fn a_storage_key_is_at_most_64_bytes() {
+        assert!(!bad_key(&"k".repeat(64)));
+        assert!(bad_key(&"k".repeat(65)));
+        // Bytes, not characters.
+        assert!(!bad_key(&"\u{e9}".repeat(32)));
+        assert!(bad_key(&"\u{e9}".repeat(33)));
     }
 }

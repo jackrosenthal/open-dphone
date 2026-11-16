@@ -151,7 +151,15 @@ impl Rig {
     ) -> Rig {
         let budget = std::time::Duration::from_millis(300);
         let config = FakeConfig::default();
-        Rig::build(staged(), config, Model::D60, budget, FakeStore::default(), change)
+        Rig::build(staged(), config, Model::D60, budget, FakeStore::default(), change, |_| {})
+    }
+
+    /// A rig whose manager has other settings than a test's usual ones:
+    /// `edit` changes them.
+    pub fn with_manager(edit: impl FnOnce(&mut ManagerConfig)) -> Rig {
+        let budget = std::time::Duration::from_millis(300);
+        let config = FakeConfig::default();
+        Rig::build(staged(), config, Model::D60, budget, FakeStore::default(), |s| s, edit)
     }
 
     pub fn with_app_data(
@@ -161,7 +169,7 @@ impl Rig {
         budget: std::time::Duration,
         app_data: FakeStore,
     ) -> Rig {
-        Rig::build(root, config, model, budget, app_data, |services| services)
+        Rig::build(root, config, model, budget, app_data, |services| services, |_| {})
     }
 
     fn build(
@@ -171,6 +179,7 @@ impl Rig {
         budget: std::time::Duration,
         app_data: FakeStore,
         change: impl FnOnce(dphone_apps::Services) -> dphone_apps::Services,
+        edit: impl FnOnce(&mut ManagerConfig),
     ) -> Rig {
         let dir = temp_dir("rig");
         let store = Store::new(model);
@@ -189,6 +198,7 @@ impl Rig {
         let mut cfg = ManagerConfig::rooted(root, &nvdata);
         cfg.target = Target::Pulley64;
         cfg.call_budget = budget;
+        edit(&mut cfg);
         let services = change(services_with_store(&pbx, config, &app_data));
         let mut mgr = AppManager::new(cfg, store.clone(), ui.shell(), services).expect("engine");
         mgr.scan();

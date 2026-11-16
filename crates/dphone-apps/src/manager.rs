@@ -45,6 +45,14 @@ pub struct ManagerConfig {
     pub call_budget: Duration,
     /// Longest `start` may run.
     pub start_budget: Duration,
+    /// How long after a fault an app that starts with the phone is
+    /// started again: this long after the first fault, and twice as long
+    /// after each further one, up to `restart_delay_max`.
+    pub restart_delay: Duration,
+    pub restart_delay_max: Duration,
+    /// An app that has run this long without a fault starts over at
+    /// `restart_delay`.
+    pub restart_forgiven: Duration,
     pub target: Target,
 }
 
@@ -60,6 +68,9 @@ impl ManagerConfig {
             memory_hard_cap: 16 << 20,
             call_budget: Duration::from_secs(2),
             start_budget: Duration::from_secs(5),
+            restart_delay: Duration::from_secs(10),
+            restart_delay_max: Duration::from_secs(3600),
+            restart_forgiven: Duration::from_secs(3600),
             target: Target::Host,
         }
     }
@@ -87,6 +98,26 @@ struct Known {
 struct Running {
     store: wasmtime::Store<AppCtx>,
     app: App,
+    /// When the instance started (monotonic milliseconds).
+    started_ms: u64,
+}
+
+/// The faults of an app that starts with the phone.
+#[derive(Default)]
+struct Faults {
+    /// Faults in a row: none of the instances between them ran for
+    /// `restart_forgiven`, and the user did not open the app.
+    count: u32,
+    /// When the app is started again (monotonic milliseconds).
+    restart_at_ms: Option<u64>,
+}
+
+/// How long after its `count`th fault in a row an app is started again.
+fn restart_delay(cfg: &ManagerConfig, count: u32) -> Duration {
+    let doublings = count.saturating_sub(1).min(31);
+    cfg.restart_delay
+        .saturating_mul(1 << doublings)
+        .min(cfg.restart_delay_max)
 }
 
 use crate::prepare::CODE_CACHE;
@@ -126,6 +157,8 @@ pub struct AppManager {
     /// The apps that watch their store on the PBX, as the store was last
     /// told.
     store_watch: Vec<String>,
+    /// The apps that start with the phone and faulted.
+    faults: HashMap<String, Faults>,
 }
 
 mod dyn_mwi {
@@ -151,7 +184,13 @@ impl AppManager {
         };
         installer.recover();
         let commands = store.handle(Domain::Apps);
-        let sub = store.subscribe_events([Topic::Calls, Topic::Mwi, Topic::Presence, Topic::Alarms]);
+        let sub = store.subscribe_events([
+            Topic::Calls,
+            Topic::Mwi,
+            Topic::Presence,
+            Topic::Alarms,
+            Topic::Provisioning,
+        ]);
         let inbox = Arc::new(Inbox::default());
         {
             let inbox = inbox.clone();
@@ -183,6 +222,7 @@ impl AppManager {
             jobs: VecDeque::new(),
             compiling: None,
             store_watch: Vec::new(),
+            faults: HashMap::new(),
         })
     }
 
@@ -533,7 +573,8 @@ impl AppManager {
             observed: HashSet::new(),
             observe_calls: false,
             store_watch: false,
-            presence_subs: HashSet::new(),
+            presence_observed: HashSet::new(),
+            hotdesk_pending: false,
             exit_after_background: true,
             foreground: false,
             pictures: HashMap::new(),
@@ -553,14 +594,17 @@ impl AppManager {
         store.limiter(|c| &mut c.limits);
         store.epoch_deadline_trap();
         store.set_epoch_deadline(ticks(self.cfg.start_budget));
+        hold_changes(store.data_mut(), true);
         let started = App::instantiate(&mut store, &component, &linker).and_then(|app| {
             app.dphone_app_guest().call_start(&mut store)?;
             Ok(app)
         });
         match started {
             Ok(app) => {
+                hold_changes(store.data_mut(), false);
+                let started_ms = dphone_state::clock::mono_ms();
                 self.running
-                    .insert(name.to_string(), Running { store, app });
+                    .insert(name.to_string(), Running { store, app, started_ms });
                 log::info!("app {name}: started");
                 // What the app asked for in `start` may be for another
                 // app, which sees who is running in the published list.
@@ -575,8 +619,75 @@ impl AppManager {
                 if has_idle {
                     self.shell.close(name, WindowKind::Idle);
                 }
+                self.faulted(name, None);
                 Err(format!("{e:#}"))
             }
+        }
+    }
+
+    /// Whether the app is one that runs without being opened, and the
+    /// configuration lets it.
+    fn starts_with_phone(&self, name: &str) -> bool {
+        self.known.get(name).is_some_and(|k| {
+            (k.manifest.kind == AppType::Background || k.manifest.has_idle)
+                && (!k.builtin || self.services.config.app_enabled(name))
+        })
+    }
+
+    /// An instance of the app faulted, after running since `started_ms`
+    /// (`None`: it did not get through `start`).  An app that starts with
+    /// the phone is started again later: after `restart_delay`, and after
+    /// twice as long for each further fault in a row.
+    fn faulted(&mut self, name: &str, started_ms: Option<u64>) {
+        if !self.starts_with_phone(name) {
+            self.faults.remove(name);
+            return;
+        }
+        let now = dphone_state::clock::mono_ms();
+        let forgiven = self.cfg.restart_forgiven.as_millis() as u64;
+        let faults = self.faults.entry(name.to_string()).or_default();
+        if started_ms.is_some_and(|t| now.saturating_sub(t) >= forgiven) {
+            faults.count = 0;
+        }
+        faults.count = faults.count.saturating_add(1);
+        let delay = restart_delay(&self.cfg, faults.count);
+        faults.restart_at_ms = Some(now + delay.as_millis() as u64);
+        log::warn!(
+            "app {name}: fault {} in a row; starting it again in {} s",
+            faults.count,
+            delay.as_secs()
+        );
+    }
+
+    /// Starts the faulted apps whose time has come.
+    fn restart_faulted(&mut self) {
+        let now = dphone_state::clock::mono_ms();
+        let due: Vec<String> = self
+            .faults
+            .iter()
+            .filter(|(_, f)| f.restart_at_ms.is_some_and(|t| t <= now))
+            .map(|(n, _)| n.clone())
+            .collect();
+        for name in due {
+            if let Some(f) = self.faults.get_mut(&name) {
+                f.restart_at_ms = None;
+            }
+            if !self.starts_with_phone(&name) {
+                // Removed, or switched off, meanwhile.
+                self.faults.remove(&name);
+                continue;
+            }
+            if self.running.contains_key(&name) {
+                continue;
+            }
+            log::info!("app {name}: starting it again after a fault");
+            match self.start(&name) {
+                Ok(()) => {}
+                Err(e) if e == COMPILING => {}
+                // `start` has counted the fault and set the next time.
+                Err(e) => log::warn!("app {name}: could not start: {e}"),
+            }
+            self.publish();
         }
     }
 
@@ -589,6 +700,9 @@ impl AppManager {
         if known.builtin && !self.services.config.app_enabled(name) {
             return Err(format!("the app {name:?} is disabled"));
         }
+        // Opened by hand: the faults before do not count against the app,
+        // and there is no restart left to wait for.
+        self.faults.remove(name);
         self.start(name)?;
         self.shell.show(name);
         self.publish();
@@ -597,6 +711,10 @@ impl AppManager {
 
     /// Stops an app: delivers `exit`, drops the instance, closes windows.
     pub fn close(&mut self, name: &str) {
+        // Stopped on purpose: a restart that waits is not wanted.
+        if let Some(f) = self.faults.get_mut(name) {
+            f.restart_at_ms = None;
+        }
         if self.running.contains_key(name) {
             self.call(name, &wit::Event::Exit);
         }
@@ -697,14 +815,39 @@ impl AppManager {
             return false;
         };
         r.store.set_epoch_deadline(budget);
-        match r.app.dphone_app_guest().call_handle(&mut r.store, event) {
+        // What the handler changes in the app's windows is shown when the
+        // handler has returned, together.
+        hold_changes(r.store.data_mut(), true);
+        let result = r.app.dphone_app_guest().call_handle(&mut r.store, event);
+        hold_changes(r.store.data_mut(), false);
+        match result {
             Ok(()) => true,
             Err(e) => {
                 log::error!("app {name}: stopped after a fault: {e:#}");
+                let started_ms = r.started_ms;
                 self.kill(name);
+                self.faulted(name, Some(started_ms));
                 self.publish();
                 false
             }
+        }
+    }
+
+    /// Tells the app that called `hotdesk.login` or `logout` how it
+    /// ended, once the provisioning state says.
+    fn on_user_selected(&mut self) {
+        let waiting = self.apps_where(|c| c.hotdesk_pending);
+        if waiting.is_empty() {
+            return;
+        }
+        let Some(result) = self.store.get::<dphone_state::Provisioning>().selection.clone() else {
+            return;
+        };
+        for name in waiting {
+            if let Some(r) = self.running.get_mut(&name) {
+                r.store.data_mut().hotdesk_pending = false;
+            }
+            self.deliver(&name, wit::Event::HotdeskDone(result.clone()));
         }
     }
 
@@ -928,11 +1071,11 @@ impl AppManager {
                 .cloned()
                 .collect();
             self.last_presence = now;
-            for name in self.apps_where(|c| !c.presence_subs.is_empty()) {
+            for name in self.apps_where(|c| !c.presence_observed.is_empty()) {
                 let subs: Vec<String> = self.running[&name]
                     .store
                     .data()
-                    .presence_subs
+                    .presence_observed
                     .iter()
                     .cloned()
                     .collect();
@@ -942,6 +1085,9 @@ impl AppManager {
                     }
                 }
             }
+        }
+        if wake.changed(Topic::Provisioning) {
+            self.on_user_selected();
         }
         if wake.changed(Topic::Alarms) {
             for name in self.apps_where(|c| c.has(Capability::Alarms)) {
@@ -1109,8 +1255,8 @@ impl AppManager {
         self.deliver(name, event);
     }
 
-    /// Does all pending work.  Returns how long until a timer is due, if
-    /// any timer is set.
+    /// Does all pending work.  Returns how long until a timer is due or
+    /// a faulted app is to start again, if there is either.
     pub fn pump(&mut self) -> Option<Duration> {
         let waker = Waker::from(self.inbox.notifier.clone());
         let mut cx = Context::from_waker(&waker);
@@ -1228,11 +1374,14 @@ impl AppManager {
             }
         }
 
+        self.restart_faulted();
+
         self.store.heartbeat(Subsystem::Apps);
         let now = dphone_state::clock::mono_ms();
         self.running
             .values()
             .flat_map(|r| r.store.data().timers.iter().map(|t| t.deadline_ms))
+            .chain(self.faults.values().filter_map(|f| f.restart_at_ms))
             .min()
             .map(|d| Duration::from_millis(d.saturating_sub(now)))
     }
@@ -1249,6 +1398,29 @@ impl AppManager {
     }
 }
 
+/// Holds back, or lets go, what is changed in the app's windows.
+fn hold_changes(c: &mut AppCtx, on: bool) {
+    c.window.hold_changes(on);
+    if let Some(idle) = c.idle.as_mut() {
+        idle.hold_changes(on);
+    }
+}
+
 fn ticks(d: Duration) -> u64 {
     (d.as_millis() as u64 / EPOCH_TICK.as_millis() as u64).max(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_restart_delay_doubles_from_ten_seconds_to_an_hour() {
+        let cfg = ManagerConfig::phone();
+        let secs = |count| restart_delay(&cfg, count).as_secs();
+        assert_eq!([secs(1), secs(2), secs(3), secs(4)], [10, 20, 40, 80]);
+        // 10 * 2^8 is 2,560 seconds; the next would be over the hour.
+        assert_eq!([secs(9), secs(10), secs(11), secs(40), secs(u32::MAX)], [2560, 3600, 3600, 3600, 3600]);
+        assert_eq!(cfg.restart_forgiven.as_secs(), 3600);
+    }
 }

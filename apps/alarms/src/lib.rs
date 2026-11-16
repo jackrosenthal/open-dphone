@@ -78,7 +78,7 @@ struct Alarms {
 fn time_text(hour: u8, minute: u8) -> String {
     // Any day will do: the text has no date.
     let unix = 86_400 * 20_000 + i64::from(hour) * 3600 + i64::from(minute) * 60;
-    l10n::format_time((unix - i64::from(l10n::utc_offset())) as u64, 0)
+    l10n::format_time((unix - i64::from(l10n::utc_offset())) as u64, TimeStyle::Time)
 }
 
 fn on_off(on: bool) -> &'static str {
@@ -324,7 +324,7 @@ impl Alarms {
     }
 
     fn toggle_day(&mut self) {
-        let row = ui::selected(self.widget);
+        let Some(row) = ui::selected(self.widget) else { return };
         if let Some(d) = &mut self.draft {
             d.days ^= 1 << row.min(6);
         }
@@ -358,7 +358,7 @@ impl Alarms {
     }
 
     fn highlighted_tone(&self) -> Option<String> {
-        alarms::tones().into_iter().nth(ui::selected(self.widget) as usize)
+        alarms::tones().into_iter().nth(ui::selected(self.widget)? as usize)
     }
 
     fn tone_done(&mut self, choose: bool) {

@@ -49,6 +49,7 @@ pub use bindings::dphone::app::types::{
     ListItem, Metrics, Mwi, PbxEntry, PbxOutcome, PbxScope, PbxStorageChange, PbxStorageOutcome,
     PbxUser, Presence, Push, Rect, Size, Skin, Softkey, WidgetEvent, WidgetKind,
 };
+pub use bindings::dphone::app::l10n::TimeStyle;
 pub use bindings::dphone::app::{
     alarms, audio, calls, canvas, config, diagnostics, events, hotdesk, http, input, l10n, lamps, pbx,
     pbx_storage, presence, runtime, storage, timers, ui,
@@ -118,6 +119,22 @@ pub fn log_debug(msg: &str) {
     runtime::log(3, msg);
 }
 
+/// Has a panic written to the phone's log at error level, with the file
+/// and line, before the panic stops the app.  [`export_app!`] calls this
+/// when the app starts.  The phone keeps the first 512 bytes of a log
+/// message.
+#[doc(hidden)]
+pub fn log_panics() {
+    std::panic::set_hook(Box::new(|info| {
+        let message = info.payload_as_str().unwrap_or("(no message)");
+        let text = match info.location() {
+            Some(at) => format!("panicked at {}:{}: {message}", at.file(), at.line()),
+            None => format!("panicked: {message}"),
+        };
+        runtime::log(0, &text);
+    }));
+}
+
 /// The full content area as a rectangle at the origin.
 pub fn content_rect() -> Rect {
     let m = ui::get_metrics();
@@ -162,7 +179,7 @@ pub mod prelude {
     pub use crate::nav::{Form, Message};
     pub use crate::{
         App, Event, ListItem, PbxEntry, PbxOutcome, PbxScope, PbxStorageOutcome, ROOT, Rect,
-        Skin, Softkey, Widget, WidgetEvent, WidgetKind, audio, calls, config, content_rect,
+        Skin, Softkey, TimeStyle, Widget, WidgetEvent, WidgetKind, audio, calls, config, content_rect,
         events, http, l10n, pbx, pbx_storage, presence, row_height, runtime, screen, storage,
         timers, ui,
     };
@@ -182,10 +199,13 @@ pub mod prelude {
 /// ```
 ///
 /// `app` comes first; `name` and `display_name` must be given; the other
-/// fields may be: `id`, `display_name_in`, `description`, `description_in`,
-/// `kind`, `has_idle`, `hidden`, `icon`, `icon_for`, `phone_icon`, and
-/// `memory_kib`.  A
-/// field the phone would refuse does not compile.
+/// fields may be: `id`, `description`, `kind`, `has_idle`, `hidden`, `icon`,
+/// `icon_for`, `phone_icon`, and `memory_kib`.  A field the phone would
+/// refuse does not compile.
+///
+/// When the app starts, the macro has a panic of the app written to the
+/// phone's log, with the place in the code, before the phone stops the
+/// app.
 #[macro_export]
 macro_rules! export_app {
     (app: $ty:ty, $($field:ident : $value:expr),+ $(,)?) => {
@@ -213,6 +233,7 @@ macro_rules! export_app {
             pub struct Shim;
             impl $crate::bindings::exports::dphone::app::guest::Guest for Shim {
                 fn start() {
+                    $crate::log_panics();
                     let mut slot = APP.0.borrow_mut();
                     let app = slot.insert(<$ty as Default>::default());
                     $crate::App::start(app);

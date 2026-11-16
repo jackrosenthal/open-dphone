@@ -561,8 +561,8 @@ impl App for BoxPusher {
             Event::Softkey(SK_LEVELS) => self.show_levels(),
             Event::Softkey(SK_BACK) => self.back(),
             Event::Softkey(SK_PLAY) => {
-                if let Some(list) = self.list {
-                    self.play(ui::selected(list) as usize);
+                if let Some(row) = self.list.and_then(ui::selected) {
+                    self.play(row as usize);
                 }
             }
             Event::Widget((_, WidgetEvent::Activated(row))) if self.screen == Screen::Levels => {

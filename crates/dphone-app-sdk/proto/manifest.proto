@@ -32,7 +32,8 @@ message Manifest {
   Text display_name = 4;
   Text description = 5;
   Kind kind = 6;
-  // The app draws on the idle screen.
+  // The app has a window on the idle screen, and starts with the phone to
+  // draw there.
   bool has_idle = 7;
   // The app is marked as hidden.
   bool hidden = 8;
@@ -61,20 +62,16 @@ enum Kind {
   KIND_FOREGROUND = 1;
   // Starts with the phone and runs without being on screen.
   KIND_BACKGROUND = 2;
-  // Provides the idle screen.
-  KIND_IDLE = 3;
+  // An app with a window on the idle screen says so with `has_idle`, and
+  // is of one of the kinds above.  A phone refuses 3.
+  reserved 3;
 }
 
+// A text the phone shows.  A message, so that texts in other languages
+// can come with it once the phone is localized.
 message Text {
-  // The text where no localized one applies.
   string text = 1;
-  repeated LocalizedText localized = 2;
-}
-
-message LocalizedText {
-  // A locale in the phone's form, e.g., "en_us".
-  string locale = 1;
-  string text = 2;
+  reserved 2;
 }
 
 message ModelIcon {

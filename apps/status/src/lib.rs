@@ -216,8 +216,10 @@ impl App for Status {
                 }
             }
             Event::Softkey(SK_SELECT) => {
-                if let Screen::List { list } = self.screen {
-                    self.apply(ui::selected(list) as usize);
+                if let Screen::List { list } = self.screen
+                    && let Some(row) = ui::selected(list)
+                {
+                    self.apply(row as usize);
                 }
             }
             Event::Softkey(SK_MESSAGE) => {
