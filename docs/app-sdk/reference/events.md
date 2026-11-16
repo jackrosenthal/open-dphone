@@ -1,6 +1,6 @@
 # `events`
 
-Events that the PBX pushes to the phone, and messages between apps.  Capability `events`.
+Events pushed by the PBX, and messages between apps.
 
 Every running app that uses this interface also receives [`Event::ServerChange`](app-events.md#serverchange).
 
@@ -10,9 +10,9 @@ Every running app that uses this interface also receives [`Event::ServerChange`]
 pub fn observe(name: &str) -> Result<(), Error>
 ```
 
-Asks for [`Event::Push`](app-events.md#push) whenever the PBX pushes an event with exactly this name, e.g., `digium.parkingLot.parked`.  The observation lasts for the life of the instance, so an app that must not miss pushes is of kind `Background`.
+Subscribes the app to [`Event::Push`](app-events.md#push) for events that the PBX pushes with exactly this name, such as `digium.parkingLot.parked`.  The subscription lasts for the life of the instance, so an app that can't afford to miss a push should be a `Background` app.
 
-An app can observe at most 64 names.  One more name is refused with `Err(Error::Failed(_))`; a name that the app already observes is not one more.
+An app can observe at most 64 names.  Beyond that, `observe` returns `Err(Error::Failed(_))` for a new name.  Observing a name again doesn't count against the limit.
 
 ## `stop_observing`
 
@@ -20,9 +20,7 @@ An app can observe at most 64 names.  One more name is refused with `Err(Error::
 pub fn stop_observing(name: &str)
 ```
 
-WIT name: `stop-observing`.
-
-Ends the observation of a name.
+Ends the subscription to a name.
 
 ## `send`
 
@@ -32,4 +30,6 @@ pub fn send(app: &str, name: &str, payload: &str) -> Result<(), String>
 
 Sends [`Event::Message((name, payload))`](app-events.md#message) to the running app whose manifest `name` is `app`.  The message is delivered after the current handler returns.
 
-The call fails, with a sentence that says why, when `app` is not formed like an app name or no app of that name is running; no message is sent then.  The phone does not start an app to deliver a message.  `Ok` says that the app was running when the message was sent: an app that stops before the sender's handler returns does not get the message.
+Returns `Ok` if the target app was running when `send` was called.  An app that stops before the sender's handler returns doesn't get the message.
+
+Returns `Err`, with a message that explains why, when `app` is not a well-formed app name or when no app with that name is running.  Nothing is sent in that case, and the phone never starts an app in order to deliver a message.

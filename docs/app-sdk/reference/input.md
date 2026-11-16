@@ -1,6 +1,6 @@
 # `input`
 
-Every key and the hookswitch.  Capability `input`.
+Raw access to every key and to the hookswitch.
 
 ## `capture`
 
@@ -8,14 +8,14 @@ Every key and the hookswitch.  Capability `input`.
 pub fn capture(on: bool)
 ```
 
-With `true`, while the app's window is the top screen:
+Turns key capture on or off.  While capture is on and the app's window is the top screen:
 
-- Every key press arrives as [`Event::Key`](app-events.md#key): the keys a window otherwise never gets (line key 1, the volume keys, `mute`, `spkr`, and `hdst`), the four keys under the display, and the keys that a widget would handle.
-- Every change of the hookswitch arrives as [`Event::Hook`](app-events.md#hook).
-- The phone does nothing with these keys: the volume does not change, softkeys do not trigger, widgets do not react, key claims are not consulted, and lifting the handset gives no dial tone.
+- Every key press arrives as [`Event::Key`](app-events.md#key).  That includes the keys that a window otherwise never receives (line key 1, the volume keys, `mute`, `spkr`, and `hdst`), the four keys below the display, and the keys that a widget would normally handle.
+- Every hookswitch change arrives as [`Event::Hook`](app-events.md#hook).
+- The phone does nothing else with these keys.  The volume doesn't change, softkeys don't trigger, widgets don't react, key claims aren't consulted, and lifting the handset doesn't produce a dial tone.
 
-With `false`, keys go the usual way again ([Focus and keys](ui.md#focus-and-keys)).
+With capture off, keys are routed normally again (see [Focus and keys](ui.md#focus-and-keys)).
 
-The user can always leave: the third press of `cancel` in a row takes the app off the screen and is not delivered; the first two are.  Any other key in between starts the count again.
+The user can always get out: the third consecutive press of `cancel` takes the app off the screen, and is not delivered to the app.  The first two presses are delivered.  Any other key in between resets the count.
 
-A call or a notice of the phone covers the window as any other and has the keys while showing; a notice takes `select`, `cancel`, and the four keys under the display even over a capturing window.  Capture stays set while the window is off screen and applies again when the window returns.
+A call or a notice from the phone covers a capturing window like any other, and gets the keys while showing.  A notice takes `select`, `cancel`, and the four keys below the display even when the notice is over a capturing window.  Capture stays set while the window is off screen, and resumes when the window returns.

@@ -1,66 +1,66 @@
-# Data shared by every phone
+# Shared data
 
-A coffee pot serves an office, not one desk.  This last step moves the pot's time to the PBX, so that a press of Brewed on any phone shows on every phone, together with the name of the person who pressed.
+A coffee pot serves the whole office, not one desk.  This last chapter moves the brew time to the PBX, so that pressing **Brewed** on any phone updates every phone, along with the name of the person who pressed the key.
 
 <figure markdown="span">
   ![Fresh Pot showing a pot that Alice brewed twelve minutes ago](../../assets/app-sdk/shared.png){ width="480" }
   <figcaption>Bob's phone, twelve minutes after Alice pressed Brewed on another phone.</figcaption>
 </figure>
 
-## The app's store on the PBX
+## PBX storage
 
-The interface [`pbx-storage`](../reference/pbx-storage.md) (the Rust module `pbx_storage`) is a second store of keys and values, kept by the PBX.  The store needs a PBX that runs [Open DPMA](../../open-dpma/index.md), and needs no configuration in the app or on the phone.  An app has two sets of keys there:
+The [`pbx-storage`](../reference/pbx-storage.md) interface (the Rust module `pbx_storage`) is a second key-value store, hosted by the PBX.  The store requires a PBX running [Open DPMA](../../open-dpma/index.md), and needs no configuration in the app or on the phone.  An app has two sets of keys there:
 
-- `PbxScope::Shared`: one set for the copies of the app on all phones of the PBX.  Fresh Pot keeps the pot here.
-- `PbxScope::User`: one set for each user, the same on every phone of that user.  A game keeps a player's progress here.
+- `PbxScope::Shared`: one set shared by every phone on the PBX that runs the app.  Fresh Pot keeps the pot here.
+- `PbxScope::User`: one set per user, the same on every phone that the user signs in to.  A game might keep a player's progress here.
 
-Two things differ from the store on the phone:
+PBX storage differs from the phone's store in two ways:
 
-- **A request does not return the answer.**  The PBX is across the network, and no call of an app may block.  `get`, `set`, and `remove` return a request number at once, and the answer arrives later as `Event::PbxStorage` with the same number.
-- **The PBX records who wrote each entry.**  An entry comes back with the value and with the name of the user who wrote the value, which the PBX fills in from the user that the writing phone is provisioned for.  Fresh Pot shows who brewed the pot without ever asking for a name.
+- **Requests are asynchronous.**  The PBX is across the network, and no call from an app may block.  `get`, `set`, and `remove` immediately return a request ID, and the result arrives later as an `Event::PbxStorage` with the same ID.
+- **The PBX records the author of every entry.**  An entry comes back with the value and the name of the user who wrote the value.  The PBX fills in the name from the user that the writing phone is provisioned for, so Fresh Pot can show who brewed the pot without ever asking for a name.
 
-## Plan
+## Design
 
-The store on the phone stays, as the app's memory between answers from the PBX:
+The phone's store stays, as a cache between answers from the PBX:
 
-1. At the start, the app shows what the phone's store holds, and asks the PBX.
-2. Whatever the PBX answers replaces the app's state, and is saved to the phone's store.
-3. Brewed and Empty change the state at once, save, and send the change to the PBX.
-4. When another phone changes the pot, the PBX tells this phone, and the app asks again.
+1. On startup, the app shows what the phone's store holds and queries the PBX.
+2. Every answer from the PBX replaces the app's state and is saved to the phone's store.
+3. **Brewed** and **Empty** update the state immediately, save, and send the change to the PBX.
+4. When another phone changes the pot, the PBX notifies this phone, and the app queries the PBX again.
 
-On a phone whose PBX has no store, every request ends `Unreachable`, and the app behaves as at the end of the previous step.
+On a phone whose PBX has no store, every request ends in `Unreachable`, and the app behaves as in the previous chapter.
 
-## State for the conversation
+## New state
 
-The same key name serves in both stores.  Change the comment on the constant to say so:
+Both stores use the same key name.  Update the comment on the constant to say so:
 
 ```rust
-/// The key that holds when the pot was brewed, in the phone's store and
-/// in the store on the PBX.
+/// The storage key for the time the pot was brewed, used both on the
+/// phone and on the PBX.
 const KEY: &str = "brewed";
 ```
 
-Add two fields to `FreshPot`, for the name and for the number of the request that the app is waiting on:
+Add two fields to `FreshPot`, one for the name and one for the ID of the request that the app is waiting on:
 
 ```rust
-/// The name of the user who brewed the pot, once the PBX has told.
+/// Who brewed the pot, as reported by the PBX.
 by: String,
-/// The request to the PBX whose result is awaited.
+/// The ID of the pending PBX request.
 asked: u32,
 ```
 
-## Ask, and take the answer
+## Requests and responses
 
 Add two functions to `impl FreshPot`:
 
 ```rust
-/// Asks the PBX when the pot was brewed.
+/// Requests the brew time from the PBX.
 fn ask(&mut self) {
     self.asked = pbx_storage::get(PbxScope::Shared, KEY);
 }
 
-/// Takes what the PBX holds: the entry of the key, or `None` when the
-/// key is not set.
+/// Applies the PBX's answer: the key's entry, or `None` if the key
+/// isn't set.
 fn take(&mut self, entry: Option<PbxEntry>) {
     self.brewed = entry
         .as_ref()
@@ -70,7 +70,7 @@ fn take(&mut self, entry: Option<PbxEntry>) {
 }
 ```
 
-`ask` sends a `get` and remembers the request number.  `take` receives a [`PbxEntry`](../reference/pbx-storage.md#requests-and-outcomes), or `None` when the key is not set on the PBX: the entry's `value` is the bytes that a phone wrote (here the time as text), and `author_name` is the name that the PBX recorded for the writer.
+`ask` sends a `get` and remembers the request ID.  `take` receives a [`PbxEntry`](../reference/pbx-storage.md#requests-and-outcomes), or `None` if the key isn't set on the PBX.  The entry's `value` holds the bytes that a phone wrote (here, the time as text), and `author_name` is the name that the PBX recorded for the writer.
 
 In `show`, add the name to the second line.  Replace the line that sets the text of `self.age` with:
 
@@ -82,9 +82,9 @@ if !self.by.is_empty() {
 ui::set_text(self.age, &age);
 ```
 
-## Start the conversation
+## Startup
 
-At the end of `start`, after showing what the phone's store holds, turn on notices of changes and ask the PBX:
+At the end of `start`, after rendering what the phone's store holds, subscribe to change notifications and query the PBX:
 
 ```rust
 self.load();
@@ -94,9 +94,9 @@ pbx_storage::watch(true);
 self.ask();
 ```
 
-After [`pbx_storage::watch(true)`](../reference/pbx-storage.md#watch), the app receives `Event::PbxStorageChanged` whenever another phone sets or removes one of the app's shared keys, for as long as the app runs.
+After [`pbx_storage::watch(true)`](../reference/pbx-storage.md#watch), the app receives an `Event::PbxStorageChanged` whenever another phone sets or removes one of the app's shared keys, for as long as the app runs.
 
-## Handle the answers
+## Event handling
 
 Replace `handle` with:
 
@@ -123,16 +123,17 @@ fn handle(&mut self, event: Event) {
             PbxStorageOutcome::Entry(entry) => self.take(entry),
             PbxStorageOutcome::Stored(entry) => self.take(Some(entry)),
             PbxStorageOutcome::Removed => self.take(None),
-            // The phone shows what the phone's store holds.
+            // Keep showing what the phone's store holds.
             PbxStorageOutcome::Unreachable(why) => log_info(&format!("not shared: {why}")),
-            other => log_warn(&format!("the PBX answered {other:?}")),
+            other => log_warn(&format!("unexpected answer from the PBX: {other:?}")),
         },
-        // Another phone set or removed the key, or the PBX is in reach
-        // again.
+        // Another phone changed the key, or the PBX is reachable again.
         Event::PbxStorageChanged(_) | Event::PbxStorageOnline => return self.ask(),
         Event::Softkey(SK_EXIT) => return runtime::exit(),
         Event::Key(key) if key == "cancel" => return runtime::exit(),
-        Event::Timer(_) => {}
+        // On a timer tick, or when the window returns to the screen
+        // (possibly with a new theme's colors), fall through and redraw.
+        Event::Timer(_) | Event::Foreground => {}
         _ => return,
     }
     self.show();
@@ -141,24 +142,24 @@ fn handle(&mut self, event: Event) {
 
 The softkeys now also write to the PBX:
 
-- **Brewed** sets the key to the time.  [`pbx_storage::user`](../reference/pbx-storage.md#user) is the phone's user as the PBX knows the user, so the name shows at once, before the PBX answers.  The last argument of `set`, `None`, means that the write replaces whatever the key holds; for a pot of coffee, the latest press is the truth.  An app in which two phones must not overwrite each other, e.g., a shared list, passes the version of the entry that the app read, as [Two phones that write at the same time](../reference/pbx-storage.md#two-phones-that-write-at-the-same-time) describes.
+- **Brewed** sets the key to the current time.  [`pbx_storage::user`](../reference/pbx-storage.md#user) returns the phone's user as known to the PBX, so the name appears immediately, before the PBX answers.  The last argument to `set`, `None`, makes the write unconditional.  For a pot of coffee, the latest press wins.  An app where two phones must not overwrite each other, such as a shared list, passes the version of the entry that the app last read instead; see [Concurrent writes](../reference/pbx-storage.md#concurrent-writes).
 - **Empty** removes the key.
 
 Three new arms handle what comes back:
 
-- **`Event::PbxStorage`** is the answer to a request.  The guard `id == self.asked` drops the answer to any request but the latest.  `Entry` answers a `get`, `Stored` answers a `set` with the entry as the PBX now holds the key, and `Removed` answers a `remove`; all three end in `take`.  `Unreachable` means that the PBX could not be asked or did not answer; the app logs the reason and goes on showing what the phone's store holds.  Of the remaining outcomes, only `Refused` can follow these requests (the PBX refuses, e.g., a value of more than 4096 bytes), and the app logs the outcome.
-- **`Event::PbxStorageChanged`** says that another phone wrote the key.  The event carries no value, so the app asks.
-- **`Event::PbxStorageOnline`** says that the store is in reach, at first or again.  What the app read before may be out of date, so the app asks.
+- **`Event::PbxStorage`** is the answer to a request.  The guard `id == self.asked` ignores answers to all but the latest request.  `Entry` answers a `get`, `Stored` answers a `set` with the entry as now stored on the PBX, and `Removed` answers a `remove`.  All three end up in `take`.  `Unreachable` means that the request never reached the PBX or that the PBX didn't answer; the app logs the reason and keeps showing what the phone's store holds.  Of the remaining outcomes, only `Refused` can follow these requests (the PBX refuses a value larger than 4096 bytes, for example), and the app logs a warning.
+- **`Event::PbxStorageChanged`** means that another phone wrote the key.  The event carries no value, so the app queries the PBX.
+- **`Event::PbxStorageOnline`** means that the store has become reachable, for the first time or again.  Anything the app read earlier may be stale, so the app queries the PBX.
 
-Both of the last two arms return without calling `show`: nothing has changed until the answer arrives.
+The last two arms return without calling `show`, because nothing changes until the answer arrives.
 
-!!! note "A press while the PBX is out of reach"
+!!! note "Pressing Brewed while the PBX is unreachable"
 
-    The phone does not keep a failed write to send later.  In Fresh Pot, a press of Brewed while the PBX is out of reach therefore shows only on that phone, and gives way to what the PBX holds once the PBX is in reach again.  An app that must not lose a write keeps the write in `storage` and sends the write again at `Event::PbxStorageOnline`; see [When the PBX is out of reach](../reference/pbx-storage.md#when-the-pbx-is-out-of-reach).
+    The phone doesn't queue failed writes for later.  In Fresh Pot, pressing **Brewed** while the PBX is unreachable therefore shows up only on that phone, and the PBX's value takes over again once the PBX is back.  An app that can't afford to lose a write keeps the write in `storage` and sends the write again on `Event::PbxStorageOnline`; see [Offline behavior](../reference/pbx-storage.md#offline-behavior).
 
-## Build, install, and try
+## Build and run
 
-Build as before, and install the app file on two phones of the same PBX:
+Build the app as before, and install the app file on two phones on the same PBX:
 
 ```sh
 cargo build --release --target wasm32-unknown-unknown
@@ -166,21 +167,19 @@ wasm-tools component new \
     target/wasm32-unknown-unknown/release/freshpot.wasm -o freshpot.wasm
 ```
 
-Open the app on both phones, and press **Brewed** on one.  The other phone shows the same time, with the name of the first phone's user, a moment later.  Press **Empty** on either phone, and both return to "No pot".  With one phone, the second line shows the name of that phone's user after Brewed, and the Logs page shows `not shared:` and a reason when the phone has no store to reach.
+Open the app on both phones and press **Brewed** on one.  A moment later, the other phone shows the same time, with the name of the first phone's user.  Press **Empty** on either phone, and both go back to "No pot".
 
-## Where to go from here
+If you have only one phone, the second line shows the name of that phone's user after you press **Brewed**.  If the phone has no PBX store to reach, the **Logs** page shows `not shared:` followed by the reason.
 
-Fresh Pot is complete: about 250 lines of Rust in one file, running on every model.  Further directions, each with a page in the reference:
+## Next steps
 
-- **An icon.**  The manifest's fields `icon` and `icon_for` give the app a picture in the Applications menu, from PNG files that the crate includes; see [Manifest](../reference/manifest.md).
-- **Lists and inputs.**  The widget kinds `TextList` and `Input` handle selection and typing; see [`ui`](../reference/ui.md#widget-kinds).
-- **Calls and presence.**  An app can place calls, watch call states, and read the presence of the contacts that the phone watches; see [`calls`](../reference/calls.md) and [`presence`](../reference/presence.md).
-- **The network.**  [`http`](../reference/http.md) sends HTTP requests, with the same pattern of a request number and a later event as `pbx_storage`.
-- **Running off screen.**  A `Background` app starts with the phone and keeps running; see [Lifetime of an app](../reference/index.md#lifetime-of-an-app).
+Fresh Pot is complete: about 250 lines of Rust in one file, running on every model.  Some features that the tutorial didn't cover:
 
-The source of the [built-in apps](https://github.com/jackrosenthal/open-dphone/tree/main/apps) shows many of these interfaces in use.
+- **An icon.**  The manifest fields [`icon` and `icon_for`](../reference/manifest.md#fields) give the app an icon in the Applications menu, from PNG files embedded in the crate.
+- **Lists and text input.**  The [`TextList` and `Input` widgets](../reference/ui.md#widget-kinds) handle selection and typing.
+- **Running in the background.**  A [`Background` app](../reference/index.md#app-lifecycle) starts with the phone and keeps running off screen.
 
-??? example "The whole `src/lib.rs` after this step"
+??? example "Complete `src/lib.rs` for this chapter"
 
     ```rust
     use dphone_app_sdk::canvas::{self, Bitmap, Op, Role};
@@ -191,18 +190,18 @@ The source of the [built-in apps](https://github.com/jackrosenthal/open-dphone/t
     const SK_EMPTY: u32 = 2;
     const SK_EXIT: u32 = 3;
 
-    /// How often the screen is brought up to date, in milliseconds.
+    /// How often the screen refreshes, in milliseconds.
     const REFRESH_MS: u32 = 30_000;
 
-    /// The key that holds when the pot was brewed, in the phone's store and
-    /// in the store on the PBX.
+    /// The storage key for the time the pot was brewed, used both on the
+    /// phone and on the PBX.
     const KEY: &str = "brewed";
 
-    /// After this many minutes, a pot is stale.
+    /// A pot is stale after this many minutes.
     const FRESH_MINUTES: u64 = 60;
 
-    /// A mug, 12 pixels wide and 10 pixels high.  Each row is two bytes, and
-    /// the leftmost pixel of a row is the highest bit of the row's first byte.
+    /// A mug, 12 pixels wide and 10 pixels tall.  Each row is two bytes, and
+    /// the leftmost pixel is the high bit of the first byte.
     #[rustfmt::skip]
     const MUG: [u8; 20] = [
         0b1111_1111, 0b1000_0000,
@@ -221,44 +220,44 @@ The source of the [built-in apps](https://github.com/jackrosenthal/open-dphone/t
     struct FreshPot {
         /// When the pot was brewed, in seconds since the Unix epoch.
         brewed: Option<u64>,
-        /// The name of the user who brewed the pot, once the PBX has told.
+        /// Who brewed the pot, as reported by the PBX.
         by: String,
-        /// The request to the PBX whose result is awaited.
+        /// The ID of the pending PBX request.
         asked: u32,
-        /// The line that says when the pot was brewed.
+        /// The line that shows when the pot was brewed.
         status: Widget,
-        /// The line that says how long ago.
+        /// The line that shows how long ago that was.
         age: Widget,
-        /// The canvas under the two lines, and the size of the canvas.
+        /// The canvas below the two lines of text, and the canvas dimensions.
         gauge: Widget,
         gauge_width: u16,
         gauge_height: u16,
     }
 
     impl FreshPot {
-        /// Reads when the pot was brewed from the phone's store.
+        /// Loads the brew time from the phone's store.
         fn load(&mut self) {
             self.brewed = read_string(KEY).and_then(|text| text.parse().ok());
         }
 
-        /// Writes when the pot was brewed to the phone's store.
+        /// Saves the brew time to the phone's store.
         fn save(&self) {
             let result = match self.brewed {
                 Some(at) => storage::set(KEY, at.to_string().as_bytes()),
                 None => storage::remove(KEY),
             };
             if let Err(e) = result {
-                log_warn(&format!("the time was not stored: {e:?}"));
+                log_warn(&format!("couldn't store the brew time: {e:?}"));
             }
         }
 
-        /// Asks the PBX when the pot was brewed.
+        /// Requests the brew time from the PBX.
         fn ask(&mut self) {
             self.asked = pbx_storage::get(PbxScope::Shared, KEY);
         }
 
-        /// Takes what the PBX holds: the entry of the key, or `None` when the
-        /// key is not set.
+        /// Applies the PBX's answer: the key's entry, or `None` if the key
+        /// isn't set.
         fn take(&mut self, entry: Option<PbxEntry>) {
             self.brewed = entry
                 .as_ref()
@@ -267,7 +266,7 @@ The source of the [built-in apps](https://github.com/jackrosenthal/open-dphone/t
             self.save();
         }
 
-        /// Shows the state on the screen.
+        /// Renders the state to the screen.
         fn show(&self) {
             match self.brewed {
                 Some(at) => {
@@ -288,12 +287,12 @@ The source of the [built-in apps](https://github.com/jackrosenthal/open-dphone/t
                 }
             }
             if let Err(e) = canvas::draw(self.gauge, &self.gauge_ops()) {
-                log_warn(&format!("the gauge was not drawn: {e}"));
+                log_warn(&format!("couldn't draw the gauge: {e}"));
             }
         }
 
-        /// The drawing on the canvas: a mug, and a bar that empties while the
-        /// pot goes stale.  Without a pot, the canvas shows nothing.
+        /// The drawing operations for the canvas: a mug, and a bar that empties
+        /// as the pot goes stale.  With no pot, the canvas is empty.
         fn gauge_ops(&self) -> Vec<Op> {
             let Some(at) = self.brewed else {
                 return Vec::new();
@@ -301,7 +300,7 @@ The source of the [built-in apps](https://github.com/jackrosenthal/open-dphone/t
             let minutes = timers::wall_time().saturating_sub(at) / 60;
             let fresh = FRESH_MINUTES.saturating_sub(minutes);
 
-            // The mug fills the height of the canvas.
+            // Scale the mug to the height of the canvas.
             let scale = (self.gauge_height / 10).clamp(1, 8);
             let mug_width = 12 * scale;
             let mug = Bitmap {
@@ -314,8 +313,8 @@ The source of the [built-in apps](https://github.com/jackrosenthal/open-dphone/t
                 bits: MUG.to_vec(),
             };
 
-            // The bar takes the rest of the width: a frame one pixel wide, and
-            // inside the frame, the part of the hour that is left.
+            // The bar takes up the remaining width: a one-pixel frame, filled
+            // in proportion to the time left in the hour.
             let x = (mug_width + scale) as i16;
             let y = (self.gauge_height / 4) as i16;
             let width = self.gauge_width - mug_width - scale;
@@ -367,8 +366,8 @@ The source of the [built-in apps](https://github.com/jackrosenthal/open-dphone/t
             );
             ui::set_align(self.age, Align::Center);
 
-            // The canvas: half as wide as the window, in the middle, and two
-            // lines high.
+            // The canvas is half the width of the window, centered, and two
+            // lines tall.
             self.gauge_width = area.width / 2;
             self.gauge_height = 2 * line;
             let bounds = Rect::new(
@@ -417,16 +416,17 @@ The source of the [built-in apps](https://github.com/jackrosenthal/open-dphone/t
                     PbxStorageOutcome::Entry(entry) => self.take(entry),
                     PbxStorageOutcome::Stored(entry) => self.take(Some(entry)),
                     PbxStorageOutcome::Removed => self.take(None),
-                    // The phone shows what the phone's store holds.
+                    // Keep showing what the phone's store holds.
                     PbxStorageOutcome::Unreachable(why) => log_info(&format!("not shared: {why}")),
-                    other => log_warn(&format!("the PBX answered {other:?}")),
+                    other => log_warn(&format!("unexpected answer from the PBX: {other:?}")),
                 },
-                // Another phone set or removed the key, or the PBX is in reach
-                // again.
+                // Another phone changed the key, or the PBX is reachable again.
                 Event::PbxStorageChanged(_) | Event::PbxStorageOnline => return self.ask(),
                 Event::Softkey(SK_EXIT) => return runtime::exit(),
                 Event::Key(key) if key == "cancel" => return runtime::exit(),
-                Event::Timer(_) => {}
+                // On a timer tick, or when the window returns to the screen
+                // (possibly with a new theme's colors), fall through and redraw.
+                Event::Timer(_) | Event::Foreground => {}
                 _ => return,
             }
             self.show();

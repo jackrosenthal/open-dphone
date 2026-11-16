@@ -1,10 +1,10 @@
 # `storage`
 
-The app's store of keys and values on the phone.  Capability `storage`.
+The app's private key-value store on the phone.
 
-The phone keeps the store across restarts of the app and of the phone, across firmware updates, and when a newer version of the app is installed.  No other app can reach the store; the store belongs to the app's `name`.  Removing the app deletes the store.
+The store survives restarts of the app and of the phone, firmware updates, and installation of a newer version of the app.  The store is tied to the app's `name`, and no other app can access the data.  Removing the app deletes the store.
 
-A key is a name of 1 to 64 bytes that does not start with `.` and contains no `/`, `\`, or NUL character.  The limit counts bytes of UTF-8, not characters, and is the same number as the limit of a [`pbx_storage`](pbx-storage.md) key.  A value is any bytes, at most 1 MiB.  Each key is a file on the phone's flash, and writes count against the flash's free space, of which the phone always keeps 2 MiB unused.
+A key is a name of 1 to 64 bytes that doesn't start with `.` and contains no `/`, `\`, or NUL character.  The limit counts UTF-8 bytes, not characters, and is the same number as the limit on a [`pbx_storage`](pbx-storage.md) key.  A value is any sequence of bytes, up to 1 MiB.  Each key is stored as a file on the phone's flash, and writes count against the flash's free space, of which the phone always keeps 2 MiB in reserve.
 
 ## `get`
 
@@ -12,9 +12,9 @@ A key is a name of 1 to 64 bytes that does not start with `.` and contains no `/
 pub fn get(key: &str) -> Option<Vec<u8>>
 ```
 
-The value of a key, or `None` when the key is not set.  A key that could not be a key also returns `None`.
+Returns the value of a key, or `None` if the key isn't set.  An invalid key also returns `None`.
 
-The SDK adds `read_string(key: &str) -> Option<String>`, which returns the value when the value is UTF-8 text.
+For a value that is UTF-8 text, the SDK helper [`read_string`](helpers.md#logging-and-storage) returns a `String` instead.
 
 ## `set`
 
@@ -22,18 +22,18 @@ The SDK adds `read_string(key: &str) -> Option<String>`, which returns the value
 pub fn set(key: &str, value: &[u8]) -> Result<(), Error>
 ```
 
-Sets a key, replacing the value the key had.  The phone writes the new value to the flash and then puts the value in place in one step, so that after a power loss the key has either the old value or the new one, never part of one.
-
-| Error | Cause |
-| --- | --- |
-| `Invalid(text)` | The key is empty, longer than 64 bytes, starts with `.`, or contains `/`, `\`, or NUL; or the value is larger than 1 MiB.  The phone checks the key before touching the flash. |
-| `NoSpace` | The value needs more room than the flash has free beyond the 2 MiB reserve.  Replacing a value counts only the growth. |
-| `Failed(text)` | The write failed; the text is the system's reason.  Also when the key's file in the store is a symbolic link, which the phone does not follow; the text says so. |
+Sets a key, replacing any existing value.  The write is atomic: the phone writes the new value to the flash and then swaps the value into place in one step, so after a power loss the key has either the old value or the new one, never a partial value.
 
 ```rust
 storage::set("level", level.to_string().as_bytes())?;
 let level: u32 = read_string("level").and_then(|s| s.parse().ok()).unwrap_or(1);
 ```
+
+| Error | Cause |
+| --- | --- |
+| `Invalid(text)` | The key is empty, is longer than 64 bytes, starts with `.`, or contains `/`, `\`, or NUL; or the value is larger than 1 MiB.  The phone checks the key before touching the flash. |
+| `NoSpace` | The value needs more space than the flash has free beyond the 2 MiB reserve.  Replacing a value counts only the growth. |
+| `Failed(text)` | The write failed, and `text` gives the system's reason.  This error also occurs when the key's file in the store is a symbolic link, which the phone refuses to follow; `text` says so. |
 
 ## `remove`
 
@@ -41,7 +41,9 @@ let level: u32 = read_string("level").and_then(|s| s.parse().ok()).unwrap_or(1);
 pub fn remove(key: &str) -> Result<(), Error>
 ```
 
-Removes a key.  Removing a key that is not set succeeds.  The errors are `Invalid` as for `set`, and `Failed(text)` when the file cannot be deleted or is a symbolic link.
+Removes a key.  Removing a key that isn't set succeeds.
+
+Returns `Invalid` under the same conditions as `set`, and `Failed(text)` when the file can't be deleted or is a symbolic link.
 
 ## `keys`
 
@@ -49,4 +51,4 @@ Removes a key.  Removing a key that is not set succeeds.  The errors are `Invali
 pub fn keys() -> Vec<String>
 ```
 
-The keys that are set, sorted by byte order.  An app with no store yet gets an empty list.
+Returns the keys that are set, sorted in byte order.  The list is empty for an app that has never stored anything.

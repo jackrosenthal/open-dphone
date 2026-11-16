@@ -1,33 +1,33 @@
-# Softkeys, keys, and state
+# Softkeys and state
 
-This step makes the app useful on one phone.  The softkey **Brewed** records the time, the screen shows that time and the age of the pot, **Empty** clears both, and a timer keeps the age current.  All the changes are in `src/lib.rs`; `Cargo.toml` stays as written in [the first step](first-app.md).
+In this chapter, the app becomes useful on a single phone.  The **Brewed** softkey records the current time, the screen shows that time and the age of the pot, **Empty** clears both, and a timer keeps the age up to date.  All of the changes are in `src/lib.rs`.
 
 <figure markdown="span">
   ![Fresh Pot with no pot recorded, and 25 minutes after the softkey Brewed](../../assets/app-sdk/softkeys.png){ width="656" }
-  <figcaption>The app at the end of this step: before anyone has pressed Brewed, and 25 minutes after.</figcaption>
+  <figcaption>The app at the end of this chapter: before anyone has pressed Brewed, and 25 minutes after.</figcaption>
 </figure>
 
-## Give the app state
+## App state
 
-The app's type gets fields.  `brewed` is the app's whole knowledge of the pot, and the two `Widget` fields are handles to the two lines of text, kept so that later events can change the text:
+Add fields to the app type.  `brewed` is everything the app knows about the pot.  The two `Widget` fields are handles to the two lines of text, which later events need in order to change the text:
 
 ```rust
 #[derive(Default)]
 struct FreshPot {
     /// When the pot was brewed, in seconds since the Unix epoch.
     brewed: Option<u64>,
-    /// The line that says when the pot was brewed.
+    /// The line that shows when the pot was brewed.
     status: Widget,
-    /// The line that says how long ago.
+    /// The line that shows how long ago that was.
     age: Widget,
 }
 ```
 
-`Default` still creates the value, so `brewed` starts as `None`.  A `Widget` is a number, and the default of 0 is the window; `start` replaces both handles before anything uses them.
+`Default` still creates the value, so `brewed` starts out as `None`.  A `Widget` is a number, and the default of 0 refers to the window.  `start` replaces both handles before anything uses them.
 
-## Lay out the screen for every display
+## Screen layout
 
-The same app file runs on a color display of 480 by 272 pixels and on gray displays of 320 by 160 and 240 by 120 pixels, so the app takes every size from the phone.  `screen` returns the rectangle under the title, and [`ui::get_metrics`](../reference/ui.md#get_metrics) gives, among other sizes, the height of a line of text in the phone's normal font.
+The same app file runs on a 480 by 272 color display and on 320 by 160 and 240 by 120 grayscale displays, so never hard-code a size.  Ask the phone instead: `screen` returns the rectangle below the title, and [`ui::get_metrics`](../reference/ui.md#get_metrics) returns, among other dimensions, the height of a line of text in the normal font.
 
 Replace `start` with:
 
@@ -64,7 +64,9 @@ fn start(&mut self) {
 }
 ```
 
-The first widget is two lines high and uses `Font::Large`; the second sits under the first and is one line high.  `Align::Center` centers each text in the widget's rectangle.  `Font` and `Align` are not in the SDK's prelude, so the imports at the top of the file change to:
+The first widget is two lines tall and uses `Font::Large`.  The second sits below the first and is one line tall.  `Align::Center` centers the text within each widget's rectangle.
+
+`Font` and `Align` aren't in the SDK's prelude, so change the imports at the top of the file to:
 
 ```rust
 use dphone_app_sdk::prelude::*;
@@ -73,26 +75,26 @@ use dphone_app_sdk::{Align, Font, log_info};
 
 ## Softkeys
 
-[`ui::set_softkeys`](../reference/ui.md#set_softkeys), near the end of `start`, puts labels above the keys under the display, from the left.  Each softkey carries a number that the app chooses, and a press arrives as `Event::Softkey` with that number.  Name the numbers, and the refresh period that the timer uses, at the top of the file:
+Near the end of `start`, [`ui::set_softkeys`](../reference/ui.md#set_softkeys) labels the keys below the display, from left to right.  Each softkey has an ID that you choose, and a press arrives as `Event::Softkey` with that ID.  Define the IDs, along with the refresh interval for the timer, at the top of the file:
 
 ```rust
 const SK_BREWED: u32 = 1;
 const SK_EMPTY: u32 = 2;
 const SK_EXIT: u32 = 3;
 
-/// How often the screen is brought up to date, in milliseconds.
+/// How often the screen refreshes, in milliseconds.
 const REFRESH_MS: u32 = 30_000;
 ```
 
-A window has room for four softkeys; given more, the phone shows three and the label "More", which pages through the rest.
+The softkey bar has room for four softkeys.  If an app sets more, the phone shows three plus a "More" key that pages through the rest.
 
-## Show the state
+## Rendering
 
-One function writes the state to the screen, and every event that changes the state ends by calling that function.  [`timers::wall_time`](../reference/timers.md#wall_time) is the current time in seconds since the Unix epoch, and [`l10n::format_time`](../reference/l10n.md#format_time) turns such a time into text in the phone's time zone and in the 12-hour or 24-hour form that the phone is set to; `TimeStyle::Time` asks for the time without the date:
+A single function renders the state to the screen, and every event that changes the state ends by calling that function.  [`timers::wall_time`](../reference/timers.md#wall_time) returns the current time in seconds since the Unix epoch.  [`l10n::format_time`](../reference/l10n.md#format_time) formats a timestamp in the phone's time zone, in 12-hour or 24-hour form depending on the phone's settings.  `TimeStyle::Time` asks for the time without the date.
 
 ```rust
 impl FreshPot {
-    /// Shows the state on the screen.
+    /// Renders the state to the screen.
     fn show(&self) {
         match self.brewed {
             Some(at) => {
@@ -121,7 +123,7 @@ fn age_text(minutes: u64) -> String {
 }
 ```
 
-## Handle the events
+## Event handling
 
 Replace `handle` with:
 
@@ -142,18 +144,18 @@ fn handle(&mut self, event: Event) {
 }
 ```
 
-Each arm is one kind of event:
+Each arm handles one kind of event:
 
-- **Softkeys.**  Brewed stores the current time, and Empty clears the time.  Exit ends the app.
-- **Keys.**  The cancel key arrives as `Event::Key`, because `screen` claimed the key for the window; the app treats the key as Exit.  A key arrives as an event only when the app has claimed the key with [`ui::claim_keys`](../reference/ui.md#claim_keys); the page [Events](../reference/app-events.md#key) lists the names of the keys.
-- **The timer.**  [`timers::set(REFRESH_MS, true)`](../reference/timers.md#set) in `start` asked for an `Event::Timer` every 30 seconds.  The call returns a `Result`: `Ok` holds the identifier of the timer, for an app that has several timers or cancels one, and `Err` says that the phone started no timer.  Fresh Pot has one timer, never cancels that timer, and so discards the result with `let _ =`.  The arm does nothing but fall through to `show`, which computes the age again.
-- **Everything else** returns without redrawing.
+- **Softkeys.**  **Brewed** stores the current time, **Empty** clears the time, and **Exit** exits the app.
+- **Keys.**  The cancel key arrives as `Event::Key` because `screen` claimed that key for the window, and the app treats a press like **Exit**.  An app receives only the keys claimed with [`ui::claim_keys`](../reference/ui.md#claim_keys).  For the key names, see [`Key`](../reference/app-events.md#key) in the reference.
+- **The timer.**  In `start`, [`timers::set(REFRESH_MS, true)`](../reference/timers.md#set) asked for an `Event::Timer` every 30 seconds.  The call returns a `Result`: `Ok` contains the timer's ID, which matters to an app that has several timers or cancels one, and `Err` means that no timer was started.  Fresh Pot has one timer and never cancels that timer, so the code discards the result with `let _ =`.  The arm is empty and falls through to `show`, which recomputes the age.
+- **Everything else** returns without rendering.
 
-The phone allows `handle` two seconds for one event and stops an app that takes longer, so an app with long work to do splits the work over timer events.
+The phone gives `handle` two seconds per event and stops an app that takes longer.  If an app has a lot of work to do, split the work across timer events.
 
-## Build, install, and try
+## Build and run
 
-Build the app file and install the file as in the first step:
+Build and install the app the same way as in [the first chapter](first-app.md#build):
 
 ```sh
 cargo build --release --target wasm32-unknown-unknown
@@ -161,9 +163,9 @@ wasm-tools component new \
     target/wasm32-unknown-unknown/release/freshpot.wasm -o freshpot.wasm
 ```
 
-Open the app and press **Brewed**: the screen shows the time and "Just now", and after a minute the second line begins to count.  Then press **Exit**, and open the app again.  The screen says "No pot": the time is gone.  The [next step](keeping-data.md) explains why, and fixes the loss.
+Open the app and press **Brewed**.  The screen shows the time and "Just now", and after a minute the second line starts counting.  Now press **Exit** and open the app again.  The screen says "No pot": the time is gone.  The [next chapter](persistent-storage.md) explains why and fixes the problem.
 
-??? example "The whole `src/lib.rs` after this step"
+??? example "Complete `src/lib.rs` for this chapter"
 
     ```rust
     use dphone_app_sdk::prelude::*;
@@ -173,21 +175,21 @@ Open the app and press **Brewed**: the screen shows the time and "Just now", and
     const SK_EMPTY: u32 = 2;
     const SK_EXIT: u32 = 3;
 
-    /// How often the screen is brought up to date, in milliseconds.
+    /// How often the screen refreshes, in milliseconds.
     const REFRESH_MS: u32 = 30_000;
 
     #[derive(Default)]
     struct FreshPot {
         /// When the pot was brewed, in seconds since the Unix epoch.
         brewed: Option<u64>,
-        /// The line that says when the pot was brewed.
+        /// The line that shows when the pot was brewed.
         status: Widget,
-        /// The line that says how long ago.
+        /// The line that shows how long ago that was.
         age: Widget,
     }
 
     impl FreshPot {
-        /// Shows the state on the screen.
+        /// Renders the state to the screen.
         fn show(&self) {
             match self.brewed {
                 Some(at) => {

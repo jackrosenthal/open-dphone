@@ -1,17 +1,17 @@
 # `presence`
 
-The presence of contacts and of the phone's user.  Capability `presence`.
+The presence of contacts and of the phone's user.
 
-## Which contacts the phone watches
+## Watched contacts
 
-The phone watches contacts for the rapid-dial (BLF) keys, and the functions here read what the phone learns that way.  No function makes the phone watch a contact that the phone does not already watch.  The phone watches a contact when both of these hold:
+The phone watches contacts for the rapid-dial (BLF) keys, and the functions on this page read what the phone learns from doing so.  No function makes the phone watch an additional contact.  The phone watches a contact when both of these are true:
 
-- The contact is on a rapid-dial key: the phone's configuration names the contact in a `blf_item`, or, when the configuration has no `blf_items`, the contact is in the contact group that the setting `blf_contact_group` names and the phone has placed the contact on an unused key.
+- The contact is on a rapid-dial key.  Either the phone's configuration names the contact in a `blf_item`, or the configuration has no `blf_items`, the contact is in the contact group named by the `blf_contact_group` setting, and the phone has placed the contact on an unused key.
 - The contact's entry in the contact list has `subscribe_to`.
 
-The phone watches at most as many different contacts as the setting `contacts_max_subscriptions` allows (40 by default).  A contact that is only in a contact list, and on no key, is not watched: `get` returns `None` for such a contact, and no `Event::Presence` arrives.
+The `contacts_max_subscriptions` setting (40 by default) caps the number of different contacts that the phone watches.  A contact that is in a contact list but not on a key is not watched: `get` returns `None` for that contact, and no `Event::Presence` arrives.
 
-A target names a watched contact by the number the contact's key dials, by the contact's identifier in the contact list, or by the SIP URI the phone subscribes to, compared as exact text.
+A target identifies a watched contact by the number that the contact's key dials, by the contact's identifier in the contact list, or by the SIP URI that the phone subscribes to.  Targets are compared as exact text.
 
 ## `observe`
 
@@ -19,9 +19,11 @@ A target names a watched contact by the number the contact's key dials, by the c
 pub fn observe(target: &str) -> Result<(), Error>
 ```
 
-Asks for [`Event::Presence`](app-events.md#presence) whenever the watched contact that matches `target` changes.  The `target` field of each event is the string given here.  `observe` accepts a target that matches no watched contact, and for such a target no event arrives.
+Subscribes the app to [`Event::Presence`](app-events.md#presence) for the watched contact that matches `target`.  The event arrives whenever the contact's presence changes, and the `target` field of each event is the string passed here.
 
-An app can observe at most 256 targets.  One more target is refused with `Err(Error::Failed(_))`; a target that the app already observes is not one more.  `observe` sends no event with the current state; `get` reads the state.  The app stops observing when the instance ends.
+`observe` doesn't send an event with the current state; call `get` for that.  A target that matches no watched contact is accepted, but no events arrive for that target.  The subscription ends when the instance ends.
+
+An app can observe at most 256 targets.  Beyond that, `observe` returns `Err(Error::Failed(_))` for a new target.  Observing a target again doesn't count against the limit.
 
 ## `stop_observing`
 
@@ -29,9 +31,7 @@ An app can observe at most 256 targets.  One more target is refused with `Err(Er
 pub fn stop_observing(target: &str)
 ```
 
-WIT name: `stop-observing`.
-
-Ends the observing begun with the same string.
+Ends the subscription that was started with the same string.
 
 ## `get`
 
@@ -39,7 +39,7 @@ Ends the observing begun with the same string.
 pub fn get(target: &str) -> Option<Presence>
 ```
 
-The presence of a contact now, as [`Presence`](types.md#presence), or `None` when the phone watches no contact that matches `target`.  `get` works without `observe`.
+Returns the current presence of a contact, or `None` if the phone watches no contact that matches `target`.  See [`Presence`](types.md#presence) for the fields.  `get` works without `observe`.
 
 ## `set_status`
 
@@ -47,11 +47,9 @@ The presence of a contact now, as [`Presence`](types.md#presence), or `None` whe
 pub fn set_status(status: &str, text: &str) -> Result<(), Error>
 ```
 
-WIT name: `set-status`.
+Sets the presence of the phone's user.  The phone displays the status and, if the configuration says so, publishes the status to the PBX.  `status` is one of `available`, `chat`, `away`, `dnd`, `xa`, and `unavailable`, in any letter case.  `text` is the status message, and may be empty.
 
-Sets the presence of the phone's user: the phone shows the status and publishes the status to the PBX where the configuration says so.  `status` is one of `available`, `chat`, `away`, `dnd`, `xa`, and `unavailable`, in any letter case; `text` is the status message and may be empty.
-
-`Invalid("unknown presence status")` for another status.  `Failed(text)` when the phone's SIP side does not answer within 0.5 seconds; the status may still change afterward.
+Returns `Invalid("unknown presence status")` for any other status.  Returns `Failed(text)` if the phone's SIP stack doesn't answer within 0.5 seconds, in which case the status may still change afterward.
 
 ## `get_status`
 
@@ -59,6 +57,4 @@ Sets the presence of the phone's user: the phone shows the status and publishes 
 pub fn get_status() -> Presence
 ```
 
-WIT name: `get-status`.
-
-The presence of the phone's user: `status` (or `unknown` when none was set) and `text`.  `target` is `""` and `line_state` is always `unknown`.
+Returns the presence of the phone's user.  `status` is `unknown` if no status has been set, `text` is the status message, `target` is `""`, and `line_state` is always `unknown`.

@@ -1,6 +1,6 @@
 # `timers`
 
-Timers and clocks.  Capability `timers`.
+Timers and clocks.
 
 ## `set`
 
@@ -8,12 +8,12 @@ Timers and clocks.  Capability `timers`.
 pub fn set(delay_ms: u32, repeat: bool) -> Result<u32, Error>
 ```
 
-Starts a timer and returns the timer's identifier.  The app receives [`Event::Timer(id)`](app-events.md#timer) when `delay_ms` milliseconds have passed; with `repeat`, the event arrives again every `delay_ms` milliseconds until the timer is cancelled.  A timer that does not repeat is gone after the event.
+Starts a timer and returns the timer's ID, which is never 0.  The app receives [`Event::Timer(id)`](app-events.md#timer) after `delay_ms` milliseconds.  With `repeat`, the event arrives again every `delay_ms` milliseconds until the timer is canceled.  A one-shot timer is gone once the event has been sent.
 
-- An app has at most 32 timers at a time.  Past that, `set` starts no timer and returns `Err(Error::Failed(_))`.  An identifier is never 0.
-- A repeating timer with a delay under 50 milliseconds runs at 50.
+- An app can have at most 32 timers at a time.  Beyond that, `set` starts no timer and returns `Err(Error::Failed(_))`.
+- A repeating timer with a delay under 50 milliseconds runs at 50 milliseconds.
 - Timers run whether or not the app is on screen, and end with the instance.
-- Timers do not queue up.  When the phone is busy past several periods of a repeating timer, one event arrives, and the next is due one full period later.
+- Timer events don't queue up.  If the phone is busy for several periods of a repeating timer, a single event arrives, and the next is due one full period later.
 
 ```rust
 self.tick = timers::set(1000, true).ok();   // an Option<u32>
@@ -27,7 +27,7 @@ self.tick = timers::set(1000, true).ok();   // an Option<u32>
 pub fn cancel(id: u32)
 ```
 
-Stops a timer.  No event for the timer arrives afterward.  An identifier that names no timer is ignored.
+Stops a timer.  No further events arrive for that timer.  An ID that doesn't belong to a timer is ignored.
 
 ## `now_ms`
 
@@ -35,9 +35,7 @@ Stops a timer.  No event for the timer arrives afterward.  An identifier that na
 pub fn now_ms() -> u64
 ```
 
-WIT name: `now-ms`.
-
-Milliseconds on a clock that only moves forward and that changes of the wall clock do not affect; for measuring intervals.  The zero point is the start of the phone's main process, not of the app.
+Returns the time in milliseconds on a monotonic clock, for measuring intervals.  Changes to the wall clock don't affect the value.  The clock starts at zero when the phone's main process starts, not when the app starts.
 
 ## `wall_time`
 
@@ -45,6 +43,4 @@ Milliseconds on a clock that only moves forward and that changes of the wall clo
 pub fn wall_time() -> u64
 ```
 
-WIT name: `wall-time`.
-
-The phone's wall clock: seconds since the Unix epoch (UTC).  [`l10n::format_time`](l10n.md#format_time) turns the value into local time.
+Returns the phone's wall-clock time, in seconds since the Unix epoch (UTC).  [`l10n::format_time`](l10n.md#format_time) converts the value to local time.

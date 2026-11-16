@@ -1,94 +1,94 @@
 # Limits
 
-## Running
+## Execution
 
-| Limit | Value | At the limit |
+| Limit | Value | When reached |
 | --- | --- | --- |
-| Time for `App::start` | 5 seconds | The phone stops the app; the app does not start. |
-| Time for one `App::handle` | 2 seconds | The phone stops the app without `Event::Exit`. |
-| Linear memory | `memory_kib` of the manifest; 4 MiB by default, 16 MiB at most | An allocation past the limit fails; in a Rust app the failure is a trap, and the phone stops the app. |
-| WebAssembly memories, tables, table elements, instances | 1, 4, 50,000, and 8 | The app does not start. |
+| Run time of `App::start` | 5 seconds | The phone stops the app, and the app doesn't start. |
+| Run time of one `App::handle` call | 2 seconds | The phone stops the app without sending `Event::Exit`. |
+| Linear memory | `memory_kib` in the manifest: 4 MiB by default, 16 MiB at most | An allocation beyond the limit fails.  In a Rust app, the failure is a trap, and the phone stops the app. |
+| WebAssembly memories, tables, table elements, and instances | 1, 4, 50,000, and 8 | The app doesn't start. |
 
-The app's data (`include_bytes!`, `include_str!`) is part of the program and counts toward linear memory.  An app that the phone stopped at a limit starts again when opened.  An app that starts with the phone (`AppKind::Background`, or `has_idle`) is also started again by the phone, after a wait:
+Embedded data (`include_bytes!`, `include_str!`) is part of the program and counts toward linear memory.  An app that was stopped at a limit starts again when opened.  The phone also restarts an app that starts with the phone (`AppKind::Background`, or `has_idle`), after a delay:
 
-| Limit | Value | At the limit |
+| Limit | Value | When reached |
 | --- | --- | --- |
-| Wait before the phone starts a faulted `Background` or `has_idle` app again | 10 seconds after the first fault, twice the previous wait after each further fault in a row, 1 hour at most | The wait stays at 1 hour. |
-| Time without a fault after which the count of faults starts over | 1 hour of running | The next wait is 10 seconds again.  Opening the app also starts the count over. |
+| Delay before a faulted `Background` or `has_idle` app restarts | 10 seconds after the first fault, doubling with each consecutive fault, up to 1 hour | The delay stays at 1 hour. |
+| Fault-free run time that resets the count of consecutive faults | 1 hour | The next delay is 10 seconds again.  Opening the app also resets the count. |
 
-## The app file
+## App file
 
-| Limit | Value | At the limit |
+| Limit | Value | When reached |
 | --- | --- | --- |
-| Size of the file | 8 MiB | Installation is refused. |
-| Code in the file (the code sections; data does not count) | 1 MiB | Installation is refused. |
-| Icon (`icon`, and each icon of `icon_for`) | 256 KiB | The crate does not compile; the phone refuses such a file. |
-| App `name` | 1 to 64 characters | The crate does not compile; the phone refuses such a file. |
-| Free flash after installation | 2 MiB | Installation is refused. |
+| File size | 8 MiB | Installation fails. |
+| Code size (the code sections; data doesn't count) | 1 MiB | Installation fails. |
+| Icon size (`icon`, and each icon in `icon_for`) | 256 KiB | The crate doesn't compile, and the phone rejects such a file. |
+| Length of the app `name` | 1 to 64 characters | The crate doesn't compile, and the phone rejects such a file. |
+| Free flash after installation | 2 MiB | Installation fails. |
 
 ## `ui` and `canvas`
 
-| Limit | Value | At the limit |
+| Limit | Value | When reached |
 | --- | --- | --- |
-| Pictures defined by an app | 32 names | `define_image` returns `Error::Invalid`. |
-| Size of a picture file | 512 KiB | `define_image` returns `Error::Invalid`. |
-| Pixels of a picture | 1,048,576 | `define_image` returns `Error::Invalid`. |
-| Characters typed into an input | 255, or the value of `set_max_length` (at most 65,535) | Further keys are ignored. |
-| Softkeys shown at a time | 4 | A "More" key pages through the rest, three at a time. |
-| Operations in one `canvas::draw` | 512 | `draw` returns `Err`; the canvas is unchanged. |
-| Bitmap data in one `canvas::draw` | 64 KiB | `draw` returns `Err`; the canvas is unchanged. |
-| Size of a bitmap | 256 by 256 pixels, scale 1 to 8 | `draw` returns `Err`; the canvas is unchanged. |
-| Text of one canvas operation | 64 bytes | `draw` returns `Err`; `text_size` measures the first 64 bytes. |
+| Images defined by an app | 32 names | `define_image` returns `Error::Invalid`. |
+| Image file size | 512 KiB | `define_image` returns `Error::Invalid`. |
+| Image pixel count | 1,048,576 | `define_image` returns `Error::Invalid`. |
+| Characters typed into an input | 255, or the value passed to `set_max_length` (at most 65,535) | Further key presses are ignored. |
+| Softkeys shown at once | 4 | A "More" key pages through the rest, three at a time. |
+| Operations in one `canvas::draw` call | 512 | `draw` returns `Err`, and the canvas is unchanged. |
+| Bitmap data in one `canvas::draw` call | 64 KiB | `draw` returns `Err`, and the canvas is unchanged. |
+| Bitmap dimensions | 256 by 256 pixels, scale 1 to 8 | `draw` returns `Err`, and the canvas is unchanged. |
+| Text in one canvas operation | 64 bytes | `draw` returns `Err`.  `text_size` measures the first 64 bytes. |
 
 ## Timers
 
-| Limit | Value | At the limit |
+| Limit | Value | When reached |
 | --- | --- | --- |
-| Timers of an app | 32 | `timers::set` returns `Error::Failed` and starts no timer. |
-| Period of a repeating timer | 50 milliseconds at least | A shorter period runs at 50 milliseconds. |
+| Timers per app | 32 | `timers::set` returns `Error::Failed` and starts no timer. |
+| Minimum period of a repeating timer | 50 milliseconds | A shorter period runs at 50 milliseconds. |
 
 ## Storage
 
-| Limit | Value | At the limit |
+| Limit | Value | When reached |
 | --- | --- | --- |
-| Value of a `storage` key | 1 MiB | `storage::set` returns `Error::Invalid`. |
-| Length of a `storage` key | 64 bytes | `storage::set` and `storage::remove` return `Error::Invalid`; `storage::get` returns `None`. |
-| Free flash kept by the phone | 2 MiB | `storage::set` returns `Error::NoSpace`. |
-| Key of `pbx_storage` | 1 to 64 characters of letters, digits, `.`, `_`, `-`, `/`, `:` | The request ends `Refused`. |
-| Value of a `pbx_storage` key | 4096 bytes | The request ends `Refused`. |
-| Keys of `pbx_storage` | 1024 shared, and 64 for each user | The request ends `Refused`. |
-| Entries of one `pbx_storage::list` answer | 64 entries and about 16 KiB of values | The answer says that more follow. |
+| `storage` value size | 1 MiB | `storage::set` returns `Error::Invalid`. |
+| `storage` key length | 64 bytes | `storage::set` and `storage::remove` return `Error::Invalid`, and `storage::get` returns `None`. |
+| Free flash reserved by the phone | 2 MiB | `storage::set` returns `Error::NoSpace`. |
+| `pbx_storage` key | 1 to 64 characters: letters, digits, `.`, `_`, `-`, `/`, and `:` | The request ends in `Refused`. |
+| `pbx_storage` value size | 4096 bytes | The request ends in `Refused`. |
+| `pbx_storage` key count | 1024 shared, and 64 per user | The request ends in `Refused`. |
+| Entries in one `pbx_storage::list` answer | 64 entries and about 16 KiB of values | The answer indicates that more entries follow. |
 
 ## Network
 
-| Limit | Value | At the limit |
+| Limit | Value | When reached |
 | --- | --- | --- |
-| HTTP response, head and body | 1 MiB | `Event::Http` carries `Err("reply too large")`. |
-| HTTP connection | 10 seconds | `Event::Http` carries `Err`. |
-| HTTP request and response | 30 seconds | `Event::Http` carries `Err("the request timed out")`. |
+| HTTP response size, headers and body combined | 1 MiB | `Event::Http` carries `Err("reply too large")`. |
+| HTTP connection time | 10 seconds | `Event::Http` carries `Err`. |
+| HTTP request and response time | 30 seconds | `Event::Http` carries `Err("the request timed out")`. |
 | HTTP redirects | 5 | `Event::Http` carries `Err("too many redirects")`. |
 
 ## Calls, presence, and events
 
-| Limit | Value | At the limit |
+| Limit | Value | When reached |
 | --- | --- | --- |
-| Number given to `calls::dial` | 256 bytes | `Error::Invalid`. |
-| Extra headers of `calls::dial` | 30; names up to 64 characters, values up to 512 bytes | `Error::Invalid`. |
-| Digits of one `calls::send_dtmf` | 64 | `Error::Invalid`. |
-| Calls of the phone | 4 unless configured otherwise | `calls::dial` returns `Error::Invalid`. |
-| Answer from call control, presence, or provisioning | 0.5 seconds | `Error::Failed`; the request may still be carried out. |
-| Targets of `presence::observe` | 256 | `observe` returns `Error::Failed`. |
-| Contacts the phone watches | The setting `contacts_max_subscriptions` of the phone's configuration, 40 by default | The phone watches no further contact, and `presence::get` returns `None` for such a contact. |
-| Names of `events::observe` | 64 | `observe` returns `Error::Failed`. |
-| Extension and PIN of `hotdesk::login` | 64 bytes each | `Error::Invalid`. |
+| Length of the number passed to `calls::dial` | 256 bytes | `Error::Invalid`. |
+| Extra headers passed to `calls::dial` | 30, with names up to 64 characters and values up to 512 bytes | `Error::Invalid`. |
+| Digits in one `calls::send_dtmf` call | 64 | `Error::Invalid`. |
+| Simultaneous calls on the phone | 4 unless configured otherwise | `calls::dial` returns `Error::Invalid`. |
+| Wait for an answer from call control, presence, or provisioning | 0.5 seconds | `Error::Failed`.  The request may still be carried out. |
+| Targets observed with `presence::observe` | 256 | `observe` returns `Error::Failed`. |
+| Contacts that the phone watches | The `contacts_max_subscriptions` setting in the phone's configuration, 40 by default | The phone watches no additional contacts, and `presence::get` returns `None` for an unwatched contact. |
+| Names observed with `events::observe` | 64 | `observe` returns `Error::Failed`. |
+| Length of the extension and PIN passed to `hotdesk::login` | 64 bytes each | `Error::Invalid`. |
 
-## Audio, alarms, and the log
+## Audio, alarms, and logging
 
-| Limit | Value | At the limit |
+| Limit | Value | When reached |
 | --- | --- | --- |
-| Sound given to `audio::play` | 8 MiB and five minutes | `Error::Failed`. |
-| Sounds playing | 1 for the whole phone | A new sound replaces the one playing. |
+| Sound passed to `audio::play` | 8 MiB and five minutes | `Error::Failed`. |
+| Sounds playing at once | 1 for the whole phone | A new sound replaces the one that is playing. |
 | Alarms | 16 | `alarms::set` returns `Error::Invalid`. |
-| Answer from the alarm clock | 1.5 seconds | `Error::Failed`; the request may still be carried out. |
-| Message of `runtime::log` | 512 bytes | The message is cut. |
-| Entries of `diagnostics::log_tail` | 100 | The list is shorter than asked. |
+| Wait for an answer from the alarm clock | 1.5 seconds | `Error::Failed`.  The request may still be carried out. |
+| Length of a `runtime::log` message | 512 bytes | The message is truncated. |
+| Entries returned by `diagnostics::log_tail` | 100 | The list is shorter than requested. |

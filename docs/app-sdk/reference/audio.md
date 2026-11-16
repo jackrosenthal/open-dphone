@@ -1,8 +1,8 @@
 # `audio`
 
-Playing a sound.  Capability `audio`.
+Sound playback.
 
-The phone plays one sound at a time, for all apps together, the way the phone plays a ringtone.
+The phone plays one sound at a time across all apps, through the same path as a ringtone.
 
 ## `play`
 
@@ -10,20 +10,24 @@ The phone plays one sound at a time, for all apps together, the way the phone pl
 pub fn play(sound: &[u8], start: u32) -> Result<(), Error>
 ```
 
-Plays a sound once, beginning `start` seconds into the sound.  `sound` is the content of a sound file, which an app usually holds with `include_bytes!`:
-
-- A WAVE file (the content starts with `RIFF`): 8-bit or 16-bit PCM, mu-law, or A-law, at any sample rate; of several channels, the first is played.
-- Anything else is taken as headerless 16 kHz mono signed 16-bit little-endian samples (the format `.sln16`).
-
-A sound is at most 8 MiB and at most five minutes long.  A sound that is already playing, of this app or another, is replaced, and the app that started that sound receives `Event::PlaybackStopped`.
-
-[`Event::PlaybackStopped(position)`](app-events.md#playbackstopped) follows when the sound is over.  The sound also stops when the instance is dropped.
-
-`Err(Error::Failed(text))` when the sound does not start: the content cannot be decoded, the sound is too large or too long, the phone is ringing, or the phone has no audio.  The phone decodes before answering and `play` waits up to 5 seconds; a `Failed` for a missing answer in that time does not rule out that the sound starts afterward.
+Plays a sound once, starting `start` seconds in.
 
 ```rust
 audio::play(include_bytes!("chime.wav"), 0)?;
 ```
+
+`sound` is the contents of a sound file, which an app usually embeds with `include_bytes!`:
+
+- A WAVE file (data that starts with `RIFF`) can contain 8-bit or 16-bit PCM, mu-law, or A-law, at any sample rate.  For a file with several channels, the phone plays the first.
+- Anything else is treated as headerless 16 kHz mono signed 16-bit little-endian samples (the `.sln16` format).
+
+A sound can be at most 8 MiB and at most five minutes long.
+
+If a sound is already playing, whether started by this app or another, the new sound replaces that sound, and the app that started the old sound receives `Event::PlaybackStopped`.
+
+When the new sound is over, the app receives [`Event::PlaybackStopped(position)`](app-events.md#playbackstopped).  The sound also stops when the instance is discarded.
+
+Returns `Err(Error::Failed(text))` if the sound doesn't start: the data can't be decoded, the sound is too large or too long, the phone is ringing, or the phone has no audio.  The phone decodes the sound before answering, and `play` waits up to 5 seconds.  If no answer comes in that time, `play` returns `Failed`, but the sound may still start afterward.
 
 ## `stop`
 
@@ -31,4 +35,4 @@ audio::play(include_bytes!("chime.wav"), 0)?;
 pub fn stop()
 ```
 
-Stops the sound that the app started with `play`, when that sound is still playing; the app then receives `Event::PlaybackStopped`.  When the app has no sound playing, nothing happens: another app's sound and the preview of a ringtone play on.
+Stops the sound that the app started with `play`, if that sound is still playing.  The app then receives `Event::PlaybackStopped`.  If the app has no sound playing, `stop` does nothing: another app's sound, or a ringtone preview, keeps playing.

@@ -1,8 +1,8 @@
 # `runtime`
 
-Leaving the screen, exiting, logging, and random numbers.  Every app has `runtime`; the interface is not a capability.
+App lifecycle control, logging, and random numbers.  Every app has `runtime`, which is not a capability.
 
-`background`, `exit`, `restart`, and `show_app` only record a request.  The phone carries the requests out, in order, after the current `start` or `handle` returns.
+`background`, `exit`, `restart`, and `show_app` only queue a request.  The phone carries out queued requests, in order, after the current `start` or `handle` returns.
 
 ## `background`
 
@@ -10,7 +10,7 @@ Leaving the screen, exiting, logging, and random numbers.  Every app has `runtim
 pub fn background()
 ```
 
-Takes the app's window off the screen; the screen underneath shows again.  The app then receives [`Event::Background`](app-events.md#background), and an app of kind `Foreground` is stopped unless `set_exit_after_background(false)` was called.  When the window is not on screen, nothing happens.
+Takes the app's window off the screen and reveals the screen underneath.  The app then receives [`Event::Background`](app-events.md#background), and the phone stops a `Foreground` app unless the app called `set_exit_after_background(false)`.  Does nothing if the window is not on screen.
 
 ## `exit`
 
@@ -18,7 +18,7 @@ Takes the app's window off the screen; the screen underneath shows again.  The a
 pub fn exit()
 ```
 
-Stops the app.  After the current handler returns, the app receives `Event::Exit`, and the phone drops the instance and closes the app's windows.  Requests recorded after `exit` in the same handler are discarded.
+Stops the app.  After the current handler returns, the app receives `Event::Exit`, and the phone then discards the instance and closes the app's windows.  Requests queued after `exit` in the same handler are dropped.
 
 ## `restart`
 
@@ -26,7 +26,7 @@ Stops the app.  After the current handler returns, the app receives `Event::Exit
 pub fn restart()
 ```
 
-Stops the app as `exit` does and starts a fresh instance: memory, widgets, timers, pending requests, and defined pictures are gone, and `start` runs again.  If the app was on screen, the new instance is shown.
+Stops the app the same way as `exit`, and then starts a fresh instance.  Memory, widgets, timers, pending requests, and defined images are all gone, and `start` runs again.  If the app was on screen, the phone shows the new instance.
 
 ## `set_exit_after_background`
 
@@ -34,9 +34,7 @@ Stops the app as `exit` does and starts a fresh instance: memory, widgets, timer
 pub fn set_exit_after_background(exit: bool)
 ```
 
-WIT name: `set-exit-after-background`.
-
-With `false`, an app of kind `Foreground` keeps running when the window leaves the screen.  The setting starts as `true` in every new instance.  Apps of kind `Background` and apps with an idle window keep running in either case.
+Controls whether a `Foreground` app stops when the window leaves the screen.  Pass `false` to keep running.  The setting is `true` in every new instance.  `Background` apps and apps with an idle window keep running regardless.
 
 ## `show_app`
 
@@ -44,9 +42,11 @@ With `false`, an app of kind `Foreground` keeps running when the window leaves t
 pub fn show_app(name: &str) -> Result<(), String>
 ```
 
-Opens another app, named by the `name` of that app's manifest: the phone starts the other app if needed and puts the other app's window on top.
+Opens another app, identified by the `name` in that app's manifest.  The phone starts the other app if necessary and brings that app's window to the front.
 
-The call fails, with a sentence that says why, when `name` is not formed like an app name, when the phone has no app of that name, and when the app is a built-in app that the configuration switches off.  `Ok` says that the request was recorded.  An app that then fails to start is not shown; the phone writes a warning to the log, and the calling app is not told.
+Returns `Ok` once the request is queued.  If the other app then fails to start, the app isn't shown, the phone logs a warning, and the caller is not notified.
+
+Returns `Err`, with a message that explains why, when `name` is not a well-formed app name, when no app has that name, or when the name belongs to a built-in app that the configuration disables.
 
 ## `reset_idle_timer`
 
@@ -54,7 +54,7 @@ The call fails, with a sentence that says why, when `name` is not formed like an
 pub fn reset_idle_timer()
 ```
 
-Counts as user activity: wakes the backlight and restarts the backlight's timeout.  The call has an effect only while the app's window is on screen.
+Registers user activity: wakes the backlight and restarts the backlight timeout.  Has an effect only while the app's window is on screen.
 
 ## `log`
 
@@ -62,11 +62,11 @@ Counts as user activity: wakes the backlight and restarts the backlight's timeou
 pub fn log(level: u8, message: &str)
 ```
 
-Writes a line to the phone's log, prefixed with the app's name.  `level` is 0 for an error, 1 for a warning, 2 for information, and 3 or more for debugging.  A message longer than 512 bytes is cut at the last whole character within 512 bytes.
+Writes a line to the phone's log, prefixed with the app's name.  `level` is 0 for an error, 1 for a warning, 2 for information, and 3 or higher for debugging.  A message longer than 512 bytes is truncated at the last whole character that fits.
 
-The SDK has a helper for each level: `log_error`, `log_warn`, `log_info`, and `log_debug`, each taking `&str`.
+The SDK has a [helper for each level](helpers.md#logging-and-storage): `log_error`, `log_warn`, `log_info`, and `log_debug`.
 
-A panic of the app is logged without a call from the app: [`export_app!`](manifest.md#export_app) installs a panic hook that writes `panicked at <file>:<line>: <message>` at level 0 before the phone stops the app.
+Panics are logged automatically.  [`export_app!`](manifest.md#export_app) installs a panic hook that writes `panicked at <file>:<line>: <message>` at level 0 before the phone stops the app.
 
 ## `in_foreground`
 
@@ -74,7 +74,7 @@ A panic of the app is logged without a call from the app: [`export_app!`](manife
 pub fn in_foreground() -> bool
 ```
 
-Whether the app's window is the top screen: `true` from `Event::Foreground` until `Event::Background`.  The idle window does not count.
+Returns whether the app's window is the top screen: `true` from `Event::Foreground` until `Event::Background`.  The idle window doesn't count.
 
 ## `random`
 
@@ -82,4 +82,4 @@ Whether the app's window is the top screen: `true` from `Event::Foreground` unti
 pub fn random() -> u64
 ```
 
-64 random bits from the kernel's random source, e.g., to seed a game's generator.
+Returns 64 random bits from the kernel's random source.  Use the result to seed a game's random number generator, for example.

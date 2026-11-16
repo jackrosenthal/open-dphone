@@ -35,7 +35,7 @@ nav = [
       "app-sdk/tutorial/index.md",
       "app-sdk/tutorial/first-app.md",
       "app-sdk/tutorial/softkeys-and-state.md",
-      "app-sdk/tutorial/keeping-data.md",
+      "app-sdk/tutorial/persistent-storage.md",
       "app-sdk/tutorial/drawing.md",
       "app-sdk/tutorial/shared-data.md",
     ] },

@@ -1,6 +1,6 @@
 # `diagnostics`
 
-The state of the phone's subsystems, and the log.  Capability `diagnostics`.
+Subsystem health and the phone's log.
 
 ## `health`
 
@@ -8,7 +8,7 @@ The state of the phone's subsystems, and the log.  Capability `diagnostics`.
 pub fn health() -> Vec<(String, String)>
 ```
 
-Every subsystem of the phone with the subsystem's state, in a fixed order.  The names are `Core`, `Configuration`, `Network`, `SIP`, `Media`, `DPMA`, `UI`, `Apps`, `Web`, `SSH`, and `Update`.  The state is one of:
+Returns every subsystem of the phone with that subsystem's state, in a fixed order.  The subsystems are `Core`, `Configuration`, `Network`, `SIP`, `Media`, `DPMA`, `UI`, `Apps`, `Web`, `SSH`, and `Update`.  The state is one of:
 
 | State | Meaning |
 | --- | --- |
@@ -24,6 +24,6 @@ Every subsystem of the phone with the subsystem's state, in a fixed order.  The 
 pub fn log_tail(max: u32) -> Vec<String>
 ```
 
-WIT name: `log-tail`.
+Returns the newest entries in the phone's log, newest first.  The result has at most `max` entries, and never more than 100.
 
-The newest entries of the phone's log, newest first: at most `max` of them, and never more than 100.  Each entry is `<source> <message>`, where the source names the part of the phone that wrote the entry; lines that apps write with `runtime::log` have the source `app` and begin with the app's name.  The entries carry no time and no level.
+Each entry has the form `<source> <message>`, where the source is the part of the phone that wrote the entry.  Lines that apps write with `runtime::log` have the source `app` and start with the app's name.  Entries don't include a time or a level.

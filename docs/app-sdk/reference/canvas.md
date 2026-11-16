@@ -1,8 +1,8 @@
 # `canvas`
 
-Free drawing, for what the widgets cannot show (a game board, a chart).  Capability `canvas`.
+Free-form drawing, for anything that widgets can't show, such as a game board or a chart.
 
-A canvas is a widget that shows a list of drawing operations.  [`draw`](#draw) replaces the whole list in one call, so the phone never paints half a picture, and the phone repaints from the list whenever the screen needs painting.  The functions of [`ui`](ui.md) place, hide, and destroy a canvas as any widget.  An app animates by calling `draw` from a repeating [timer](timers.md), which fires at most 20 times a second.
+A canvas is a widget that displays a list of drawing operations.  [`draw`](#draw) replaces the entire list in one call, so the phone never paints a half-finished picture, and the phone repaints from the list whenever the screen needs repainting.  The [`ui`](ui.md) functions move, hide, and destroy a canvas like any other widget.  To animate, call `draw` from a repeating [timer](timers.md), which can fire up to 20 times per second.
 
 ```rust
 use dphone_app_sdk::canvas::{self, Color, Op, Role, Text};
@@ -55,15 +55,15 @@ pub enum Op {
 }
 ```
 
-`Color` is red, green, and blue.  The gray skins show the nearest of four levels (black, dark gray, light gray, white) by brightness.
+`Color` is an RGB color.  The grayscale skins map each color to the nearest of four shades (black, dark gray, light gray, and white) by brightness.
 
-The operations are painted in the order of the list, later ones over earlier ones.  Coordinates are relative to the top-left corner of the canvas, and nothing is drawn outside the canvas.
+Operations are painted in list order, with later operations on top of earlier ones.  Coordinates are relative to the top-left corner of the canvas, and drawing is clipped to the canvas.
 
 | Operation | Draws |
 | --- | --- |
 | `Op::Fill((rect, color))` | A filled rectangle. |
-| `Op::Bitmap(bitmap)` | A picture of one color.  `bits` holds one bit per pixel, rows from the top, each row padded to whole bytes, the leftmost pixel in the highest bit; `bits.len()` must equal `width.div_ceil(8) * height`.  Each set bit is painted as a square with the side `scale` (1 to 8) in `color`; clear bits leave what is underneath.  `x` and `y` place the top-left corner, and `width` and `height` (1 to 256 each) count the picture's pixels before scaling. |
-| `Op::Text(text)` | One line of text in a font of the skin (the fonts of [`ui::set_font`](ui.md#set_font)), in one color, at most 64 bytes.  The text is placed so that the pixels the glyphs paint are centered in `box_`, horizontally and vertically (a digit sits in the middle of a square), and nothing is drawn outside `box_`.  The field is `box` in `app.wit`. |
+| `Op::Bitmap(bitmap)` | A one-color image.  `bits` holds one bit per pixel, in rows from the top.  Each row is padded to a whole number of bytes, with the leftmost pixel in the high bit, so `bits.len()` must equal `width.div_ceil(8) * height`.  Each set bit is painted in `color` as a square `scale` pixels on a side (1 to 8), and clear bits are transparent.  `x` and `y` position the top-left corner, and `width` and `height` (1 to 256 each) are the image's dimensions before scaling. |
+| `Op::Text(text)` | A single line of text, at most 64 bytes, in one color and in one of the skin's fonts (the same fonts as [`ui::set_font`](ui.md#set_font)).  The text is positioned so that the pixels that the glyphs actually paint are centered in `box_`, both horizontally and vertically, which puts a digit in the middle of a square.  Drawing is clipped to `box_`.  The field is named `box` in `app.wit`. |
 
 ## `theme_color`
 
@@ -71,19 +71,17 @@ The operations are painted in the order of the list, later ones over earlier one
 pub fn theme_color(role: Role) -> Color
 ```
 
-WIT name: `theme-color`.
-
-A color of the skin in use, so that a drawing matches the widgets around the canvas.
+Returns one of the current skin's colors, so that a drawing can match the widgets around the canvas.
 
 | `Role` | Color |
 | --- | --- |
-| `Background`, `Foreground` | The window's background and text. |
-| `Highlight`, `HighlightText` | The background and text of a list's selected row. |
-| `TitleBackground`, `TitleText` | The background and text of a title. |
+| `Background`, `Foreground` | The window's background and text colors. |
+| `Highlight`, `HighlightText` | The background and text colors of a list's selected row. |
+| `TitleBackground`, `TitleText` | The background and text colors of a title. |
 | `Secondary` | Secondary text. |
 | `Border` | Separators and borders. |
 
-On a color model the colors are those of the theme that the user chose, and change while the app runs when the user chooses another theme.  The app on screen then receives [`Event::Foreground`](app-events.md#foreground) again; an app that reads the colors and draws at every `Foreground` stays in step.
+On a color model, these are the colors of the user's chosen theme, and they change while the app is running if the user switches themes.  The app on screen then receives [`Event::Foreground`](app-events.md#foreground) again.  To stay in sync, read the colors and redraw on every `Foreground`.
 
 ## `text_size`
 
@@ -91,9 +89,7 @@ On a color model the colors are those of the theme that the user chose, and chan
 pub fn text_size(font: Font, text: &str) -> Size
 ```
 
-WIT name: `text-size`.
-
-The width and height of the pixels that the glyphs of `text` paint in a font of the skin, without the space around a line; the same measure that `Op::Text` centers.  An app uses the result to choose a font that fits a box.  Only the first 64 bytes of `text` are measured.
+Returns the width and height of the pixels that the glyphs of `text` paint in one of the skin's fonts, without any line spacing.  `Op::Text` centers text by the same measurement.  Use the result to pick a font that fits a box.  Only the first 64 bytes of `text` are measured.
 
 ## `create`
 
@@ -101,7 +97,7 @@ The width and height of the pixels that the glyphs of `text` paint in a font of 
 pub fn create(parent: Widget, bounds: Rect) -> Widget
 ```
 
-Creates a canvas widget that shows nothing until the first `draw`.  `parent` and `bounds` work as in [`ui::create`](ui.md#create), including the result 0 for a parent in an idle window the app does not have.
+Creates a canvas widget and returns the handle.  The canvas is empty until the first `draw`.  `parent` and `bounds` work the same way as in [`ui::create`](ui.md#create), including the result of 0 for a parent in an idle window that the app doesn't have.
 
 ## `draw`
 
@@ -109,14 +105,16 @@ Creates a canvas widget that shows nothing until the first `draw`.  `parent` and
 pub fn draw(w: Widget, ops: &[Op]) -> Result<(), String>
 ```
 
-Replaces what the canvas shows.  A list over a limit is refused whole, and the canvas keeps what was shown:
+Replaces the contents of the canvas.  An empty list clears the canvas.
 
-- The list is longer than 512 operations.
+`draw` rejects the entire list, and leaves the canvas unchanged, in any of these cases:
+
+- The list has more than 512 operations.
 - A `Text` is longer than 64 bytes.
-- A `Bitmap` has a `width` or `height` of 0 or above 256, or a `scale` outside 1 to 8.
-- The `bits.len()` of a `Bitmap` is not `width.div_ceil(8) * height`.
-- The `bits` of all bitmaps of the list together exceed 64 KiB.
+- A `Bitmap` has a `width` or `height` of 0 or more than 256, or a `scale` outside 1 to 8.
+- A `Bitmap` has a `bits.len()` other than `width.div_ceil(8) * height`.
+- The `bits` of all bitmaps in the list total more than 64 KiB.
 
-The `Err` value is a sentence that names the limit.
+The `Err` value is a message that names the limit.
 
-The list is checked before the widget.  `draw` on a handle that does not exist, on the root, or on a widget of another kind returns `Err("not a canvas")` and changes nothing.  An empty list clears the canvas.
+`draw` checks the list before the widget.  Given a valid list, `draw` returns `Err("not a canvas")` and changes nothing when the handle doesn't exist, is the root, or refers to another kind of widget.

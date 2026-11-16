@@ -1,42 +1,42 @@
 # `pbx-storage`
 
-The app's store of keys and values on the PBX.  Capability `pbx-storage`; the Rust module is `pbx_storage`.
+The app's key-value store on the PBX.  The Rust module is `pbx_storage`.
 
-[`storage`](storage.md) keeps data on one phone.  `pbx_storage` keeps data on the PBX, so that the data is the same on every phone and outlasts a phone: a game's table of best times, or how far a user has come.  The store needs a PBX that runs Open DPMA; the app and the phone need no configuration for the store.
+[`storage`](storage.md) keeps data on a single phone.  `pbx_storage` keeps data on the PBX, so the data is the same on every phone and outlives any one phone: a game's high-score table, for example, or a user's progress.  The store requires a PBX running Open DPMA, and needs no configuration in the app or on the phone.
 
-An app has two sets of keys, and no other app can reach either:
+An app has two sets of keys, and no other app can access either:
 
 | `PbxScope` | Keys |
 | --- | --- |
-| `Shared` | One set for the app's copies on all phones of the PBX. |
-| `User` | One set for each user.  The user is the person the phone is provisioned for, so a user's keys are the same on every phone of that user and survive a reset of a phone. |
+| `Shared` | One set, shared by every phone on the PBX that runs the app. |
+| `User` | One set per user.  The user is the person that the phone is provisioned for, so a user's keys are the same on every one of that user's phones and survive a phone reset. |
 
-A PBX that serves several tenants keeps a separate store for each, and a phone reaches only the store of the phone's tenant.
+A multi-tenant PBX keeps a separate store for each tenant, and a phone can reach only the store of the tenant that the phone belongs to.
 
-A key is 1 to 64 characters, each a letter, a digit, or one of `.`, `_`, `-`, `/`, and `:`.  A value is at most 4096 bytes.  An app has at most 1024 shared keys and 64 keys for each user.  The PBX enforces these limits and answers `Refused`.
+A key is 1 to 64 characters, each a letter, a digit, or one of `.`, `_`, `-`, `/`, and `:`.  A value is at most 4096 bytes.  An app can have up to 1024 shared keys and 64 keys per user.  The PBX enforces these limits, and answers a request that exceeds one with `Refused`.
 
 ## Requests and outcomes
 
-`get`, `list`, `set`, and `remove` return a request identifier at once.  The result arrives as [`Event::PbxStorage((id, outcome))`](app-events.md#pbxstorage), exactly once for each request that was not cancelled.
+`get`, `list`, `set`, and `remove` return a request ID immediately.  The result arrives as [`Event::PbxStorage((id, outcome))`](app-events.md#pbxstorage), exactly once for each request that wasn't canceled.
 
-| `PbxStorageOutcome` | Ends | Meaning |
+| `PbxStorageOutcome` | Answers | Meaning |
 | --- | --- | --- |
-| `Entry(Option<PbxEntry>)` | `get` | The entry, or `None` when the key is not set. |
-| `Entries((Vec<PbxEntry>, bool))` | `list` | Entries in the order of the keys, and whether more follow the last one. |
-| `Stored(PbxEntry)` | `set` | The entry as the PBX now has the key. |
-| `Removed` | `remove` | The key is not set: the key was removed, or was never set. |
-| `Conflict(Option<PbxEntry>)` | `set`, `remove` | The key was not as `expect` said, and nothing changed.  The payload is the entry the key has now, or `None`. |
-| `Unreachable(String)` | any | The PBX could not be asked or did not answer.  See [When the PBX is out of reach](#when-the-pbx-is-out-of-reach). |
-| `Refused(String)` | any | The PBX refused the request, and would refuse the same request again: a key that cannot be a key, a value over the limit, or a store that is full.  The text says which. |
+| `Entry(Option<PbxEntry>)` | `get` | The entry, or `None` if the key isn't set. |
+| `Entries((Vec<PbxEntry>, bool))` | `list` | The entries in key order, and whether more entries follow the last one. |
+| `Stored(PbxEntry)` | `set` | The entry as now stored on the PBX. |
+| `Removed` | `remove` | The key isn't set: either the key was removed, or the key was never set. |
+| `Conflict(Option<PbxEntry>)` | `set`, `remove` | The key didn't match `expect`, and nothing changed.  The payload is the key's current entry, or `None`. |
+| `Unreachable(String)` | Any | The request never reached the PBX, or the PBX didn't answer.  See [Offline behavior](#offline-behavior). |
+| `Refused(String)` | Any | The PBX refused the request and would refuse the same request again: the key is invalid, the value is too large, or the store is full.  The text says which. |
 
-A `PbxEntry`:
+The fields of a `PbxEntry`:
 
-| Field | Content |
+| Field | Contents |
 | --- | --- |
 | `key`, `value` | The key and the value. |
-| `version` | A number that changes with every write of the key, is never 0, and is never a version the key had before.  `set` and `remove` take the number as `expect`. |
-| `modified` | When the key was set: seconds since the Unix epoch, by the PBX's clock. |
-| `author_id`, `author_name` | The user who set the key (`PbxUser::id`), and that user's name at the time.  The PBX fills these in. |
+| `version` | A number that changes with every write to the key.  A version is never 0 and never repeats for the same key.  Pass the version to `set` or `remove` as `expect`. |
+| `modified` | When the key was set, in seconds since the Unix epoch, according to the PBX's clock. |
+| `author_id`, `author_name` | The user who set the key (`PbxUser::id`), and that user's name at the time.  The PBX fills in both. |
 
 ## `get`
 
@@ -44,7 +44,7 @@ A `PbxEntry`:
 pub fn get(scope: PbxScope, key: &str) -> u32
 ```
 
-Asks for the entry of a key.  Ends `Entry`.
+Requests the entry for a key.  The request ends in `Entry`.
 
 ## `list`
 
@@ -52,7 +52,9 @@ Asks for the entry of a key.  Ends `Entry`.
 pub fn list(scope: PbxScope, prefix: &str, after: &str) -> u32
 ```
 
-Asks for the entries whose keys start with `prefix` and come after the key `after` in the order of the keys.  `""` as `prefix` matches every key, and `""` as `after` starts at the first key.  Ends `Entries((entries, more))` with at most 64 entries and about 16 KiB of values.  When `more` is `true`, the app asks again with the last entry's key as `after`.
+Requests the entries whose keys start with `prefix` and sort after the key `after`.  An empty `prefix` matches every key, and an empty `after` starts from the first key.
+
+The request ends in `Entries((entries, more))`, with at most 64 entries and about 16 KiB of values.  If `more` is `true`, call `list` again with the last entry's key as `after`.
 
 ## `set`
 
@@ -60,15 +62,15 @@ Asks for the entries whose keys start with `prefix` and come after the key `afte
 pub fn set(scope: PbxScope, key: &str, value: &[u8], expect: Option<u64>) -> u32
 ```
 
-Asks to set a key.  `expect` says what the write may replace:
+Requests a write to a key.  `expect` makes the write conditional:
 
 | `expect` | The PBX writes |
 | --- | --- |
-| `None` | Always, replacing whatever value the key had. |
-| `Some(0)` | Only if the key is not set. |
+| `None` | Always, replacing any existing value. |
+| `Some(0)` | Only if the key isn't set. |
 | `Some(version)` | Only if the key's entry still has that version. |
 
-Ends `Stored`, or `Conflict` when the key is not as expected.
+The request ends in `Stored`, or in `Conflict` if the condition wasn't met.
 
 ## `remove`
 
@@ -76,7 +78,7 @@ Ends `Stored`, or `Conflict` when the key is not as expected.
 pub fn remove(scope: PbxScope, key: &str, expect: Option<u64>) -> u32
 ```
 
-Asks to remove a key, under the same conditions as `set`.  Ends `Removed` or `Conflict`.
+Requests removal of a key.  `expect` works the same way as for `set`.  The request ends in `Removed` or `Conflict`.
 
 ## `cancel`
 
@@ -84,7 +86,7 @@ Asks to remove a key, under the same conditions as `set`.  Ends `Removed` or `Co
 pub fn cancel(id: u32)
 ```
 
-Forgets a request: the result is not delivered.  The PBX request is not withdrawn, so a cancelled `set` or `remove` may still take effect on the PBX.
+Discards a pending request, so that the result is never delivered.  The request to the PBX isn't withdrawn, and a canceled `set` or `remove` may still take effect on the PBX.
 
 ## `watch`
 
@@ -92,7 +94,9 @@ Forgets a request: the result is not delivered.  The PBX request is not withdraw
 pub fn watch(on: bool)
 ```
 
-With `true`, the app receives [`Event::PbxStorageChanged`](app-events.md#pbxstoragechanged) whenever another phone sets or removes a shared key of the app, for as long as the instance runs.  The event carries the scope and the key, not the value; the app reads the key again.  A phone is not told of the writes the phone made, nor of changes to a user's keys.  An app that is not running is told nothing and reads what the app shows at the next start.
+Turns change notifications on or off.  While notifications are on, the app receives [`Event::PbxStorageChanged`](app-events.md#pbxstoragechanged) whenever another phone sets or removes one of the app's shared keys, for as long as the instance runs.
+
+The event carries the scope and the key but not the value, so the app needs to read the key again.  A phone isn't notified of writes made from that same phone, or of changes to a user's keys.  An app that isn't running receives nothing, and should read whatever data the app displays at the next start.
 
 ## `online`
 
@@ -100,7 +104,7 @@ With `true`, the app receives [`Event::PbxStorageChanged`](app-events.md#pbxstor
 pub fn online() -> bool
 ```
 
-Whether the store is in reach now: the phone has a session with the PBX, and the PBX has answered for the store in that session.
+Returns whether the store is currently reachable.  The store is reachable when the phone has a session with the PBX and the PBX has answered a storage request during that session.
 
 ## `user`
 
@@ -108,11 +112,11 @@ Whether the store is in reach now: the phone has a session with the PBX, and the
 pub fn user() -> Option<PbxUser>
 ```
 
-The phone's user as the PBX knows the user: `id` (which identifies the user and does not change), `name` (to show), and `extension` (may be empty).  `None` until the store was first reached after the phone started.
+Returns the phone's user as known to the PBX: `id` (a stable identifier for the user), `name` (for display), and `extension` (which may be empty).  Returns `None` until the store has been reached for the first time since the phone started.
 
-## Two phones that write at the same time
+## Concurrent writes
 
-Without `expect`, the later of two writes replaces the earlier.  An app that changes a value that other phones also change (a list kept in one key) reads the entry, changes the value, and writes with `Some(entry.version)`.  On `Conflict(current)` the app applies the change to `current` and writes again with the version of `current`.
+Without `expect`, the later of two writes replaces the earlier one.  When several phones modify the same value, such as a list kept in one key, read the entry, modify the value, and write with `Some(entry.version)`.  On `Conflict(current)`, apply the change to `current` and write again with the version from `current`.
 
 ```rust
 const TABLE: &str = "best/7x7-easy";
@@ -142,10 +146,10 @@ fn handle(&mut self, event: Event) {
 }
 ```
 
-## When the PBX is out of reach
+## Offline behavior
 
-A request ends `Unreachable(text)` when the phone has no session with the PBX (the phone is not provisioned, or the network or the PBX is down) or when the PBX does not answer, which is also what a PBX without Open DPMA does.  After the PBX failed to answer for the store, the phone answers further requests `Unreachable` at once for the next 60 seconds without asking again.
+A request ends in `Unreachable(text)` when the phone has no session with the PBX (the phone isn't provisioned, or the network or the PBX is down) or when the PBX doesn't answer.  A PBX without Open DPMA never answers.  After the PBX fails to answer a storage request, the phone answers further requests with `Unreachable` immediately for the next 60 seconds, without contacting the PBX.
 
-The phone keeps nothing to send later.  An app that must not lose a write keeps the value, in [`storage`](storage.md) if the value must outlast the instance, and writes again at [`Event::PbxStorageOnline`](app-events.md#pbxstorageonline), which every running app that uses `pbx_storage` receives each time the store comes into reach.  The event also means that entries read earlier may have changed.
+The phone doesn't queue requests to send later.  An app that can't afford to lose a write should keep the value (in [`storage`](storage.md), if the value must outlive the instance) and write again on [`Event::PbxStorageOnline`](app-events.md#pbxstorageonline).  Every running app that uses `pbx_storage` receives that event each time the store becomes reachable.  The event also means that entries read earlier may have changed.
 
-A `set` or `remove` that ends `Unreachable` because no answer came may still have reached the PBX.  Repeating a write that carried `expect` then ends in `Conflict` with the entry the first attempt wrote.
+A `set` or `remove` that ends in `Unreachable` because no answer came may still have reached the PBX.  If the write carried `expect`, retrying then ends in `Conflict`, with the entry that the first attempt wrote.

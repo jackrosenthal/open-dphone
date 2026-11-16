@@ -1,8 +1,16 @@
 # SDK helpers
 
-The crate `dphone-app-sdk` adds a few functions and types on top of the interface.  All of them run inside the app and only call the functions the other pages describe, so an app that uses a helper gains the capability of the interface the helper calls.
+The `dphone-app-sdk` crate adds a few functions and types on top of the phone's interface.  Helpers run inside the app and only call functions documented on the other pages, so using a helper gives the app the capability of whichever interface the helper calls.
 
-`use dphone_app_sdk::prelude::*;` brings in `App`, `Event`, `ROOT`, `Widget`, `Rect`, `ListItem`, `Softkey`, `WidgetKind`, `WidgetEvent`, `Skin`, `PbxOutcome`, `PbxScope`, `PbxEntry`, `PbxStorageOutcome`, `TimeStyle`, `AppKind`, `Json`, `Form`, `Message`, the functions `screen`, `content_rect`, and `row_height`, and the modules `audio`, `calls`, `config`, `events`, `http`, `l10n`, `pbx`, `pbx_storage`, `presence`, `runtime`, `storage`, `timers`, and `ui`.  Everything else is imported by name, e.g., `dphone_app_sdk::canvas` or `dphone_app_sdk::InputMode`.
+## Prelude
+
+`use dphone_app_sdk::prelude::*;` imports:
+
+- The trait `App`, the constant `ROOT`, and the types `Event`, `Widget`, `Rect`, `ListItem`, `Softkey`, `WidgetKind`, `WidgetEvent`, `Skin`, `PbxOutcome`, `PbxScope`, `PbxEntry`, `PbxStorageOutcome`, `TimeStyle`, `AppKind`, `Json`, `Form`, and `Message`.
+- The functions `screen`, `content_rect`, and `row_height`.
+- The modules `audio`, `calls`, `config`, `events`, `http`, `l10n`, `pbx`, `pbx_storage`, `presence`, `runtime`, `storage`, `timers`, and `ui`.
+
+Import everything else by name, such as `dphone_app_sdk::canvas` or `dphone_app_sdk::InputMode`.
 
 ## Screens
 
@@ -12,9 +20,9 @@ The crate `dphone-app-sdk` adds a few functions and types on top of the interfac
 pub fn screen(title: &str) -> Rect
 ```
 
-Starts a new screen: clears the window (`ui::clear(ROOT)`, which also removes the window's softkeys and key claims), claims `cancel` for the window, and creates a `Text` across the top, `title_height` high, in `Font::Title`.  Returns the rectangle below the title.
+Starts a new screen and returns the rectangle below the title.  `screen` clears the window with `ui::clear(ROOT)`, which also removes the window's softkeys and key claims.  The function then claims `cancel` for the window and creates a `Text` across the top of the window, `title_height` tall, in `Font::Title`.
 
-Because the window claims `cancel`, the key no longer takes the app off the screen: the app receives `Event::Key("cancel")` and calls `runtime::background` or goes back a screen.
+Because the window claims `cancel`, that key no longer takes the app off the screen.  The app receives `Event::Key("cancel")` instead, and should call `runtime::background` or go back one screen.
 
 ### `content_rect`
 
@@ -22,7 +30,7 @@ Because the window claims `cancel`, the key no longer takes the app off the scre
 pub fn content_rect() -> Rect
 ```
 
-The whole window as a rectangle at the origin: `Rect::new(0, 0, metrics.width, metrics.height)`.
+Returns the whole window as a rectangle at the origin: `Rect::new(0, 0, metrics.width, metrics.height)`.
 
 ### `row_height`
 
@@ -30,7 +38,7 @@ The whole window as a rectangle at the origin: `Rect::new(0, 0, metrics.width, m
 pub fn row_height() -> u16
 ```
 
-`ui::get_metrics().row_height`.
+Returns `ui::get_metrics().row_height`.
 
 ### `Message`
 
@@ -42,7 +50,7 @@ impl Message {
 }
 ```
 
-A screen with a title and one wrapped text (a loading notice, an error, a confirmation).  `show` calls `screen`, creates the text, sets `keys` as the window's softkeys, and focuses the text.  The field `text` is the text widget, for `ui::set_text` later.
+A screen with a title and one block of wrapped text, for a loading notice, an error, or a confirmation.  `show` calls `screen`, creates the text widget, sets `keys` as the window's softkeys, and focuses the text.  The `text` field is the text widget, so that the app can call `ui::set_text` later.
 
 ### `Form`
 
@@ -56,7 +64,11 @@ impl Form {
 }
 ```
 
-A screen with a title and one labeled input per entry of `fields`: the label, the input mode, and the initial value.  `show` sets `keys` as the window's softkeys and focuses the first input.  `value(index)` is the text of an input, or `""` for an index out of range.  `focus_next(current)` moves the focus to the input after `current` and returns `false` when `current` is the last input or no input of the form, which suits `WidgetEvent::Submitted`: move on, or submit the form.
+A screen with a title and one labeled input for each entry in `fields`.  Each entry gives the label, the input mode, and the initial value.
+
+- `show` sets `keys` as the window's softkeys and focuses the first input.
+- `value(index)` returns the text of an input, or `""` if `index` is out of range.
+- `focus_next(current)` moves the focus to the input after `current`.  The function returns `false` when `current` is the last input or isn't part of the form.  Call `focus_next` on `WidgetEvent::Submitted` to either advance to the next field or, on `false`, submit the form.
 
 ## Logging and storage
 
@@ -68,7 +80,9 @@ pub fn log_debug(msg: &str)
 pub fn read_string(key: &str) -> Option<String>
 ```
 
-The four log functions call [`runtime::log`](runtime.md#log) with the levels 0 to 3.  `read_string` is [`storage::get`](storage.md#get) for a value that is UTF-8 text; a value that is not UTF-8 gives `None`.
+The four log functions call [`runtime::log`](runtime.md#log) with levels 0 through 3.
+
+`read_string` calls [`storage::get`](storage.md#get) and returns the value as a `String`.  A value that isn't valid UTF-8 returns `None`.
 
 ## PBX requests
 
@@ -78,7 +92,7 @@ The four log functions call [`runtime::log`](runtime.md#log) with the levels 0 t
 pub fn pbx_request(method: &str, parameters: Json) -> u32
 ```
 
-Calls [`pbx::request`](pbx.md#request) with `parameters` written as JSON text.  When the parameters have no member `account_id` and [`config::app_setting("account_id")`](config.md#app_setting) is nonempty, the helper adds that member.  A `parameters` value that is not an object is sent as an empty object.  The helper uses the capabilities `pbx` and `config`.
+Calls [`pbx::request`](pbx.md#request) with `parameters` serialized as JSON.  If the parameters have no `account_id` member and [`config::app_setting("account_id")`](config.md#app_setting) is not empty, the helper adds that member.  If `parameters` is not an object, the helper sends an empty object.  `pbx_request` uses the `pbx` and `config` capabilities.
 
 ```rust
 let id = pbx_request(
@@ -93,7 +107,11 @@ let id = pbx_request(
 pub fn pbx_error_text(outcome: &PbxOutcome) -> String
 ```
 
-A sentence for an error screen: for `Errors`, the `message` of the first error of the server's reply, or `The server reported an error.` when there is none; for `Transport`, `Could not reach the server.` and the transport's text on a second line; for `Ok`, `""`.
+Returns a message suitable for an error screen:
+
+- For `Errors`, the `message` of the first error in the server's reply, or `The server reported an error.` if the reply has none.
+- For `Transport`, `Could not reach the server.`, with the transport's error text on a second line.
+- For `Ok`, `""`.
 
 ## `Json`
 
@@ -108,22 +126,22 @@ pub enum Json {
 }
 ```
 
-A small JSON value with a parser and a writer, in the module `json`.  Numbers are kept as their text.
+A small JSON value type with a parser and a serializer, in the `json` module.  Numbers are stored as text.
 
 | Function | Result |
 | --- | --- |
-| `Json::parse(text: &str) -> Option<Json>` | The value, or `None` when `text` is not one complete JSON value. |
-| `get(&self, key: &str) -> &Json` | A member of an object; `Null` when missing or when the value is not an object. |
-| `path(&self, keys: &[&str]) -> &Json` | `get` applied for each key in turn. |
-| `text(&self) -> String` | The text of a string, a number, or a boolean; `""` otherwise. |
-| `as_str(&self) -> Option<&str>` | The text of a string or a number. |
-| `int(&self) -> Option<i64>` | The integer of a number or a numeric string (a fraction is cut off), or 0 or 1 for a boolean. |
-| `truthy(&self) -> bool` | `true` for `true` and for the texts `1`, `true`, `yes`, and `on` in any letter case. |
+| `Json::parse(text: &str) -> Option<Json>` | The parsed value, or `None` if `text` is not exactly one complete JSON value. |
+| `get(&self, key: &str) -> &Json` | A member of an object.  `Null` if the member is missing or the value is not an object. |
+| `path(&self, keys: &[&str]) -> &Json` | The result of applying `get` for each key in turn. |
+| `text(&self) -> String` | The text of a string, number, or boolean.  `""` for anything else. |
+| `as_str(&self) -> Option<&str>` | The text of a string or number. |
+| `int(&self) -> Option<i64>` | The integer value of a number or numeric string, with any fraction truncated, or 0 or 1 for a boolean. |
+| `truthy(&self) -> bool` | `true` for `true` and for the strings `1`, `true`, `yes`, and `on`, ignoring case. |
 | `is_null(&self) -> bool` | Whether the value is `Null`. |
-| `items(&self) -> Vec<&Json>` | The elements of an array; no elements for `Null`; any other value counts as a list of one, because the PBX collapses lists of one element in some replies. |
+| `items(&self) -> Vec<&Json>` | The elements of an array.  `Null` has no elements.  Any other value is treated as a list of one, because the PBX collapses single-element lists in some replies. |
 | `Json::obj([(key, value), ...]) -> Json` | An object. |
 | `Json::str(s) -> Json`, `Json::num(n: i64) -> Json` | A string and a number. |
-| `write(&self, out: &mut String)`, `to_string()` | The JSON text. |
+| `write(&self, out: &mut String)`, `to_string()` | The value serialized as JSON. |
 
 ## `xml`
 
@@ -143,6 +161,9 @@ impl Element {
 }
 ```
 
-A minimal XML reader in the module `xml`, for the texts of [`config::app_config`](config.md#app_config) and [`config::contact_lists`](config.md#contact_lists).  The reader keeps elements, attributes, and nesting, and skips text content, comments, and declarations.
+A minimal XML reader in the `xml` module, meant for the output of [`config::app_config`](config.md#app_config) and [`config::contact_lists`](config.md#contact_lists).  The reader keeps elements, attributes, and nesting, and skips text content, comments, and declarations.
 
-`parse` returns a root without a name whose children are the top-level elements of the text; for malformed text, the result holds what was read up to the fault.  `attr` returns `""` for a missing attribute, `children_named` goes through the direct children with a name, and `find_all` appends every descendant with a name to `out`, depth first.
+- `parse` returns an unnamed root element whose children are the top-level elements of the text.  For malformed text, the result contains everything read up to the error.
+- `attr` returns the value of an attribute, or `""` if the attribute is missing.
+- `children_named` iterates over the direct children with the given name.
+- `find_all` appends every descendant with the given name to `out`, depth first.
