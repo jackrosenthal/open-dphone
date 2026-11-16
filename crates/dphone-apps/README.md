@@ -4,7 +4,7 @@ The app runtime of Open DPhone: WebAssembly components run by Wasmtime's Pulley 
 
 - The interface is defined once, in `crates/dphone-app-sdk/wit/app.wit`.  `dphone-app-sdk` is the guest crate generated from it, published to crates.io for app makers (its README tells how to write an app); this crate generates the host side from the same file.  The built-in apps are in `apps/`.
 - An app is one file: a WebAssembly component with its manifest in it (the custom section `dphone-app`, written by the SDK's `export_app!`; `src/manifest.rs` reads it).  Its data is in its code (`include_bytes!`); nothing is unpacked on the phone.
-- An app gets the host interfaces its component imports, and no others: capabilities are not declared.  `hotdesk` and `diagnostics` are reserved for built-in apps: an app that imports one is not installed.
+- An app gets the host interfaces its component imports, and no others: capabilities are not declared.
 - Each app has a memory cap (4 MiB by default, 16 MiB at most via `memory_kib`) and a time budget per event (2 s); going over either stops the app.
 
 ## Building apps
@@ -33,7 +33,7 @@ The `.cwasm` files are tied to the Wasmtime version and to the settings in `src/
 
 ## Installing
 
-An app file holds a component, never compiled code: Wasmtime trusts the compiled code it loads, so the phone compiles every installed app itself (Cranelift with the Pulley back end; the feature `compile`, which the phone binary must have: `crates/dphone` does not build without it) and keeps the result in `.code.cwasm`.  Before that it reads the manifest from the file and refuses what is not an app, an app with a built-in app's name, and a stock JavaScript package; after it, an app that imports an interface reserved for built-in apps.
+An app file holds a component, never compiled code: Wasmtime trusts the compiled code it loads, so the phone compiles every installed app itself (Cranelift with the Pulley back end; the feature `compile`, which the phone binary must have: `crates/dphone` does not build without it) and keeps the result in `.code.cwasm`.  Before that it reads the manifest from the file and refuses what is not an app, an app with a built-in app's name, and a stock JavaScript package.
 
 Measured on a D60 (ARM1176, 2026-11-15; the web interface's "Install App", a dial tone on the handset meanwhile):
 

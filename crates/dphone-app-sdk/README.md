@@ -136,8 +136,10 @@ Each interface of the phone except `runtime` is a capability, and each is a modu
 | `events` | Events pushed to the phone, and messages between apps. |
 | `audio` | Playing a sound file. |
 | `l10n` | The locale, common words, and the text of dates and times. |
+| `hotdesk` | Changing which user the phone is provisioned for. |
+| `diagnostics` | The phone's hardware tests and its own state. |
 
-`runtime` (logging, leaving the screen, exiting, random numbers) is not a capability: every app has it.  `hotdesk` and `diagnostics` are for the firmware's built-in apps only: the phone refuses to install an app that uses one.
+`runtime` (logging, leaving the screen, exiting, random numbers) is not a capability: every app has it.
 
 The phone stops an app that takes more than two seconds to handle one event, or that asks for more memory than its limit.
 

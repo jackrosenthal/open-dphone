@@ -371,19 +371,6 @@ fn install_run_upgrade_and_remove() {
     let dir = temp_dir("install");
     let mut r = rig();
 
-    // What an app may use is what its component imports; nothing is
-    // declared.  An interface for built-in apps is refused.
-    let pkg = variant(&dir.0, "hotdesking", "deskapp", |m| {
-        m.display_names.text = "Desk".into()
-    });
-    let err = r.mgr.install(&pkg, None).unwrap_err();
-    assert!(matches!(err, InstallError::Unloadable(_)), "{err}");
-    assert!(
-        err.to_string().contains("\"hotdesk\", which is reserved for built-in"),
-        "{err}"
-    );
-    assert!(!r.nvdata.join("wasmapps/deskapp").exists());
-
     // A well-formed app file installs through the command bus and runs.
     let pkg3 = variant(&dir.0, "status", "mystatus", |m| {
         m.display_names.text = "My Status".into()

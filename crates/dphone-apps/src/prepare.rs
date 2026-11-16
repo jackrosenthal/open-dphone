@@ -102,12 +102,6 @@ pub(crate) fn prepare(
         .map_err(|e| InstallError::Unloadable(e.to_string()))?;
     // What the app may use is what its component imports.
     let capabilities = capabilities(engine, &component)?;
-    if let Some(c) = capabilities.iter().find(|c| c.builtin_only()) {
-        return Err(InstallError::Unloadable(format!(
-            "it uses the interface {:?}, which is reserved for built-in apps",
-            c.name()
-        )));
-    }
     package.manifest.capabilities = capabilities;
     let mut linker = Linker::<AppCtx>::new(engine.wasmtime());
     host::link(&mut linker, &package.manifest)

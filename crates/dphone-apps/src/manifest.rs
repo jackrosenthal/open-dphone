@@ -44,9 +44,7 @@ pub enum Capability {
     Audio,
     L10n,
     Canvas,
-    /// Built-in apps only.
     Hotdesk,
-    /// Built-in apps only.
     Diagnostics,
 }
 
@@ -103,11 +101,6 @@ impl Capability {
             "runtime" | "types" => Ok(None),
             other => Capability::from_name(other).map(Some).ok_or_else(unknown),
         }
-    }
-
-    /// Capabilities an installed (downloaded) app can never have.
-    pub fn builtin_only(self) -> bool {
-        matches!(self, Capability::Hotdesk | Capability::Diagnostics)
     }
 }
 

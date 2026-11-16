@@ -424,8 +424,7 @@ interface l10n {
   utc-offset: func() -> s32;
 }
 
-/// Capability `hotdesk`: change which user this phone is provisioned
-/// for.  Built-in apps only; an app that uses it is not installed.
+/// Capability `hotdesk`: change which user this phone is provisioned for.
 interface hotdesk {
   use types.{error};
   /// Log a user in with their extension and PIN; the phone reprovisions.
@@ -436,8 +435,7 @@ interface hotdesk {
   current-user: func() -> string;
 }
 
-/// Capability `diagnostics`: the phone's hardware tests and its own
-/// state.  Built-in apps only; an app that uses it is not installed.
+/// Capability `diagnostics`: the phone's hardware tests and its own state.
 interface diagnostics {
   enum hardware-test {
     /// Full-screen patterns; any key shows the next one.
