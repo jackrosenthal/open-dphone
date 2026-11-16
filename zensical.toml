@@ -31,6 +31,14 @@ nav = [
   ] },
   { "App SDK" = [
     "app-sdk/index.md",
+    { "Tutorial" = [
+      "app-sdk/tutorial/index.md",
+      "app-sdk/tutorial/first-app.md",
+      "app-sdk/tutorial/softkeys-and-state.md",
+      "app-sdk/tutorial/keeping-data.md",
+      "app-sdk/tutorial/drawing.md",
+      "app-sdk/tutorial/shared-data.md",
+    ] },
     { "Reference" = [
       "app-sdk/reference/index.md",
       "app-sdk/reference/manifest.md",
