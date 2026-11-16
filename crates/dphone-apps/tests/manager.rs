@@ -275,15 +275,24 @@ fn a_sound_plays_and_reports_where_it_stopped() {
     r.settle();
     assert_eq!(r.ui.texts("probe"), ["stopped=4"]);
 
-    // Stop goes to the audio side; closing an app whose file is playing
-    // stops the file.
+    // The app's file is over: Stop asks nothing of the audio side, where
+    // another sound may be playing.  Stop while the file plays goes
+    // there, and closing an app whose file is playing stops the file.
+    r.softkey("probe", "Stop");
+    r.softkey("probe", "Play");
     r.softkey("probe", "Stop");
     r.softkey("probe", "Play");
     std::thread::sleep(std::time::Duration::from_millis(20));
     r.mgr.close("probe");
     std::thread::sleep(std::time::Duration::from_millis(20));
     let tail: Vec<Command> = log.lock().unwrap()[1..].to_vec();
-    assert!(matches!(&tail[..], [Command::StopSound, Command::PlayData { .. }, Command::StopSound]), "{tail:?}");
+    assert!(
+        matches!(
+            &tail[..],
+            [Command::PlayData { .. }, Command::StopSound, Command::PlayData { .. }, Command::StopSound]
+        ),
+        "{tail:?}"
+    );
 }
 
 #[test]
