@@ -5,17 +5,21 @@
 //! The pictures are written as PNG files under `desk-sparrow/` in cargo's
 //! test scratch directory (`CARGO_TARGET_TMPDIR`), or in the directory
 //! `DESK_SPARROW_PREVIEWS` names.  The rules of the game itself are tested
-//! where they are, in `apps/desksparrow/src/game.rs`.
+//! where they are, in `apps/desksparrow/src/game.rs`, and the rows of the
+//! leaderboard in `apps/desksparrow/src/board.rs`.
+//!
+//! The leaderboard is tested with phones of one PBX, whose store of app
+//! data is `FakeStore`.
 
 mod common;
 
 use common::{Rig, staged, temp_dir};
 use dphone_apps::engine::Target;
-use dphone_apps::testutil::{FakeConfig, FakePbx, services};
+use dphone_apps::testutil::{FakeConfig, FakePbx, FakeStore, services_with_store};
 use dphone_apps::uishell::UiShell;
 use dphone_apps::{
-    AppManager, AppWindow, Color, ColorRole, DrawOp, ManagerConfig, Rect, Shell, WindowEvent,
-    WindowKind,
+    AppManager, AppWindow, Color, ColorRole, DrawOp, ManagerConfig, Rect, Shell, StoreOp,
+    StoreReply, StoreScope, WindowEvent, WindowKind,
 };
 use dphone_hal::{Hal, Screen};
 use dphone_state::{
@@ -27,6 +31,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const APP: &str = "desksparrow";
+
+/// The three lines of the start screen.
+const START: [&str; 3] = [
+    "Desk Sparrow",
+    "Any key flaps.  Cancel leaves.",
+    "Down shows the leaderboard.",
+];
+const BOARD_HINT: &str = "Down shows the leaderboard.";
 
 /// What the tests need to know of the game on a model: the width of a
 /// pipe's flange and its height, the sparrow's size and place, the height
@@ -186,10 +198,7 @@ fn start_screen_flight_and_game_over() {
     assert_eq!(info.display_name, "Desk Sparrow");
 
     r.launch(APP);
-    assert_eq!(
-        r.ui.texts(APP),
-        ["Desk Sparrow", "Any key flaps.  Cancel leaves."]
-    );
+    assert_eq!(r.ui.texts(APP), START);
     // The whole display, and no softkeys.
     assert!(r.ui.full_screen(APP));
     assert!(r.ui.softkeys(APP).is_empty());
@@ -250,7 +259,10 @@ fn start_screen_flight_and_game_over() {
         assert!(Instant::now() < until);
         next_tick(&mut r);
     }
-    assert_eq!(r.ui.texts(APP), ["Game over", "Score 0   Best 0"]);
+    assert_eq!(
+        r.ui.texts(APP),
+        ["Game over", "Score 0   Best 0", BOARD_HINT]
+    );
     assert!(r.ui.softkeys(APP).is_empty());
     assert_eq!(bird_y(&drawing(&r)), m.field_h - m.bird_h);
     assert_eq!(r.mgr.pump(), None, "no timer after the game");
@@ -322,16 +334,10 @@ fn every_keypad_key_plays_and_cancel_leaves() {
         let twice = after(&mut r, key, Some(key));
         assert!(twice < once, "{key:?}: {twice} against {once}");
     }
-    // The other keys are not the game's: nothing starts.
+    // The other keys are not the game's: nothing starts.  (Down and Up
+    // show the leaderboard and take it away.)
     r.launch(APP);
-    for key in [
-        Key::Up,
-        Key::Down,
-        Key::Left,
-        Key::Right,
-        Key::Soft(1),
-        Key::Soft(4),
-    ] {
+    for key in [Key::Left, Key::Right, Key::Soft(1), Key::Soft(4)] {
         r.key(APP, key);
         assert!(r.ui.shows(APP, "Desk Sparrow"), "{key:?}");
         assert_eq!(r.mgr.pump(), None, "{key:?}");
@@ -401,7 +407,10 @@ fn points_the_best_score_and_the_seed() {
     while !game_over(&r) {
         next_tick(&mut r);
     }
-    assert_eq!(r.ui.texts(APP), ["Game over", "Score 2   Best 2"]);
+    assert_eq!(
+        r.ui.texts(APP),
+        ["Game over", "Score 2   Best 2", BOARD_HINT]
+    );
     assert_eq!(std::fs::read_to_string(&best).unwrap(), "2");
 
     // A worse game leaves the best score alone, in a new run of the app
@@ -413,7 +422,10 @@ fn points_the_best_score_and_the_seed() {
     while !game_over(&r) {
         next_tick(&mut r);
     }
-    assert_eq!(r.ui.texts(APP), ["Game over", "Score 0   Best 17"]);
+    assert_eq!(
+        r.ui.texts(APP),
+        ["Game over", "Score 0   Best 17", BOARD_HINT]
+    );
     assert_eq!(std::fs::read_to_string(&best).unwrap(), "17");
 }
 
@@ -423,10 +435,7 @@ fn it_plays_on_the_gray_screens_in_gray() {
         let m = measures(model);
         let mut r = Rig::with_root(staged(), FakeConfig::default(), model);
         r.launch(APP);
-        assert_eq!(
-            r.ui.texts(APP),
-            ["Desk Sparrow", "Any key flaps.  Cancel leaves."]
-        );
+        assert_eq!(r.ui.texts(APP), START);
         let area = model.main_screen();
         r.key(APP, Key::Select);
         let started = Instant::now();
@@ -471,8 +480,8 @@ fn it_plays_on_the_gray_screens_in_gray() {
 fn it_needs_the_canvas_capability_and_can_be_switched_off() {
     assert_eq!(
         common::capabilities(APP),
-        ["ui", "timers", "storage", "canvas"],
-        "no sound, no calls, no network"
+        ["ui", "timers", "storage", "pbx-storage", "canvas"],
+        "no sound, no calls, no network but the PBX's store"
     );
     // An app is linked with the interfaces the phone's record of it lists
     // (its component's imports when it was built or installed) and no
@@ -667,6 +676,11 @@ struct Phone {
 
 impl Phone {
     fn new(model: Model) -> Phone {
+        Phone::on_pbx(model, &FakeStore::default())
+    }
+
+    /// A phone whose PBX store of app data is `app_data`.
+    fn on_pbx(model: Model, app_data: &FakeStore) -> Phone {
         let dir = temp_dir("sparrow-phone");
         let mut hal = Hal::sim(model);
         let sim = hal.sim.clone().unwrap();
@@ -687,7 +701,7 @@ impl Phone {
             cfg,
             store.clone(),
             Box::new(shell),
-            services(&FakePbx::default(), FakeConfig::default()),
+            services_with_store(&FakePbx::default(), FakeConfig::default(), app_data),
         )
         .expect("engine");
         mgr.scan();
@@ -959,4 +973,446 @@ fn drawn_in_gray(model: Model) {
         per_tick(p.app_time),
         per_tick(p.ui_time)
     );
+}
+
+// ------------------------------------------------------ the leaderboard
+
+/// The leaderboard's value on the PBX, as text.
+fn on_pbx(store: &FakeStore) -> Option<String> {
+    store
+        .value(APP, StoreScope::Shared, "leaderboard")
+        .map(|v| String::from_utf8(v).unwrap())
+}
+
+/// Writes the leaderboard as the phone of `store` would.
+fn write_board(store: &FakeStore, value: &str, expect: Option<u64>) -> StoreReply {
+    store.run(StoreOp::Set {
+        app: APP.into(),
+        scope: StoreScope::Shared,
+        key: "leaderboard".into(),
+        value: value.as_bytes().to_vec(),
+        expect,
+    })
+}
+
+/// A file of the game's storage on the phone.
+fn file(r: &Rig, name: &str) -> Option<String> {
+    std::fs::read_to_string(r.nvdata.join("appdata").join(APP).join(name)).ok()
+}
+
+/// Plays a game from the start screen, the leaderboard, or the end of a
+/// game: through `points` openings, and then to the floor or a pipe.
+/// Returns the score.
+fn play(r: &mut Rig, points: u32) -> u32 {
+    let m = measures(Model::D60);
+    // A key just after a game is that game's.
+    if game_over(r) || !r.ui.shows(APP, "Desk Sparrow") {
+        std::thread::sleep(Duration::from_millis(750));
+    }
+    r.key(APP, Key::Select);
+    assert!(r.ui.texts(APP).is_empty(), "a game");
+    let mut player = Player::new(m);
+    let mut passed = 0;
+    let mut ahead_before = None;
+    let until = Instant::now() + Duration::from_secs(60);
+    while passed < points {
+        assert!(Instant::now() < until);
+        next_tick(r);
+        assert!(!game_over(r), "the player crashed");
+        let ops = drawing(r);
+        if player.flaps(&ops) {
+            r.key(APP, Key::Select);
+        }
+        let ahead = openings(&ops, m)
+            .iter()
+            .filter(|(x, _, _)| x + m.pipe_w as i16 > m.bird_x)
+            .map(|(x, _, _)| *x)
+            .next();
+        if let (Some(before), Some(now)) = (ahead_before, ahead)
+            && now > before
+        {
+            passed += 1;
+        }
+        ahead_before = ahead;
+    }
+    while !game_over(r) {
+        next_tick(r);
+    }
+    r.settle();
+    let line = r.ui.texts(APP)[1].clone();
+    line.split_whitespace().nth(1).unwrap().parse().unwrap()
+}
+
+#[test]
+fn down_shows_the_leaderboard_between_games() {
+    let mut r = Rig::new(FakeConfig::default());
+    r.launch(APP);
+    assert_eq!(
+        common::capabilities(APP)
+            .iter()
+            .filter(|c| **c == "pbx-storage")
+            .count(),
+        1
+    );
+    let picture = |r: &Rig| format!("{:?}", drawing(r));
+    let start = picture(&r);
+    r.key(APP, Key::Down);
+    assert_eq!(r.ui.texts(APP), ["Leaderboard", "No scores yet."]);
+    assert!(r.ui.softkeys(APP).is_empty());
+    assert!(r.ui.full_screen(APP));
+    assert_eq!(r.mgr.pump(), None, "nothing ticks");
+    // A bigger plate, with the sparrow on it.
+    assert_ne!(picture(&r), start);
+    // Down or Up: the start screen again.
+    r.key(APP, Key::Down);
+    assert_eq!(r.ui.texts(APP), START);
+    assert_eq!(picture(&r), start);
+    r.key(APP, Key::Up);
+    assert!(r.ui.shows(APP, "Leaderboard"));
+    r.key(APP, Key::Up);
+    assert_eq!(r.ui.texts(APP), START);
+
+    // Any key of the game starts one from the leaderboard too, and in a
+    // game Down and Up do nothing.
+    r.key(APP, Key::Down);
+    r.key(APP, Key::Digit(8));
+    assert!(r.ui.texts(APP).is_empty());
+    assert!(r.mgr.pump().is_some());
+    next_tick(&mut r);
+    let draws = r.ui.draw_count(APP);
+    r.key(APP, Key::Down);
+    r.key(APP, Key::Up);
+    assert!(r.ui.texts(APP).is_empty());
+    assert_eq!(r.ui.draw_count(APP), draws);
+    while !game_over(&r) {
+        next_tick(&mut r);
+    }
+    // After the game: the leaderboard over the end of the game, and back.
+    // A score of 0 is not on it.
+    r.key(APP, Key::Down);
+    assert_eq!(r.ui.texts(APP), ["Leaderboard", "No scores yet."]);
+    r.key(APP, Key::Down);
+    assert_eq!(
+        r.ui.texts(APP),
+        ["Game over", "Score 0   Best 0", BOARD_HINT]
+    );
+    assert_eq!(on_pbx(&r.app_data), None);
+    // Cancel leaves from the leaderboard as from anywhere.
+    r.key(APP, Key::Up);
+    r.key(APP, Key::Cancel);
+    assert!(!r.mgr.is_running(APP));
+}
+
+#[test]
+fn a_score_is_on_every_phones_leaderboard_with_who_set_it() {
+    let pbx = FakeStore::default();
+    let mut alice = Rig::on_pbx(pbx.phone("101", "Alice"));
+    let mut bob = Rig::on_pbx(pbx.phone("102", "Bob"));
+    // Bob looks at the leaderboard while Alice plays.
+    bob.launch(APP);
+    bob.key(APP, Key::Down);
+    assert_eq!(bob.ui.texts(APP), ["Leaderboard", "No scores yet."]);
+    alice.launch(APP);
+    assert_eq!(play(&mut alice, 1), 1);
+    assert_eq!(on_pbx(&pbx).as_deref(), Some("1\t101\tAlice\n"));
+    assert_eq!(
+        file(&alice, "waiting").as_deref(),
+        Some(""),
+        "nothing waits"
+    );
+    // Bob's phone is told, and shows it; the row is not his.
+    bob.settle();
+    assert_eq!(bob.ui.texts(APP), ["Leaderboard", "1. Alice", "1"]);
+    assert!(bob.ui.highlighted(APP).is_empty());
+    // Alice's shows the same, with her row marked.
+    alice.key(APP, Key::Down);
+    assert_eq!(alice.ui.texts(APP), ["Leaderboard", "1. Alice", "1"]);
+    assert_eq!(alice.ui.highlighted(APP), ["1. Alice", "1"]);
+
+    // Bob does better: he is above her, on both phones.
+    assert_eq!(play(&mut bob, 2), 2);
+    assert_eq!(
+        on_pbx(&pbx).as_deref(),
+        Some("2\t102\tBob\n1\t101\tAlice\n")
+    );
+    alice.settle();
+    let both = ["Leaderboard", "1. Bob", "2", "2. Alice", "1"];
+    assert_eq!(alice.ui.texts(APP), both);
+    assert_eq!(alice.ui.highlighted(APP), ["2. Alice", "1"]);
+    bob.key(APP, Key::Up);
+    assert_eq!(bob.ui.texts(APP), both);
+    assert_eq!(bob.ui.highlighted(APP), ["1. Bob", "2"]);
+
+    // A worse game of his changes nothing, and nothing is written: a
+    // user is there once, with their best score.
+    let writes = |store: &FakeStore| {
+        store
+            .ops()
+            .iter()
+            .filter(|op| matches!(op, StoreOp::Set { .. }))
+            .count()
+    };
+    assert_eq!(writes(&bob.app_data), 1);
+    assert_eq!(play(&mut bob, 1), 1);
+    assert_eq!(writes(&bob.app_data), 1);
+    assert_eq!(
+        on_pbx(&pbx).as_deref(),
+        Some("2\t102\tBob\n1\t101\tAlice\n")
+    );
+
+    // A phone that starts the game later reads it.
+    let mut carol = Rig::on_pbx(pbx.phone("103", "Carol"));
+    carol.launch(APP);
+    carol.key(APP, Key::Down);
+    assert_eq!(carol.ui.texts(APP), both);
+    assert!(carol.ui.highlighted(APP).is_empty());
+}
+
+#[test]
+fn two_who_finish_at_once_are_both_on_the_leaderboard() {
+    // Alice's phone reads the leaderboard; then, before its write
+    // arrives, Bob's phone writes.  A store that slips that write in:
+    let pbx = FakeStore::default();
+    let alice_side = pbx.phone("101", "Alice");
+    struct Racing {
+        inner: FakeStore,
+        other: FakeStore,
+        raced: std::sync::atomic::AtomicBool,
+    }
+    impl dphone_apps::PbxStore for Racing {
+        fn request(&self, op: StoreOp, done: dphone_apps::Completion<StoreReply>) {
+            let first_write = matches!(op, StoreOp::Set { .. })
+                && !self.raced.swap(true, std::sync::atomic::Ordering::SeqCst);
+            if first_write {
+                let r = write_board(&self.other, "3\t102\tBob\n", Some(0));
+                assert!(matches!(r, StoreReply::Stored(_)));
+            }
+            self.inner.request(op, done);
+        }
+        fn user(&self) -> Option<dphone_apps::StoreUser> {
+            self.inner.user()
+        }
+        fn online(&self) -> bool {
+            self.inner.online()
+        }
+        fn watch(&self, apps: &[String]) {
+            self.inner.watch(apps)
+        }
+        fn subscribe(&self, f: Box<dyn Fn(dphone_apps::StoreSignal) + Send + Sync>) {
+            self.inner.subscribe(f)
+        }
+    }
+    let racing = Racing {
+        inner: alice_side.clone(),
+        other: pbx.phone("102", "Bob"),
+        raced: false.into(),
+    };
+    let mut alice = Rig::with_services(|mut services| {
+        services.store = Arc::new(racing);
+        services
+    });
+    alice.launch(APP);
+    assert_eq!(play(&mut alice, 1), 1);
+    // Both are there: Alice's phone was shown Bob's entry and wrote over
+    // that one.
+    assert_eq!(
+        on_pbx(&pbx).as_deref(),
+        Some("3\t102\tBob\n1\t101\tAlice\n")
+    );
+    let writes: Vec<Option<u64>> = alice_side
+        .ops()
+        .into_iter()
+        .filter_map(|op| match op {
+            StoreOp::Set { expect, .. } => Some(expect),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        writes.len(),
+        2,
+        "one refused write and one over the newer entry"
+    );
+    assert_eq!(writes[0], Some(0));
+    assert!(writes[1].is_some_and(|v| v > 0));
+    alice.key(APP, Key::Down);
+    assert_eq!(
+        alice.ui.texts(APP),
+        ["Leaderboard", "1. Bob", "3", "2. Alice", "1"]
+    );
+    assert_eq!(file(&alice, "waiting").as_deref(), Some(""));
+}
+
+#[test]
+fn a_score_set_out_of_the_pbxs_reach_is_written_when_it_is_in_reach() {
+    let pbx = FakeStore::default();
+    write_board(&pbx.phone("102", "Bob"), "3\t102\tBob\n", None);
+    let mut alice = Rig::on_pbx(pbx.phone("101", "Alice"));
+    // She has seen the leaderboard; then the PBX is gone.
+    alice.launch(APP);
+    alice.app_data.set_online(false);
+    assert_eq!(play(&mut alice, 1), 1);
+    assert_eq!(on_pbx(&pbx).as_deref(), Some("3\t102\tBob\n"));
+    // The score waits on the phone, and her leaderboard has it.
+    assert_eq!(file(&alice, "waiting").as_deref(), Some("1\t101\tAlice\n"));
+    alice.key(APP, Key::Down);
+    let both = ["1. Bob", "3", "2. Alice", "1"];
+    assert_eq!(alice.ui.texts(APP)[0], "Leaderboard (offline)");
+    assert_eq!(alice.ui.texts(APP)[1..], both);
+    // Meanwhile Carol's phone, which can reach the PBX, writes.
+    write_board(
+        &pbx.phone("103", "Carol"),
+        "3\t102\tBob\n2\t103\tCarol\n",
+        None,
+    );
+    // The PBX is back while the game is on screen: the score is written
+    // into the leaderboard as it is now.
+    alice.app_data.set_online(true);
+    alice.settle();
+    assert_eq!(
+        on_pbx(&pbx).as_deref(),
+        Some("3\t102\tBob\n2\t103\tCarol\n1\t101\tAlice\n")
+    );
+    assert_eq!(
+        alice.ui.texts(APP),
+        [
+            "Leaderboard",
+            "1. Bob",
+            "3",
+            "2. Carol",
+            "2",
+            "3. Alice",
+            "1"
+        ]
+    );
+    assert_eq!(file(&alice, "waiting").as_deref(), Some(""));
+
+    // Dan's phone has never reached the PBX since it started, and he
+    // leaves the game before it can: the score is written the next time
+    // the game starts.
+    let mut dan = Rig::on_pbx(pbx.phone("104", "Dan"));
+    dan.app_data.set_online(false);
+    dan.launch(APP);
+    dan.key(APP, Key::Down);
+    assert_eq!(
+        dan.ui.texts(APP),
+        ["Leaderboard (offline)", "No scores yet."]
+    );
+    assert_eq!(play(&mut dan, 2), 2);
+    dan.key(APP, Key::Cancel);
+    assert!(!dan.mgr.is_running(APP));
+    dan.app_data.set_online(true);
+    dan.settle();
+    assert_eq!(file(&dan, "waiting").as_deref(), Some("2\t104\tDan\n"));
+    dan.launch(APP);
+    assert_eq!(
+        on_pbx(&pbx).as_deref(),
+        Some("3\t102\tBob\n2\t103\tCarol\n2\t104\tDan\n1\t101\tAlice\n")
+    );
+    assert_eq!(file(&dan, "waiting").as_deref(), Some(""));
+}
+
+#[test]
+fn a_phone_without_a_pbx_store_plays_and_keeps_its_scores() {
+    let mut r = Rig::with_services(|mut services| {
+        services.store = Arc::new(dphone_apps::NoStore);
+        services
+    });
+    r.launch(APP);
+    assert_eq!(r.ui.texts(APP), START);
+    assert_eq!(play(&mut r, 1), 1);
+    assert_eq!(
+        r.ui.texts(APP),
+        ["Game over", "Score 1   Best 1", BOARD_HINT]
+    );
+    assert_eq!(file(&r, "best").as_deref(), Some("1"));
+    // The phone does not know its user: the score waits without one.
+    assert_eq!(file(&r, "waiting").as_deref(), Some("1\t\t\n"));
+    r.key(APP, Key::Down);
+    assert_eq!(
+        r.ui.texts(APP),
+        ["Leaderboard (offline)", "1. This phone", "1"]
+    );
+    assert_eq!(r.ui.highlighted(APP), ["1. This phone", "1"]);
+    // The next game is as playable, and a new run of the game still has
+    // the score.
+    assert_eq!(play(&mut r, 1), 1);
+    r.key(APP, Key::Cancel);
+    r.launch(APP);
+    r.key(APP, Key::Down);
+    assert_eq!(
+        r.ui.texts(APP),
+        ["Leaderboard (offline)", "1. This phone", "1"]
+    );
+
+    // A phone with such a score that then has a PBX with a store: the
+    // score is its user's.
+    let pbx = FakeStore::default();
+    let mut alice = Rig::on_pbx(pbx.phone("101", "Alice"));
+    let dir = alice.nvdata.join("appdata").join(APP);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("waiting"), "4\t\t\n").unwrap();
+    alice.launch(APP);
+    assert_eq!(on_pbx(&pbx).as_deref(), Some("4\t101\tAlice\n"));
+    assert_eq!(file(&alice, "waiting").as_deref(), Some(""));
+}
+
+/// The leaderboard on the simulated phone, with a picture of it.
+fn leaderboard_on(model: Model) -> Phone {
+    let pbx = FakeStore::default();
+    write_board(
+        &pbx,
+        "23\t105\tPriya Raman\n17\t102\tBob Castellanos-Whitfield\n9\t101\tAlice Moreau\n\
+         4\t108\tSam Okafor\n2\t110\tWei Chen\n",
+        None,
+    );
+    let mut p = Phone::on_pbx(model, &pbx.phone("101", "Alice Moreau"));
+    p.mgr.launch(APP).unwrap();
+    p.settle();
+    let start = p.pixels();
+    // Down reaches the game through the phone's keys.
+    p.tap(Key::Down);
+    assert_eq!(p.ui.screen_name(), "app:desksparrow");
+    assert_ne!(p.pixels(), start);
+    p.shot("4-leaderboard");
+    // The whole display still: the floor is where the softkeys would be.
+    let size = model.main_screen();
+    let (w, h) = (size.width as usize, size.height as usize);
+    let pixels = p.pixels();
+    let floor = pixels[(h - 1) * w];
+    assert!(pixels[(h - 2) * w..].iter().all(|p| *p == floor));
+    p.tap(Key::Up);
+    assert_eq!(p.pixels(), start);
+    // With no scores, and out of the PBX's reach.
+    let empty = FakeStore::default();
+    empty.set_online(false);
+    let mut q = Phone::on_pbx(model, &empty);
+    q.mgr.launch(APP).unwrap();
+    q.settle();
+    q.tap(Key::Down);
+    q.shot("5-leaderboard-empty-offline");
+    p
+}
+
+#[test]
+fn the_leaderboard_drawn_on_a_color_phone() {
+    let mut p = leaderboard_on(Model::D60);
+    // The user's row is in the skin's selection color, which nothing
+    // else on the start screen has.
+    assert_eq!(p.count(0x01_579B), 0);
+    p.tap(Key::Down);
+    assert!(p.count(0x01_579B) > 2000);
+}
+
+#[test]
+fn the_leaderboard_drawn_on_the_gray_phones() {
+    for model in [Model::D40, Model::D70] {
+        let mut p = leaderboard_on(model);
+        p.tap(Key::Down);
+        let pixels = p.pixels();
+        assert!(
+            pixels
+                .iter()
+                .all(|c| [0x00_0000, 0x55_5555, 0xAA_AAAA, 0xFF_FFFF].contains(c))
+        );
+    }
 }

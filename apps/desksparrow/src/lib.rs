@@ -7,6 +7,15 @@
 //! The game has the whole display: there are no softkeys.  Cancel, which
 //! the app leaves to the phone, closes it, as does line key 1.
 //!
+//! The leaderboard is the best scores of the PBX's users, the same on
+//! every phone: Down or Up shows it between games, and takes it away
+//! again.  It is one shared key of the app's store on the PBX (see
+//! [`board`]), which the game reads when it starts and whenever another
+//! phone changes it.  A score that belongs on it is first written to the
+//! phone's storage, and stays there until the PBX has it: a phone whose
+//! PBX keeps no such store, or cannot be reached, plays as any other, and
+//! shows the leaderboard as it last read it with its scores added.
+//!
 //! The game is drawn on a canvas, once for every tick of a repeating timer
 //! and in one call, so the phone repaints once a tick.  Between games
 //! nothing moves and no timer runs.  The speed of the game is chosen for
@@ -14,8 +23,10 @@
 //! screens and ten on the gray ones, whose panels are slow.  There is no
 //! sound.
 
+mod board;
 mod game;
 
+use board::Row;
 use dphone_app_sdk::canvas::{self, Bitmap, Color, Op, Role};
 use dphone_app_sdk::prelude::*;
 use dphone_app_sdk::{Align, Font};
@@ -26,6 +37,9 @@ use game::{Game, Pipe, Rules};
 const PLAY_KEYS: [&str; 13] = [
     "select", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "#",
 ];
+/// The keys that show the leaderboard between games, and the start screen
+/// or the end of the game again.
+const BOARD_KEYS: [&str; 2] = ["down", "up"];
 
 /// The file of the best score: a decimal number.
 const BEST_FILE: &str = "best";
@@ -34,6 +48,19 @@ const BEST_FILE: &str = "best";
 const SEED_FILE: &str = "seed";
 /// How to play and how to leave, said once, on the start screen.
 const START_HINT: &str = "Any key flaps.  Cancel leaves.";
+/// Said on the start screen and after a game.
+const BOARD_HINT: &str = "Down shows the leaderboard.";
+
+/// The leaderboard's key among the app's shared keys on the PBX.  Its
+/// value is the rows as [`board::format`] writes them.
+const BOARD_KEY: &str = "leaderboard";
+/// The leaderboard as the phone last read it from the PBX, in the app's
+/// storage on the phone, in the same form.
+const BOARD_FILE: &str = "leaderboard";
+/// The scores the PBX's leaderboard does not have yet, in the same form.
+const WAITING_FILE: &str = "waiting";
+/// The name of a score whose user the phone does not know yet.
+const UNKNOWN_NAME: &str = "This phone";
 /// A key just after the end of a game is the last flap of that game, not
 /// the start of the next one.
 const RESTART_AFTER_MS: u64 = 700;
@@ -338,15 +365,46 @@ enum State {
     Over(u64),
 }
 
-/// The window: a canvas under two lines of text on a plate.
+/// A row of the leaderboard as it is shown.
+struct Shown {
+    name: String,
+    score: String,
+    /// The row of this phone's user.
+    mine: bool,
+}
+
+/// What is to read on the plate.
+enum Panel<'a> {
+    /// Nothing, and no plate: a game is being played.
+    None,
+    /// A title and two lines.
+    Lines([&'a str; 3]),
+    /// The leaderboard.
+    Board(&'a str, &'a [Shown]),
+}
+
+/// The leaderboard's widgets, on a plate.
+struct BoardView {
+    plate: Rect,
+    title: Widget,
+    /// Said in place of the rows when there are none.
+    note: Widget,
+    /// The name and the score of each row.
+    rows: Vec<(Widget, Widget)>,
+}
+
+/// The window: a canvas under three lines of text on a plate, or under
+/// the leaderboard on another.
 struct Screen {
     look: Look,
     art: Art,
     canvas: Widget,
     title: Widget,
     line: Widget,
-    /// The plate behind the two lines.
+    hint: Widget,
+    /// The plate behind the three lines.
     plate: Rect,
+    board: BoardView,
 }
 
 impl Screen {
@@ -354,7 +412,12 @@ impl Screen {
         let look = Look::new();
         let m = ui::get_metrics();
         ui::clear(ROOT);
-        ui::claim_keys(ROOT, &PLAY_KEYS.map(String::from));
+        let keys: Vec<String> = PLAY_KEYS
+            .iter()
+            .chain(&BOARD_KEYS)
+            .map(|k| k.to_string())
+            .collect();
+        ui::claim_keys(ROOT, &keys);
         let canvas = canvas::create(ROOT, Rect::new(0, 0, m.width, m.height));
 
         let (title_h, pad) = if m.color {
@@ -363,25 +426,57 @@ impl Screen {
             (m.line_height, 4)
         };
         let w = if m.color { 300 } else { m.width * 3 / 4 };
-        let h = title_h + m.line_height + 2 * pad;
-        let plate = Rect::new(
-            ((m.width - w) / 2) as i16,
-            ((look.rules.height as u16 - h) / 2 + look.rules.bird_h as u16 / 2) as i16,
-            w,
-            h,
-        );
-        let text = |y: u16, h: u16, font: Font| {
-            let t = ui::create(
-                WidgetKind::Text,
-                ROOT,
-                Rect::new(plate.x, plate.y + y as i16, w, h),
-            );
+        // A plate of the height `h`, in the middle of the field with the
+        // sparrow that sits on it.
+        let plate_of = |h: u16| {
+            Rect::new(
+                ((m.width - w) / 2) as i16,
+                ((look.rules.height as u16 - h) / 2 + look.rules.bird_h as u16 / 2) as i16,
+                w,
+                h,
+            )
+        };
+        let text = |bounds: Rect, font: Font, align: Align| {
+            let t = ui::create(WidgetKind::Text, ROOT, bounds);
             ui::set_font(t, font);
-            ui::set_align(t, Align::Center);
+            ui::set_align(t, align);
+            ui::set_visible(t, false);
             t
         };
-        let title = text(pad, title_h, if m.color { Font::Title } else { Font::Bold });
-        let line = text(pad + title_h, m.line_height, Font::Normal);
+        let title_font = if m.color { Font::Title } else { Font::Bold };
+        let line_h = m.line_height;
+        let plate = plate_of(title_h + 2 * line_h + 2 * pad);
+        let centered = |p: Rect, y: u16, h: u16, font: Font| {
+            text(Rect::new(p.x, p.y + y as i16, w, h), font, Align::Center)
+        };
+        let title = centered(plate, pad, title_h, title_font);
+        let line = centered(plate, pad + title_h, line_h, Font::Normal);
+        let hint = centered(plate, pad + title_h + line_h, line_h, Font::Normal);
+
+        // The leaderboard: a title, and a line for each row, the name at
+        // the left and the score at the right.
+        let b = plate_of(title_h + board::SIZE as u16 * line_h + 2 * pad);
+        let score_w = w / 5;
+        let board = BoardView {
+            plate: b,
+            title: centered(b, pad, title_h, title_font),
+            note: centered(b, pad + title_h + line_h, line_h, Font::Normal),
+            rows: (0..board::SIZE as u16)
+                .map(|i| {
+                    let y = b.y + (pad + title_h + i * line_h) as i16;
+                    let x = b.x + pad as i16;
+                    let name_w = w - 2 * pad - score_w;
+                    (
+                        text(Rect::new(x, y, name_w, line_h), Font::Normal, Align::Left),
+                        text(
+                            Rect::new(x + name_w as i16, y, score_w, line_h),
+                            Font::Normal,
+                            Align::Right,
+                        ),
+                    )
+                })
+                .collect(),
+        };
         let art = Art {
             sparrow: look
                 .feathers
@@ -396,23 +491,53 @@ impl Screen {
             canvas,
             title,
             line,
+            hint,
             plate,
+            board,
         }
     }
 
-    fn texts(&self, lines: Option<(&str, &str)>) {
-        for (w, text) in [self.title, self.line]
-            .into_iter()
-            .zip(lines.map(|l| [l.0, l.1]).unwrap_or_default())
-        {
-            ui::set_text(w, text);
+    /// Puts the texts of `panel` on screen, and no others.
+    fn texts(&self, panel: &Panel) {
+        let lines = match panel {
+            Panel::Lines(lines) => Some(lines),
+            _ => None,
+        };
+        for (i, w) in [self.title, self.line, self.hint].into_iter().enumerate() {
+            if let Some(lines) = lines {
+                ui::set_text(w, lines[i]);
+            }
+            ui::set_visible(w, lines.is_some());
         }
-        ui::set_visible(self.title, lines.is_some());
-        ui::set_visible(self.line, lines.is_some());
+        let b = &self.board;
+        let (title, rows) = match panel {
+            Panel::Board(title, rows) => (Some(*title), *rows),
+            _ => (None, &[][..]),
+        };
+        if let Some(title) = title {
+            ui::set_text(b.title, title);
+            ui::set_text(b.note, "No scores yet.");
+        }
+        ui::set_visible(b.title, title.is_some());
+        ui::set_visible(b.note, title.is_some() && rows.is_empty());
+        for (i, (name, score)) in b.rows.iter().enumerate() {
+            let row = rows.get(i);
+            for (w, text) in [
+                (*name, row.map(|r| &r.name)),
+                (*score, row.map(|r| &r.score)),
+            ] {
+                if let Some(text) = text {
+                    ui::set_text(w, text);
+                }
+                ui::set_highlight(w, row.is_some_and(|r| r.mine));
+                ui::set_visible(w, row.is_some());
+            }
+        }
     }
 
-    /// Draws the whole picture in one call.
-    fn draw(&self, state: State, game: &Game) {
+    /// Draws the whole picture in one call: the game in `state`, under
+    /// the leaderboard's plate if `board`.
+    fn draw(&self, state: State, game: &Game, board: bool) {
         let look = &self.look;
         let r = &look.rules;
         let mut ops = Vec::with_capacity(96);
@@ -432,7 +557,11 @@ impl Screen {
             look.unit,
             look.floor_edge,
         );
-        let p = &self.plate;
+        let p = if board {
+            &self.board.plate
+        } else {
+            &self.plate
+        };
         let (px, py) = (i32::from(p.x), i32::from(p.y));
         match state {
             State::Ready => {
@@ -483,6 +612,18 @@ struct Sparrow {
     /// two runs still differ.
     games: u32,
     timer: Option<u32>,
+    /// The leaderboard is on screen, over the start screen or the end of
+    /// a game.
+    viewing: bool,
+    /// The leaderboard as the PBX last had it, and the version of its
+    /// entry there (0 if the key is not set).
+    board: Vec<Row>,
+    version: u64,
+    /// Scores that belong on the leaderboard and that the PBX does not
+    /// have yet.  Also in the app's storage.
+    waiting: Vec<Row>,
+    /// The request to the PBX's store that is under way.
+    asked: Option<u32>,
 }
 
 impl Default for Sparrow {
@@ -494,6 +635,11 @@ impl Default for Sparrow {
             best: 0,
             games: 0,
             timer: None,
+            viewing: false,
+            board: Vec::new(),
+            version: 0,
+            waiting: Vec::new(),
+            asked: None,
         }
     }
 }
@@ -507,16 +653,148 @@ impl Sparrow {
 
     /// Shows the state: the texts and the picture.
     fn show(&mut self) {
+        let viewing = self.viewing && self.state != State::Flying;
+        let rows = if viewing { self.shown() } else { Vec::new() };
         let screen = self.screen.get_or_insert_with(Screen::build);
-        match self.state {
-            State::Ready => screen.texts(Some(("Desk Sparrow", START_HINT))),
-            State::Flying => screen.texts(None),
+        let over;
+        let panel = match self.state {
+            State::Flying => Panel::None,
+            _ if viewing => Panel::Board(
+                if pbx_storage::online() {
+                    "Leaderboard"
+                } else {
+                    "Leaderboard (offline)"
+                },
+                &rows,
+            ),
+            State::Ready => Panel::Lines(["Desk Sparrow", START_HINT, BOARD_HINT]),
             State::Over(_) => {
-                let line = format!("Score {}   Best {}", self.game.score, self.best);
-                screen.texts(Some(("Game over", &line)));
+                over = format!("Score {}   Best {}", self.game.score, self.best);
+                Panel::Lines(["Game over", &over, BOARD_HINT])
+            }
+        };
+        screen.texts(&panel);
+        screen.draw(self.state, &self.game, viewing);
+    }
+
+    /// The leaderboard to show: the PBX's with the scores that it does
+    /// not have yet.
+    fn shown(&self) -> Vec<Shown> {
+        let me = pbx_storage::user().map(|u| u.id);
+        board::merge(&self.board, &self.waiting)
+            .iter()
+            .enumerate()
+            .map(|(i, row)| {
+                let name = match row.name.as_str() {
+                    "" if row.id.is_empty() => UNKNOWN_NAME,
+                    "" => &row.id,
+                    name => name,
+                };
+                Shown {
+                    name: format!("{}. {name}", i + 1),
+                    score: row.score.to_string(),
+                    mine: row.id.is_empty() || me.as_ref() == Some(&row.id),
+                }
+            })
+            .collect()
+    }
+
+    /// One of the keys that show the leaderboard and take it away.
+    fn turn(&mut self) {
+        if self.screen.is_some() && self.state != State::Flying {
+            self.viewing = !self.viewing;
+            self.show();
+        }
+    }
+
+    fn keep_waiting(&mut self, waiting: Vec<Row>) {
+        if waiting != self.waiting {
+            self.waiting = waiting;
+            if let Err(e) = storage::set(WAITING_FILE, &board::format(&self.waiting)) {
+                dphone_app_sdk::log_warn(&format!(
+                    "a score for the leaderboard was not saved: {e:?}"
+                ));
             }
         }
-        screen.draw(self.state, &self.game);
+    }
+
+    /// The game's score, if it belongs on the leaderboard as far as the
+    /// phone knows it, waits to be written there.  Says whether it does.
+    fn note_score(&mut self) -> bool {
+        let (id, name) = pbx_storage::user()
+            .map(|u| (u.id, u.name))
+            .unwrap_or_default();
+        let row = Row::new(self.game.score, &id, &name);
+        let waiting = board::unsettled(&self.board, &board::merge(&self.waiting, &[row]));
+        let changed = waiting != self.waiting;
+        self.keep_waiting(waiting);
+        changed
+    }
+
+    /// Reads the leaderboard from the PBX.  What comes back is shown, and
+    /// the scores that wait are added to it ([`Sparrow::read`]).
+    fn ask(&mut self) {
+        if let Some(id) = self.asked.take() {
+            pbx_storage::cancel(id);
+        }
+        self.asked = Some(pbx_storage::get(PbxScope::Shared, BOARD_KEY));
+    }
+
+    /// The PBX's leaderboard is `entry`: read, written by this phone, or
+    /// written by another when this one tried.  The scores that wait and
+    /// that it lacks are written over exactly this entry; if another
+    /// phone writes first, the PBX answers with that phone's entry, and
+    /// this is done again with it.
+    fn read(&mut self, entry: Option<PbxEntry>) {
+        let (rows, version) = match &entry {
+            Some(e) => (board::parse(&e.value), e.version),
+            None => (Vec::new(), 0),
+        };
+        if rows != self.board {
+            if let Err(e) = storage::set(BOARD_FILE, &board::format(&rows)) {
+                dphone_app_sdk::log_warn(&format!("the leaderboard was not saved: {e:?}"));
+            }
+            self.board = rows;
+        }
+        self.version = version;
+        // The phone has reached the PBX: it knows its user now.
+        let waiting = match pbx_storage::user() {
+            Some(u) => board::claim(&self.waiting, &u.id, &u.name),
+            None => self.waiting.clone(),
+        };
+        self.keep_waiting(board::unsettled(&self.board, &waiting));
+        let known: Vec<Row> = self
+            .waiting
+            .iter()
+            .filter(|row| !row.id.is_empty())
+            .cloned()
+            .collect();
+        if !known.is_empty() {
+            let value = board::format(&board::merge(&self.board, &known));
+            self.asked = Some(pbx_storage::set(
+                PbxScope::Shared,
+                BOARD_KEY,
+                &value,
+                Some(self.version),
+            ));
+        }
+        if self.viewing {
+            self.show();
+        }
+    }
+
+    fn answered(&mut self, outcome: PbxStorageOutcome) {
+        match outcome {
+            PbxStorageOutcome::Entry(entry) | PbxStorageOutcome::Conflict(entry) => {
+                self.read(entry)
+            }
+            PbxStorageOutcome::Stored(entry) => self.read(Some(entry)),
+            // The scores wait in the phone's storage, and are written
+            // when the store is in reach: `Event::PbxStorageOnline`, or
+            // the next time the game starts.
+            PbxStorageOutcome::Unreachable(_) => {}
+            other => dphone_app_sdk::log_warn(&format!("the leaderboard: {other:?}")),
+        }
     }
 
     fn seed(&self) -> u32 {
@@ -530,9 +808,7 @@ impl Sparrow {
     fn keep_best(&mut self) {
         if self.game.score > self.best {
             self.best = self.game.score;
-            if let Err(e) =
-                storage::set(BEST_FILE, self.best.to_string().as_bytes())
-            {
+            if let Err(e) = storage::set(BEST_FILE, self.best.to_string().as_bytes()) {
                 dphone_app_sdk::log_warn(&format!("the best score was not saved: {e:?}"));
             }
         }
@@ -552,6 +828,7 @@ impl Sparrow {
                 // The key that starts the game is its first flap.
                 self.game.flap();
                 self.state = State::Flying;
+                self.viewing = false;
                 self.stop_timer();
                 self.timer = Some(timers::set(rules.tick_ms, true));
                 self.show();
@@ -569,8 +846,11 @@ impl Sparrow {
             self.keep_best();
             self.state = State::Over(timers::now_ms());
             self.show();
+            if self.note_score() {
+                self.ask();
+            }
         } else if let Some(screen) = &self.screen {
-            screen.draw(self.state, &self.game);
+            screen.draw(self.state, &self.game, false);
         }
     }
 
@@ -580,8 +860,11 @@ impl Sparrow {
         self.stop_timer();
         if self.state == State::Flying {
             self.keep_best();
+            // Written to the PBX the next time the game starts.
+            self.note_score();
         }
         self.state = State::Ready;
+        self.viewing = false;
     }
 }
 
@@ -592,6 +875,15 @@ impl App for Sparrow {
         self.best = dphone_app_sdk::read_string(BEST_FILE)
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or(0);
+        let rows = |file: &str| {
+            storage::get(file)
+                .map(|v| board::parse(&v))
+                .unwrap_or_default()
+        };
+        self.board = rows(BOARD_FILE);
+        self.waiting = rows(WAITING_FILE);
+        pbx_storage::watch(true);
+        self.ask();
     }
 
     fn handle(&mut self, event: Event) {
@@ -600,6 +892,20 @@ impl App for Sparrow {
             Event::Background | Event::Exit => self.leave(),
             Event::Timer(id) if self.timer == Some(id) => self.tick(),
             Event::Key(k) if PLAY_KEYS.contains(&k.as_str()) => self.play(),
+            Event::Key(k) if BOARD_KEYS.contains(&k.as_str()) => self.turn(),
+            Event::PbxStorage((id, outcome)) if self.asked == Some(id) => {
+                self.asked = None;
+                self.answered(outcome);
+            }
+            // Another phone wrote the leaderboard, or the store is in
+            // reach (again): read it, and add what waits.
+            Event::PbxStorageChanged(change) if change.key == BOARD_KEY => self.ask(),
+            Event::PbxStorageOnline => {
+                self.ask();
+                if self.viewing {
+                    self.show();
+                }
+            }
             _ => {}
         }
     }
