@@ -1,7 +1,5 @@
 # Building from source
 
-This page shows where the parts of the firmware are in the repository, how to build a firmware image for a phone, and how to run the tests and checks that a change must pass.
-
 ## What the build needs
 
 - A Linux machine with an x86-64 processor.  The Nix flake defines the builds for `x86_64-linux` only.
@@ -100,7 +98,7 @@ The binary for the phone is built for the target `arm-unknown-linux-musleabi`.  
 cargo build --release -p dphone --target arm-unknown-linux-musleabi
 ```
 
-[`cargo xtask deploy`](ramboot.md#push-a-changed-binary) runs this build and pushes the result to a phone.  The release profile optimizes the whole program as one unit, so this build is much slower than a debug build.
+[`cargo xtask deploy`](ramboot.md#push-a-changed-binary) runs the same build and pushes the result to a phone.  The release profile optimizes the whole program as one unit, so the release build is much slower than a debug build.
 
 `dphone` embeds the web frontend from `web/dist`.  When that directory does not exist, a Cargo build embeds a placeholder page.  To build the frontend first:
 
@@ -118,7 +116,7 @@ To run the tests of the firmware's crates on the workstation:
 cargo test --workspace --exclude dpma-sys --exclude dpma-ast --exclude res_open_dpma
 ```
 
-Some tests compare against stock firmware images, register against an Asterisk server, or log in with the OpenSSH client.  Those tests skip themselves when the workstation does not provide what the tests need, so a passing `cargo test` does not cover everything.
+Some tests compare against stock firmware images, register against an Asterisk server, or log in with the OpenSSH client.  Those tests are skipped when the workstation lacks the images, the server, or the client, so a passing `cargo test` does not cover everything.
 
 The built-in apps are a separate workspace, and the apps' unit tests run on the workstation with an alias defined in `apps/.cargo/config.toml`:
 
@@ -141,8 +139,6 @@ The continuous integration (`.github/workflows/ci.yml`) also builds the image of
 The tests of Open DPMA run in a container against each supported Asterisk version, with `cargo xtask ci` in `open-dpma/`.  `open-dpma/README.md` describes that command.
 
 ## Other developer commands
-
-`cargo xtask` holds the developer commands that are not builds:
 
 | Command | Purpose |
 | --- | --- |

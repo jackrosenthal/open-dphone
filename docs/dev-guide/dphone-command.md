@@ -1,15 +1,15 @@
 # The `dphone` command
 
-`dphone` is the firmware's one program, and also the command-line tool on the phone.  This page lists what the tool offers, so that a developer knows where to look before reaching for the source.  Run the commands in a shell on the phone: over [SSH, on the serial console](debug-access.md), or on the **Shell** page of the web interface.
+`dphone`, the firmware's one program, is also the command-line tool on the phone.  Run the commands in a shell on the phone: over [SSH, on the serial console](debug-access.md), or on the **Shell** page of the web interface.
 
-`dphone --help` prints the list of commands, and `dphone <command> --help` prints the arguments and options of one command.  The help is part of the binary, so the help always matches the firmware that is running.
+`dphone --help` prints the list of commands, and `dphone <command> --help` prints the arguments and options of one command.  The help comes from the binary, so the help always matches the running firmware.
 
 ## Two kinds of commands
 
 The end of `dphone --help` names the commands that run in the calling process.  The difference matters when something is broken:
 
-- **Commands that run in the calling process** need no main role.  These work on a phone whose main role is down or in safe mode: the firmware update commands, `dphone ramboot`, and the system commands.
-- **Commands that the main role answers** are sent over a local socket to the running main role, which does the work and returns the output.  When the main role is not running, these commands fail with a message that the main role cannot be reached.
+- **Commands that run in the calling process** need no main role, and work on a phone whose main role is down or in safe mode: the firmware update commands, `dphone ramboot`, and the system commands.
+- **Commands that the main role answers** are sent over a local socket to the running main role, which does the work and returns the output.  When the main role is not running, such a command fails with a message that the main role cannot be reached.
 
 Every command exits with status 0 on success.  A mistake in the command line exits with status 2 and prints the usage.
 
@@ -58,7 +58,7 @@ The main role answers these.
 | `dphone version` | Shows the running version and the model. |
 | `dphone health` | Shows the conditions behind the healthy report that confirms a trial boot.  The exit status is 0 when the main role reports healthy and 1 otherwise. |
 | `dphone log` | Shows the last entries of the log.  `-n <count>` sets the number of entries, and `-f` keeps following. |
-| `dphone crashlog` | Prints the crash records that the kernel left from before this boot. |
+| `dphone crashlog` | Prints the records of the last kernel panic, which the main role saves in `/nvdata/open/crash/`. |
 | `dphone state [topic]` | Dumps the state store, the shared state that every subsystem publishes: calls, accounts, network, audio, firmware, and more.  A topic limits the dump to the fields whose name contains the word, e.g., `dphone state audio`. |
 | `dphone restart` | Restarts the main role only.  The kernel and the init role keep running. |
 
@@ -77,7 +77,7 @@ The main role answers these.
 
 ## Driving the phone
 
-These commands stand in for a person at the phone, which makes a test over SSH repeatable.  The main role answers these.
+These commands stand in for a person at the phone, so that a test can be scripted over SSH.  The main role answers these.
 
 | Command | Purpose |
 | --- | --- |
@@ -98,7 +98,7 @@ scp root@192.0.2.20:/tmp/screen.ppm .
 
 ## Hardware and subsystems
 
-The main role answers these.  In safe mode, the subsystems behind these commands are not started, and the commands say so.
+The main role answers these.  In safe mode, only the network is started, so `dphone net` works and the other commands report being unavailable.
 
 | Command | Purpose |
 | --- | --- |

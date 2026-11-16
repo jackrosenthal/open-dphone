@@ -1,16 +1,12 @@
 # Logs and diagnostics
 
-When a change misbehaves on a phone, the first questions are what the firmware logged and what state the firmware is in.  This page shows where each kind of log is kept, how long each survives, and which tools show the state of a running phone.
-
 ## Where the logs are
-
-Three parts of the firmware log to three places:
 
 | Source | Where the log goes | Survives |
 | --- | --- | --- |
-| The main role | A ring in the main role's memory, of the last 2,000 entries | Until the main role restarts |
+| The main role | A ring in the main role's memory, of the last 2,000 entries or 256 KiB | Until the main role restarts |
 | The init role | The kernel's log | Until the phone restarts |
-| The kernel | The kernel's log; the last 8 KiB also in memory that keeps the contents across a reset | A reset, as a crash record |
+| The kernel | The kernel's log; the last 8 KiB of console output, and the last 8 KiB of the log at a panic, also in memory that keeps the contents across a reset | A reset, but not a loss of power |
 
 ### The main role's log
 
@@ -43,13 +39,15 @@ The init role writes to the kernel's log, so `dmesg` shows the kernel's messages
 
 ### Crash records
 
-The kernel keeps the last 8 KiB of console output, and the last 8 KiB of the kernel log from a panic, in memory that survives a reset.  At the next start, the main role moves those records to `/nvdata/open/crash/`, where the records replace the records of the crash before.
+The kernel keeps two records in memory that survives a reset:
+
+- **The log at a panic.**  At the next start, the main role moves the last 8 KiB of the kernel log from a panic to `/nvdata/open/crash/`, where the new records replace the records of the panic before.  `dphone crashlog` prints the saved records, and the main role's log notes at the start that records were found.
+- **The console output.**  The last 8 KiB of the kernel's console output before any restart without a loss of power, e.g., a watchdog reset, are in `/sys/fs/pstore/console-ramoops-0` until the next restart.  After an unexplained restart, that file shows what the kernel printed last.
 
 ```sh
 dphone crashlog
+cat /sys/fs/pstore/console-ramoops-0
 ```
-
-The command prints the saved records.  After an unexplained restart, the records show what the kernel printed last.
 
 ## The state of a running phone
 

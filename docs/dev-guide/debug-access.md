@@ -1,6 +1,6 @@
 # SSH and the serial console
 
-A developer needs a shell on the phone to push builds, install images, and read logs.  Open DPhone has two ways in, and both are off until switched on: an SSH server on the network, and a serial console on the EHS port.  SSH is the everyday tool.  The serial console shows the kernel's messages and still works when the network or the main role does not, which makes the console the tool for kernel work and for a phone that fails to come up.
+Open DPhone has two ways to a shell on the phone, and both are off until switched on: an SSH server on the network, and a serial console on the EHS port.  SSH is the everyday tool for pushing builds, installing images, and reading logs.  The serial console shows the kernel's messages and still works when the network or the main role does not, which makes the console the tool for kernel work and for a phone that fails to come up.
 
 Both give a root shell.  The shell is [brush](https://github.com/reubeno/brush), a Bash-compatible shell, with the uutils versions of the common utilities, `sed`, and the [`dphone` command](dphone-command.md).
 
@@ -12,7 +12,7 @@ The SSH server accepts public keys only; there is no password login.  The login 
 
 On the **System** page, the **SSH** card has the **Enabled** switch and the list of keys.  Paste a public key (the contents of a `.pub` file, e.g., `~/.ssh/id_ed25519.pub`) into the box, or choose the file, and select **Add Key**.  The switch takes effect at once, with no restart.
 
-Keys added this way are kept in `/nvdata/root/.ssh/authorized_keys`, the same file that the SSH server of stock firmware reads.
+Keys added in the web interface are kept in `/nvdata/root/.ssh/authorized_keys`, the same file that the SSH server of stock firmware reads.
 
 A phone that a DPMA server provisions serves the web interface only when the phone's section of `res_digium_phone.conf` has `web_ui_enabled=yes`.
 
@@ -29,11 +29,13 @@ dphone_ssh_authorized_key=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaa
 
 Repeat `dphone_ssh_authorized_key` for more keys.  The original `res_digium_phone` does not have these options; [Options for Open DPhone](../open-dpma/open-dphone-options.md#dphone_ssh_enabled) describes each.
 
-A provisioned key is accepted in addition to the keys added on the phone, and disappears from the phone when the PBX no longer supplies the key.  While the PBX supplies the SSH setting, the switch in the web interface is disabled and marked as coming from DPMA.
+A provisioned key is accepted in addition to the keys added on the phone, and disappears from the phone when the PBX no longer supplies the key.
+
+A value of the SSH setting that was set on the phone goes before `dphone_ssh_enabled`.  On a phone where the setting was never set, the PBX's value applies, and the switch in the web interface is disabled and marked as coming from DPMA.
 
 ### From a shell
 
-The settings that the web interface writes are in the file `/nvdata/dphone_settings.txtpb`, one field to a line.  From a shell that is already open, e.g., on the serial console, set the field and have the main role read the configuration again.  When the file has no `ssh_enabled` line yet:
+From a shell that is already open, e.g., on the serial console, SSH is switched on in the file that the web interface writes the setting to, `/nvdata/dphone_settings.txtpb`, which has one field to a line.  Set the field, and have the main role read the configuration again.  When the file has no `ssh_enabled` line yet:
 
 ```sh
 echo 'ssh_enabled: true' >> /nvdata/dphone_settings.txtpb
@@ -83,7 +85,7 @@ The console also takes over without the setting in one case: when the main role 
 
 ### The header and the cable
 
-The EHS header has two rows of three positions with a pitch of 1 mm.  One position has no pin and serves as the key.  Seen when attaching the cable, with the key at the top right:
+Every model has the same EHS header: two rows of three positions with a pitch of 1 mm.  One position has no pin and serves as the key.  Seen when attaching the cable, with the key at the top right:
 
 ![The EHS header: top row pin 1 ground, pin 2 phone TX, key; bottom row pin 4 3.3 V, pin 5 phone RX, pin 6 ground](../assets/dev-guide/ehs-header.svg){ width="420" }
 
@@ -113,10 +115,14 @@ Press ++enter++ for a prompt.
 
 ### Kernel messages from the first moment of a boot
 
-The setting is applied by the firmware, so with the setting alone, the kernel's messages appear on the port only after the main role has started.  The kernel parameter `amba_pl011.console_output=1` makes the kernel write to the port from the start of the boot.  For an image started from RAM, pass the parameter with `--append` (see [Trying a build without installing](ramboot.md#start-an-image-from-ram)):
+The firmware applies the setting, so with the setting alone, the kernel's messages appear on the port only after the main role has started.  The kernel parameter `amba_pl011.console_output=1` makes the kernel write to the port from the start of the boot.
+
+For an image started from RAM, pass the parameter with `--append` (see [Trying a build without installing](ramboot.md#start-an-image-from-ram)):
 
 ```sh
-dphone ramboot --append amba_pl011.console_output=1 /tmp/image.eff
+ssh root@192.0.2.20 dphone ramboot --append amba_pl011.console_output=1 - < result
 ```
+
+For an image that is to be installed, add the parameter to the `bootargs` property in `kernel/files/arch/arm/boot/dts/broadcom/bcmring-digium-common.dtsi` and build the image; the boot loader's part of the kernel command line cannot be changed.
 
 On a running phone, the same switch is the file `/sys/module/amba_pl011/parameters/console_output`: writing `1` turns the kernel's console output on.

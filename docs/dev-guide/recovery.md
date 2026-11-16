@@ -1,7 +1,5 @@
 # When a phone does not start
 
-A developer who installs unfinished firmware will sooner or later have a phone that does not come up.  This page describes what the firmware does unattended when a part fails, so that the phone's behavior can be read, and then lists what to do for each kind of failure, from the mildest to the one that the phone cannot recover from.
-
 ## What the firmware does unattended
 
 The init role supervises the main role and guards the system:
@@ -23,9 +21,9 @@ During a trial boot, safe mode is not used: the image on trial must show that th
 
 ### The main role keeps failing, and the phone is reachable
 
-Log in over SSH or on the serial console.  The commands that run in the calling process work without a main role.
+Log in over SSH or on the serial console.  The [commands that run in the calling process](dphone-command.md#two-kinds-of-commands), among them `dmesg` and `dphone update`, work without a main role.
 
-1. Read `dmesg` for the init role's account of each start and failure, and `dphone crashlog` for the records of a kernel crash (see [Logs and diagnostics](diagnostics.md)).
+1. Read `dmesg` for the init role's account of each start and failure.  The records of a kernel panic are the files in `/nvdata/open/crash/`, or still in `/sys/fs/pstore/` when no main role has started since the panic (see [Logs and diagnostics](diagnostics.md#crash-records)).  A main role in safe mode also answers `dphone log`, with the entries since the start in safe mode.
 2. To keep the phone from restarting during the investigation, create the file that suspends the restart after 600 seconds without a heartbeat:
 
     ```sh
@@ -60,4 +58,4 @@ Restart the phone first; a mount that failed once can succeed at the next start.
 
 The boot loader starts the kernel of the selected bank with the watchdog off, and has no fallback.  A kernel in flash that stops before the early-boot stage runs is started again at every power-on, and no command can reach the phone.  The trial boot cannot help, because the stage that counts the boots is part of the kernel image that fails.
 
-The flash must then be rewritten through a JTAG adapter, a procedure that this guide does not cover.  The practical protection is to never let the situation arise: [start every image with a changed kernel from RAM](ramboot.md#start-an-image-from-ram) and confirm that the image comes up, before installing the image.
+The flash must then be rewritten through a JTAG adapter, a procedure that the Dev Guide does not cover.  The protection is to [start every image with a changed kernel from RAM](ramboot.md#start-an-image-from-ram) and confirm that the image comes up, before installing the image.

@@ -35,11 +35,11 @@ Three things do not come with the pushed binary:
 
 ## Start an image from RAM
 
-`dphone ramboot` starts the kernel, the device tree, and the root file system of an image from RAM.  Nothing is written to the firmware banks or to the `ctrl` partition.  This is the way to try a kernel before installing the kernel, and the way to try a whole image when a flash write is not wanted.
+`dphone ramboot` starts the kernel, the device tree, and the root file system of an image from RAM.  Nothing is written to the firmware banks or to the `ctrl` partition, so the command serves to try a kernel before the kernel goes into flash, and to try a whole image without a flash write.
 
 The image is the EFF image that the build produces and that `dphone update install` installs.  Only an Open DPhone image for the phone's model is accepted.
 
-An image takes more than half of the phone's `/tmp`, and loading needs the image in free memory twice for a moment.  Feed the image to the command over SSH, so that no copy occupies `/tmp`:
+Loading needs free memory for the image twice for a moment, and a copy of the image in `/tmp` would occupy the same RAM.  Feed the image to the command over SSH, so that no copy is stored on the phone:
 
 ```sh
 ssh root@192.0.2.20 dphone ramboot - < result
@@ -89,10 +89,11 @@ A kernel change can break `dphone ramboot` for later runs, so a developer who ch
 
 - The running kernel must have `CONFIG_KEXEC`.
 - The started kernel must have `CONFIG_MTD_PHRAM`, because the root file system is placed in RAM and presented to the kernel as a flash device.
+- The started kernel must keep the watchdog from expiring until the init role opens `/dev/watchdog`.  `CONFIG_WATCHDOG_OPEN_TIMEOUT` allows 120 seconds; a started system that takes longer is reset.
 - The started kernel receives the parameter `bcmring.coldsim`, which makes the kernel reset the peripherals early, so that the drivers find the hardware as after a power-on.
 
 `kernel/README.md` has the details, and `crates/dphone-update/src/ramboot.rs` explains how the image is laid out in memory.
 
-### From an image tried in RAM to an installed image
+### Install the image that was tried
 
-A system started from RAM has the full `dphone update` command, so an image that has proved to work can be installed from the started system or from the installed firmware; see [Installing a firmware image](installing.md).  Starting an image from RAM first is the recommended order for every kernel change.
+A system started from RAM has the full `dphone update` command, so an image that has proved to work can be installed from the started system as well as from the installed firmware; see [Installing a firmware image](installing.md).

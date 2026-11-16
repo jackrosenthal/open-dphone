@@ -1,7 +1,5 @@
 # Installing a firmware image
 
-This page describes how an image gets into a phone's flash, what protects the phone when the new image does not work, and the `dphone update` commands that a developer uses to install images and move between the two firmware banks.
-
 ## The two firmware banks
 
 A phone's flash holds two complete firmware installations:
@@ -13,11 +11,11 @@ A phone's flash holds two complete firmware installations:
 
 A record in the `ctrl` partition selects the bank that the boot loader starts.  An installation always writes the bank that is not running and then selects that bank, so the running firmware stays intact in the other bank.  nvdata is shared by both banks.
 
-The boot loader starts whatever the record selects and never falls back.  Returning to the previous bank after a failed update is the work of the firmware, described under [The trial boot](#the-trial-boot).
+The boot loader starts whatever the record selects and never falls back.  The firmware returns the phone to the previous bank after a failed update; see [The trial boot](#the-trial-boot).
 
 ## From stock firmware
 
-Open DPhone images have the format of stock firmware images, so a phone that runs stock firmware installs an Open DPhone image as any firmware: from a firmware entry in the DPMA configuration on the PBX, or from the firmware page of the stock web interface.  Stock firmware writes the image to the bank that is not running, and stock firmware stays in the other bank.
+Open DPhone images have the format of stock firmware images, so a phone that runs stock firmware installs an Open DPhone image as any firmware: from a [firmware entry in the DPMA configuration on the PBX](../open-dpma/administration.md#moving-phones-between-stock-firmware-and-open-dphone), or from the firmware page of the stock web interface.  Stock firmware writes the image to the bank that is not running, and stock firmware stays in the other bank.
 
 Two points matter to a developer:
 
@@ -26,7 +24,7 @@ Two points matter to a developer:
 
 ## Keep the PBX from replacing a test image
 
-A phone that a DPMA server provisions installs the firmware that the configuration on the PBX offers, as a phone with stock firmware does.  On a development phone, that behavior replaces a test image at the next provisioning.  Either of the following stops the phone from following the PBX's firmware entries:
+A phone that a DPMA server provisions installs the firmware that the configuration on the PBX offers, as a phone with stock firmware does.  On a development phone, the PBX's image then replaces a test image at the next provisioning.  Either of the following stops the phone from following the PBX's firmware entries:
 
 - On the **System** page of the web interface, in the **Firmware** card, switch on **Ignore DPMA firmware updates**.
 - With [Open DPMA](../open-dpma/index.md), set [`dphone_ignore_provisioned_firmware=yes`](../open-dpma/open-dphone-options.md#dphone_ignore_provisioned_firmware) in the phone's section of `res_digium_phone.conf`.
@@ -118,9 +116,9 @@ dphone update switch-bank b
 dphone reboot
 ```
 
-`switch-bank` selects bank `a` or bank `b` for the next boot and writes no image.  The command is refused unless the named bank holds an image that the boot loader would start.  This is the quick way between two installed images, e.g., back to the stock firmware that the first installation left in the other bank.
+`switch-bank` selects bank `a` or bank `b` for the next boot and writes no image.  The command is refused unless the named bank holds an image that the boot loader would start.  `switch-bank` is the quick way between two installed images, e.g., back to the stock firmware that the first installation left in the other bank.
 
-`switch-bank` removes a trial record, so the bank selected this way is not on trial.
+`switch-bank` removes a trial record, so a bank selected with `switch-bank` is not on trial.
 
 ## Put a selected bank on trial
 
@@ -142,11 +140,11 @@ dphone update abandon
 
 `abandon` selects the bank that the phone would return to and removes the trial record, so that another image can be installed.  When the phone already runs the image that is given up, restart the phone afterward.
 
-This is the command for the common case of a developer who installs an image, sees a mistake before or after the reboot, and wants to install a corrected image without waiting for the trial to end.
+Use `abandon` after installing an image and then finding a mistake, before or after the reboot: a corrected image can be installed at once, without waiting for the trial to end.
 
 ## Return to stock firmware
 
 - When stock firmware is still in the other bank, [switch to that bank](#switch-to-the-other-bank).
 - Otherwise install a stock firmware image for the phone's model, with the web interface or with `dphone update install`.  Both accept stock images; the web interface asks for a confirmation first.
 
-Stock firmware knows nothing of Open DPhone, so the return from stock firmware to Open DPhone is another installation [from stock firmware](#from-stock-firmware).
+Stock firmware has no command to select the other bank, so the way from stock firmware back to Open DPhone is another installation [from stock firmware](#from-stock-firmware), even when an Open DPhone image is still in the other bank.

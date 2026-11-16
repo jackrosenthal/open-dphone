@@ -1,6 +1,6 @@
 # Running on a workstation
 
-Much of the firmware runs on the workstation without a phone.  This page shows the two simulators: the main role with simulated hardware, for work on anything above the hardware layer, and the web interface over made-up state, for work on the web frontend.
+Two simulators run on the workstation without a phone: the main role with simulated hardware, for work on anything above the hardware layer, and the web interface over made-up state, for work on the web frontend.
 
 The commands run from the root of the repository, in the shell that `nix develop` opens (see [Building from source](building.md#the-cargo-workspace)).
 
@@ -33,7 +33,7 @@ cargo run -q -p dphone -- screenshot /tmp/screen.ppm
 cargo run -q -p dphone -- log -f
 ```
 
-`key` presses keys of the keypad, `screenshot` writes the display to a picture file, and `log -f` follows the log.  [The `dphone` command](dphone-command.md) lists the rest.  The commands that touch flash or the kernel, e.g., `dphone update` and `dphone ramboot`, need a phone.
+[The `dphone` command](dphone-command.md) lists every command.  The commands that touch flash or the kernel, e.g., `dphone update` and `dphone ramboot`, need a phone.
 
 !!! note "Keep the nvdata path short"
     A Unix socket path is limited to about 100 characters.  With a long nvdata path the main role logs that the socket path is too long, and the commands cannot reach the simulator.  Choose a shorter directory, or give a short `--run-dir`.
