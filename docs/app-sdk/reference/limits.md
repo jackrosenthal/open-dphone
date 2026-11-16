@@ -1,0 +1,89 @@
+# Limits
+
+Every limit the phone enforces on an app, and what happens at the limit.
+
+## Running
+
+| Limit | Value | At the limit |
+| --- | --- | --- |
+| Time for `App::start` | 5 seconds | The phone stops the app; the app does not start. |
+| Time for one `App::handle` | 2 seconds | The phone stops the app without `Event::Exit`. |
+| Linear memory | `memory_kib` of the manifest; 4 MiB by default, 16 MiB at most | An allocation past the limit fails; in a Rust app the failure is a trap, and the phone stops the app. |
+| WebAssembly memories, tables, table elements, instances | 1, 4, 50,000, and 8 | The app does not start. |
+
+The app's data (`include_bytes!`, `include_str!`) is part of the program and counts toward linear memory.  A stopped app starts again only when opened or when the phone restarts.
+
+## The app file
+
+| Limit | Value | At the limit |
+| --- | --- | --- |
+| Size of the file | 8 MiB | Installation is refused. |
+| Code in the file (the code sections; data does not count) | 1 MiB | Installation is refused. |
+| Icon (`icon`, and each icon of `icon_for`) | 256 KiB | The crate does not compile; the phone refuses such a file. |
+| App `name` | 1 to 64 characters | The crate does not compile; the phone refuses such a file. |
+| Free flash after installation | 2 MiB | Installation is refused. |
+
+## `ui` and `canvas`
+
+| Limit | Value | At the limit |
+| --- | --- | --- |
+| Pictures defined by an app | 32 names | `define_image` returns `Error::Invalid`. |
+| Size of a picture file | 512 KiB | `define_image` returns `Error::Invalid`. |
+| Pixels of a picture | 1,048,576 | The picture is not shown, and the phone logs a warning. |
+| Characters typed into an input | 255, or the value of `set_max_length` (at most 65,535) | Further keys are ignored. |
+| Softkeys shown at a time | 4 | A "More" key pages through the rest, three at a time. |
+| Operations in one `canvas::draw` | 512 | `draw` returns `Err`; the canvas is unchanged. |
+| Bitmap data in one `canvas::draw` | 64 KiB | `draw` returns `Err`; the canvas is unchanged. |
+| Size of a bitmap | 256 by 256 pixels, scale 1 to 8 | `draw` returns `Err`; the canvas is unchanged. |
+| Text of one canvas operation | 64 bytes | `draw` returns `Err`; `text_size` measures the first 64 bytes. |
+
+## Timers
+
+| Limit | Value | At the limit |
+| --- | --- | --- |
+| Timers of an app | 32 | `timers::set` returns 0 and starts no timer. |
+| Period of a repeating timer | 50 milliseconds at least | A shorter period runs at 50 milliseconds. |
+
+## Storage
+
+| Limit | Value | At the limit |
+| --- | --- | --- |
+| Value of a `storage` key | 1 MiB | `storage::set` returns `Error::Invalid`. |
+| Free flash kept by the phone | 2 MiB | `storage::set` returns `Error::NoSpace`. |
+| Key of `pbx_storage` | 1 to 64 characters of letters, digits, `.`, `_`, `-`, `/`, `:` | The request ends `Refused`. |
+| Value of a `pbx_storage` key | 4096 bytes | The request ends `Refused`. |
+| Keys of `pbx_storage` | 1024 shared, and 64 for each user | The request ends `Refused`. |
+| Entries of one `pbx_storage::list` answer | 64 entries and about 16 KiB of values | The answer says that more follow. |
+
+## Network
+
+| Limit | Value | At the limit |
+| --- | --- | --- |
+| HTTP response, head and body | 1 MiB | `Event::Http` carries `Err("reply too large")`. |
+| HTTP connection | 10 seconds | `Event::Http` carries `Err`. |
+| HTTP request and response | 30 seconds | `Event::Http` carries `Err("the request timed out")`. |
+| HTTP redirects | 5 | `Event::Http` carries `Err("too many redirects")`. |
+
+## Calls, presence, and events
+
+| Limit | Value | At the limit |
+| --- | --- | --- |
+| Number given to `calls::dial` | 256 bytes | `Error::Invalid`. |
+| Extra headers of `calls::dial` | 30; names up to 64 characters, values up to 512 bytes | `Error::Failed`. |
+| Digits of one `calls::send_dtmf` | 64 | `Error::Invalid`. |
+| Calls of the phone | 4 unless configured otherwise | `calls::dial` returns `Error::Failed`. |
+| Answer from call control, presence, or provisioning | 0.5 seconds | `Error::Failed("timed out waiting for the handler")`. |
+| Targets of `presence::subscribe` | 256 | Further calls are ignored. |
+| Names of `events::observe` | 64 | Further calls are ignored. |
+| Extension and PIN of `hotdesk::login` | 64 bytes each | `Error::Invalid`. |
+
+## Audio, alarms, and the log
+
+| Limit | Value | At the limit |
+| --- | --- | --- |
+| Sound given to `audio::play` | 8 MiB and five minutes | `Error::Failed`. |
+| Sounds playing | 1 for the whole phone | A new sound replaces the one playing. |
+| Alarms | 16 | `alarms::set` returns `Error::Invalid`. |
+| Answer from the alarm clock | 1.5 seconds | `Error::Failed`. |
+| Message of `runtime::log` | 512 bytes | The message is cut. |
+| Entries of `diagnostics::log_tail` | 100 | The list is shorter than asked. |
