@@ -711,14 +711,15 @@ impl AppManager {
 
     /// Stops an app: delivers `exit`, drops the instance, closes windows.
     pub fn close(&mut self, name: &str) {
-        // Stopped on purpose: a restart that waits is not wanted.
-        if let Some(f) = self.faults.get_mut(name) {
-            f.restart_at_ms = None;
-        }
         if self.running.contains_key(name) {
             self.call(name, &wit::Event::Exit);
         }
         self.kill(name);
+        // Stopped on purpose: a restart that waits is not wanted, nor one
+        // for a fault on the way out.
+        if let Some(f) = self.faults.get_mut(name) {
+            f.restart_at_ms = None;
+        }
         self.publish();
     }
 
