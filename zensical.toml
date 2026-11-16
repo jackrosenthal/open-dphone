@@ -23,6 +23,10 @@ nav = [
   { "Home" = "index.md" },
   { "Open DPMA" = [
     "open-dpma/index.md",
+    "open-dpma/installation.md",
+    "open-dpma/configuration.md",
+    "open-dpma/open-dphone-options.md",
+    "open-dpma/administration.md",
   ] },
   { "App SDK" = [
     "app-sdk/index.md",
@@ -56,6 +60,14 @@ nav = [
   ] },
   { "Dev Guide" = [
     "dev-guide/index.md",
+    "dev-guide/building.md",
+    "dev-guide/simulator.md",
+    "dev-guide/debug-access.md",
+    "dev-guide/ramboot.md",
+    "dev-guide/installing.md",
+    "dev-guide/dphone-command.md",
+    "dev-guide/diagnostics.md",
+    "dev-guide/recovery.md",
   ] },
 ]
 
