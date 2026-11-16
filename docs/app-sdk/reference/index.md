@@ -17,7 +17,12 @@ The phone creates one instance of the type with `Default::default()`, calls `sta
 
 A request that an app makes of the app manager (`runtime::exit`, `runtime::background`, `runtime::restart`, `runtime::show_app`, `events::send`) takes effect after the current `start` or `handle` returns, in the order the app made the requests.
 
-`start` may run for 5 seconds and each `handle` for 2 seconds.  The phone stops an app that runs longer, that asks for more memory than the app's limit, or that traps (a Rust panic is a trap).  An app stopped this way receives no `Event::Exit`, the app's windows close, and the phone does not start the app again until someone opens the app or the phone restarts.  The page [Limits](limits.md) has every limit in one place.
+`start` may run for 5 seconds and each `handle` for 2 seconds.  The phone stops an app that runs longer, that asks for more memory than the app's limit, or that traps (a Rust panic is a trap).  Such a stop is a fault: the app receives no `Event::Exit`, and the app's windows close.  Before a panic stops the app, `export_app!` writes the panic's message, file, and line to the phone's log.  The page [Limits](limits.md) has every limit in one place.
+
+What the phone does after a fault depends on how the app starts:
+
+- An app that starts only when opened stays stopped until someone opens the app or the phone restarts.
+- An app that starts with the phone (`AppKind::Background`, or `has_idle`) is started again by the phone, as a new instance: 10 seconds after the first fault, and after twice the previous wait for each further fault in a row (20 seconds, 40 seconds, and so on), up to one hour.  The count of faults in a row starts over when the user or another app opens the app, and when an instance has run for one hour without a fault.  An app that the phone stops for another reason (`runtime::exit`, removal, the configuration) is not started again this way.
 
 ## Capabilities
 
@@ -65,8 +70,7 @@ When an app runs depends on the `kind` in the [manifest](manifest.md):
 | --- | --- | --- |
 | `AppKind::Foreground` | When the user or another app opens the app. | When the app's window leaves the screen, unless the app called `runtime::set_exit_after_background(false)` or has an idle window (`has_idle`). |
 | `AppKind::Background` | When the phone starts, and when the app is opened. | Only by `runtime::exit`, a fault, removal, or the phone shutting down. |
-| `AppKind::Idle` | When the user or another app opens the app. | Only by `runtime::exit`, a fault, removal, or the phone shutting down. |
 
-An app with `has_idle: true` also starts when the phone starts, whatever the kind.  A built-in app that the phone's configuration disables is stopped when the configuration arrives and cannot be opened.
+An app with `has_idle: true` also starts when the phone starts and is stopped only as a `Background` app is, whatever the kind.  A built-in app that the phone's configuration disables is stopped when the configuration arrives and cannot be opened.
 
 Before the phone drops an instance in an orderly way (exit, restart, removal, replacement by a newly installed app of the same name, shutdown), the app receives `Event::Exit`.  A sound the app was playing stops, timers and pending requests are forgotten, and both windows close.  Everything in [`storage`](storage.md) and [`pbx-storage`](pbx-storage.md) stays.

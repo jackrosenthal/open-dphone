@@ -234,7 +234,7 @@ One limitation remains: the pot is known only to the phone on which someone pres
                     let minutes = timers::wall_time().saturating_sub(at) / 60;
                     ui::set_text(
                         self.status,
-                        &format!("Brewed at {}", l10n::format_time(at, 0)),
+                        &format!("Brewed at {}", l10n::format_time(at, TimeStyle::Time)),
                     );
                     ui::set_text(self.age, &age_text(minutes));
                 }

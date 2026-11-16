@@ -88,7 +88,7 @@ A window has room for four softkeys; given more, the phone shows three and the l
 
 ## Show the state
 
-One function writes the state to the screen, and every event that changes the state ends by calling that function.  [`timers::wall_time`](../reference/timers.md#wall_time) is the current time in seconds since the Unix epoch, and [`l10n::format_time`](../reference/l10n.md) turns such a time into text in the phone's time zone and in the 12-hour or 24-hour form that the phone is set to:
+One function writes the state to the screen, and every event that changes the state ends by calling that function.  [`timers::wall_time`](../reference/timers.md#wall_time) is the current time in seconds since the Unix epoch, and [`l10n::format_time`](../reference/l10n.md#format_time) turns such a time into text in the phone's time zone and in the 12-hour or 24-hour form that the phone is set to; `TimeStyle::Time` asks for the time without the date:
 
 ```rust
 impl FreshPot {
@@ -99,7 +99,7 @@ impl FreshPot {
                 let minutes = timers::wall_time().saturating_sub(at) / 60;
                 ui::set_text(
                     self.status,
-                    &format!("Brewed at {}", l10n::format_time(at, 0)),
+                    &format!("Brewed at {}", l10n::format_time(at, TimeStyle::Time)),
                 );
                 ui::set_text(self.age, &age_text(minutes));
             }
@@ -146,7 +146,7 @@ Each arm is one kind of event:
 
 - **Softkeys.**  Brewed stores the current time, and Empty clears the time.  Exit ends the app.
 - **Keys.**  The cancel key arrives as `Event::Key`, because `screen` claimed the key for the window; the app treats the key as Exit.  A key arrives as an event only when the app has claimed the key with [`ui::claim_keys`](../reference/ui.md#claim_keys); the page [Events](../reference/app-events.md#key) lists the names of the keys.
-- **The timer.**  [`timers::set(REFRESH_MS, true)`](../reference/timers.md#set) in `start` asked for an `Event::Timer` every 30 seconds.  What the call returns identifies the timer, for an app that has several timers or cancels one; Fresh Pot has one timer, and discards the value with `let _ =`.  The arm does nothing but fall through to `show`, which computes the age again.
+- **The timer.**  [`timers::set(REFRESH_MS, true)`](../reference/timers.md#set) in `start` asked for an `Event::Timer` every 30 seconds.  The call returns a `Result`: `Ok` holds the identifier of the timer, for an app that has several timers or cancels one, and `Err` says that the phone started no timer.  Fresh Pot has one timer and never cancels the timer, and discards the result with `let _ =`.  The arm does nothing but fall through to `show`, which computes the age again.
 - **Everything else** returns without redrawing.
 
 The phone allows `handle` two seconds for one event and stops an app that takes longer, so an app with long work to do splits the work over timer events.
@@ -194,7 +194,7 @@ Open the app and press **Brewed**: the screen shows the time and "Just now", and
                     let minutes = timers::wall_time().saturating_sub(at) / 60;
                     ui::set_text(
                         self.status,
-                        &format!("Brewed at {}", l10n::format_time(at, 0)),
+                        &format!("Brewed at {}", l10n::format_time(at, TimeStyle::Time)),
                     );
                     ui::set_text(self.age, &age_text(minutes));
                 }

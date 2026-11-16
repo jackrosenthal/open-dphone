@@ -11,7 +11,12 @@ Every limit the phone enforces on an app, and what happens at the limit.
 | Linear memory | `memory_kib` of the manifest; 4 MiB by default, 16 MiB at most | An allocation past the limit fails; in a Rust app the failure is a trap, and the phone stops the app. |
 | WebAssembly memories, tables, table elements, instances | 1, 4, 50,000, and 8 | The app does not start. |
 
-The app's data (`include_bytes!`, `include_str!`) is part of the program and counts toward linear memory.  A stopped app starts again only when opened or when the phone restarts.
+The app's data (`include_bytes!`, `include_str!`) is part of the program and counts toward linear memory.  A stopped app that starts only when opened starts again when opened or when the phone restarts.  The phone starts a stopped app that starts with the phone again after a wait:
+
+| Limit | Value | At the limit |
+| --- | --- | --- |
+| Wait before the phone starts a faulted `Background` or `has_idle` app again | 10 seconds after the first fault, twice the previous wait after each further fault in a row, 1 hour at most | The wait stays at 1 hour. |
+| Time without a fault after which the count of faults starts over | 1 hour of running | The next wait is 10 seconds again.  Opening the app also starts the count over. |
 
 ## The app file
 
@@ -49,7 +54,7 @@ The app's data (`include_bytes!`, `include_str!`) is part of the program and cou
 | Limit | Value | At the limit |
 | --- | --- | --- |
 | Value of a `storage` key | 1 MiB | `storage::set` returns `Error::Invalid`. |
-| Length of a `storage` key | What a file name on the flash can hold (about 250 bytes) | `storage::set` returns `Error::Invalid`. |
+| Length of a `storage` key | 64 bytes | `storage::set` and `storage::remove` return `Error::Invalid`; `storage::get` returns `None`. |
 | Free flash kept by the phone | 2 MiB | `storage::set` returns `Error::NoSpace`. |
 | Key of `pbx_storage` | 1 to 64 characters of letters, digits, `.`, `_`, `-`, `/`, `:` | The request ends `Refused`. |
 | Value of a `pbx_storage` key | 4096 bytes | The request ends `Refused`. |
@@ -74,7 +79,8 @@ The app's data (`include_bytes!`, `include_str!`) is part of the program and cou
 | Digits of one `calls::send_dtmf` | 64 | `Error::Invalid`. |
 | Calls of the phone | 4 unless configured otherwise | `calls::dial` returns `Error::Invalid`. |
 | Answer from call control, presence, or provisioning | 0.5 seconds | `Error::Failed`; the request may still be carried out. |
-| Targets of `presence::subscribe` | 256 | `subscribe` returns `Error::Failed`. |
+| Targets of `presence::observe` | 256 | `observe` returns `Error::Failed`. |
+| Contacts the phone watches | The setting `contacts_max_subscriptions` of the phone's configuration, 40 by default | The phone watches no further contact, and `presence::get` returns `None` for such a contact. |
 | Names of `events::observe` | 64 | `observe` returns `Error::Failed`. |
 | Extension and PIN of `hotdesk::login` | 64 bytes each | `Error::Invalid`. |
 

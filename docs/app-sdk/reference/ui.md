@@ -21,7 +21,7 @@ fn show_menu() -> Widget {
 
 Handle 0 (`ROOT`) is the app's window: the area of the display above the softkey bar (see [`Metrics`](types.md#metrics-and-skin) for the sizes).  The phone paints the window in the skin's background color and then the widgets, parents before children and siblings in the order of creation.  Each widget is clipped to the widget's bounds and to the bounds of every ancestor.
 
-The phone repaints at most once per frame, so a series of calls usually costs one repaint; the phone does not promise that all changes of one handler appear in the same frame.  Changes made while the window is off screen are kept and show when the window returns.
+The phone holds back what an app changes in a window while `start` or `handle` runs and shows the changes when the function returns, so the changes of one handler normally appear together, in one repaint.  The window is not locked meanwhile: when the phone repaints the window for another reason during a handler (the window comes on screen, the skin's palette changes), that repaint shows the widgets as the handler has left them so far.  Changes made while the window is off screen are kept and show when the window returns.
 
 A function that takes a widget and is given a handle that does not exist, or `ROOT` where a real widget is needed, does nothing.  A function given a widget of a kind that has no use for the value stores the value without visible effect; the page notes the kinds each function serves.
 
@@ -140,7 +140,7 @@ Moves and resizes the widget.
 pub fn set_visible(w: Widget, visible: bool)
 ```
 
-Hides or shows the widget with every descendant.  A hidden `TextList` or `Input` is skipped when `up` and `down` move the focus, but a hidden widget that has the focus keeps the focus and still handles keys.
+Hides or shows the widget with every descendant.  A hidden `TextList` or `Input` is skipped when `up` and `down` move the focus.  Hiding the widget that has the focus, or an ancestor of that widget, leaves no widget focused, as `set_focus(ROOT)` does; showing the widget again does not return the focus.
 
 ### `set_focus`
 
@@ -220,10 +220,10 @@ Selects a row of a `TextList`, counted from 0.  An index past the end selects th
 ### `selected`
 
 ```rust
-pub fn selected(w: Widget) -> u32
+pub fn selected(w: Widget) -> Option<u32>
 ```
 
-The selected row of a `TextList`.  The result is 0 for an empty list, for a widget of another kind, and for a handle that does not exist, so an app that needs to tell an empty list apart tracks the number of rows.
+The selected row of a `TextList`.  The result is `None` for a list without rows, for a widget of another kind, and for a handle that does not exist.
 
 ### `set_value`
 

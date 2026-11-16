@@ -174,7 +174,7 @@ Fresh Pot is complete: about 250 lines of Rust in one file, running on every mod
 
 - **An icon.**  The manifest's fields `icon` and `icon_for` give the app a picture in the Applications menu, from PNG files that the crate includes; see [Manifest](../reference/manifest.md).
 - **Lists and inputs.**  The widget kinds `TextList` and `Input` handle selection and typing; see [`ui`](../reference/ui.md#widget-kinds).
-- **Calls and presence.**  An app can place calls, watch call states, and watch the presence of other extensions; see [`calls`](../reference/calls.md) and [`presence`](../reference/presence.md).
+- **Calls and presence.**  An app can place calls, watch call states, and read the presence of the contacts that the phone watches; see [`calls`](../reference/calls.md) and [`presence`](../reference/presence.md).
 - **The network.**  [`http`](../reference/http.md) sends HTTP requests, with the same pattern of a request number and a later event as `pbx_storage`.
 - **Running off screen.**  A `Background` app starts with the phone and keeps running; see [Lifetime of an app](../reference/index.md#lifetime-of-an-app).
 
@@ -274,7 +274,7 @@ The source of the [built-in apps](https://github.com/jackrosenthal/open-dphone/t
                     let minutes = timers::wall_time().saturating_sub(at) / 60;
                     ui::set_text(
                         self.status,
-                        &format!("Brewed at {}", l10n::format_time(at, 0)),
+                        &format!("Brewed at {}", l10n::format_time(at, TimeStyle::Time)),
                     );
                     let mut age = age_text(minutes);
                     if !self.by.is_empty() {

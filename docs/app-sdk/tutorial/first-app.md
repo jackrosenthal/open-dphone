@@ -157,7 +157,13 @@ INFO  dphone_apps::manager app freshpot: stopped
 
 `log_info` has the siblings `log_error`, `log_warn`, and `log_debug`, and the page's level selector hides the levels below the chosen one.
 
-When an app panics, the phone ends the app and writes an error line that begins `app freshpot: stopped after a fault`.  The line carries a WebAssembly backtrace and not the panic's message, so a `log_error` before a suspected failure is the way to find the cause.
+When an app panics, the phone ends the app and writes two error lines.  The first comes from the app, through a hook that `export_app!` installs, and carries the panic's message with the file and the line:
+
+```text
+ERROR app freshpot: panicked at src/lib.rs:81: the pot is empty
+```
+
+The second line comes from the phone, begins `app freshpot: stopped after a fault`, and carries a WebAssembly backtrace.
 
 ## Next
 

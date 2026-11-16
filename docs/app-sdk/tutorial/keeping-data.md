@@ -143,7 +143,7 @@ Next, [Drawing on a canvas](drawing.md) turns the age into a picture.
                     let minutes = timers::wall_time().saturating_sub(at) / 60;
                     ui::set_text(
                         self.status,
-                        &format!("Brewed at {}", l10n::format_time(at, 0)),
+                        &format!("Brewed at {}", l10n::format_time(at, TimeStyle::Time)),
                     );
                     ui::set_text(self.age, &age_text(minutes));
                 }

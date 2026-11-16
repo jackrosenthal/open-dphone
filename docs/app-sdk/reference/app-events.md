@@ -28,6 +28,7 @@ pub enum Event {
     PbxStorageChanged(PbxStorageChange),
     PbxStorageOnline,
     AlarmsChanged,
+    HotdeskDone(Result<(), String>),
 }
 ```
 
@@ -52,7 +53,7 @@ The payload types are on the page [Shared types](types.md).
 | [`Call`](#call) | A call changed. | Apps that called `calls::observe(true)`. |
 | [`Push`](#push) | The PBX pushed an event to the phone. | Apps that called `events::observe` with the event's name. |
 | [`Mwi`](#mwi) | The message-waiting counts of an account changed. | Every running app that uses `calls`. |
-| [`Presence`](#presence) | The presence of a watched contact changed. | Apps that called `presence::subscribe` with a matching target. |
+| [`Presence`](#presence) | The presence of a watched contact changed. | Apps that called `presence::observe` with a matching target. |
 | [`NewConfig`](#newconfig) | The phone applied a new configuration. | Every running app that uses `config`. |
 | [`ServerChange`](#serverchange) | An account registered with the account's other host. | Every running app that uses `events`. |
 | [`PlaybackStopped`](#playbackstopped) | The app's sound stopped playing. | The app that called `audio::play`. |
@@ -61,6 +62,7 @@ The payload types are on the page [Shared types](types.md).
 | [`PbxStorageChanged`](#pbxstoragechanged) | Another phone set or removed a shared key of the app. | Apps that called `pbx_storage::watch(true)`. |
 | [`PbxStorageOnline`](#pbxstorageonline) | The store on the PBX came into reach. | Every running app that uses `pbx_storage`. |
 | [`AlarmsChanged`](#alarmschanged) | The alarm clock changed. | Every running app that uses `alarms`. |
+| [`HotdeskDone`](#hotdeskdone) | A login or logout ended. | The app that called `hotdesk::login` or `hotdesk::logout`. |
 
 Only running apps receive events.  The phone keeps nothing for an app that is not running, and an event addressed to an instance that has since been dropped (e.g., the result of a request made before a restart) is discarded.
 
@@ -214,7 +216,7 @@ The counts of new and old messages of an account changed.  Every running app tha
 Event::Presence(presence)
 ```
 
-A contact that the phone watches changed, and the app subscribed to a target that matches the contact ([`presence::subscribe`](presence.md#subscribe)).  `presence.target` is the target string the app subscribed with.
+A contact that the phone watches changed, and the app observes a target that matches the contact ([`presence::observe`](presence.md#observe)).  `presence.target` is the target string the app gave to `observe`.
 
 ## `NewConfig`
 
@@ -263,3 +265,11 @@ The app's store on the PBX came into reach.  Requests that ended `Unreachable` a
 ## `AlarmsChanged`
 
 The phone's alarm clock changed: an alarm was added, changed, or removed (by any app or the web interface), an alarm rang, or an alarm was snoozed or dismissed.  The app reads the new state with [`alarms`](alarms.md).
+
+## `HotdeskDone`
+
+```rust
+Event::HotdeskDone(result)
+```
+
+The [`hotdesk::login`](hotdesk.md#login) or [`hotdesk::logout`](hotdesk.md#logout) that this app called has ended.  `Ok(())`: the phone has the configuration that was asked for.  `Err(text)`: the PBX or the phone refused, `text` is the reason (e.g., a wrong PIN, with the PBX's error code), and the phone is assigned as before the call.  The event arrives once for each call that returned `Ok`, and only at the app that made the call.

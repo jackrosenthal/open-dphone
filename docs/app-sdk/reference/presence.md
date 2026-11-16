@@ -2,25 +2,36 @@
 
 The presence of contacts and of the phone's user.  Capability `presence`.
 
-The phone watches the contacts that the phone's configuration subscribes to.  The functions here read that state; none of them makes the phone watch a contact the phone does not already watch.  A target names a contact by extension number, by the contact's identifier in the contact list, or by SIP URI, compared as exact text.
+## Which contacts the phone watches
 
-## `subscribe`
+The phone watches contacts for the rapid-dial (BLF) keys, and the functions here read what the phone learns that way.  No function makes the phone watch a contact that the phone does not already watch.  The phone watches a contact when both of these hold:
+
+- The contact is on a rapid-dial key: the phone's configuration names the contact in a `blf_item`, or, when the configuration has no `blf_items`, the contact is in the contact group that the setting `blf_contact_group` names and the phone has placed the contact on an unused key.
+- The contact's entry in the contact list has `subscribe_to`.
+
+The phone watches at most as many different contacts as the setting `contacts_max_subscriptions` allows (40 by default).  A contact that is only in a contact list, and on no key, is not watched: `get` returns `None` for such a contact, and no `Event::Presence` arrives.
+
+A target names a watched contact by the number the contact's key dials, by the contact's identifier in the contact list, or by the SIP URI the phone subscribes to, compared as exact text.
+
+## `observe`
 
 ```rust
-pub fn subscribe(target: &str) -> Result<(), Error>
+pub fn observe(target: &str) -> Result<(), Error>
 ```
 
-Asks for [`Event::Presence`](app-events.md#presence) whenever the watched contact that matches `target` changes.  The `target` field of each event is the string given here.  For a target that matches no watched contact, no event ever arrives.
+Asks for [`Event::Presence`](app-events.md#presence) whenever the watched contact that matches `target` changes.  The `target` field of each event is the string given here.  `observe` accepts a target that matches no watched contact, and for such a target no event arrives.
 
-An app can subscribe to at most 256 targets.  One more target is refused with `Err(Error::Failed(_))`; a target that the app already subscribes to is not one more.  Subscribing sends no event with the current state; `get` reads the state.  The subscriptions end with the instance.
+An app can observe at most 256 targets.  One more target is refused with `Err(Error::Failed(_))`; a target that the app already observes is not one more.  `observe` sends no event with the current state; `get` reads the state.  The app stops observing when the instance ends.
 
-## `unsubscribe`
+## `stop_observing`
 
 ```rust
-pub fn unsubscribe(target: &str)
+pub fn stop_observing(target: &str)
 ```
 
-Ends the subscription made with the same string.
+WIT name: `stop-observing`.
+
+Ends the observing begun with the same string.
 
 ## `get`
 
@@ -28,7 +39,7 @@ Ends the subscription made with the same string.
 pub fn get(target: &str) -> Option<Presence>
 ```
 
-The presence of a contact now, as [`Presence`](types.md#presence), or `None` when the phone watches no contact that matches `target`.  `get` works without `subscribe`.
+The presence of a contact now, as [`Presence`](types.md#presence), or `None` when the phone watches no contact that matches `target`.  `get` works without `observe`.
 
 ## `set_status`
 

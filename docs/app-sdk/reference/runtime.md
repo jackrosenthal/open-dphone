@@ -66,6 +66,8 @@ Writes a line to the phone's log, prefixed with the app's name.  `level` is 0 fo
 
 The SDK has a helper for each level: `log_error`, `log_warn`, `log_info`, and `log_debug`, each taking `&str`.
 
+A panic of the app is logged without a call from the app: [`export_app!`](manifest.md#export_app) installs a panic hook that writes `panicked at <file>:<line>: <message>` at level 0 before the phone stops the app.
+
 ## `in_foreground`
 
 ```rust
