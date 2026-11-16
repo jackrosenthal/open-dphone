@@ -136,7 +136,7 @@ line=101
 
 - Give a key to every phone section.  A section without the option is in the shared store of the phones without a key.
 - Check a new section with `digium_phones show phone <name>`.  A value that is not a valid key leaves the phone without app data, and the log names the option as invalid.
-- Choose keys that differ in more than the case of letters, and avoid `_` in keys.  The module keeps the stores of such keys apart, but `database deltree` matches without regard to case and reads `_` as a wildcard, so removing the data of `north_office` would also remove the data of `north-office`.
+- A key has 1 to 32 characters: lower-case letters, digits, `.`, and `-`.  `database deltree` matches without regard to case and reads `_` as any one character, and a key has neither an upper-case letter nor a `_`, so removing the data of one tenant never removes the data of another.
 - Do not rename a tenant key or a phone section without need.  The data stays under the key and the section name that the data was written with: a phone with a new key sees the other store, and a renamed phone section has none of the user's keys.
 
 Two other lists cross tenants on a shared server, whatever the tenant keys are: the user list, unless `userlist_auth=globalpin` and a `group_pin` for each tenant limit the list, and the module's contact list of internal extensions, which has every phone section with a line.
@@ -161,7 +161,7 @@ In a phone section's name, every character other than a letter, a digit, `.`, an
 *CLI> database deltree DPhoneAppData @north-office
 ```
 
-The second command removes one app's data of one tenant, the third the data of one user of the phones without a key, and the fourth everything of one tenant.  Removing a phone section from the configuration file does not remove the section's app data; remove the data with `database deltree` when a user leaves.  Leave `seq` in place: the entry is the counter of the version numbers that the module gives to entries.
+The second command removes one app's data of one tenant, the third the data of one user of the phones without a key, and the fourth everything of one tenant.  Removing a phone section from the configuration file does not remove the section's app data; remove the data with `database deltree` when a user leaves.  Within a tenant, a `database deltree` on an app name that contains `_` also matches the app names of the same length that differ only at that position, e.g., `@north-office/word_game` also matches `@north-office/word.game`.  Leave `seq` in place: the entry is the counter of the version numbers that the module gives to entries.
 
 ## Seeing the phones
 

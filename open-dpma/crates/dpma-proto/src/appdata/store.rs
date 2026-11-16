@@ -69,12 +69,18 @@ impl Backend for MemoryBackend {
 }
 
 /// Whether `key` can be a tenant key: 1 to [`TENANT_MAX`] characters,
-/// each a letter, a digit, or one of `.`, `_`, and `-`.
+/// each a lower-case letter, a digit, `.`, or `-`.
+///
+/// Asterisk's `database deltree`, which is how an administrator removes
+/// a tenant's data, matches without regard to case and reads `_` as a
+/// wildcard for one character.  With no upper-case letter and no `_` in
+/// a key, no two keys match each other there, so removing the data of
+/// one tenant cannot remove another's.
 pub fn valid_tenant(key: &[u8]) -> bool {
     (1..=TENANT_MAX).contains(&key.len())
         && key
             .iter()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-'))
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, b'.' | b'-'))
 }
 
 /// A name as one part of a path: letters, digits, `.`, and `-` as they
@@ -457,7 +463,8 @@ mod tests {
         let north = Phone::new("north", "alice");
         let north2 = Phone::new("north", "bob");
         let south = Phone::new("south", "carol");
-        // Tenant keys that differ only in case are different tenants.
+        // The store keeps names that differ only in case apart, although
+        // `valid_tenant` allows no upper-case letter in a tenant key.
         let shouting = Phone::new("NORTH", "dave");
         let none = Phone::new("", "erin");
         stored(north.set(&mut b, Scope::Shared, "best", b"n", None));
@@ -678,9 +685,25 @@ mod tests {
         assert_eq!(escape(b"Front Desk/2"), "Front=20Desk=2F2");
         assert_eq!(unescape("a=2"), None);
         assert_eq!(unescape("a=zz"), None);
-        assert!(valid_tenant(b"north-office_1.a"));
-        for t in [&b""[..], b"a b", b"a/b", b"a@b", &[b'a'; TENANT_MAX + 1]] {
-            assert!(!valid_tenant(t));
+        for t in [&b"north-office-1.a"[..], b"a", b"0", &[b'a'; TENANT_MAX]] {
+            assert!(valid_tenant(t), "{t:?}");
+        }
+        // No upper-case letter and no `_`: `database deltree` matches
+        // without regard to case, and `_` matches any character there.
+        for t in [
+            &b""[..],
+            b"a b",
+            b"a/b",
+            b"a@b",
+            b"north_office",
+            b"_",
+            b"North",
+            b"NORTH",
+            b"north-officE",
+            "b\u{fc}ro".as_bytes(),
+            &[b'a'; TENANT_MAX + 1],
+        ] {
+            assert!(!valid_tenant(t), "{t:?}");
         }
     }
 

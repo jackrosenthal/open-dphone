@@ -142,7 +142,7 @@ while the option is there.  Stock firmware ignores the settings.
 | `dphone_theme=<name>` | The built-in theme of a color model (D60, D62, or D65): the wallpaper and the colors of the phone's screens, e.g., `dusk`.  The phone's theme selector lists the names.  A `wallpaper_file` goes before the theme.  Default is the phone's theme. |
 | `dphone_palette_file=<file>` | The palette file for the wallpaper of `wallpaper_file`: the colors of the phone's screens, as Open DPhone's `palette.proto` describes, e.g., `lobby.txtpb`.  Default is the phone's own palette. |
 | `dphone_ignore_provisioned_firmware=yes\|no` | Whether the phone ignores the firmware this configuration offers it.  Default is no. |
-| `dphone_app_data_tenant=<key>` | The tenant whose app data the phone reads and writes (see "App data"): 1 to 32 letters, digits, `.`, `_`, or `-`.  Default is none: the phone shares the app data of the phones without a key. |
+| `dphone_app_data_tenant=<key>` | The tenant whose app data the phone reads and writes (see "App data"): 1 to 32 lower-case letters, digits, `.`, or `-`.  Default is none: the phone shares the app data of the phones without a key. |
 
 The official DPMA's `web_ui_enabled=yes|no` controls the phone's web
 configuration.  Default is no.
@@ -203,7 +203,10 @@ at most 64 characters, and a value at most 4096 bytes.
 
 `database show DPhoneAppData` lists the data, and `database deltree`
 removes it, e.g., `database deltree DPhoneAppData @north-office/lightup`
-for one app of one tenant (`@` alone is the phones without a key).  The
+for one app of one tenant (`@` alone is the phones without a key).  A
+tenant key has no upper-case letter and no `_`, because `deltree`
+matches without regard to case and reads `_` as any one character: no
+`deltree` of one tenant removes the data of another.  The
 rustdoc of `dpma_proto::appdata` describes the requests, and that of
 `dpma_proto::appdata::store` the AstDB keys.
 

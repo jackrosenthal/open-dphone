@@ -183,7 +183,7 @@ With the option on, the phone keeps the running firmware, whatever `firmware` se
 
 The tenant whose app data the phone reads and writes.
 
-- **Value:** a key of 1 to 32 characters: letters, digits, `.`, `_`, and `-`.
+- **Value:** a key of 1 to 32 characters: lower-case letters, digits, `.`, and `-`.  An upper-case letter or a `_` makes the value invalid.
 - **Without the option:** the phone shares the store of all phones without a key.
 
 Phones with the same key share one store of app data, and no phone reads or writes the store of another key.  The module never sends the key to a phone, and no request of a phone can name a key: the key comes from the phone section alone.
