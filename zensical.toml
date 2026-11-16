@@ -73,12 +73,12 @@ nav = [
     "dev-guide/index.md",
     "dev-guide/building.md",
     "dev-guide/simulator.md",
-    "dev-guide/debug-access.md",
-    "dev-guide/ramboot.md",
-    "dev-guide/installing.md",
+    "dev-guide/ssh-and-serial-console.md",
+    "dev-guide/test-builds.md",
+    "dev-guide/firmware-updates.md",
     "dev-guide/dphone-command.md",
     "dev-guide/diagnostics.md",
-    "dev-guide/recovery.md",
+    "dev-guide/troubleshooting.md",
   ] },
 ]
 

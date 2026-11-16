@@ -1,37 +1,29 @@
 # Dev Guide
 
-The Dev Guide is for developers who change the Open DPhone firmware and have a phone on the desk.  The pages cover building the firmware from source, getting a build onto a phone, and looking inside a phone that runs the build.
+The Open DPhone firmware is a mainline Linux kernel and a single Rust program, `dphone`, that runs as both init and the phone application.  This guide covers building the firmware from source, running a build on a phone, and debugging a phone that runs the build.
 
-A developer who writes apps for the phones needs the [App SDK](../app-sdk/index.md) instead, and an administrator who installs the Asterisk module needs [Open DPMA](../open-dpma/index.md).
+## Architecture
 
-## The pages
+`dphone` is installed at `/sbin/init` on the phone and takes on a different role depending on how the program is started.
 
-| Page | Read the page to |
+| Component | Description |
 | --- | --- |
-| [Building from source](building.md) | Find the parts of the repository, build a firmware image for a model, and run the tests and checks. |
-| [Running on a workstation](simulator.md) | Run the firmware's main program and the web interface without a phone. |
-| [SSH and the serial console](debug-access.md) | Get a shell on a phone, over the network or over a cable on the EHS port. |
-| [Trying a build without installing](ramboot.md) | Run a changed binary, or a whole image with a new kernel, on a phone while the flash stays untouched. |
-| [Installing a firmware image](installing.md) | Write an image to a firmware bank, follow the trial boot, and return to the previous image or to stock firmware. |
-| [The `dphone` command](dphone-command.md) | Look up what the command-line tool on the phone can show and do. |
-| [Logs and diagnostics](diagnostics.md) | Read the logs, the crash records, and the state of a running phone. |
-| [When a phone does not start](recovery.md) | Learn what the firmware does when a part fails, and what can and cannot be recovered without a JTAG adapter. |
+| Init role | `dphone` running as process 1.  The init role mounts the file systems, loads the kernel modules, feeds the hardware watchdog, and starts and supervises the main role. |
+| Main role | `dphone main`, the phone application: the user interface, SIP, audio, the DPMA client, the app runtime, the web interface, and the SSH server. |
+| Early-boot stage | `dphone-early`, a small program built into the kernel image.  The stage runs before the root file system is mounted and counts the boots of a newly installed image. |
+| Firmware banks | Two sets of flash partitions, bank A (`k0` and `root0`) and bank B (`k1` and `root1`).  Each bank holds a kernel and a root file system.  The `ctrl` partition records which bank the boot loader starts. |
+| nvdata | The flash partition mounted at `/nvdata`, which holds everything that survives an update: the settings, the SSH keys, the installed apps, and the phone's MAC address.  Both banks share nvdata, and so does stock firmware. |
+| EFF image | A firmware image file (`.eff`) for one model, in the stock firmware image format. |
 
-## How the firmware is put together
+## Development workflow
 
-- **`dphone`** is the one program of the firmware, at `/sbin/init` on the phone.  The program takes one of several roles, depending on how the program is started.
-- **The init role** is `dphone` running as process 1.  The init role mounts the file systems, loads the kernel modules, feeds the hardware watchdog, and starts and supervises the main role.
-- **The main role** is `dphone main`: the phone application, with the user interface, SIP, audio, the DPMA client, the app runtime, the web interface, and the SSH server.
-- **The early-boot stage** (`dphone-early`) is a small program built into the kernel image.  The stage runs before the root file system is mounted and counts the boots of a newly installed image.
-- **The firmware banks** are two sets of flash partitions, bank A (`k0` and `root0`) and bank B (`k1` and `root1`).  Each bank holds a kernel and a root file system.  The `ctrl` partition records which bank the boot loader starts.
-- **nvdata** is the flash partition mounted at `/nvdata`, which holds everything that survives an update: the settings, the SSH keys, the installed apps, and the phone's MAC address.  Both banks, and stock firmware, use the same nvdata.
-- **An EFF image** is a firmware image file (`.eff`) for one model, in the format of stock firmware images.
+Each step below takes longer than the one before but tests more, so a change typically moves down the list.
 
-## A working loop
+1. Run the tests and the [simulator](simulator.md) on the workstation.
+2. Push the changed `dphone` binary to a phone with [`cargo xtask deploy`](test-builds.md#binary-deploy).  A reboot restores the installed binary.
+3. Boot the whole image from RAM with [`dphone ramboot`](test-builds.md#ram-boot).
+4. Install the image with [`dphone update install`](firmware-updates.md#dphone-update-install).
 
-Each step below costs more time than the step before and proves more, so a change usually moves down the list.
+!!! danger "Always boot a changed kernel from RAM first"
 
-1. Run the tests and the simulator on the workstation ([Building from source](building.md), [Running on a workstation](simulator.md)).
-2. Push the changed `dphone` binary to a phone with `cargo xtask deploy` ([Trying a build without installing](ramboot.md#push-a-changed-binary)).  A reboot brings the installed binary back.
-3. Start the whole image from RAM with `dphone ramboot` ([Trying a build without installing](ramboot.md#start-an-image-from-ram)).  Do not skip the start from RAM for a kernel change: a kernel in flash that hangs cannot be undone from the phone.
-4. Install the image with `dphone update install` ([Installing a firmware image](installing.md)).
+    A kernel in flash that hangs early in the boot cannot be replaced from the phone.  Recovery requires a JTAG adapter.

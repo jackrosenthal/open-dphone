@@ -5,7 +5,7 @@ description: Open firmware for the Digium D-series desk phones, and Open DPMA, t
 
 # Open DPhone
 
-Open DPhone is open firmware for the Digium D-series desk phones: the D40, D45, D50, D60, D62, D65, and D70.  The firmware replaces the stock firmware with a mainline Linux kernel and a phone application written in Rust, and is free software under the GNU General Public License, version 2 or later.
+Open DPhone is open-source firmware for the Digium D-series desk phones: the D40, D45, D50, D60, D62, D65, and D70.  Open DPhone replaces the stock firmware with a mainline Linux kernel and a phone application written in Rust, and is licensed under the GNU General Public License, version 2 or later.
 
 <link rel="stylesheet" href="assets/d65-viewer/viewer.css">
 <figure class="d65-viewer">
@@ -27,69 +27,79 @@ Open DPhone is open firmware for the Digium D-series desk phones: the D40, D45, 
     <img class="d65-viewer__screen" style="--d65-n: 11" src="assets/d65-viewer/screens/12-call-active-ember.webp" alt="">
   </div>
   <figcaption>
-    <span style="--d65-n: 0">The idle screen is shown in the theme Harbor.</span>
-    <span style="--d65-n: 1">The idle screen is shown in the theme Dusk.</span>
-    <span style="--d65-n: 2">The idle screen is shown in the theme Sunrise.</span>
-    <span style="--d65-n: 3">The idle screen is shown in the theme Regatta.</span>
-    <span style="--d65-n: 4">The Applications menu is shown in the theme Glacier.</span>
-    <span style="--d65-n: 5">The game Light Up is built in.</span>
-    <span style="--d65-n: 6">The game Desk Sparrow is built in.</span>
-    <span style="--d65-n: 7">The game Box Pusher is built in.</span>
-    <span style="--d65-n: 8">The Alarms app lists the alarms that are set.</span>
-    <span style="--d65-n: 9">The phone's menu is shown in the theme Amethyst.</span>
-    <span style="--d65-n: 10">An incoming call is shown in the theme Evergreen.</span>
-    <span style="--d65-n: 11">A connected call is shown in the theme Ember.</span>
+    <span style="--d65-n: 0">The idle screen in the Harbor theme.</span>
+    <span style="--d65-n: 1">The idle screen in the Dusk theme.</span>
+    <span style="--d65-n: 2">The idle screen in the Sunrise theme.</span>
+    <span style="--d65-n: 3">The idle screen in the Regatta theme.</span>
+    <span style="--d65-n: 4">The Applications menu in the Glacier theme.</span>
+    <span style="--d65-n: 5">Light Up, one of three built-in games.</span>
+    <span style="--d65-n: 6">Desk Sparrow, one of three built-in games.</span>
+    <span style="--d65-n: 7">Box Pusher, one of three built-in games.</span>
+    <span style="--d65-n: 8">The Alarms app.</span>
+    <span style="--d65-n: 9">The main menu in the Amethyst theme.</span>
+    <span style="--d65-n: 10">An incoming call in the Evergreen theme.</span>
+    <span style="--d65-n: 11">An active call in the Ember theme.</span>
   </figcaption>
 </figure>
 
 [Download the firmware](https://github.com/jackrosenthal/open-dphone/releases){ .md-button .md-button--primary }
-[Install Open DPMA](open-dpma/index.md){ .md-button }
+[Install Open DPMA](open-dpma/installation.md){ .md-button }
 
-Open DPhone is an independent project, and is not made or endorsed by Digium or Sangoma.
+Open DPhone is an independent project and is not affiliated with or endorsed by Digium or Sangoma.
 
-## Who the firmware is for
+## Features
 
-Open DPhone is for people who have D-series phones in service and want firmware that can be read, changed, and extended.  A phone that runs Open DPhone is configured by a DPMA server, as a phone with stock firmware is, or by hand: the SIP accounts are entered in the phone's web interface.
+- **Apps.**  Twelve apps are built in: Alarms, Calendar, Contacts, Diagnostics, Hot Desking, Parking, Queues, Status, Voicemail, and the games Box Pusher, Desk Sparrow, and Light Up.  Apps are WebAssembly components.  You can install more from the phone's web interface, or write one with the [App SDK](app-sdk/index.md).
+- **Themes.**  The color models (D60, D62, and D65) come with 42 themes.  Each theme pairs a wallpaper with a color palette that applies to every screen, and eight of the wallpapers are animated on the idle screen.  With Open DPMA, a user's theme follows the user to other phones and survives a factory reset.  A provisioning server can also set the theme, or supply a custom wallpaper and a matching palette.
+- **Web interface.**  Manage calls, accounts, contacts, preferences, Bluetooth devices, alarms, apps, network settings, provisioning, and logs from a browser.  The web interface also mirrors the phone's screen and includes a shell.
+- **Safe firmware updates.**  Each update is written to the inactive firmware bank, so the running firmware stays intact.  A new image boots on a trial basis, and the phone rolls back automatically if the new image fails to come up.  The web interface also installs stock firmware images, so a phone can return to stock firmware.
+- **Remote administration.**  Every phone has an SSH server with public-key login, a serial console on the EHS port, and a `/metrics` endpoint for monitoring.  Each can be turned on or off per phone.
 
-## What the firmware provides
+## Installation
 
-- **Apps.**  Apps are WebAssembly components.  Twelve apps are built in: Alarms, Calendar, Contacts, Diagnostics, Hot Desking, Parking, Queues, Status, Voicemail, and the games Box Pusher, Desk Sparrow, and Light Up.  More apps are installed from the phone's web interface, and the [App SDK](app-sdk/index.md) is the way to write one.
-- **Themes.**  On the color models (D60, D62, and D65), the user chooses among 42 themes.  A theme is a wallpaper together with a palette that colors every screen, and eight of the wallpapers move slowly on the idle screen.  With Open DPMA, the choice follows the user to another phone and returns after the phone is reset.  A provisioning server can set the theme, or supply a wallpaper picture and a palette file to match.
-- **A web interface.**  The web interface shows the phone's calls, accounts, contacts, preferences, Bluetooth devices, alarms, apps, network, provisioning, and logs, mirrors the phone's screen, and has a shell.
-- **Firmware updates that can be undone.**  An update is written to the firmware bank that is not running, and the running firmware stays in the other bank.  A new image starts on trial, and the phone returns to the previous firmware when the new image does not come up.  The web interface also installs stock firmware images, so a phone can go back to stock firmware.
-- **Access for administrators.**  Each phone has an SSH server with public-key login, a serial console on the EHS port, and a `/metrics` endpoint for monitoring.  Each of the three is switched on or off phone by phone.
+Download the image for your phone's model from the [releases page](https://github.com/jackrosenthal/open-dphone/releases).  Images are named `<version>_<model>_firmware.eff` (e.g., `3_0_0_D65_firmware.eff`), and each release includes a `SHA256SUMS` file for verifying the download.  A phone rejects an image built for a different model.
 
-## Install the firmware
+Open DPhone images use the stock firmware image format, so a phone running stock firmware installs Open DPhone like any other firmware update: from the phone's web interface, or through DPMA provisioning.
 
-Each [release on GitHub](https://github.com/jackrosenthal/open-dphone/releases) has one firmware image for each model, named `<version>_<model>_firmware.eff` (e.g., `3_0_0_D65_firmware.eff`), and a `SHA256SUMS` file to verify the download.  Choose the image for the phone's model: a phone refuses an image made for another model.
+### Web interface
 
-The images are in the format of stock firmware images.  A phone that runs stock firmware therefore installs an Open DPhone image as that phone installs any firmware: from a firmware entry in the DPMA configuration on the PBX, or from the firmware page of the phone's web interface.  [Moving phones between stock firmware and Open DPhone](open-dpma/administration.md#moving-phones-between-stock-firmware-and-open-dphone) has the firmware entry.
+1. Log in to the phone's web interface.  On a phone provisioned by a DPMA server, the web interface is available only when the phone's section of `res_digium_phone.conf` has `web_ui_enabled=yes`.
+2. Go to `http://<phone address>/firmware/`.
+3. Choose the `.eff` file under **Firmware File**, then click **Update to this Firmware Version**.
+
+The phone installs the image and restarts into Open DPhone.
+
+If the DPMA server already provisions firmware for the phone's model, the firmware page does not accept uploads.  Install through DPMA provisioning instead.
+
+### DPMA provisioning
+
+Add a firmware entry for the image to the DPMA configuration on the PBX, and the phones install the image the next time they fetch their configuration.  See [Migration between stock firmware and Open DPhone](open-dpma/administration.md#firmware-migration) for the configuration.  This method works with both Open DPMA and the original `res_digium_phone`.
+
+### After installation
+
+The phone keeps the existing network settings and web interface password, and a provisioned phone picks up the same configuration from the DPMA server as before.  On a phone without a DPMA server, add SIP accounts in the web interface.
+
+The stock firmware remains in the phone's other firmware bank.  To go back, upload a stock firmware image on the **System** page of the Open DPhone web interface.
 
 ## Open DPMA
 
-A PBX provisions D-series phones, and answers the requests of the phones' apps, over DPMA, the protocol of the Digium Phone Module for Asterisk.  Digium's module, `res_digium_phone`, is closed source.  Open DPMA is an open-source Asterisk module, written in Rust, that speaks DPMA and takes the place of the original `res_digium_phone`.
+DPMA, the Digium Phone Module for Asterisk, is the protocol that a PBX uses to provision D-series phones and to serve requests from the phones' apps.  Digium's implementation, the `res_digium_phone` module, is closed source.  The Open DPhone project reimplemented DPMA in Rust as Open DPMA, an open-source Asterisk module that is a drop-in replacement for the original `res_digium_phone`.
 
-Open DPMA reads the original module's configuration file, `res_digium_phone.conf`, so an existing configuration works unchanged.  Open DPMA also fixes bugs and security issues of the original module, e.g., phone file requests that can read any file on the server, and inputs that crash Asterisk.
+Open DPMA reads the original module's configuration file, `res_digium_phone.conf`, so existing configurations work unchanged.  Open DPMA also fixes bugs and security issues in the original module, including a path traversal in phone file requests that exposes any file on the server, and malformed requests that crash Asterisk.
 
-Open DPMA provides features that the original module does not have:
+Open DPMA adds features that the original module lacks:
 
-- **Options for Open DPhone phones.**  A phone's section of the configuration can switch the phone's SSH server, serial console, and metrics on or off, list the SSH keys that may log in, set a static network address, choose the softkeys of the idle screen, hide built-in apps, set the theme, and name a palette file for a provisioned wallpaper picture.
-- **App data.**  Apps keep data on the PBX, e.g., a game's best times, which every phone then shows, and the phone keeps the user's theme there.  On a PBX with more than one tenant, each tenant's phones share a separate store.
+- **Open DPhone options.**  A phone's configuration section can enable or disable SSH, the serial console, and metrics; list authorized SSH keys; assign a static network address; choose the idle screen softkeys; hide built-in apps; set the theme; and supply a palette file for a provisioned wallpaper.
+- **App data.**  Apps can store data on the PBX, such as a game's best times, which then appear on every phone.  The user's theme is stored the same way.  On a multi-tenant PBX, each tenant's phones share a separate store.
 
-Each release has pre-built modules for Asterisk 22, 23, and 24 on x86_64 and aarch64.
+Each release includes prebuilt modules for Asterisk 22, 23, and 24 on x86_64 and aarch64.
 
-## Better together, and each usable alone
+## Compatibility
 
-| Firmware on the phone | Module on the PBX | Result |
+Open DPhone and Open DPMA are better together, but each works without the other.  You can upgrade the phones and the PBX in either order, or upgrade only one.
+
+| Phone firmware | PBX module | Result |
 | --- | --- | --- |
 | Open DPhone | Open DPMA | Every feature of both. |
-| Open DPhone | The original `res_digium_phone`{ .nowrap } | The phone is provisioned as a phone with stock firmware is.  The options for Open DPhone phones and app data on the PBX are not available, because the original module has neither. |
-| Stock firmware | Open DPMA | The phone works as with the original module, on a module with the bugs and security issues fixed. |
-
-A site can therefore change the phones and the PBX in either order, or change only one of the two.
-
-## Where to go next
-
-- [Open DPMA](open-dpma/index.md), for Asterisk administrators: installing the module, the configuration options, and administration practices.
-- [App SDK](app-sdk/index.md), for developers who write apps for the phones: a tutorial in Rust, and the reference for the app interface.
-- [Dev Guide](dev-guide/index.md), for developers who change the firmware: building from source, installing and trying firmware images, and debugging a phone.
+| Open DPhone | The original `res_digium_phone`{ .nowrap } | The phone is provisioned like a stock phone.  Open DPhone options and app data on the PBX are unavailable, because the original module supports neither. |
+| Stock firmware | Open DPMA | The phone works the same as with the original module, without the original module's bugs and security issues. |
