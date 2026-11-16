@@ -1140,19 +1140,8 @@ async fn commands(service: AudioService, store: Store) {
     while let Some(envelope) = rx.next().await {
         let (cmd, responder) = envelope.split();
         match cmd {
-            Command::PlayFile { path, start_secs, app } => {
-                // Reading and decoding the file is not for this thread.
-                let service = service.clone();
-                tokio::spawn(async move {
-                    let loaded = tokio::task::spawn_blocking(move || load_sound(std::path::Path::new(&path)))
-                        .await
-                        .unwrap_or_else(|e| Err(format!("reading the sound file failed: {e}")));
-                    let result = loaded.and_then(|samples| service.play_file(samples, start_secs, app));
-                    responder.reply(result.map(|()| Reply::Done).map_err(CommandError::Failed));
-                });
-            }
             Command::PlayData { sound, start_secs, app } => {
-                // Nor is decoding what an app hands over.
+                // Decoding what an app hands over is not for this thread.
                 let service = service.clone();
                 tokio::spawn(async move {
                     let loaded = tokio::task::spawn_blocking(move || decode_checked(&sound.0))
@@ -1165,16 +1154,6 @@ async fn commands(service: AudioService, store: Store) {
             cmd => responder.reply(service.command(cmd)),
         }
     }
-}
-
-/// Reads a sound file as 16 kHz mono samples.
-fn load_sound(path: &std::path::Path) -> Result<Vec<i16>, String> {
-    let meta = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    if !meta.is_file() || meta.len() > SOUND_MAX_BYTES {
-        return Err("not a regular file of at most 8 MiB".into());
-    }
-    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    decode_checked(&bytes)
 }
 
 /// The content of a sound file as 16 kHz mono samples.

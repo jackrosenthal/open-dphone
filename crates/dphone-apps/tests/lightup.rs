@@ -1230,7 +1230,7 @@ impl Phone {
             s.phase = Phase::Running;
             s.time_synced = true;
         });
-        let mut cfg = ManagerConfig::rooted(staged(), &nvdata, &dir.0.join("tmp"));
+        let mut cfg = ManagerConfig::rooted(staged(), &nvdata);
         cfg.target = Target::Pulley64;
         let mut mgr = AppManager::new(
             cfg,

@@ -46,7 +46,7 @@ pub mod xml;
 
 pub use bindings::dphone::app::types::{
     AccountInfo, Align, CallInfo, CallState, Error, Event, Font, Header, HttpResponse, InputMode,
-    ListItem, Location, Metrics, Mwi, PbxOutcome, Presence, Push, Rect, Size, Skin, Softkey,
+    ListItem, Metrics, Mwi, PbxOutcome, Presence, Push, Rect, Size, Skin, Softkey,
     WidgetEvent, WidgetKind,
 };
 pub use bindings::dphone::app::{
@@ -151,11 +151,9 @@ pub fn screen(title: &str) -> Rect {
     )
 }
 
-/// Read a UTF-8 file from storage.
-pub fn read_string(loc: Location, name: &str) -> Option<String> {
-    storage::read(loc, name)
-        .ok()
-        .and_then(|b| String::from_utf8(b).ok())
+/// The value of a storage key as UTF-8 text.
+pub fn read_string(key: &str) -> Option<String> {
+    storage::get(key).and_then(|b| String::from_utf8(b).ok())
 }
 
 pub mod prelude {
@@ -163,7 +161,7 @@ pub mod prelude {
     pub use crate::manifest::AppKind;
     pub use crate::nav::{Form, Message};
     pub use crate::{
-        App, Event, ListItem, Location, PbxOutcome, ROOT, Rect, Skin, Softkey, Widget, WidgetEvent,
+        App, Event, ListItem, PbxOutcome, ROOT, Rect, Skin, Softkey, Widget, WidgetEvent,
         WidgetKind, audio, calls, config, content_rect, events, http, l10n, pbx, presence,
         row_height, runtime, screen, storage, timers, ui,
     };

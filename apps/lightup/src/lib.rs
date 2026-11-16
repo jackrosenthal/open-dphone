@@ -39,7 +39,7 @@ const SK_HELP: u32 = 6;
 const SK_NEXT: u32 = 7;
 const SK_UNDO: u32 = 8;
 
-/// The file, in the app's own storage, that holds the puzzle with its
+/// The key, in the app's storage, that holds the puzzle with its
 /// lights and marks, the time spent on it, and the cursor.
 const PUZZLE: &str = "puzzle";
 /// A file an administrator or a test may put beside it: a decimal seed
@@ -278,7 +278,7 @@ impl LightUp {
     /// Reads the puzzle file; what it does not say, or says wrongly, is
     /// no puzzle.
     fn restore(&mut self) {
-        self.saved = read_string(Location::Nv, PUZZLE).unwrap_or_default();
+        self.saved = read_string(PUZZLE).unwrap_or_default();
         let saved = self.saved.clone();
         let field = |name: &str| {
             saved
@@ -334,7 +334,7 @@ impl LightUp {
                 game.grid().to_text()
             ));
         }
-        if now != self.saved && storage::write(Location::Nv, PUZZLE, now.as_bytes()).is_ok() {
+        if now != self.saved && storage::set(PUZZLE, now.as_bytes()).is_ok() {
             self.saved = now;
         }
     }
@@ -413,7 +413,7 @@ impl LightUp {
     }
 
     fn generate(&mut self) {
-        let seed = match read_string(Location::Nv, SEED).and_then(|s| s.trim().parse::<u64>().ok())
+        let seed = match read_string(SEED).and_then(|s| s.trim().parse::<u64>().ok())
         {
             Some(seed) => seed.wrapping_add(self.made),
             None => runtime::random(),

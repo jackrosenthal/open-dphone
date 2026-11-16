@@ -115,7 +115,7 @@ The manifest travels in the app's file: `export_app!` writes it, when the app is
 An app's data (pictures, sounds, tables) is in its code: `include_bytes!` and `include_str!`, as in any Rust program.  The phone unpacks nothing.
 
 - A picture: `ui::define_image("logo", include_bytes!("logo.png"))` gives a PNG a name, once; `ui::set_image` and the `icon` of a list item then take that name.  A name the app did not define is one of the phone's own icons.  At most 512 KiB a picture, and 32 pictures.  An app that wants another picture on another model of phone chooses by `ui::metrics()`.
-- A sound: `audio::play(include_bytes!("tone.wav"), 0)`.  (`audio::play_file` plays a file from storage, e.g., one the app downloaded.)
+- A sound: `audio::play(include_bytes!("tone.wav"), 0)`.
 - The data counts toward the app's memory (`memory_kib`), since it is part of the program.
 
 ## Capabilities
@@ -127,7 +127,7 @@ Each interface of the phone except `runtime` is a capability, and each is a modu
 | `ui` | Widgets, softkeys, keys, and the window. |
 | `canvas` | A widget the app draws itself, from filled rectangles, one-color bitmaps, and texts in the skin's fonts. |
 | `timers` | One-shot and repeating timers, and the time. |
-| `storage` | Files, kept or temporary, of the app's own or shared between apps. |
+| `storage` | The app's store of keys and values, which the phone keeps and no other app can reach. |
 | `config` | The app's provisioned configuration, the accounts, and settings of the phone that apps may read. |
 | `pbx` | Requests to the PBX. |
 | `http` | HTTP requests. |

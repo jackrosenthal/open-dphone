@@ -69,25 +69,11 @@ interface types {
     submitted(string),
   }
 
-  /// Storage locations, with the stock names and rules.
-  enum location {
-    /// `/nvdata/appdata/<name>`.
-    nv,
-    /// `/nvdata/appdata/@shared`.
-    nvshared,
-    /// `/tmp/appdata/<name>`.
-    tmp,
-    /// `/tmp/appdata/@shared`.
-    tmpshared,
-    /// Read-only data shared by all apps (artwork, sounds).
-    data,
-  }
-
   variant error {
     /// The manifest does not grant this.
     denied,
     not-found,
-    /// Bad argument (e.g., a path separator in a file name).
+    /// Bad argument (e.g., a path separator in a storage key).
     invalid(string),
     /// No space left (the 2 MiB reserve counts as used).
     no-space,
@@ -203,8 +189,8 @@ interface types {
     /// An account registered with its other host (failover to the
     /// alternate, or back).
     server-change,
-    /// The sound started with `audio.play-file` played to its end, was
-    /// stopped, or was cut off by the ringer; position in the file in
+    /// The sound started with `audio.play` played to its end, was
+    /// stopped, or was cut off by the ringer; position in the sound in
     /// seconds.
     playback-stopped(u32),
     /// An event from another app or the phone, addressed to this app.
@@ -317,14 +303,21 @@ interface timers {
   wall-time: func() -> u64;
 }
 
-/// Capability `storage`.
+/// Capability `storage`: the app's store of keys and values.  The phone
+/// keeps it across restarts and firmware updates, no other app can reach
+/// it, and it is deleted when the app is removed.  A key is a name that
+/// does not start with `.` and has no `/`, `\`, or NUL in it; a value is
+/// at most 1 MiB.
 interface storage {
-  use types.{location, error};
-  read: func(loc: location, name: string) -> result<list<u8>, error>;
-  write: func(loc: location, name: string, data: list<u8>) -> result<_, error>;
-  remove: func(loc: location, name: string) -> result<_, error>;
-  exists: func(loc: location, name: string) -> bool;
-  %list: func(loc: location) -> result<list<string>, error>;
+  use types.{error};
+  /// The value of a key, if the key is set.
+  get: func(key: string) -> option<list<u8>>;
+  /// Sets a key, replacing the value it had.
+  set: func(key: string, value: list<u8>) -> result<_, error>;
+  /// Removes a key.  Removing a key that is not set succeeds.
+  remove: func(key: string) -> result<_, error>;
+  /// The keys that are set, sorted.
+  keys: func() -> list<string>;
 }
 
 /// Capability `config`.
@@ -402,15 +395,13 @@ interface events {
 
 /// Capability `audio`.
 interface audio {
-  use types.{location, error};
-  /// Play a sound file from a storage location, from `start` seconds:
-  /// headerless 16 kHz mono signed 16-bit little-endian samples (stock
-  /// `.sln16`), or a WAVE file (PCM, mu-law, or A-law).  At most five
-  /// minutes.  One sound plays at a time; `event.playback-stopped`
-  /// follows when it is over.
-  play-file: func(loc: location, name: string, start: u32) -> result<_, error>;
-  /// The same for a sound the app holds in its own data (e.g., with
-  /// `include_bytes!`): `sound` is such a file's content.
+  use types.{error};
+  /// Play a sound the app holds in its own data (e.g., with
+  /// `include_bytes!`), from `start` seconds: `sound` is the content of a
+  /// sound file, either headerless 16 kHz mono signed 16-bit
+  /// little-endian samples (stock `.sln16`) or a WAVE file (PCM, mu-law,
+  /// or A-law).  At most five minutes.  One sound plays at a time;
+  /// `event.playback-stopped` follows when it is over.
   play: func(sound: list<u8>, start: u32) -> result<_, error>;
   stop: func();
 }

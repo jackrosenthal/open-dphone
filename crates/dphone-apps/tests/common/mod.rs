@@ -73,7 +73,6 @@ pub struct Rig {
     pub store: Store,
     pub commands: Arc<Mutex<Vec<Command>>>,
     pub nvdata: PathBuf,
-    pub tmp: PathBuf,
     _dir: TempDir,
 }
 
@@ -145,8 +144,8 @@ impl Rig {
         answer_commands(&store, Domain::Provisioning, commands.clone(), |_| {
             Ok(Reply::Done)
         });
-        let (nvdata, tmp) = (dir.0.join("nvdata"), dir.0.join("tmp"));
-        let mut cfg = ManagerConfig::rooted(root, &nvdata, &tmp);
+        let nvdata = dir.0.join("nvdata");
+        let mut cfg = ManagerConfig::rooted(root, &nvdata);
         cfg.target = Target::Pulley64;
         cfg.call_budget = budget;
         let mut mgr = AppManager::new(cfg, store.clone(), ui.shell(), services(&pbx, config))
@@ -159,7 +158,6 @@ impl Rig {
             store,
             commands,
             nvdata,
-            tmp,
             _dir: dir,
         }
     }

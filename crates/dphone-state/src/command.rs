@@ -135,12 +135,10 @@ pub enum Command {
     StopTone,
     /// Play a ringtone by name once (settings preview).
     PlaySound { name: String },
-    /// Play a sound file once for the app `app`, from `start_secs` in.
+    /// Play a sound once for the app `app`, from `start_secs` in: `sound`
+    /// is the content of a sound file, which the app holds in its data.
     /// [`crate::Event::PlaybackStopped`] follows when it ends, is stopped,
     /// or is cut off by the ringer.
-    PlayFile { path: String, start_secs: u32, app: String },
-    /// The same for a sound an app holds in its own data: `sound` is the
-    /// content of such a file.
     PlayData { sound: SoundData, start_secs: u32, app: String },
     /// Stop a ringtone preview or a sound file.
     StopSound,
@@ -257,7 +255,7 @@ impl Command {
             }
             SetAudioPath { .. } | SetMute { .. } | SetVolume { .. } | AdjustVolume { .. }
             | SetHeadsetMode { .. } | PlayTone { .. } | StopTone | PlaySound { .. }
-            | PlayFile { .. } | PlayData { .. } | StopSound => Domain::Audio,
+            | PlayData { .. } | StopSound => Domain::Audio,
             InjectKey { .. } | InjectHook { .. } | Notify { .. } | DismissNotice { .. }
             | SetBacklight { .. } | SetContrast { .. } | ShowScreen { .. } | ResetIdleTimer => Domain::Ui,
             ReloadConfig | SetSettings { .. } | SetWallpaper { .. } | ReloadContacts => Domain::Config,

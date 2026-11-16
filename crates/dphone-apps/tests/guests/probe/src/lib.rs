@@ -32,7 +32,6 @@ impl App for Probe {
                 Softkey::new(3, "Stop"),
                 Softkey::new(4, "Awake"),
                 Softkey::new(5, "Pics"),
-                Softkey::new(6, "Bad"),
             ],
         );
     }
@@ -67,7 +66,6 @@ impl App for Probe {
                 ui::set_items(list, &[mine, theirs]);
                 format!("pics={defined:?}")
             }
-            Event::Softkey(6) => format!("play={:?}", audio::play_file(Location::Tmp, "missing.wav", 0)),
             Event::PlaybackStopped(at) => format!("stopped={at}"),
             Event::IdleScreenShow => {
                 ui::set_text(self.idle, "idle=shown");

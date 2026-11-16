@@ -48,7 +48,7 @@ impl Phone {
         // The phone's own lamp, to tell it from the test's.
         store.update::<Keys, _>(|k| k.message_lamp = LampState::solid(LampColor::Red));
         let (audio, calls) = (store.handle(Domain::Audio), store.handle(Domain::Calls));
-        let mut cfg = ManagerConfig::rooted(staged(), &dir.0.join("nvdata"), &dir.0.join("tmp"));
+        let mut cfg = ManagerConfig::rooted(staged(), &dir.0.join("nvdata"));
         cfg.target = Target::Pulley64;
         let mut mgr = AppManager::new(
             cfg,

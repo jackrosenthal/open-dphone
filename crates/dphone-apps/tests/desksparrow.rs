@@ -681,7 +681,7 @@ impl Phone {
             inner: UiShell::new(ui.handle(), model),
             seen: seen.clone(),
         };
-        let mut cfg = ManagerConfig::rooted(staged(), &dir.0.join("nvdata"), &dir.0.join("tmp"));
+        let mut cfg = ManagerConfig::rooted(staged(), &dir.0.join("nvdata"));
         cfg.target = Target::Pulley64;
         let mut mgr = AppManager::new(
             cfg,

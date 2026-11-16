@@ -1,5 +1,5 @@
 //! The runtime's own rules: capability gating, time and memory limits,
-//! storage locations, timers, packages, and installation.
+//! storage, timers, packages, and installation.
 
 mod common;
 
@@ -210,17 +210,19 @@ fn a_memory_hog_is_stopped() {
 }
 
 #[test]
-fn storage_follows_the_stock_rules() {
+fn an_app_has_a_store_of_keys_and_values() {
     let mut r = rig();
     r.launch("faulty");
     r.softkey("faulty", "Store");
     assert_eq!(
         r.ui.texts("faulty"),
         [
-            "write=true read=true list=a.txt escape=false slash=false rofs=false shared=true remove=true gone=true"
+            "set=true get=true keys=a.txt,b escape=false slash=false dot=false remove=true gone=true again=true"
         ]
     );
-    assert!(r.tmp.join("appdata/@shared/s.txt").is_file());
+    // A key is a file in the app's directory, and nowhere else.
+    assert_eq!(std::fs::read(r.nvdata.join("appdata/faulty/b")).unwrap(), b"2");
+    assert!(!r.nvdata.join("appdata/faulty/a.txt").exists());
     assert!(r.nvdata.join("appdata/faulty").is_dir());
     assert!(!r.nvdata.join("appdata/b.txt").exists());
 }
@@ -229,12 +231,7 @@ fn storage_follows_the_stock_rules() {
 /// subsystems do, recording what arrived.
 fn audio_and_ui(r: &Rig) -> std::sync::Arc<std::sync::Mutex<Vec<Command>>> {
     let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    common::answer_commands(&r.store, dphone_state::Domain::Audio, log.clone(), |c| match c {
-        Command::PlayFile { path, .. } if !Path::new(path).is_file() => {
-            Err(dphone_state::CommandError::Failed("no such file".into()))
-        }
-        _ => Ok(Reply::Done),
-    });
+    common::answer_commands(&r.store, dphone_state::Domain::Audio, log.clone(), |_| Ok(Reply::Done));
     common::answer_commands(&r.store, dphone_state::Domain::Ui, log.clone(), |_| Ok(Reply::Done));
     log
 }
@@ -274,12 +271,6 @@ fn a_sound_plays_and_reports_where_it_stopped() {
     r.store.emit(dphone_state::Event::PlaybackStopped { app: "probe".into(), position_secs: 4 });
     r.settle();
     assert_eq!(r.ui.texts("probe"), ["stopped=4"]);
-
-    // A file that is not there is refused here; nothing is asked of the
-    // audio side.
-    r.softkey("probe", "Bad");
-    assert_eq!(r.ui.texts("probe"), ["play=Err(Error::NotFound)"]);
-    assert_eq!(log.lock().unwrap().len(), 1);
 
     // Stop goes to the audio side; closing an app whose file is playing
     // stops the file.

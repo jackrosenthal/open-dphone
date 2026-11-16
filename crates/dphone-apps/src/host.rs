@@ -28,7 +28,8 @@ use bindings::dphone::app::types::*;
 
 /// Widget handles with this bit belong to the idle window.
 pub(crate) const IDLE_BIT: u32 = 1 << 31;
-/// Free space always left on a storage filesystem (stock: 2,048 KiB).
+/// Free space always left on the filesystem of the apps and their stores
+/// (stock: 2,048 KiB).
 pub const FREE_RESERVE: u64 = 2048 * 1024;
 
 /// Wakes the manager's loop from any thread.
@@ -109,24 +110,14 @@ pub(crate) struct Timer {
     pub repeat_ms: Option<u32>,
 }
 
-/// Storage roots.
-#[derive(Clone, Debug)]
-pub struct Dirs {
-    /// `/nvdata/appdata`.
-    pub nv_root: PathBuf,
-    /// `/tmp/appdata`.
-    pub tmp_root: PathBuf,
-    /// Shared read-only data (`data`).
-    pub data: PathBuf,
-}
-
 pub(crate) struct AppCtx {
     pub name: String,
     pub manifest: Manifest,
     /// Distinguishes this instance from an earlier one of the same app, so
     /// late replies for a dead instance are dropped.
     pub generation: u64,
-    pub dirs: Dirs,
+    /// The app's store (`/nvdata/appdata/<name>`): a file for each key.
+    pub store_dir: PathBuf,
     pub window: Box<dyn AppWindow>,
     pub idle: Option<Box<dyn AppWindow>>,
     pub idle_size: Size,
@@ -158,6 +149,13 @@ const IMAGES_MAX: usize = 32;
 
 fn bad_name(name: &str) -> bool {
     name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0'])
+}
+
+/// The largest value of a storage key.
+const VALUE_MAX: usize = 1 << 20;
+
+fn bad_key(key: &str) -> bool {
+    bad_name(key) || key.starts_with('.')
 }
 
 fn io_error(e: std::io::Error) -> Error {
@@ -312,31 +310,20 @@ impl AppCtx {
         }
     }
 
-    fn resolve(&self, loc: Location, name: &str, write: bool) -> Result<PathBuf, Error> {
-        if bad_name(name) {
+    /// The file of a storage key.
+    fn key_path(&self, key: &str) -> Result<PathBuf, Error> {
+        if bad_key(key) {
             return Err(Error::Invalid(
-                "file names cannot contain path separators".into(),
+                "a key cannot be empty, start with `.`, or contain a path separator".into(),
             ));
         }
-        let dir = self.location_dir(loc, write)?;
-        let path = dir.join(name);
+        let path = self.store_dir.join(key);
         if let Ok(meta) = std::fs::symlink_metadata(&path)
             && meta.file_type().is_symlink()
         {
             return Err(Error::Denied);
         }
         Ok(path)
-    }
-
-    fn location_dir(&self, loc: Location, write: bool) -> Result<PathBuf, Error> {
-        Ok(match loc {
-            Location::Data if write => return Err(Error::Denied),
-            Location::Data => self.dirs.data.clone(),
-            Location::Nv => self.dirs.nv_root.join(&self.name),
-            Location::Nvshared => self.dirs.nv_root.join("@shared"),
-            Location::Tmp => self.dirs.tmp_root.join(&self.name),
-            Location::Tmpshared => self.dirs.tmp_root.join("@shared"),
-        })
     }
 
     /// Hands the window the picture the app defined as `name`, the first
@@ -581,28 +568,31 @@ impl api::timers::Host for AppCtx {
 }
 
 impl api::storage::Host for AppCtx {
-    fn read(&mut self, loc: Location, name: String) -> Result<Vec<u8>, Error> {
-        let path = self.resolve(loc, &name, false)?;
-        let meta = std::fs::metadata(&path).map_err(io_error)?;
-        // An app's memory is capped; do not even try to hand it more.
-        if !meta.is_file() || meta.len() > 1 << 20 {
-            return Err(Error::Invalid("not a regular file under 1 MiB".into()));
+    fn get(&mut self, key: String) -> Option<Vec<u8>> {
+        let path = self.key_path(&key).ok()?;
+        let meta = std::fs::metadata(&path).ok()?;
+        // `set` never stores more than this.
+        if !meta.is_file() || meta.len() > VALUE_MAX as u64 {
+            return None;
         }
-        std::fs::read(&path).map_err(io_error)
+        std::fs::read(&path).ok()
     }
-    fn write(&mut self, loc: Location, name: String, data: Vec<u8>) -> Result<(), Error> {
-        let path = self.resolve(loc, &name, true)?;
-        let dir = path.parent().unwrap().to_path_buf();
-        std::fs::create_dir_all(&dir).map_err(io_error)?;
+    fn set(&mut self, key: String, value: Vec<u8>) -> Result<(), Error> {
+        let path = self.key_path(&key)?;
+        if value.len() > VALUE_MAX {
+            return Err(Error::Invalid("a value is at most 1 MiB".into()));
+        }
+        let dir = &self.store_dir;
+        std::fs::create_dir_all(dir).map_err(io_error)?;
         let old = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-        if (data.len() as u64).saturating_sub(old) > usable_space(&dir) {
+        if (value.len() as u64).saturating_sub(old) > usable_space(dir) {
             return Err(Error::NoSpace);
         }
-        let tmp = dir.join(format!(".{name}.tmp"));
+        let tmp = dir.join(format!(".{key}.tmp"));
         let result = (|| {
             use std::io::Write;
             let mut f = std::fs::File::create(&tmp)?;
-            f.write_all(&data)?;
+            f.write_all(&value)?;
             f.sync_all()?;
             std::fs::rename(&tmp, &path)
         })();
@@ -611,33 +601,24 @@ impl api::storage::Host for AppCtx {
         }
         result.map_err(io_error)
     }
-    fn remove(&mut self, loc: Location, name: String) -> Result<(), Error> {
-        let path = self.resolve(loc, &name, true)?;
-        std::fs::remove_file(path).map_err(io_error)
+    fn remove(&mut self, key: String) -> Result<(), Error> {
+        let path = self.key_path(&key)?;
+        match std::fs::remove_file(path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io_error(e)),
+            _ => Ok(()),
+        }
     }
-    fn exists(&mut self, loc: Location, name: String) -> bool {
-        self.resolve(loc, &name, false)
-            .map(|p| p.is_file())
-            .unwrap_or(false)
-    }
-    fn list(&mut self, loc: Location) -> Result<Vec<String>, Error> {
-        let dir = self.location_dir(loc, false)?;
+    fn keys(&mut self) -> Vec<String> {
         let mut names = Vec::new();
-        match std::fs::read_dir(&dir) {
-            Ok(rd) => {
-                for e in rd.flatten() {
-                    let name = e.file_name().to_string_lossy().into_owned();
-                    let is_file = e.file_type().map(|t| t.is_file()).unwrap_or(false);
-                    if is_file && !name.starts_with('.') {
-                        names.push(name);
-                    }
-                }
+        for e in std::fs::read_dir(&self.store_dir).into_iter().flatten().flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let is_file = e.file_type().map(|t| t.is_file()).unwrap_or(false);
+            if is_file && !bad_key(&name) {
+                names.push(name);
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(io_error(e)),
         }
         names.sort();
-        Ok(names)
+        names
     }
 }
 
@@ -984,22 +965,6 @@ impl api::events::Host for AppCtx {
 }
 
 impl api::audio::Host for AppCtx {
-    fn play_file(&mut self, loc: Location, name: String, start: u32) -> Result<(), Error> {
-        let path = self.resolve(loc, &name, false)?;
-        if !path.is_file() {
-            return Err(Error::NotFound);
-        }
-        // The audio side reads and decodes the file before it answers.
-        self.store
-            .send(Command::PlayFile {
-                path: path.to_string_lossy().into_owned(),
-                start_secs: start,
-                app: self.name.clone(),
-            })
-            .wait_timeout(Duration::from_secs(5))
-            .map(|_| self.playing = true)
-            .map_err(|e| Error::Failed(e.to_string()))
-    }
     fn play(&mut self, sound: Vec<u8>, start: u32) -> Result<(), Error> {
         // The audio side decodes the sound before it answers.
         self.store

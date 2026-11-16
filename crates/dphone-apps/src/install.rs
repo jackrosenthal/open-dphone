@@ -185,9 +185,8 @@ fn sync_dir(dir: &Path) {
 pub struct Installer {
     pub builtin_root: PathBuf,
     pub installed_root: PathBuf,
-    /// `/nvdata/appdata` and `/tmp/appdata`, for removal.
+    /// `/nvdata/appdata`, for removal.
     pub nv_root: PathBuf,
-    pub tmp_root: PathBuf,
 }
 
 impl Installer {
@@ -294,7 +293,7 @@ impl Installer {
         }
     }
 
-    /// Removes an installed app with its persistent and temporary data.
+    /// Removes an installed app with its store.
     pub fn remove(&self, name: &str) -> Result<(), InstallError> {
         crate::manifest::validate_name(name).map_err(InstallError::Manifest)?;
         let dir = self.installed_root.join(name);
@@ -303,7 +302,6 @@ impl Installer {
         }
         std::fs::remove_dir_all(&dir)?;
         let _ = std::fs::remove_dir_all(self.nv_root.join(name));
-        let _ = std::fs::remove_dir_all(self.tmp_root.join(name));
         sync_dir(&self.installed_root);
         Ok(())
     }

@@ -520,7 +520,7 @@ impl Sparrow {
     }
 
     fn seed(&self) -> u32 {
-        dphone_app_sdk::read_string(Location::Nv, SEED_FILE)
+        dphone_app_sdk::read_string(SEED_FILE)
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or_else(|| (timers::now_ms() as u32) ^ self.games.wrapping_mul(0x9E37_79B9))
     }
@@ -531,7 +531,7 @@ impl Sparrow {
         if self.game.score > self.best {
             self.best = self.game.score;
             if let Err(e) =
-                storage::write(Location::Nv, BEST_FILE, self.best.to_string().as_bytes())
+                storage::set(BEST_FILE, self.best.to_string().as_bytes())
             {
                 dphone_app_sdk::log_warn(&format!("the best score was not saved: {e:?}"));
             }
@@ -589,7 +589,7 @@ impl App for Sparrow {
     fn start(&mut self) {
         // The whole display, from the first frame.
         ui::set_full_screen(true);
-        self.best = dphone_app_sdk::read_string(Location::Nv, BEST_FILE)
+        self.best = dphone_app_sdk::read_string(BEST_FILE)
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or(0);
     }

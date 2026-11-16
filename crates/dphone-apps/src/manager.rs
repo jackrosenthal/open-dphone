@@ -9,7 +9,7 @@
 use crate::engine::{AppEngine, EPOCH_TICK, EngineError, Target};
 use crate::host::bindings::App;
 use crate::host::bindings::dphone::app::types as wit;
-use crate::host::{self, Action, AppCtx, Dirs, IDLE_BIT, Inbound, Inbox, Timer};
+use crate::host::{self, Action, AppCtx, IDLE_BIT, Inbound, Inbox, Timer};
 use crate::install::{InstallError, Installer};
 use crate::manifest::{AppType, Capability, Manifest};
 use crate::prepare::{self, Job, Prepared};
@@ -35,12 +35,8 @@ pub struct ManagerConfig {
     pub installed_root: PathBuf,
     /// Stock JavaScript apps; only looked at to log that they are skipped.
     pub js_root: PathBuf,
-    /// Persistent app data (`nv`, `nvshared`).
+    /// The apps' stores of keys and values: `<root>/<name>/<key>`.
     pub nv_root: PathBuf,
-    /// Temporary app data (`tmp`, `tmpshared`).
-    pub tmp_root: PathBuf,
-    /// Shared read-only data (`data`).
-    pub data_dir: PathBuf,
     /// Default linear-memory cap per app.
     pub memory_cap: usize,
     /// The most a manifest may ask for.
@@ -60,8 +56,6 @@ impl ManagerConfig {
             installed_root: "/nvdata/wasmapps".into(),
             js_root: "/nvdata/jsapps".into(),
             nv_root: "/nvdata/appdata".into(),
-            tmp_root: "/tmp/appdata".into(),
-            data_dir: "/usr/share/dphone/data".into(),
             memory_cap: 4 << 20,
             memory_hard_cap: 16 << 20,
             call_budget: Duration::from_secs(2),
@@ -72,14 +66,12 @@ impl ManagerConfig {
 
     /// The same layout under another root (simulator, tests): `nvdata` is
     /// the nvdata directory, `builtin_root` the built apps.
-    pub fn rooted(builtin_root: &Path, nvdata: &Path, tmp: &Path) -> ManagerConfig {
+    pub fn rooted(builtin_root: &Path, nvdata: &Path) -> ManagerConfig {
         ManagerConfig {
             builtin_root: builtin_root.into(),
             installed_root: nvdata.join("wasmapps"),
             js_root: nvdata.join("jsapps"),
             nv_root: nvdata.join("appdata"),
-            tmp_root: tmp.join("appdata"),
-            data_dir: builtin_root.join("../data"),
             ..ManagerConfig::phone()
         }
     }
@@ -149,7 +141,6 @@ impl AppManager {
             builtin_root: cfg.builtin_root.clone(),
             installed_root: cfg.installed_root.clone(),
             nv_root: cfg.nv_root.clone(),
-            tmp_root: cfg.tmp_root.clone(),
         };
         installer.recover();
         let commands = store.handle(Domain::Apps);
@@ -495,11 +486,6 @@ impl AppManager {
         let component = self.load_code(name)?;
         let known = self.known.get(name).ok_or("no such app")?;
         let manifest = known.manifest.clone();
-        let dirs = Dirs {
-            nv_root: self.cfg.nv_root.clone(),
-            tmp_root: self.cfg.tmp_root.clone(),
-            data: self.cfg.data_dir.clone(),
-        };
         let mut linker = Linker::<AppCtx>::new(self.engine.wasmtime());
         host::link(&mut linker, &manifest).map_err(|e| format!("{e:#}"))?;
 
@@ -516,7 +502,7 @@ impl AppManager {
         let ctx = AppCtx {
             name: name.to_string(),
             generation: self.generation,
-            dirs,
+            store_dir: self.cfg.nv_root.join(name),
             window,
             idle,
             idle_size: self.shell.idle_size(),

@@ -51,7 +51,6 @@ fn main() {
     let mut cfg = ManagerConfig::rooted(
         std::path::Path::new(&root),
         &tmp.join("nvdata"),
-        &tmp.join("tmp"),
     );
     // On a 64-bit workstation, `S1_TARGET=pulley64` runs the interpreter
     // instead of native code (apps staged with `--target pulley64`).

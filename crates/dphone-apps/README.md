@@ -26,8 +26,7 @@ The `.cwasm` files are tied to the Wasmtime version and to the settings in `src/
 | --- | --- |
 | `/usr/share/dphone/apps/<name>/` | Built-in apps: `app.pb`, `<name>.cwasm` |
 | `/nvdata/wasmapps/<name>/` | Installed apps (beside the stock `/nvdata/jsapps`, which is left alone): `app.pb`, `<name>.wasm`, `.code.cwasm` |
-| `/nvdata/appdata/<name>/`, `/nvdata/appdata/@shared/` | `nv`, `nvshared` |
-| `/tmp/appdata/<name>/`, `/tmp/appdata/@shared/` | `tmp`, `tmpshared` |
+| `/nvdata/appdata/<name>/` | The app's store (the interface `storage`): a file for each key, removed with the app |
 
 `app.pb` is the phone's record of an app: its manifest (the message `dphone.app.v1.Manifest` of `crates/dphone-app-sdk/proto/manifest.proto`, icons included) with the interfaces its component imports.  The launcher's icon comes from there: the one for the phone's model if the manifest has one, else the app's, else one of the phone's own by the name the manifest gives.  `<name>.wasm` is the component as it was installed.
 

@@ -11,44 +11,17 @@ struct Faulty {
 }
 
 fn storage_report() -> String {
-    let mut r = Vec::new();
-    r.push(format!(
-        "write={}",
-        storage::write(Location::Nv, "a.txt", b"hello").is_ok()
-    ));
-    r.push(format!(
-        "read={}",
-        storage::read(Location::Nv, "a.txt")
-            .map(|d| d == b"hello")
-            .unwrap_or(false)
-    ));
-    r.push(format!(
-        "list={}",
-        storage::list(Location::Nv)
-            .map(|l| l.join(","))
-            .unwrap_or_default()
-    ));
-    r.push(format!(
-        "escape={}",
-        storage::write(Location::Nv, "../b.txt", b"x").is_ok()
-    ));
-    r.push(format!(
-        "slash={}",
-        storage::read(Location::Tmp, "a/b").is_ok()
-    ));
-    r.push(format!(
-        "rofs={}",
-        storage::write(Location::Data, "c.txt", b"x").is_ok()
-    ));
-    r.push(format!(
-        "shared={}",
-        storage::write(Location::Tmpshared, "s.txt", b"1").is_ok()
-    ));
-    r.push(format!(
-        "remove={}",
-        storage::remove(Location::Nv, "a.txt").is_ok()
-    ));
-    r.push(format!("gone={}", !storage::exists(Location::Nv, "a.txt")));
+    let r = [
+        format!("set={}", storage::set("a.txt", b"hello").is_ok() && storage::set("b", b"2").is_ok()),
+        format!("get={}", storage::get("a.txt").is_some_and(|d| d == b"hello")),
+        format!("keys={}", storage::keys().join(",")),
+        format!("escape={}", storage::set("../b.txt", b"x").is_ok()),
+        format!("slash={}", storage::get("a/b").is_some()),
+        format!("dot={}", storage::set(".hidden", b"x").is_ok()),
+        format!("remove={}", storage::remove("a.txt").is_ok()),
+        format!("gone={}", storage::get("a.txt").is_none()),
+        format!("again={}", storage::remove("a.txt").is_ok()),
+    ];
     r.join(" ")
 }
 

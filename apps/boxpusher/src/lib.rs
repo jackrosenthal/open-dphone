@@ -23,7 +23,7 @@ const SK_AGAIN: u32 = 6;
 const SK_PLAY: u32 = 7;
 const SK_BACK: u32 = 8;
 
-/// The file, in the app's own storage, that holds the progress: the level
+/// The key, in the app's storage, that holds the progress: the level
 /// being played, how many levels are solved, and the steps taken in the
 /// level so far.
 const PROGRESS: &str = "progress";
@@ -123,7 +123,7 @@ impl BoxPusher {
     /// Reads the progress file; what it does not say, or says wrongly, is
     /// the beginning.
     fn restore(&mut self) {
-        self.saved = read_string(Location::Nv, PROGRESS).unwrap_or_default();
+        self.saved = read_string(PROGRESS).unwrap_or_default();
         let saved = self.saved.clone();
         let field = |name: &str| {
             saved
@@ -152,7 +152,7 @@ impl BoxPusher {
             "level={}\nsolved={}\nmoves={}\n",
             self.level, self.solved, moves
         );
-        if now != self.saved && storage::write(Location::Nv, PROGRESS, now.as_bytes()).is_ok() {
+        if now != self.saved && storage::set(PROGRESS, now.as_bytes()).is_ok() {
             self.saved = now;
         }
     }

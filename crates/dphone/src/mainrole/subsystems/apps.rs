@@ -192,10 +192,10 @@ pub fn start(ctx: &Context, ui: Option<UiHandle>, config: Option<SharedConfig>, 
     };
     let manager_config = if ctx.sim {
         match std::env::var_os(APPS_ROOT_ENV) {
-            Some(root) => ManagerConfig::rooted(&PathBuf::from(root), &ctx.paths.nvdata, &ctx.paths.run),
+            Some(root) => ManagerConfig::rooted(&PathBuf::from(root), &ctx.paths.nvdata),
             None => {
                 info!("apps: simulator without {APPS_ROOT_ENV}; no built-in apps");
-                ManagerConfig::rooted(&ctx.paths.run.join("no-apps"), &ctx.paths.nvdata, &ctx.paths.run)
+                ManagerConfig::rooted(&ctx.paths.run.join("no-apps"), &ctx.paths.nvdata)
             }
         }
     } else {
