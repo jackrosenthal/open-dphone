@@ -27,18 +27,18 @@ Open DPhone is open-source firmware for the Digium D-series desk phones: the D40
     <img class="d65-viewer__screen" style="--d65-n: 11" src="assets/d65-viewer/screens/12-call-active-ember.webp" alt="">
   </div>
   <figcaption>
-    <span style="--d65-n: 0">The idle screen in the Harbor theme.</span>
-    <span style="--d65-n: 1">The idle screen in the Dusk theme.</span>
-    <span style="--d65-n: 2">The idle screen in the Sunrise theme.</span>
-    <span style="--d65-n: 3">The idle screen in the Regatta theme.</span>
-    <span style="--d65-n: 4">The Applications menu in the Glacier theme.</span>
-    <span style="--d65-n: 5">Light Up, one of three built-in games.</span>
-    <span style="--d65-n: 6">Desk Sparrow, one of three built-in games.</span>
-    <span style="--d65-n: 7">Box Pusher, one of three built-in games.</span>
-    <span style="--d65-n: 8">The Alarms app.</span>
-    <span style="--d65-n: 9">The main menu in the Amethyst theme.</span>
-    <span style="--d65-n: 10">An incoming call in the Evergreen theme.</span>
-    <span style="--d65-n: 11">An active call in the Ember theme.</span>
+    <span style="--d65-n: 0">Harbor theme</span>
+    <span style="--d65-n: 1">Dusk theme</span>
+    <span style="--d65-n: 2">Sunrise theme</span>
+    <span style="--d65-n: 3">Regatta theme</span>
+    <span style="--d65-n: 4">Glacier theme</span>
+    <span style="--d65-n: 5">Light Up</span>
+    <span style="--d65-n: 6">Desk Sparrow</span>
+    <span style="--d65-n: 7">Box Pusher</span>
+    <span style="--d65-n: 8">Alarms</span>
+    <span style="--d65-n: 9">Amethyst theme</span>
+    <span style="--d65-n: 10">Evergreen theme</span>
+    <span style="--d65-n: 11">Ember theme</span>
   </figcaption>
 </figure>
 
