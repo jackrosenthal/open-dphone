@@ -147,7 +147,7 @@ fn path(from: (usize, usize), to: (usize, usize), digits: bool) -> Vec<Key> {
     for _ in 0..v.abs() {
         keys.push(match (v > 0, digits) {
             (true, false) => Key::Down,
-            (true, true) => Key::Digit(8),
+            (true, true) => Key::Digit(5),
             (false, false) => Key::Up,
             (false, true) => Key::Digit(2),
         });
@@ -323,14 +323,14 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
         (bounds[0].x, 239, 239)
     );
 
-    // The arrows and 4, 2, 6, 8 move the cursor; only the cursor is
+    // The arrows and 2, 4, 5, 6 move the cursor; only the cursor is
     // drawn again.  At an edge nothing happens and nothing is drawn.
     let mut draws = 9;
     for (key, dx, dy) in [
         (Key::Right, 1, 0),
         (Key::Digit(6), 1, 0),
         (Key::Down, 0, 1),
-        (Key::Digit(8), 0, 1),
+        (Key::Digit(5), 0, 1),
         (Key::Left, -1, 0),
         (Key::Digit(4), -1, 0),
         (Key::Left, -1, 0),
@@ -353,8 +353,10 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     assert_eq!(draws, 9 + 8);
     assert_eq!(game.cursor(), (0, 0));
 
-    // 5 and Select put a light, 3 a no-light mark, 1 clears; the other
-    // keys do nothing.  On every cell of the first two rows, in turn:
+    // 1 and Select put a light, or take it off a cell that has one; 3
+    // puts a no-light mark, or takes it off; each puts its own in place
+    // of the other's.  7, 9, 0, star, and pound do nothing.  On every
+    // cell of the first two rows, in turn:
     // black cells take nothing.
     let white: Vec<usize> = (0..puzzle.cells())
         .filter(|i| !puzzle.is_black(*i))
@@ -368,15 +370,14 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
         game.set_cursor(to.0, to.1);
     };
     let acts = [
-        (Key::Digit(5), Some(Act::Light)),
-        (Key::Digit(5), Some(Act::Light)),
+        (Key::Digit(1), Some(Act::Light)),
+        (Key::Digit(1), Some(Act::Light)),
         (Key::Digit(3), Some(Act::Mark)),
         (Key::Digit(3), Some(Act::Mark)),
         (Key::Select, Some(Act::Light)),
-        (Key::Digit(1), Some(Act::Clear)),
-        (Key::Digit(1), Some(Act::Clear)),
         (Key::Digit(3), Some(Act::Mark)),
-        (Key::Digit(1), Some(Act::Clear)),
+        (Key::Digit(1), Some(Act::Light)),
+        (Key::Select, Some(Act::Light)),
         (Key::Digit(7), None),
         (Key::Digit(9), None),
         (Key::Digit(0), None),
@@ -389,7 +390,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
         for (key, act) in acts {
             let before = (r.ui.draw_count(APP), game.clone());
             r.key(APP, key);
-            let changed = act.is_some_and(|a| game.act(a));
+            let changed = act.is_some_and(|a| game.toggle(a));
             assert_eq!(changed, game != before.1);
             assert_eq!(
                 state(&mut r),
@@ -413,7 +414,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     assert!(!game.solved());
 
     // Now the solution: the lights on the first two white cells go if
-    // they are wrong, and every light of the solution is put, with 5 and
+    // they are wrong, and every light of the solution is put, with 1 and
     // with Select in turn.
     let solved = solution(&puzzle);
     for cell in [white[0], white[1]] {
@@ -432,7 +433,7 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
         r.key(
             APP,
             if n.is_multiple_of(2) {
-                Key::Digit(5)
+                Key::Digit(1)
             } else {
                 Key::Select
             },
@@ -620,7 +621,7 @@ fn the_puzzle_is_kept_and_a_call_does_not_end_it() {
     );
     r.ui.cover(APP, false);
     r.settle();
-    r.key(APP, Key::Digit(1));
+    r.key(APP, Key::Digit(3));
     assert_ne!(drawn(&r), shown);
 
     // Leaving with Cancel stops the app; the next time the puzzle is
@@ -717,12 +718,12 @@ fn undo_takes_changes_back_one_by_one_and_is_kept() {
     assert_eq!((drawn(&r), red(&r)), (expected(Model::D60, &game), 4));
 
     // A light that makes an error, taken back: the error drawing goes.
-    keys(&mut r, &[Key::Down, Key::Down, Key::Down, Key::Digit(5)]);
+    keys(&mut r, &[Key::Down, Key::Down, Key::Down, Key::Digit(1)]);
     for _ in 0..3 {
         game.move_cursor(0, 1);
     }
     assert!(!game.act(Act::Light), "a black cell: no step");
-    keys(&mut r, &[Key::Right, Key::Digit(5)]);
+    keys(&mut r, &[Key::Right, Key::Digit(1)]);
     game.move_cursor(1, 0);
     assert!(game.act(Act::Light));
     assert!(game.grid().clue_overfull(game.grid().index(3, 4)));
@@ -742,7 +743,7 @@ fn undo_takes_changes_back_one_by_one_and_is_kept() {
         &[
             Key::Up,
             Key::Digit(3),
-            Key::Digit(5),
+            Key::Digit(1),
             Key::Digit(1),
             Key::Digit(3),
         ],
@@ -753,7 +754,7 @@ fn undo_takes_changes_back_one_by_one_and_is_kept() {
     }
     keys(
         &mut r,
-        &[Key::Left, Key::Left, Key::Left, Key::Digit(5), Key::Up],
+        &[Key::Left, Key::Left, Key::Left, Key::Digit(1), Key::Up],
     );
     for _ in 0..3 {
         game.move_cursor(-1, 0);
@@ -808,6 +809,54 @@ fn undo_takes_changes_back_one_by_one_and_is_kept() {
 }
 
 #[test]
+fn key_8_does_what_the_numbers_settle_and_undo_takes_it_back_at_once() {
+    let (grid, cursor) = parse(WRONG);
+    let mut game = Game::new(grid);
+    game.set_cursor(cursor.0, cursor.1);
+    let start = game.clone();
+    for model in [Model::D60, Model::D40, Model::D70] {
+        let mut game = start.clone();
+        let mut r = rig_with(model, WRONG);
+        r.launch(APP);
+        // Marks around the 0 and lights on the two cells of the 2, all
+        // at once; the cursor stays.
+        r.key(APP, Key::Digit(8));
+        assert!(game.auto());
+        let g = game.grid();
+        assert!(g.is_marked(g.index(3, 5)) && g.is_marked(g.index(2, 4)));
+        assert!(g.has_light(g.index(6, 5)) && g.has_light(g.index(5, 6)));
+        assert_eq!(state(&mut r), (g.clone(), cursor), "{model:?}");
+        assert_eq!(drawn(&r), expected(model, &game), "{model:?}");
+        assert_eq!(r.ui.softkeys(APP), SOFTKEYS);
+        let undo = format!("\nundo={}\n", game.changes_text());
+        assert!(undo.matches('+').count() >= 4 && file(&r).contains(&undo));
+        // Once more: there is nothing new to do, and nothing is drawn.
+        let draws = r.ui.draw_count(APP);
+        r.key(APP, Key::Digit(8));
+        assert!(!game.auto());
+        assert_eq!(r.ui.draw_count(APP), draws, "{model:?}");
+        // A light by hand, and Undo twice: the light, and then all that
+        // the key did, though the app was left and opened in between.
+        keys(&mut r, &[Key::Right, Key::Digit(1)]);
+        game.move_cursor(1, 0);
+        assert!(game.toggle(Act::Light));
+        r.softkey(APP, "Undo");
+        assert!(game.undo());
+        assert_eq!(drawn(&r), expected(model, &game), "{model:?}");
+        r.key(APP, Key::Cancel);
+        assert!(!r.mgr.is_running(APP));
+        r.launch(APP);
+        r.softkey(APP, "Undo");
+        assert!(game.undo());
+        assert_eq!(game.grid(), start.grid());
+        assert_eq!(state(&mut r), (game.grid().clone(), game.cursor()));
+        assert_eq!(drawn(&r), expected(model, &game), "{model:?}");
+        assert!(file(&r).contains("\nundo=\n"));
+        r.softkey(APP, "Exit");
+    }
+}
+
+#[test]
 fn help_shows_how_to_play_and_leaves_the_puzzle_as_it_was() {
     use lightup_game::help::PAGES;
     for model in [Model::D60, Model::D40, Model::D70] {
@@ -832,7 +881,7 @@ fn help_shows_how_to_play_and_leaves_the_puzzle_as_it_was() {
         let page = |r: &Rig, n: usize| {
             assert_eq!(
                 r.ui.texts(APP),
-                [format!("How to play ({}/4)", n + 1).as_str(), PAGES[n].text],
+                [format!("How to play ({}/5)", n + 1).as_str(), PAGES[n].text],
                 "{model:?}"
             );
             // One picture, drawn as the board draws that grid, inside
@@ -861,9 +910,13 @@ fn help_shows_how_to_play_and_leaves_the_puzzle_as_it_was() {
         page(&r, 2);
         r.key(APP, Key::Right);
         page(&r, 3);
+        r.softkey(APP, "Next");
+        page(&r, 4);
         r.key(APP, Key::Down);
         page(&r, 0);
         r.key(APP, Key::Left);
+        page(&r, 4);
+        r.key(APP, Key::Up);
         page(&r, 3);
         r.key(APP, Key::Up);
         page(&r, 2);
@@ -903,7 +956,7 @@ fn help_shows_how_to_play_and_leaves_the_puzzle_as_it_was() {
     let mut r = rig(Model::D40, 3);
     r.launch(APP);
     r.softkey(APP, "Help");
-    assert_eq!(r.ui.texts(APP)[0], "How to play (1/4)");
+    assert_eq!(r.ui.texts(APP)[0], "How to play (1/5)");
     r.softkey(APP, "Back");
     assert_eq!(r.ui.texts(APP), ["New puzzle"]);
     r.softkey(APP, "Help");
@@ -957,7 +1010,7 @@ fn generating_goes_on_in_turns_and_waits_while_a_call_has_the_screen() {
 
     // New while generating is the list again; Back from there is the
     // puzzle there was, untouched.
-    r.key(APP, Key::Digit(5));
+    r.key(APP, Key::Digit(1));
     let played = state(&mut r);
     choose_from_play(&mut r, 14, Difficulty::Hard);
     assert!(generating(&r));
@@ -1440,7 +1493,7 @@ fn pictures(model: Model) -> [Phone; 3] {
     let mut help = Phone::new(model, &puzzle_file(7, Difficulty::Easy, 30, "play"));
     let puzzle = help.pixels().0;
     help.tap(&[Key::Soft(3)]);
-    for page in 1..=4 {
+    for page in 1..=5 {
         help.shot(&format!("help-{page}"));
         help.tap(&[Key::Soft(1)]);
     }
@@ -1487,7 +1540,7 @@ fn only_what_changed_is_sent(fresh: &mut Phone, pitch: usize) {
     fresh.tap(&path(cursor, (1, 0), false));
     fresh.tap(&path((1, 0), (white, 0), true));
     let before = fresh.pixels().0;
-    assert_eq!(fresh.tap(&[Key::Digit(5)]), 1, "{model:?}");
+    assert_eq!(fresh.tap(&[Key::Digit(1)]), 1, "{model:?}");
     let (width, height, differ) = fresh.changed(&before);
     assert!(
         width <= side * pitch + 1 && height <= side * pitch + 1,
@@ -1498,13 +1551,14 @@ fn only_what_changed_is_sent(fresh: &mut Phone, pitch: usize) {
         differ > 0 && differ <= lit * pitch * pitch,
         "{model:?}: {differ} pixels for {lit} cells"
     );
-    // Once more: nothing.  A mark on it, and clearing it: once each.
-    assert_eq!(fresh.tap(&[Key::Digit(5), Key::Select]), 0, "{model:?}");
+    // Once more, and with Select: the light goes, and is back.  A mark
+    // in its place, and the mark off: once each.  The keys that do
+    // nothing: nothing.
+    assert_eq!(fresh.tap(&[Key::Digit(1), Key::Select]), 2, "{model:?}");
     assert_eq!(fresh.tap(&[Key::Digit(3)]), 1, "{model:?}");
-    assert_eq!(fresh.tap(&[Key::Digit(3)]), 0, "{model:?}");
-    assert_eq!(fresh.tap(&[Key::Digit(1)]), 1, "{model:?}");
+    assert_eq!(fresh.tap(&[Key::Digit(3)]), 1, "{model:?}");
     assert_eq!(
-        fresh.tap(&[Key::Digit(1), Key::Digit(7), Key::Digit(9)]),
+        fresh.tap(&[Key::Digit(7), Key::Digit(9), Key::Digit(0)]),
         0,
         "{model:?}"
     );
@@ -1629,12 +1683,12 @@ fn numbers_that_cannot_be_met_are_drawn_as_errors() {
             if model.is_color() {
                 assert!(both > 0 && both < pitch * pitch, "{what}: {both}");
             }
-            // Clearing the mark leaves the 1 a cell for its light: the
+            // Taking the mark off leaves the 1 a cell for its light: the
             // number beside the mark is drawn anew with it, and is an
             // error no more.
             phone.tap(&[Key::Up]);
             let before = phone.pixels().0;
-            assert_eq!(phone.tap(&[Key::Digit(1)]), 1, "{what}");
+            assert_eq!(phone.tap(&[Key::Digit(3)]), 1, "{what}");
             let mut after = grid.clone();
             assert!(after.set_mark(after.index(5, 1), false));
             assert!(!after.clue_unsatisfiable(wrong[1]) && after.clue_unsatisfiable(wrong[0]));

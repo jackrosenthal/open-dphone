@@ -475,6 +475,13 @@ fn the_help_pictures_show_what_their_pages_say() {
     let g = &grids[3];
     assert_eq!(g.clue(2), Some(0));
     assert!(g.is_marked(1) && g.is_marked(3) && g.is_marked(7));
+    // A 2 with its two lights, and marks on the other cells beside it:
+    // what the key that does what the numbers settle leaves.
+    let g = &grids[4];
+    let two = g.index(1, 1);
+    assert_eq!((g.clue(two), g.lights_beside(two)), (Some(2), 2));
+    assert!(g.is_marked(g.index(0, 1)) && g.is_marked(g.index(1, 2)));
+    assert!((0..15).all(|i| !g.light_conflicts(i) && !g.clue_unsatisfiable(i)));
     for page in &PAGES {
         // Short enough for five lines of the smallest display.
         assert!(page.text.len() <= 105, "{}", page.text.len());

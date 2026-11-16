@@ -601,7 +601,7 @@ pub enum Act {
 }
 
 /// The most changes a game remembers to take back; older ones are
-/// forgotten.  Written down, a change is at most four characters.
+/// forgotten.  Written down, a change is at most five characters.
 pub const UNDO_STEPS: usize = 500;
 
 /// A puzzle being played: the grid with the player's lights and marks,
@@ -612,9 +612,11 @@ pub struct Game {
     grid: Grid,
     cursor: (u8, u8),
     solved: bool,
-    /// The changes, oldest first: the cell, and what it held before
-    /// (`.` nothing, `L` a light, `x` a mark).
-    changes: Vec<(u8, u8)>,
+    /// The changes, oldest first: the cell, what it held before (`.`
+    /// nothing, `L` a light, `x` a mark), and whether the change was made
+    /// together with the one before it (by [`Game::auto`]), so that the
+    /// two are taken back together.
+    changes: Vec<(u8, u8, bool)>,
 }
 
 impl Game {
@@ -645,37 +647,49 @@ impl Game {
         !self.solved && !self.changes.is_empty()
     }
 
-    /// Takes the last change back and puts the cursor on its cell.  False
-    /// if there is none, or the puzzle is solved.
+    /// Takes the last change back and puts the cursor on its cell; what
+    /// [`Game::auto`] did at once is taken back at once, and the cursor
+    /// stays where it is.  False if there is no change, or the puzzle is
+    /// solved.
     pub fn undo(&mut self) -> bool {
-        if self.solved {
+        if self.solved || self.changes.is_empty() {
             return false;
         }
-        let Some((cell, before)) = self.changes.pop() else {
-            return false;
-        };
-        let i = cell as usize;
-        self.grid.remove_light(i);
-        self.grid.set_mark(i, false);
-        match before {
-            b'L' => {
-                self.grid.place_light(i);
+        let mut several = false;
+        while let Some((cell, before, joined)) = self.changes.pop() {
+            let i = cell as usize;
+            self.grid.remove_light(i);
+            self.grid.set_mark(i, false);
+            match before {
+                b'L' => {
+                    self.grid.place_light(i);
+                }
+                b'x' => {
+                    self.grid.set_mark(i, true);
+                }
+                _ => {}
             }
-            b'x' => {
-                self.grid.set_mark(i, true);
+            several |= joined;
+            if !joined {
+                if !several {
+                    self.cursor = (self.grid.column(i) as u8, (i / self.grid.width()) as u8);
+                }
+                break;
             }
-            _ => {}
         }
-        self.cursor = (self.grid.column(i) as u8, (i / self.grid.width()) as u8);
         self.solved = self.grid.is_solved();
         true
     }
 
     /// The changes as text, to keep with the puzzle: for each, oldest
-    /// first, the number of the cell and what it held before.
+    /// first, the number of the cell and what it held before, with a `+`
+    /// in front if it was made together with the one before it.
     pub fn changes_text(&self) -> String {
         let mut out = String::new();
-        for (cell, before) in &self.changes {
+        for (cell, before, joined) in &self.changes {
+            if *joined {
+                out.push('+');
+            }
             out.push_str(&cell.to_string());
             out.push(*before as char);
         }
@@ -688,8 +702,10 @@ impl Game {
     pub fn set_changes(&mut self, text: &str) {
         self.changes.clear();
         let mut cell: Option<usize> = None;
+        let mut joined = false;
         for c in text.bytes() {
             match (c, cell) {
+                (b'+', None) if !joined && !self.changes.is_empty() => joined = true,
                 (b'0'..=b'9', n) => {
                     let n = n.unwrap_or(0) * 10 + (c - b'0') as usize;
                     cell = Some(n.min(MAX_CELLS));
@@ -697,13 +713,14 @@ impl Game {
                 (b'.' | b'L' | b'x', Some(i))
                     if i < self.grid.cells() && !self.grid.is_black(i) =>
                 {
-                    self.changes.push((i as u8, c));
+                    self.changes.push((i as u8, c, joined));
                     cell = None;
+                    joined = false;
                 }
                 _ => return self.changes.clear(),
             }
         }
-        if cell.is_some() {
+        if cell.is_some() || joined {
             self.changes.clear();
         }
         let extra = self.changes.len().saturating_sub(UNDO_STEPS);
@@ -742,6 +759,21 @@ impl Game {
         moved
     }
 
+    /// What a key that puts a light or a mark does to the cell under the
+    /// cursor: it puts that there (in place of the other, if the cell has
+    /// it), or takes it off if the cell has it already.  False if nothing
+    /// changed.
+    pub fn toggle(&mut self, act: Act) -> bool {
+        let (x, y) = self.cursor();
+        let i = self.grid.index(x, y);
+        let has = match act {
+            Act::Light => self.grid.has_light(i),
+            Act::Mark => self.grid.is_marked(i),
+            Act::Clear => false,
+        };
+        self.act(if has { Act::Clear } else { act })
+    }
+
     /// Acts on the cell under the cursor.  False if nothing changed: the
     /// cell is black, or already as asked, or the puzzle is solved.
     pub fn act(&mut self, act: Act) -> bool {
@@ -760,10 +792,64 @@ impl Game {
             Act::Clear => self.grid.remove_light(i) || self.grid.set_mark(i, false),
         };
         if changed {
-            if self.changes.len() == UNDO_STEPS {
-                self.changes.remove(0);
+            self.remember(i, before, false);
+        }
+        self.solved = self.grid.is_solved();
+        changed
+    }
+
+    fn remember(&mut self, i: usize, before: u8, joined: bool) {
+        if self.changes.len() == UNDO_STEPS {
+            self.changes.remove(0);
+        }
+        self.changes.push((i as u8, before, joined));
+    }
+
+    /// Does what the numbers settle as the board stands, all at once: a
+    /// no-light mark on every open cell beside a number that has its
+    /// lights (or more), and a light on every open cell beside a number
+    /// that needs as many more lights as it has open cells.  An open
+    /// cell is one that could still take a light ([`Grid::is_candidate`]).
+    ///
+    /// Every number is judged on the board as it was, not on what this
+    /// puts there, so lights it puts for two numbers may shine on each
+    /// other; they are then shown as errors.  A cell that one number
+    /// wants marked and another wants lit is left alone.  The changes are
+    /// taken back together.  False if nothing changed.
+    pub fn auto(&mut self) -> bool {
+        if self.solved {
+            return false;
+        }
+        const MARK: u8 = 1;
+        const LIGHT: u8 = 2;
+        let mut wanted = [0u8; MAX_CELLS];
+        for c in 0..self.grid.cells() {
+            let Some(n) = self.grid.clue(c) else { continue };
+            let (cells, count) = self.grid.neighbors(c);
+            let open = cells[..count]
+                .iter()
+                .filter(|j| self.grid.is_candidate(**j as usize));
+            let lights = self.grid.lights_beside(c);
+            let what = if lights >= n as usize {
+                MARK
+            } else if n as usize - lights == open.clone().count() {
+                LIGHT
+            } else {
+                continue;
+            };
+            for j in open {
+                wanted[*j as usize] |= what;
             }
-            self.changes.push((i as u8, before));
+        }
+        let mut changed = false;
+        for (i, what) in wanted.into_iter().enumerate() {
+            match what {
+                MARK => self.grid.set_mark(i, true),
+                LIGHT => self.grid.place_light(i),
+                _ => continue,
+            };
+            self.remember(i, b'.', changed);
+            changed = true;
         }
         self.solved = self.grid.is_solved();
         changed

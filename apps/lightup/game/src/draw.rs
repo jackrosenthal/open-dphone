@@ -760,24 +760,27 @@ pub enum KeyUse {
     Down,
     Left,
     Right,
-    /// Puts a light: shown as a cell with a light.
+    /// Puts a light, or takes it off: shown as a cell with a light.
     Light,
-    /// Marks "no light": shown as a cell with the square.
+    /// Marks "no light", or takes the mark off: shown as a cell with the
+    /// square.
     Mark,
-    /// Clears: shown as an empty cell.
-    Clear,
+    /// Does what the numbers settle ([`Game::auto`]), which puts lights
+    /// and marks: shown as two small cells, one with a light and one
+    /// with the square.
+    Auto,
 }
 
 /// The keys of the game where they are on the keypad (column and row of
 /// the three columns of digits), each with its digit and what it does.
 pub const KEYS: [(u8, u8, u8, KeyUse); 7] = [
-    (1, 0, 0, KeyUse::Clear),
+    (1, 0, 0, KeyUse::Light),
     (2, 1, 0, KeyUse::Up),
     (3, 2, 0, KeyUse::Mark),
     (4, 0, 1, KeyUse::Left),
-    (5, 1, 1, KeyUse::Light),
+    (5, 1, 1, KeyUse::Down),
     (6, 2, 1, KeyUse::Right),
-    (8, 1, 2, KeyUse::Down),
+    (8, 1, 2, KeyUse::Auto),
 ];
 
 /// A picture of the keys.
@@ -810,8 +813,10 @@ fn arrow(t: u16, dir: KeyUse) -> Picture {
 
 /// The picture of the keys for a space of `width` by `height` pixels: the
 /// seven keys as on the keypad, three across, each a frame with its digit
-/// and, beside it, what it does: an arrow, or the cell as the board would
-/// show it (with a light, with the no-light square, or empty).  `ink` is
+/// and, beside it, what it does: an arrow, or a cell as the board would
+/// show it (with a light, with the no-light square, or, for the key that
+/// does what the numbers settle, two cells of half the size, one with
+/// each).  `ink` is
 /// the color of frames, digits, and arrows.  The keys are as large as the
 /// space allows, up to a size that suits the largest display.  The digits
 /// are in the display's font where the palette names one that fits.
@@ -830,7 +835,8 @@ pub fn keymap(width: u16, height: u16, palette: Palette, ink: Rgb) -> Keymap {
         let digit_width = font.map_or(5 * scale, |f| f.width);
         let key_width = digit_width + cell + 3 * pad + 2;
         let gap = 1 + scale;
-        (cell >= 7 && 3 * key_width + 2 * gap <= width && 3 * key_height + 2 * gap <= height)
+        // (Two cells of half the size have room for their pictures.)
+        (cell >= 11 && 3 * key_width + 2 * gap <= width && 3 * key_height + 2 * gap <= height)
             .then_some((
                 key_width,
                 cell,
@@ -895,7 +901,13 @@ pub fn keymap(width: u16, height: u16, palette: Palette, ink: Rgb) -> Keymap {
         let shown = match what {
             KeyUse::Light => "L",
             KeyUse::Mark => "x",
-            KeyUse::Clear => ".",
+            KeyUse::Auto => {
+                let grid = Grid::parse("Lx").expect("two cells");
+                let (w, h, small) = picture(&grid, (cell - 1) / 2, palette);
+                let (dx, dy) = (((cell - w) / 2) as i16, ((cell - h) / 2) as i16);
+                ops.extend(shifted(small, cx + dx, cy + dy));
+                continue;
+            }
             _ => {
                 let t = if cell % 2 == 1 { cell } else { cell - 1 };
                 ops.push(arrow(t, what).op(cx, cy, 1, ink));

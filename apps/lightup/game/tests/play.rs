@@ -207,6 +207,30 @@ fn the_cursor_and_the_three_acts() {
     assert!(game.act(Act::Mark));
     assert!(game.act(Act::Clear));
     assert_eq!(game.grid().to_text(), "#1.\n...\n.#0\n");
+    // The key of the light: a light on an empty cell, off a cell with a
+    // light, and in place of a mark.  The key of the mark likewise.
+    assert!(game.toggle(Act::Light));
+    assert_eq!(game.grid().to_text(), "#1.\nL..\n.#0\n");
+    assert!(game.toggle(Act::Light));
+    assert_eq!(game.grid().to_text(), "#1.\n...\n.#0\n");
+    assert!(game.toggle(Act::Mark));
+    assert_eq!(game.grid().to_text(), "#1.\nx..\n.#0\n");
+    assert!(game.toggle(Act::Light));
+    assert_eq!(game.grid().to_text(), "#1.\nL..\n.#0\n");
+    assert!(game.toggle(Act::Mark));
+    assert_eq!(game.grid().to_text(), "#1.\nx..\n.#0\n");
+    assert!(game.toggle(Act::Mark));
+    assert_eq!(game.grid().to_text(), "#1.\n...\n.#0\n");
+    assert!(!game.toggle(Act::Clear));
+    // Each is one change to take back.
+    assert!(game.toggle(Act::Mark) && game.toggle(Act::Light) && game.undo());
+    assert_eq!(game.grid().to_text(), "#1.\nx..\n.#0\n");
+    assert!(game.undo());
+    assert_eq!(game.grid().to_text(), "#1.\n...\n.#0\n");
+    // On a black cell, nothing.
+    game.set_cursor(0, 0);
+    assert!(!game.toggle(Act::Light) && !game.toggle(Act::Mark));
+    game.set_cursor(0, 1);
 
     // Solving it: the last light ends the game, and then nothing moves.
     assert!(game.act(Act::Light));
@@ -224,6 +248,108 @@ fn the_cursor_and_the_three_acts() {
     let mut game = Game::new(grid("...\n..."));
     game.set_cursor(9, 9);
     assert_eq!(game.cursor(), (2, 1));
+}
+
+#[test]
+fn auto_does_what_the_numbers_settle_in_one_pass() {
+    // A 0 and a 2 that share a cell, a 1 that has its light, and a 3
+    // with four cells for three lights.
+    let mut game = Game::new(grid(
+        ".0...#.\n\
+         .....1L\n\
+         #2#....\n\
+         ...3...\n\
+         ..#.#..\n\
+         .......\n\
+         .......",
+    ));
+    game.set_cursor(6, 6);
+    let before = game.clone();
+    assert!(game.auto());
+    // Marks beside the 0 and beside the 1 that has its light, and a
+    // light below the 2, which has two cells for its two lights.  The
+    // cell between the 0 and the 2, which the one wants marked and the
+    // other lit, is left alone.  Nothing beside the 3.  The cursor stays.
+    assert_eq!(
+        game.grid().to_text(),
+        "x0x..#.\n\
+         ....x1L\n\
+         #2#..x.\n\
+         .L.3...\n\
+         ..#.#..\n\
+         .......\n\
+         .......\n"
+    );
+    assert_eq!(game.cursor(), (6, 6));
+    assert_eq!(game.changes_text(), "0.+2.+11.+19.+22.");
+    // The second press works on what the first left: the light below
+    // the 2 shines on the cell left of the 3, so the 3 has three cells
+    // for three lights.  One pass did not go that far.
+    assert!(game.auto());
+    assert_eq!(
+        game.grid().to_text(),
+        "x0x..#.\n\
+         ....x1L\n\
+         #2#L.x.\n\
+         .L.3L..\n\
+         ..#L#..\n\
+         .......\n\
+         .......\n"
+    );
+    assert_eq!(game.changes_text(), "0.+2.+11.+19.+22.17.+25.+31.");
+    // Nothing more to do: nothing changes, and it is no step.
+    let twice = game.clone();
+    assert!(!game.auto());
+    assert_eq!(game, twice);
+    // Kept as text and read again, a press is still one step.
+    let mut read = Game::new(game.grid().clone());
+    read.set_changes(&game.changes_text());
+    read.set_cursor(6, 6);
+    assert_eq!(read, game);
+    // Undo takes a whole press back at once, and leaves the cursor.
+    assert!(read.undo());
+    assert_eq!(read.cursor(), (6, 6));
+    assert_eq!(read.changes_text(), "0.+2.+11.+19.+22.");
+    assert!(read.undo());
+    assert_eq!(read, before);
+    assert!(!read.undo());
+    for nonsense in ["+4.", "4.++5.", "4.+", "4.+x"] {
+        read.set_changes(nonsense);
+        assert!(!read.can_undo(), "{nonsense}");
+    }
+
+    // A change by hand before a press is a step of its own, with the
+    // cursor on its cell.
+    let mut game = Game::new(grid(".0.\n...\n..."));
+    game.set_cursor(2, 2);
+    assert!(game.act(Act::Mark));
+    game.set_cursor(0, 2);
+    assert!(game.auto());
+    assert_eq!(game.changes_text(), "8.0.+2.+4.");
+    assert_eq!(game.grid().to_text(), "x0x\n.x.\n..x\n");
+    assert!(game.undo());
+    assert_eq!(game.grid().to_text(), ".0.\n...\n..x\n");
+    assert_eq!(game.cursor(), (0, 2));
+    assert!(game.undo());
+    assert_eq!(game.cursor(), (2, 2));
+
+    // Every number is judged on the board as it was: the lights of two
+    // numbers may shine on each other, and are then errors to see.
+    let mut game = Game::new(grid("1..1"));
+    assert!(game.auto());
+    assert_eq!(game.grid().to_text(), "1LL1\n");
+    assert!(game.grid().light_conflicts(1) && game.grid().light_conflicts(2));
+    // A number with too many lights gets marks too, and one with too few
+    // cells left gets nothing.
+    let mut game = Game::new(grid("L1L\n...\n#3#\nx.."));
+    assert!(game.auto());
+    assert_eq!(game.grid().to_text(), "L1L\n.x.\n#3#\nx..\n");
+    assert!(!game.auto());
+    // The last lights solve the puzzle, and then nothing moves.
+    let mut game = Game::new(grid("#2.\n...\n##."));
+    assert!(game.auto() && game.solved());
+    assert_eq!(game.grid().to_text(), "#2L\n.L.\n##.\n");
+    assert!(!game.auto() && !game.undo());
 }
 
 #[test]

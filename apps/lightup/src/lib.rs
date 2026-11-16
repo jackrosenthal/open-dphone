@@ -5,13 +5,18 @@
 //! this one; this is the app around it: the screens, the keys, and the
 //! puzzle kept on the phone.
 //!
-//! The arrow keys, or 4, 2, 6, and 8, move the cursor.  5 or Select puts a
-//! light on the cell, 3 marks it with a square (no light here), and 1
-//! clears it.  "New" offers the sizes and difficulties; each puzzle is
-//! made on the spot and has exactly one solution.  "Undo" takes the last
-//! change to the board back, and the one before, as far as the fresh
-//! puzzle; the changes are kept with the puzzle.  "Help" is four pages of
-//! how to play, each a picture of a rule.  Beside the board is a picture
+//! The arrow keys, or 2, 4, 5, and 6 (up, left, down, and right), move
+//! the cursor.  1 puts a light on the cell, or takes the light off a cell
+//! that has one; 3 marks the cell with a square (no light here), or takes
+//! the square off; each puts its own in place of the other's.  Select
+//! does what 1 does.  8 does what the numbers settle as the board stands:
+//! squares around each number that has its lights, and lights where a
+//! number has just enough cells left.  "New" offers the sizes and
+//! difficulties; each puzzle is made on the spot and has exactly one
+//! solution.  "Undo" takes the last change to the board back (all of what
+//! one press of 8 did), and the one before, as far as the fresh puzzle;
+//! the changes are kept with the puzzle.  "Help" is five pages of how to
+//! play, each a picture of a rule.  Beside the board is a picture
 //! of the keys and what each does.
 //!
 //! Making a puzzle takes a while on the phone, so it is done in short
@@ -683,9 +688,16 @@ impl LightUp {
         }
     }
 
-    fn act(&mut self, act: Act) {
+    /// Puts a light or a mark on the cell under the cursor, or takes it
+    /// off a cell that has it.
+    fn toggle(&mut self, act: Act) {
+        self.changed(|game| game.toggle(act));
+    }
+
+    /// Changes the board, and shows and keeps what came of it.
+    fn changed(&mut self, change: impl FnOnce(&mut Game) -> bool) {
         let Some(game) = &mut self.game else { return };
-        if !game.act(act) {
+        if !change(game) {
             return;
         }
         if game.solved() {
@@ -772,12 +784,12 @@ impl App for LightUp {
             }
             Event::Key(key) => match (key.as_str(), &self.screen) {
                 ("up" | "2", Screen::Play) => self.step(0, -1),
-                ("down" | "8", Screen::Play) => self.step(0, 1),
+                ("down" | "5", Screen::Play) => self.step(0, 1),
                 ("left" | "4", Screen::Play) => self.step(-1, 0),
                 ("right" | "6", Screen::Play) => self.step(1, 0),
-                ("select" | "5", Screen::Play) => self.act(Act::Light),
-                ("3", Screen::Play) => self.act(Act::Mark),
-                ("1", Screen::Play) => self.act(Act::Clear),
+                ("select" | "1", Screen::Play) => self.toggle(Act::Light),
+                ("3", Screen::Play) => self.toggle(Act::Mark),
+                ("8", Screen::Play) => self.changed(|game| game.auto()),
                 ("right" | "down" | "select", Screen::Help) => self.show_help(self.page + 1),
                 ("left" | "up", Screen::Help) => self.show_help(self.page + PAGES.len() - 1),
                 ("cancel", Screen::Help) => self.back(),

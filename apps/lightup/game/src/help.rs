@@ -18,7 +18,7 @@ impl Page {
 
 /// The pictures are five cells by three, so that a page fits the smallest
 /// display beside its text.
-pub const PAGES: [Page; 4] = [
+pub const PAGES: [Page; 5] = [
     Page {
         picture: ".....\n.L.#.\n.....",
         text: "Light every white cell.  A light shines along its row and column until a black cell.",
@@ -34,5 +34,9 @@ pub const PAGES: [Page; 4] = [
     Page {
         picture: ".x0x.\n..x..\n.....",
         text: "A square is your note that a cell gets no light, as next to a 0.",
+    },
+    Page {
+        picture: ".L...\nx2L..\n.x...",
+        text: "8 puts squares around each number that has its lights, and lights where a number has just enough room.",
     },
 ];
