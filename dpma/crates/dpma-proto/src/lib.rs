@@ -11,6 +11,7 @@
 //! Those messages go to the [`log`] crate, so they appear wherever the
 //! application's logger puts them.
 
+pub mod appdata;
 pub mod cert;
 pub mod client;
 pub mod crypto;

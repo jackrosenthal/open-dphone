@@ -383,6 +383,11 @@ fn show_phone(a: &CliArgs) -> CliResult {
     );
     bwriteln!(
         o,
+        "Open DPhone app data tenant: {}",
+        or(&p.dphone_app_data_tenant, "<Not Set>")
+    );
+    bwriteln!(
+        o,
         "Open DPhone SSH authorized keys: {}",
         p.dphone_ssh_authorized_keys.len()
     );

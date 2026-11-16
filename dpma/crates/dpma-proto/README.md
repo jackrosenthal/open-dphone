@@ -27,6 +27,9 @@ framing, and URI parsing) can also serve a phone-side client.
   request and response types, and error codes with their texts.
 - `xml` and `json`: escaping and serialization that match what Asterisk
   produces.
+- `appdata`: the app data of Open DPhone phones, which the official DPMA
+  does not have: the requests and responses, and what a server does with
+  them.
 
 ## How a session works
 

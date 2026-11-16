@@ -215,6 +215,10 @@ pub struct Phone {
     /// Open DPhone: `dphone_palette_file`, the palette file for the
     /// wallpaper.
     pub dphone_palette_file: Vec<u8>,
+    /// Open DPhone: `dphone_app_data_tenant`, the key of the tenant whose
+    /// app data the phone reads and writes (empty: the phones without a
+    /// key), as it was written; it may not be a valid key.
+    pub dphone_app_data_tenant: Vec<u8>,
     /// Open DPhone: each `dphone_ssh_authorized_key`, a public key line.
     pub dphone_ssh_authorized_keys: Vec<Vec<u8>>,
     pub multicastpages: Vec<Vec<u8>>,
@@ -393,6 +397,7 @@ impl Phone {
             dphone_disabled_apps: Vec::new(),
             dphone_idle_softkeys: Vec::new(),
             dphone_palette_file: Vec::new(),
+            dphone_app_data_tenant: Vec::new(),
             dphone_ssh_authorized_keys: Vec::new(),
             multicastpages: Vec::new(),
             logos: Vec::new(),

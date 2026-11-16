@@ -86,7 +86,11 @@ impl Session {
     /// A request of `request_type`: with the session id when the type needs
     /// one, and the configuration token for the types that carry it.
     pub fn request(&self, request_type: &str, body: Vec<u8>) -> Request {
-        let carries_token = [types::CONFIG_REQUEST, types::VERIFY_REQUEST]
+        let carries_token = [
+            types::CONFIG_REQUEST,
+            types::VERIFY_REQUEST,
+            types::APP_DATA_REQUEST,
+        ]
             .iter()
             .any(|t| t.eq_ignore_ascii_case(request_type));
         Request {

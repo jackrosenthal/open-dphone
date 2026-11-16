@@ -10,6 +10,7 @@
 #![allow(clippy::result_unit_err)]
 
 pub mod ami;
+pub mod appdata;
 pub mod apps;
 pub mod auth;
 pub mod avahi;

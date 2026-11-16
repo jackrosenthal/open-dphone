@@ -14,9 +14,12 @@ pub const CONFIG_REQUEST: &str = "ConfigRequest";
 pub const FILE_REQUEST: &str = "FileRequest";
 pub const VERIFY_REQUEST: &str = "VerifyRequest";
 pub const PING_REQUEST: &str = "PingRequest";
+/// Open DPhone's app data ([`crate::appdata`]); not a request of the
+/// official DPMA.
+pub const APP_DATA_REQUEST: &str = crate::appdata::REQUEST;
 
 /// (request type, response type, requires session), in the order
-/// `phone_request_load` registers them.
+/// `phone_request_load` registers them, then Open DPhone's.
 pub const REQUESTS: &[(&str, &str, bool)] = &[
     (ECHO, "EchoResponse", false),
     (HANDSHAKE, "HandshakeResponse", false),
@@ -28,6 +31,7 @@ pub const REQUESTS: &[(&str, &str, bool)] = &[
     (FILE_REQUEST, "FileResponse", true),
     (VERIFY_REQUEST, "VerifyResponse", true),
     (PING_REQUEST, "PingResponse", true),
+    (APP_DATA_REQUEST, crate::appdata::RESPONSE, true),
 ];
 
 /// The response type that answers `request` (case insensitive), as used by

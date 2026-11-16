@@ -75,3 +75,8 @@ harness = false
 name = "apps-discovery"
 path = "suites/apps-discovery/main.rs"
 harness = false
+
+[[test]]
+name = "app-data"
+path = "suites/app-data/main.rs"
+harness = false

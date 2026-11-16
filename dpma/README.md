@@ -75,6 +75,7 @@ Open DPhone.
 | `dphone_idle_softkeys=<softkey>[,<softkey>...]` | The softkeys of the idle screen, in order: `call_log`, `contacts`, `status`, `menu`, `apps`, `dnd`, `forward`, `redial`, or `app:<app>` for an app, e.g., `call_log,contacts,app:parking,menu`.  Default is `call_log,contacts,status,menu,apps,dnd,forward`. |
 | `dphone_palette_file=<file>` | The palette file for the wallpaper of `wallpaper_file`: the colors of the phone's screens, as Open DPhone's `palette.proto` describes, e.g., `lobby.txtpb`.  Default is the phone's own palette. |
 | `dphone_ignore_provisioned_firmware=yes\|no` | Whether the phone ignores the firmware this configuration offers it.  Default is no. |
+| `dphone_app_data_tenant=<key>` | The tenant whose app data the phone reads and writes (see "App data"): 1 to 32 letters, digits, `.`, `_`, or `-`.  Default is none: the phone shares the app data of the phones without a key. |
 
 The official DPMA's `web_ui_enabled=yes|no` controls the phone's web
 configuration.  Default is no.
@@ -87,6 +88,52 @@ type=phone
 dphone_ssh_enabled=yes
 dphone_ssh_authorized_key=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa alice@laptop
 ```
+
+### App data
+
+The apps of Open DPhone phones can keep data on the server, e.g., a
+game's best times, which every phone then shows, or a user's progress,
+which comes back after the phone is reset.  There is nothing to turn on:
+the module answers the phones' requests (`AppDataRequest`, which the
+official DPMA does not have) and keeps the data in AstDB, in the family
+`DPhoneAppData`, so it is there after Asterisk restarts.
+
+Each app has keys that all phones share, and keys for each user.  The
+user is the phone section (`type=phone`) the phone is provisioned as,
+shown to others by its `full_name`.
+
+On a server with more than one tenant, give each tenant's phones a
+tenant key with `dphone_app_data_tenant`.  Phones with the same key
+share one store, and no phone reads, writes, or hears of the data of
+another key; the phones without a key share a store of their own.  The
+key is the server's alone: it is never sent to a phone, and no request
+can name one.  A template sets it for all phones of a tenant:
+
+```
+[north-office](!)
+type=phone
+dphone_app_data_tenant=north-office
+
+[phone101](north-office)
+line=101
+
+[phone102](north-office)
+line=102
+```
+
+A phone whose `dphone_app_data_tenant` is not a valid key has no app
+data until that is corrected.  The data stays with the key it was
+written under: a phone that gets another key sees the other store, and
+its user's keys there.
+
+An app has at most 1024 shared keys and 64 keys for each user, a key is
+at most 64 characters, and a value at most 4096 bytes.
+
+`database show DPhoneAppData` lists the data, and `database deltree`
+removes it, e.g., `database deltree DPhoneAppData @north-office/lightup`
+for one app of one tenant (`@` alone is the phones without a key).  The
+rustdoc of `dpma_proto::appdata` describes the requests, and that of
+`dpma_proto::appdata::store` the AstDB keys.
 
 ## Development
 

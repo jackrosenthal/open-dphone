@@ -17,7 +17,7 @@ use std::sync::Arc;
 pub fn load() -> Result<(), ()> {
     use dpma_proto::types::*;
     let mut res = Ok(());
-    let table: [(&'static str, Option<&'static str>, bool, super::Handler); 10] = [
+    let table: [(&'static str, Option<&'static str>, bool, super::Handler); 11] = [
         (ECHO, None, false, handle_echo),
         (
             HANDSHAKE,
@@ -48,6 +48,12 @@ pub fn load() -> Result<(), ()> {
         (FILE_REQUEST, Some("FileResponse"), true, handle_file),
         (VERIFY_REQUEST, Some("VerifyResponse"), true, handle_verify),
         (PING_REQUEST, Some("PingResponse"), true, handle_ping),
+        (
+            APP_DATA_REQUEST,
+            Some(dpma_proto::appdata::RESPONSE),
+            true,
+            handle_app_data,
+        ),
     ];
     for (req, resp, session, h) in table {
         if register_handler(req, resp, session, h).is_err() {
@@ -760,6 +766,24 @@ fn json_request(
 
 /// `handle_request_ping` (FUN_001758e0): send the (empty) PingResponse.
 pub fn handle_ping(tx: Arc<Transaction>) -> i32 {
+    crate::session::send_and_destroy(&tx);
+    0
+}
+
+// ---------------------------------------------------------------------------
+// AppDataRequest (Open DPhone)
+// ---------------------------------------------------------------------------
+
+/// The app data of Open DPhone phones (`crate::appdata`; not a request
+/// of the official DPMA): one operation on the store, for the phone the
+/// `Config-Token` belongs to; error -192 (Invalid Token) when the token
+/// does not match, as for a ConfigRequest.  The user and the tenant are
+/// that phone section's, so neither is in the request.
+pub fn handle_app_data(tx: Arc<Transaction>) -> i32 {
+    match phone_for_token(&tx) {
+        None => set_error(&tx, errors::msg::INVALID_TOKEN),
+        Some(phone) => append(&tx, &crate::appdata::answer(&phone, &tx.body)),
+    }
     crate::session::send_and_destroy(&tx);
     0
 }

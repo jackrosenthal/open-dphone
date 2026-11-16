@@ -302,6 +302,15 @@ pub fn set_user_option(ctx: &mut UserCtx, phone: &mut Phone, name: &[u8], value:
         b"call_waiting_tone" => phone.call_waiting_tone = ast_true(value),
         b"wallpaper_file" => phone.wallpaper_file = s,
         b"dphone_palette_file" => phone.dphone_palette_file = s,
+        b"dphone_app_data_tenant" => {
+            // A value that cannot be a key is kept, and reported: the
+            // phone then has no app data at all (`crate::appdata`), not
+            // the data of the phones without a key.
+            phone.dphone_app_data_tenant = truncate(value, 0x80);
+            if !value.is_empty() && !dpma_proto::appdata::store::valid_tenant(value) {
+                return Err(());
+            }
+        }
         b"ehs" => phone.ehs = s,
         b"8021x_passthrough" => phone.dot1x_passthrough = s,
         b"8021x_method" => phone.dot1x_method = s,

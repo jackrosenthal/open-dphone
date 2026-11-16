@@ -30,7 +30,7 @@ use crate::container::{Run, DPMA, OUT};
 use crate::run;
 
 /// The suites, in order: a default run (or `all`) runs them all.
-pub const SUITES: [&str; 9] = [
+pub const SUITES: [&str; 10] = [
     "session",
     "config-xml",
     "users-runtime",
@@ -40,6 +40,7 @@ pub const SUITES: [&str; 9] = [
     "request-handlers",
     "ami",
     "apps-discovery",
+    "app-data",
 ];
 
 /// The suites that take longest, longest first: they start first.
