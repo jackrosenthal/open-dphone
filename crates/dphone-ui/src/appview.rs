@@ -88,7 +88,9 @@
 //! **Batching.**  Each call locks, mutates, and marks the view dirty; the
 //! UI repaints at most once per frame, so a burst of calls costs one
 //! repaint.  [`AppView::batch`] holds the lock across several calls so the
-//! UI never paints a half-built screen.
+//! UI never paints a half-built screen.  [`AppView::hold_changes`] keeps
+//! the mark back without the lock, for a host whose calls come one by one
+//! from an app's handler.
 
 pub use dphone_hal::Lamp;
 use dphone_state::{Key, LampColor, Model, Skin};
@@ -635,9 +637,22 @@ impl Tree {
             n.rect = rect;
         }
     }
+    /// Shows or hides a widget and its children.  Hiding the focused
+    /// widget, or one the focused widget is in, leaves nothing focused: a
+    /// widget that is not shown takes no keys.
     pub fn set_visible(&mut self, id: WidgetId, visible: bool) {
-        if let Some(n) = self.node_mut(id) {
-            n.visible = visible;
+        let Some(n) = self.node_mut(id) else { return };
+        n.visible = visible;
+        if visible {
+            return;
+        }
+        let mut cur = self.focus;
+        while let Some(c) = cur {
+            if c == id {
+                self.focus(None);
+                break;
+            }
+            cur = self.node(c).and_then(|n| n.parent);
         }
     }
     /// Foreground (text) and background colors.
@@ -890,6 +905,10 @@ pub(crate) struct Inner {
     theme: ThemeCell,
     pub tree: Mutex<Tree>,
     pub dirty: AtomicBool,
+    /// Changes are held back ([`AppView::hold_changes`]), and whether
+    /// there are any.
+    held: AtomicBool,
+    held_dirty: AtomicBool,
     queue: Mutex<VecDeque<AppEvent>>,
     cond: Condvar,
     closed: AtomicBool,
@@ -949,6 +968,8 @@ impl AppView {
             theme,
             tree: Mutex::new(Tree::new(model)),
             dirty: AtomicBool::new(true),
+            held: AtomicBool::new(false),
+            held_dirty: AtomicBool::new(false),
             queue: Mutex::new(VecDeque::new()),
             cond: Condvar::new(),
             closed: AtomicBool::new(false),
@@ -1044,7 +1065,27 @@ impl AppView {
         *self.inner.theme.lock().unwrap_or_else(|p| p.into_inner()) = th;
     }
 
+    /// With `true`, the changes made to the view from now on do not mark
+    /// the view as changed; with `false`, they mark it once, if there are
+    /// any.  A host holds the changes while the app's handler runs, so
+    /// that what one handler changes is painted together.  The tree is
+    /// not locked meanwhile: a repaint for another reason (the view comes
+    /// on screen, the theme changes) shows the tree as it is then.
+    pub fn hold_changes(&self, on: bool) {
+        self.inner.held.store(on, Ordering::Release);
+        if !on && self.inner.held_dirty.swap(false, Ordering::AcqRel) {
+            self.mark_dirty();
+        }
+    }
+
     pub(crate) fn mark_dirty(&self) {
+        if self.inner.held.load(Ordering::Acquire) {
+            self.inner.held_dirty.store(true, Ordering::Release);
+            // Released between the two: the mark is not lost.
+            if self.inner.held.load(Ordering::Acquire) || !self.inner.held_dirty.swap(false, Ordering::AcqRel) {
+                return;
+            }
+        }
         self.inner.dirty.store(true, Ordering::Release);
         if let Some(w) = &*self.inner.ui_waker.lock().unwrap_or_else(|e| e.into_inner()) {
             w();
@@ -1130,5 +1171,72 @@ impl AppView {
     }
     pub(crate) fn is_dirty(&self) -> bool {
         self.inner.dirty.load(Ordering::Acquire)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hiding_a_widget_drops_the_focus_inside() {
+        let (view, _events) = AppView::new("demo", Model::D60);
+        let group = view.create(WidgetKind::Group, None, Rect::new(0, 0, 200, 100));
+        let inner = view.create(WidgetKind::Group, Some(group), Rect::new(0, 0, 200, 100));
+        let list = view.create(WidgetKind::List, Some(inner), Rect::new(0, 0, 200, 50));
+        let other = view.create(WidgetKind::Input, None, Rect::new(0, 100, 200, 30));
+
+        // The focused widget.
+        view.focus(Some(list));
+        view.set_visible(list, false);
+        assert_eq!(view.focused(), None);
+        // Showing the widget again does not bring the focus back.
+        view.set_visible(list, true);
+        assert_eq!(view.focused(), None);
+
+        // An ancestor of the focused widget, however far up.
+        view.focus(Some(list));
+        view.set_visible(group, false);
+        assert_eq!(view.focused(), None);
+        view.set_visible(group, true);
+
+        // A widget the focused one is not in, a widget that is shown, and
+        // a handle that names nothing leave the focus alone.
+        view.focus(Some(list));
+        view.set_visible(other, false);
+        view.set_visible(group, true);
+        view.set_visible(WidgetId(9999), false);
+        assert_eq!(view.focused(), Some(list));
+    }
+
+    #[test]
+    fn held_changes_are_marked_once_when_released() {
+        let (view, _events) = AppView::new("demo", Model::D60);
+        let text = view.create(WidgetKind::Text, None, Rect::new(0, 0, 200, 20));
+        assert!(view.take_dirty());
+        let marks = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let counted = marks.clone();
+        view.set_ui_waker(Some(Box::new(move || {
+            counted.fetch_add(1, Ordering::SeqCst);
+        })));
+
+        view.hold_changes(true);
+        view.set_text(text, "one");
+        view.set_text(text, "two");
+        assert!(!view.is_dirty(), "nothing is marked while the changes are held");
+        assert_eq!(marks.load(Ordering::SeqCst), 0);
+        // The tree is not locked meanwhile, and has what was set.
+        assert_eq!(view.text(text).as_deref(), Some("two"));
+        view.hold_changes(false);
+        assert!(view.take_dirty());
+        assert_eq!(marks.load(Ordering::SeqCst), 1);
+
+        // A handler that changed nothing marks nothing.
+        view.hold_changes(true);
+        view.hold_changes(false);
+        assert!(!view.is_dirty());
+        // Without a hold, every change marks.
+        view.set_text(text, "three");
+        assert!(view.take_dirty());
     }
 }
