@@ -31,7 +31,7 @@ Repeat `dphone_ssh_authorized_key` for more keys.  The original `res_digium_phon
 
 A provisioned key is accepted in addition to the keys added on the phone, and disappears from the phone when the PBX no longer supplies the key.
 
-A value of the SSH setting that was set on the phone goes before `dphone_ssh_enabled`.  On a phone where the setting was never set, the PBX's value applies, and the switch in the web interface is disabled and marked as coming from DPMA.
+The PBX's `dphone_ssh_enabled` goes before a value of the SSH setting that was set on the phone, and the switch in the web interface is disabled and marked as coming from DPMA.
 
 ### From a shell
 
