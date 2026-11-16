@@ -685,7 +685,9 @@ impl Phone {
         let mut hal = Hal::sim(model);
         let sim = hal.sim.clone().unwrap();
         let store = Store::new(model);
-        let ui = Ui::from_hal(&mut hal, store.clone(), UiConfig::default());
+        // The first theme, whose palette is the color skin's own: the
+        // colors this test names are that palette's.
+        let ui = Ui::from_hal(&mut hal, store.clone(), UiConfig { theme: "harbor".into(), ..UiConfig::default() });
         store.update::<System, _>(|s| {
             s.phase = Phase::Running;
             s.time_synced = true;

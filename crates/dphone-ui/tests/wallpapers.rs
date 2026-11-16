@@ -721,8 +721,10 @@ fn the_moving_wallpapers() {
     for id in MOVING {
         let w = wallpaper::find(id).unwrap();
         let every = u64::from(w.frame_ms().unwrap());
-        // Four to ten frames a second.
-        assert!((100..=250).contains(&every), "{id}: a frame every {every} ms");
+        // Three to ten frames a second, a whole number of frames (and
+        // of the steps of two frames) in a cycle.
+        assert!((100..=300).contains(&every), "{id}: a frame every {every} ms");
+        assert_eq!(wallpaper::CYCLE_MS % (2 * every), 0, "{id}");
         let th = Theme::for_wallpaper(w);
         // The picture of a time: the same every time, and a cycle later.
         let start = 7_000;
@@ -793,7 +795,7 @@ fn the_wallpaper_moves_on_the_idle_screen_only() {
     assert_ne!(spot(&a), spot(&still));
     let due = r.ui.motion_deadline().expect("the next frame is due");
     let now = clock::mono_ms();
-    assert!(due <= now + 125 && due + 125 >= now, "due {due} at {now}");
+    assert!(due <= now + 150 && due + 150 >= now, "due {due} at {now}");
     r.ui.set_motion_time(Some(9_000));
     let b = r.frame();
     assert_eq!(spot(&b), spot(&tides.render_at(9_000)));

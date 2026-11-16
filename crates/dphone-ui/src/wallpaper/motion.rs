@@ -17,9 +17,9 @@
 //!   (inside the ring it is the same wherever the circle goes).  A
 //!   circle's opacity comes from a table by the square of the distance
 //!   from its center, so no pixel needs a square root.  Large circles
-//!   with wide, soft edges move in steps of several frames, a third of
-//!   them (say) in each frame: a step moves such an edge by less than
-//!   the eye can tell from the frame before.
+//!   with wide, soft edges move in steps of two frames, half of them in
+//!   each frame: a step moves such an edge by less than the eye can
+//!   tell from the frame before.
 //! - A flow: every pixel (all of them change), from tables for the
 //!   straight run, the waves, and the colors.
 //!
@@ -324,9 +324,10 @@ struct Disc {
 /// be drawn again; one that moved farther is drawn again whole.
 const MARGIN: i32 = 3;
 
-/// A ring of more pixels than this moves in steps of two frames, of more
-/// than four times this in steps of three.
+/// A circle whose edge is at least [`SOFT`] sixteenths of a pixel wide and
+/// whose ring has more pixels than this moves in steps of two frames.
 const RING: i32 = 6_000;
+const SOFT: i32 = 16 * 16;
 
 impl Disc {
     fn new(index: u32, (cx, cy, r, color, alpha): Circle, soft: i32, rim: i32, reach: (i32, i32), turns: (i32, i32), every_ms: u64) -> Disc {
@@ -362,10 +363,12 @@ impl Disc {
         // Between half of the reach and all of it.
         let go = |reach: i32, h: u32| reach * 16 * (128 + (h >> 20) as i32 % 129) / 256;
         let path = [(go(reach.0, h[0]), across, (h[1] & 0xFFFF) as i32), (go(reach.1, h[1]), up, ((h[1] >> 4) & 0xFFFF) as i32)];
-        // A wide ring is a soft edge on a large circle: it can move in
-        // steps of several frames, and the circles that do take turns.
+        // A wide ring with a soft edge is a large, faint circle: it can
+        // move in steps of two frames (a step moves its edge by less than
+        // can be told from the frame before), and the circles that do
+        // take turns.  A sharp edge moves with every frame.
         let ring = 355 * (far * far - near.max(0) * near.max(0)) / 113;
-        let frames = if ring > 4 * RING { 3 } else if ring > RING { 2 } else { 1 };
+        let frames = if soft >= SOFT && ring > RING { 2 } else { 1 };
         let step = (frames * every_ms, u64::from(index) % frames * every_ms);
         Disc { home: (cx * 16, cy * 16), path, step, color: limit(px(color)), opacity, shift, outer, inner, at: (cx * 16, cy * 16) }
     }

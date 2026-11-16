@@ -507,7 +507,7 @@ impl Canvas {
                     PixelFormat::Xrgb8888 => {
                         let dst = &mut frame[row + d.x as usize * 4..row + d.right() as usize * 4];
                         for (o, p) in dst.as_chunks_mut::<4>().0.iter_mut().zip(src) {
-                            o.copy_from_slice(&p.to_le_bytes());
+                            *o = p.to_le_bytes();
                         }
                     }
                     PixelFormat::R8 => {
