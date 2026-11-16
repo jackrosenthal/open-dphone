@@ -3,7 +3,7 @@
    screen is a rendered crop of the display, placed by the display's box
    in the picture (docs/assets/d65-render.png, 1440 x 1430; the box is
    564 x 359 at 528, 130).  Without animation (prefers-reduced-motion), the
-   still render and the first caption are what shows. */
+   still render is what shows. */
 
 .d65-viewer {
   --d65-cycle: 36s;
@@ -37,23 +37,11 @@
 
 /* The last screen fades out over the still render. */
 .d65-viewer .d65-viewer__screen:last-child {
-  animation-name: d65-caption;
-}
-
-.d65-viewer figcaption {
-  display: grid;
-}
-
-.d65-viewer figcaption > span {
-  grid-area: 1 / 1;
-  opacity: 0;
-  animation: d65-caption var(--d65-cycle) linear infinite;
-  animation-delay: calc(var(--d65-n) * var(--d65-step));
+  animation-name: d65-screen-last;
 }
 
 /* A pointer over the picture holds the screen that is showing. */
-.d65-viewer:hover .d65-viewer__screen,
-.d65-viewer:hover figcaption > span {
+.d65-viewer:hover .d65-viewer__screen {
   animation-play-state: paused;
 }
 
@@ -67,7 +55,7 @@
   100% { opacity: 0; }
 }
 
-@keyframes d65-caption {
+@keyframes d65-screen-last {
   0% { opacity: 0; }
   1.667% { opacity: 1; }
   8.333% { opacity: 1; }
@@ -76,23 +64,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .d65-viewer .d65-viewer__screen,
-  .d65-viewer figcaption > span {
+  .d65-viewer .d65-viewer__screen {
     animation: none;
-  }
-
-  .d65-viewer figcaption > span:first-child {
-    opacity: 1;
   }
 }
 
 @media print {
-  .d65-viewer .d65-viewer__screen,
-  .d65-viewer figcaption > span {
+  .d65-viewer .d65-viewer__screen {
     animation: none;
-  }
-
-  .d65-viewer figcaption > span:first-child {
-    opacity: 1;
   }
 }

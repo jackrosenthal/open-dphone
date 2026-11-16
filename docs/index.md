@@ -26,20 +26,6 @@ Open DPhone is open-source firmware for the Digium D-series desk phones: the D40
     <img class="d65-viewer__screen" style="--d65-n: 10" src="assets/d65-viewer/screens/11-call-incoming-evergreen.webp" alt="">
     <img class="d65-viewer__screen" style="--d65-n: 11" src="assets/d65-viewer/screens/12-call-active-ember.webp" alt="">
   </div>
-  <figcaption>
-    <span style="--d65-n: 0">Harbor theme</span>
-    <span style="--d65-n: 1">Dusk theme</span>
-    <span style="--d65-n: 2">Sunrise theme</span>
-    <span style="--d65-n: 3">Regatta theme</span>
-    <span style="--d65-n: 4">Glacier theme</span>
-    <span style="--d65-n: 5">Light Up</span>
-    <span style="--d65-n: 6">Desk Sparrow</span>
-    <span style="--d65-n: 7">Box Pusher</span>
-    <span style="--d65-n: 8">Alarms</span>
-    <span style="--d65-n: 9">Amethyst theme</span>
-    <span style="--d65-n: 10">Evergreen theme</span>
-    <span style="--d65-n: 11">Ember theme</span>
-  </figcaption>
 </figure>
 
 [Download the firmware](https://github.com/jackrosenthal/open-dphone/releases){ .md-button .md-button--primary }
