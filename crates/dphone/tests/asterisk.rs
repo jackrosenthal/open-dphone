@@ -1,5 +1,5 @@
-//! The main role against a real server: Asterisk with `res_dpma_rs` (the
-//! open DPMA module, `dpma/` in this repository), both on
+//! The main role against a real server: Asterisk with `res_open_dpma` (Open
+//! DPMA, `open-dpma/` in this repository), both on
 //! loopback.  The real binary in simulator mode finds its saved server,
 //! provisions over DPMA (handshake with a freshly minted identity, token,
 //! configuration), writes the stock-format files, and registers the line
@@ -28,7 +28,7 @@
 //! Skipped unless `DPHONE_TEST_ASTERISK` names an Asterisk installation
 //! (the prefix that holds `bin/asterisk`, the sample configuration in
 //! `etc/asterisk`, and the data in `var/lib/asterisk`) and
-//! `DPHONE_TEST_ASTERISK_MODULES` a module directory with `res_dpma_rs.so`
+//! `DPHONE_TEST_ASTERISK_MODULES` a module directory with `res_open_dpma.so`
 //! in it.  With `DPHONE_TEST_REQUIRE_ASTERISK` set (the Nix check sets it,
 //! and supplies both: nix/asterisk.nix) it fails instead of skipping.  The
 //! second test also needs `DPHONE_APPS_STAGED`, the directory in which the
@@ -229,7 +229,7 @@ impl Callee {
 }
 
 /// The server's configuration: the installation's samples (several modules
-/// that `res_dpma_rs` needs do not load without their files), with ours on
+/// that `res_open_dpma` needs do not load without their files), with ours on
 /// top.
 fn configure(dir: &Path, server: &Server, callee_port: u16) -> PathBuf {
     let etc = dir.join("etc");
@@ -253,7 +253,7 @@ fn configure(dir: &Path, server: &Server, callee_port: u16) -> PathBuf {
     );
     // Everything loads by default, as on an ordinary server; the modules
     // that only complain here (hardware, other servers, and the other
-    // provisioning module) are left out, as in dpma-rs's own test instance.
+    // provisioning module) are left out, as in Open DPMA's test instance.
     let noload = [
         "chan_unistim", "chan_mgcp", "chan_skinny", "chan_motif", "res_xmpp", "chan_console", "chan_alsa", "chan_oss",
         "res_hep", "res_hep_pjsip", "res_hep_rtcp", "res_pjsip_phoneprov_provider", "res_phoneprov", "res_smdi",
@@ -337,8 +337,8 @@ fn provisions_and_registers_against_asterisk() {
             .expect("asterisk starts"),
     );
     wait_for("Asterisk to boot", Duration::from_secs(120), || cli(&server, &conf, "core waitfullybooted"));
-    let module = cli(&server, &conf, "module show like res_dpma_rs").unwrap();
-    assert!(module.contains("res_dpma_rs.so") && module.contains("Running"), "{module}");
+    let module = cli(&server, &conf, "module show like res_open_dpma").unwrap();
+    assert!(module.contains("res_open_dpma.so") && module.contains("Running"), "{module}");
     let phone = cli(&server, &conf, "digium_phones show phone simphone").unwrap();
     assert!(phone.contains(MAC), "{phone}");
 
@@ -448,7 +448,7 @@ fn provisions_and_registers_against_asterisk() {
     // A push: the phone's configuration changes on the server, the server
     // tells the phone over the session, and the phone fetches it.
     write(&conf.with_file_name("res_digium_phone.conf"), &dpma_conf("America/Chicago"));
-    let reloaded = cli(&server, &conf, "module reload res_dpma_rs").unwrap();
+    let reloaded = cli(&server, &conf, "module reload res_open_dpma").unwrap();
     assert!(reloaded.contains("reloaded successfully"), "{reloaded}");
     wait_for("the server to tell the phone", Duration::from_secs(30), || {
         cli(&server, &conf, "digium_phones reconfigure phone simphone").filter(|s| s.contains("will reconfigure"))

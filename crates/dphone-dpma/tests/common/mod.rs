@@ -32,7 +32,7 @@ pub struct FakeServer {
     /// Sent as `X-Digium-AppServer-MD5` on Verify and Config responses.
     pub md5: Option<String>,
     /// Send the MD5 of the configuration document's bytes there instead,
-    /// 32 lowercase hex digits, as `res_dpma_rs` does from 0.3.1 on.
+    /// 32 lowercase hex digits, as Open DPMA does (from dpma-rs 0.3.1 on).
     pub md5_of_document: bool,
     /// Request types in arrival order.
     pub log: Vec<String>,

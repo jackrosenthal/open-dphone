@@ -1,8 +1,8 @@
-# Asterisk with `res_dpma_rs` (the open DPMA module, dpma/ in this
+# Asterisk with `res_open_dpma` (Open DPMA, open-dpma/ in this
 # repository), for the integration test that provisions and registers the
 # firmware's main role against a real server (crates/dphone/tests/asterisk.rs).
 #
-# `res_dpma_rs` generates its bindings from the configured headers of the
+# `res_open_dpma` generates its bindings from the configured headers of the
 # Asterisk it is loaded into, including the bundled pjproject's, which an
 # Asterisk installation does not carry.  So Asterisk is built here from
 # the nixpkgs recipe with one addition: the configured headers are kept,
@@ -10,7 +10,7 @@
 {
   asterisk,
   runCommand,
-  module, # res_dpma_rs built against `server`'s headers (workspace.nix)
+  module, # res_open_dpma built against `server`'s headers (workspace.nix)
 }:
 let
   server = asterisk.overrideAttrs (old: {
@@ -31,11 +31,11 @@ in
 {
   inherit server;
 
-  # Asterisk's module directory with `res_dpma_rs` added, as `astmoddir`
+  # Asterisk's module directory with `res_open_dpma` added, as `astmoddir`
   # of the test instance.
-  modules = runCommand "asterisk-modules-with-res_dpma_rs" { } ''
+  modules = runCommand "asterisk-modules-with-res_open_dpma" { } ''
     mkdir $out
     ln -s ${server}/lib/asterisk/modules/* $out/
-    ln -s ${module}/lib/libres_dpma_rs.so $out/res_dpma_rs.so
+    ln -s ${module}/lib/libres_open_dpma.so $out/res_open_dpma.so
   '';
 }

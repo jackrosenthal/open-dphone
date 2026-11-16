@@ -7,7 +7,7 @@
 #   dphone-image       host tool: EFF, OTA, kernel image, rootfs
 #   brush, coreutils, sed   shell and utilities (ARMv6, static)
 #   apps               built-in phone apps (.wasm)
-#   asterisk-modules   Asterisk with res_dpma_rs, for the tests (x86-64)
+#   asterisk-modules   Asterisk with res_open_dpma, for the tests (x86-64)
 #   web                frontend bundle
 #   rootfs-tree        the root file system as a directory
 #   rootfs             the JFFS2 image
@@ -63,7 +63,7 @@ let
     else
       null;
 
-  asterisk = pkgs.callPackage ./asterisk.nix { module = workspace.res_dpma_rs; };
+  asterisk = pkgs.callPackage ./asterisk.nix { module = workspace.res_open_dpma; };
   workspace = pkgs.callPackage ./workspace.nix {
     inherit craneLib rust rustPlatform;
     inherit stock asterisk;
@@ -119,7 +119,7 @@ in
 
   # `tests` compares against the D40 and D60 stock firmware images
   # (vendor-firmware.nix), and runs the main role against Asterisk with
-  # res_dpma_rs (asterisk.nix).
+  # res_open_dpma (asterisk.nix).
   checks = {
     inherit (workspace) tests clippy;
     inherit kernel;

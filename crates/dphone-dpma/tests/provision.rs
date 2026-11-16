@@ -773,9 +773,9 @@ async fn discovery_inputs_are_followed() {
 }
 
 /// A server that sends the MD5 of the configuration document on both the
-/// ConfigResponse and the VerifyResponse (`res_dpma_rs` 0.3.1): a boot
-/// with an unchanged document downloads nothing, and a changed document is
-/// downloaded.
+/// ConfigResponse and the VerifyResponse (Open DPMA; dpma-rs from 0.3.1
+/// on): a boot with an unchanged document downloads nothing, and a changed
+/// document is downloaded.
 #[tokio::test(flavor = "current_thread")]
 async fn document_digest_on_verify_skips_the_download() {
     let mut s = FakeServer::new();

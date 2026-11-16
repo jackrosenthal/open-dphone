@@ -386,7 +386,7 @@ mod tests {
 
     #[test]
     fn resources_of_a_provisioned_configuration() {
-        // The shapes `res_dpma_rs` builds.
+        // The shapes `res_open_dpma` builds.
         let cfg = config(
             r#"<config>
 <appconfig id="contacts"><account id="100"/></appconfig>
@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn the_wallpaper_picture_and_its_palette_file_are_resources() {
-        // The shapes `res_dpma_rs` builds (`wallpaper_file`, and
+        // The shapes `res_open_dpma` builds (`wallpaper_file`, and
         // `dphone_palette_file` beside it).
         let xml = |extra: &str| {
             format!(

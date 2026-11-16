@@ -1,0 +1,11 @@
+[package]
+name = "dpma-bytes"
+description = "Internal helpers for the Open DPMA crates; not intended for use on its own"
+readme = "README.md"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+edition = "2021"
+
+[dependencies]
+bstr.workspace = true

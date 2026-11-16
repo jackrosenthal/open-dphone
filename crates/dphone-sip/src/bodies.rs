@@ -345,7 +345,7 @@ mod tests {
     }
 
     /// A body Asterisk 22.11.0 sent (recorded from a local server with
-    /// `res_dpma_rs`; the watched extension is `auto_hint_1002`, a hint on
+    /// `res_open_dpma`; the watched extension is `auto_hint_1002`, a hint on
     /// `PJSIP/1002,CustomPresence:1002`, unless the name says otherwise).
     macro_rules! recorded {
         ($name:literal) => {

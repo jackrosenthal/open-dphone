@@ -1,0 +1,213 @@
+//! `cargo xtask ci`: the CI job of `.github/workflows/ci.yml` for one
+//! pinned release, which runs the same way locally ([`ci`]), in fresh
+//! containers of the release's test image.
+//!
+//! Every build of the job is non-incremental (`CARGO_INCREMENTAL=0`).
+
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use anyhow::{bail, Context, Result};
+use dpma_tests::harness::Instance;
+
+use crate::container::{out_dir, Run, OUT};
+use crate::pins::Pin;
+use crate::{pins, run, suites, PACKAGES};
+
+/// The Cargo profile of the module for publishing (`Cargo.toml` of the
+/// repository).
+const MODULE: &str = "module";
+
+/// The newest glibc symbol version that the module may need: the minimum
+/// glibc of the published module (`open-dpma/README.md`, "Installation").
+pub const GLIBC_BASELINE: [u32; 2] = [2, 34];
+
+fn step(what: &str, version: &str) {
+    println!("\n==> {what} (Asterisk {version})");
+}
+
+fn cargo_step(what: &str, version: &str, args: &[&str]) -> Result<()> {
+    step(what, version);
+    run(crate::cargo().args(args))
+}
+
+/// `-p PACKAGE` for each of [`PACKAGES`] but `except`.
+fn packages(except: &[&str]) -> Vec<&'static str> {
+    PACKAGES
+        .iter()
+        .filter(|p| !except.contains(p))
+        .flat_map(|p| ["-p", p])
+        .collect()
+}
+
+/// The newest `GLIBC_x.y[.z]` symbol version in `objdump -T` output.
+fn newest_glibc(dynamic_symbols: &str) -> Option<Vec<u32>> {
+    dynamic_symbols
+        .split(|c: char| c.is_whitespace() || c == '(' || c == ')')
+        .filter_map(|w| w.strip_prefix("GLIBC_"))
+        .filter_map(|v| {
+            v.split('.')
+                .map(|n| n.parse().ok())
+                .collect::<Option<Vec<u32>>>()
+        })
+        .max()
+}
+
+/// Fails when `so` needs a newer glibc than [`GLIBC_BASELINE`].
+fn check_glibc(so: &Path) -> Result<()> {
+    let out = Command::new("objdump")
+        .arg("-T")
+        .arg(so)
+        .output()
+        .context("running objdump")?;
+    if !out.status.success() {
+        bail!("objdump -T {} failed ({})", so.display(), out.status);
+    }
+    let fmt = |v: &[u32]| v.iter().map(u32::to_string).collect::<Vec<_>>().join(".");
+    let newest = newest_glibc(&String::from_utf8_lossy(&out.stdout))
+        .context("no GLIBC symbol versions in the module")?;
+    println!("newest glibc symbol version: GLIBC_{}", fmt(&newest));
+    if newest.as_slice() > GLIBC_BASELINE.as_slice() {
+        bail!(
+            "the module needs GLIBC_{}, newer than the baseline GLIBC_{} (the minimum glibc \
+             open-dpma/README.md states); find what pulls it in, or raise the baseline \
+             (open-dpma/tools/src/ci.rs) and the README together",
+            fmt(&newest),
+            fmt(&GLIBC_BASELINE)
+        );
+    }
+    Ok(())
+}
+
+/// Loads the build for publishing into the container's Asterisk.
+fn smoke_test() -> Result<()> {
+    let inst = Instance::new()?;
+    inst.stop()?;
+    inst.reset_conf()?;
+    inst.install(MODULE)?;
+    inst.start()?;
+    let shown = inst.cli_run("module show like res_open_dpma");
+    inst.stop()?;
+    let shown = shown?.to_string();
+    print!("{shown}");
+    if !shown.contains("res_open_dpma.so") || !shown.contains("1 modules loaded") {
+        bail!("module show like res_open_dpma does not list it");
+    }
+    Ok(())
+}
+
+/// `cargo xtask inside check <release>`: the build, lint, and test
+/// steps.
+pub fn check(release: &str) -> Result<u8> {
+    let v = release;
+    let all = packages(&[]);
+    cargo_step(
+        "cargo build",
+        v,
+        &[&["build", "--locked"], &all[..]].concat(),
+    )?;
+    cargo_step(
+        "cargo clippy --all-targets",
+        v,
+        &[
+            &["clippy", "--locked"],
+            &all[..],
+            &["--all-targets", "--", "-D", "warnings"],
+        ]
+        .concat(),
+    )?;
+    cargo_step(
+        "cargo clippy -p res_open_dpma --features devtest",
+        v,
+        &[
+            "clippy",
+            "--locked",
+            "-p",
+            "res_open_dpma",
+            "--features",
+            "devtest",
+            "--",
+            "-D",
+            "warnings",
+        ],
+    )?;
+    // The module crate's test binary cannot link outside Asterisk (it
+    // imports Asterisk's symbols), so cargo test covers the other crates.
+    cargo_step(
+        "cargo test",
+        v,
+        &[&["test", "--locked"], &packages(&["res_open_dpma"])[..]].concat(),
+    )?;
+    Ok(0)
+}
+
+/// `cargo xtask inside publish <release>`: the module for publishing,
+/// checked and smoke-tested.
+pub fn publish(release: &str) -> Result<u8> {
+    let pin = pins::pin(Some(release))?;
+    let v = pin.version.as_str();
+    cargo_step(
+        "the module for publishing",
+        v,
+        &[
+            "build",
+            "--locked",
+            "--profile",
+            MODULE,
+            "-p",
+            "res_open_dpma",
+        ],
+    )?;
+    let so = Instance::module_build(MODULE);
+    check_glibc(&so)?;
+    step("smoke test of the module for publishing", v);
+    smoke_test()?;
+    let asset = PathBuf::from(OUT).join(format!(
+        "res_open_dpma-asterisk{}-{}.so",
+        pin.major,
+        std::env::consts::ARCH
+    ));
+    std::fs::copy(&so, &asset).with_context(|| asset.display().to_string())?;
+    println!(
+        "\nthe module for Asterisk {}: target/container/{v}/{}",
+        pin.major,
+        asset.file_name().unwrap_or_default().to_string_lossy()
+    );
+    Ok(0)
+}
+
+/// `cargo xtask ci`: [`check`], the suites, and [`publish`]; the exit
+/// status.
+pub fn ci(pin: &Pin, jobs: usize) -> Result<u8> {
+    let run = Run::new(pin)?.with_env("CARGO_INCREMENTAL", "0");
+    let v = pin.version.as_str();
+    let code = run.inside("check", &["check", v])?;
+    if code != 0 {
+        return Ok(code);
+    }
+    step("test suites", v);
+    let all = suites::selection(&["all".into()]);
+    let code = suites::run_suites(&run, &out_dir(pin), &all, jobs)?;
+    if code != 0 {
+        return Ok(code);
+    }
+    run.inside("publish", &["publish", v])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glibc_versions() {
+        let dump = "0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.2.5) free\n\
+                    0000000000000000      DF *UND*\t0000000000000000 (GLIBC_2.34) pthread_create\n\
+                    0000000000000000  w   DF *UND*\t0000000000000000 (GLIBC_2.3.4) x\n\
+                    0000000000000000      DF *UND*\t0000000000000000  GLIBC_PRIVATE y\n";
+        assert_eq!(newest_glibc(dump), Some(vec![2, 34]));
+        assert_eq!(newest_glibc("nothing"), None);
+        assert!([2, 35].as_slice() > GLIBC_BASELINE.as_slice());
+        assert!([2, 34].as_slice() <= GLIBC_BASELINE.as_slice());
+        assert!([2, 3, 4].as_slice() <= GLIBC_BASELINE.as_slice());
+    }
+}

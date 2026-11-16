@@ -30,17 +30,17 @@ members = [
     "crates/jffs2-image",
     "xtask",
     # The DPMA module for Asterisk, its libraries, its test suites, and its
-    # own `cargo xtask` (dpma/README.md).  dpma-sys reads the headers of an
-    # Asterisk source tree, so dpma-sys, dpma-ast, and res_dpma_rs build
+    # own `cargo xtask` (open-dpma/README.md).  dpma-sys reads the headers of an
+    # Asterisk source tree, so dpma-sys, dpma-ast, and res_open_dpma build
     # only with `ASTERISK_SOURCE_DIR` set; without it, leave them out of a
     # command over the whole workspace (`--exclude`).
-    "dpma/crates/dpma-ast",
-    "dpma/crates/dpma-bytes",
-    "dpma/crates/dpma-proto",
-    "dpma/crates/dpma-sys",
-    "dpma/crates/res_dpma_rs",
-    "dpma/tests",
-    "dpma/tools",
+    "open-dpma/crates/dpma-ast",
+    "open-dpma/crates/dpma-bytes",
+    "open-dpma/crates/dpma-proto",
+    "open-dpma/crates/dpma-sys",
+    "open-dpma/crates/res_open_dpma",
+    "open-dpma/tests",
+    "open-dpma/tools",
 ]
 exclude = ["apps"]
 
@@ -51,14 +51,14 @@ license = "GPL-2.0-or-later"
 authors = ["Jack Rosenthal <jack@rosenth.al>"]
 repository = "https://github.com/jackrosenthal/open-dphone"
 
-# What the crates under dpma/ depend on.
+# What the crates under open-dpma/ depend on.
 [workspace.dependencies]
-dpma-ast = { path = "dpma/crates/dpma-ast" }
-dpma-sys = { path = "dpma/crates/dpma-sys" }
+dpma-ast = { path = "open-dpma/crates/dpma-ast" }
+dpma-sys = { path = "open-dpma/crates/dpma-sys" }
 # dpma-proto is published with this requirement.  It is exact, so that cargo
 # refuses to build when it is not the version above.
-dpma-bytes = { path = "dpma/crates/dpma-bytes", version = "=3.0.0" }
-dpma-proto = { path = "dpma/crates/dpma-proto" }
+dpma-bytes = { path = "open-dpma/crates/dpma-bytes", version = "=3.0.0" }
+dpma-proto = { path = "open-dpma/crates/dpma-proto" }
 bstr = { version = "1.13", default-features = false, features = ["std"] }
 bindgen = "0.73"
 serde_json = { version = "1.0", features = ["preserve_order"] }
@@ -103,7 +103,7 @@ strip = true
 [profile.release.package.pulley-interpreter]
 opt-level = 3
 
-# The DPMA module for Asterisk (res_dpma_rs) runs in a server: it is built
+# The DPMA module for Asterisk (res_open_dpma) runs in a server: it is built
 # for speed, without the link-time optimization of the phone's binary.
 [profile.module]
 inherits = "release"

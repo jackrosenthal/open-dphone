@@ -1,6 +1,6 @@
 # The cargo workspace: `dphone` for the phone, the two host tools
 # (`dphone-image`, `dphone-apps-build`), the DPMA module for the tests'
-# Asterisk (`res_dpma_rs`), and the test and lint checks.
+# Asterisk (`res_open_dpma`), and the test and lint checks.
 #
 # Each product is built in two derivations (crane).  The first compiles only
 # the third-party dependencies, from Cargo.lock and the manifests alone, so
@@ -35,7 +35,7 @@ let
       (root + "/xtask")
       # The DPMA module for Asterisk and its libraries, two of which the
       # firmware uses too (dpma-proto and dpma-bytes).
-      (root + "/dpma")
+      (root + "/open-dpma")
       # The Light Up app's game library, which the host's test of that app
       # (crates/dphone-apps/tests/lightup.rs) links, and the manifest of
       # the apps' workspace, from which it inherits its package fields.
@@ -124,24 +124,24 @@ let
     // hostEnv
   );
 
-  # `res_dpma_rs` generates its bindings from the configured headers of the
+  # `res_open_dpma` generates its bindings from the configured headers of the
   # Asterisk it is loaded into (`ASTERISK_SOURCE_DIR`, read by dpma-sys).
   # It has a profile of its own: it runs on a server, not on the phone.
   module = twoStage {
-    pname = "res_dpma_rs";
-    cargoExtraArgs = "--locked -p res_dpma_rs";
+    pname = "res_open_dpma";
+    cargoExtraArgs = "--locked -p res_open_dpma";
     CARGO_PROFILE = "module";
     nativeBuildInputs = common.nativeBuildInputs ++ [ rustPlatform.bindgenHook ];
     ASTERISK_SOURCE_DIR = "${asterisk.server}/share/asterisk-source";
   };
 
   # The crates that need Asterisk's headers are left out: the module's
-  # tests cannot link outside Asterisk, and `cargo xtask ci` in dpma/
+  # tests cannot link outside Asterisk, and `cargo xtask ci` in open-dpma/
   # builds, lints, and tests all three against every Asterisk release that
   # the module supports (.github/workflows/ci.yml).
   checksStage = twoStage ({
     pname = "dphone-checks";
-    cargoExtraArgs = "--locked --workspace --exclude dpma-sys --exclude dpma-ast --exclude res_dpma_rs";
+    cargoExtraArgs = "--locked --workspace --exclude dpma-sys --exclude dpma-ast --exclude res_open_dpma";
     # Debug profile: the checks do not ship.
     CARGO_PROFILE = "dev";
   });
@@ -161,9 +161,9 @@ in
   dphone-image = imageTool.package;
   dphone-apps-build = appsTool.package;
 
-  # The DPMA module, `lib/libres_dpma_rs.so`, for the Asterisk of
+  # The DPMA module, `lib/libres_open_dpma.so`, for the Asterisk of
   # asterisk.nix.
-  res_dpma_rs = module.package;
+  res_open_dpma = module.package;
 
   # Unit and integration tests of every crate, on the build machine.
   tests = craneLib.cargoTest (
@@ -194,7 +194,7 @@ in
       DPHONE_TEST_REQUIRE_VENDOR = "1";
       DPHONE_VENDOR_DIR = "${stock.dir}";
       DPHONE_STOCK_ROOTFS = "${stock.rootfs}";
-      # Provisioning and registration against Asterisk with res_dpma_rs
+      # Provisioning and registration against Asterisk with res_open_dpma
       # of this repository
       # (crates/dphone/tests/asterisk.rs), likewise required here.
       DPHONE_TEST_REQUIRE_ASTERISK = "1";

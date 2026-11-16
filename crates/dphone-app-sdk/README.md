@@ -149,7 +149,7 @@ The phone stops an app that takes more than two seconds to handle one event, or 
 
 ## Data on the PBX
 
-`storage` keeps keys and values on the phone.  `pbx_storage` keeps them on the PBX, so that they are the same on every phone and outlast a phone: a game's table of best times, or how far a user has come, which is there again after the phone is reset.  It needs a PBX with Open DPhone's module for Asterisk (dpma-rs); there is nothing to configure in the app or on the phone.
+`storage` keeps keys and values on the phone.  `pbx_storage` keeps them on the PBX, so that they are the same on every phone and outlast a phone: a game's table of best times, or how far a user has come, which is there again after the phone is reset.  It needs a PBX with Open DPhone's module for Asterisk (Open DPMA); there is nothing to configure in the app or on the phone.
 
 An app has two sets of keys there, and no other app can reach either:
 
