@@ -811,3 +811,59 @@ async fn document_digest_on_verify_skips_the_download() {
     assert_eq!(sink.applied.lock().unwrap().len(), 2);
     assert_eq!(sink.md5.lock().unwrap().as_deref(), Some(md5_hex(changed.as_bytes()).as_str()));
 }
+
+fn selection(store: &Store) -> Option<Result<(), String>> {
+    store.get::<Provisioning>().selection.clone()
+}
+
+/// A login from the phone's menus or an app while the phone has a user
+/// (hot desking): the PBX is asked about the new user, a refusal says why
+/// and leaves the phone with the user it had, and a logout leaves the
+/// phone without one.
+#[tokio::test(flavor = "current_thread")]
+async fn a_refused_login_brings_the_previous_assignment_back() {
+    let r = rig();
+    r.server.lock().unwrap().users.push(("200".into(), "Other".into(), "4321".into()));
+    r.dpma.network(true, Some("sip:proxy@pbx.test".into()), Vec::new());
+    r.store.send(Command::StartProvisioning { server: Some("sip:proxy@pbx.test".into()) }).await.unwrap();
+    until(&r.store, "awaiting a user", ProvisionPhase::AwaitingUser).await;
+    assert_eq!(selection(&r.store), None);
+    r.store.send(Command::SelectUser { id: "100".into(), pin: "1234".into() }).await.unwrap();
+    wait("the first login ended", || selection(&r.store)).await.unwrap();
+    assert_eq!(phase(&r.store), ProvisionPhase::Provisioned);
+
+    // A wrong PIN for another user: the PBX is asked, and refuses.
+    r.store.send(Command::SelectUser { id: "200".into(), pin: "0000".into() }).await.unwrap();
+    let refused = wait("the login was refused", || selection(&r.store)).await.unwrap_err();
+    assert!(refused.contains("-199"), "{refused}");
+    assert_eq!(r.server.lock().unwrap().token_requests.last().unwrap().0, "200");
+    // The phone is the first user's again, attached, with nothing saved
+    // for the user it was refused as.
+    until(&r.store, "provisioned again", ProvisionPhase::Provisioned).await;
+    let p = r.store.get::<Provisioning>();
+    assert!(p.attached);
+    assert_eq!(p.assigned_user, "100");
+    let c = Configurator::parse(&r.sink.configurator.lock().unwrap().clone().unwrap());
+    assert_eq!(c.get("config_server_user"), Some("100"));
+    assert!(c.get("config_server_token").unwrap().starts_with("100/"));
+    // The refusal is still what the state says of the login.
+    assert!(selection(&r.store).unwrap().is_err());
+
+    // The right PIN: the phone becomes the other user's.
+    r.store.send(Command::SelectUser { id: "200".into(), pin: "4321".into() }).await.unwrap();
+    wait("the login ended", || selection(&r.store)).await.unwrap();
+    let p = r.store.get::<Provisioning>();
+    assert_eq!((p.phase.clone(), p.assigned_user.as_str(), p.attached), (ProvisionPhase::Provisioned, "200", true));
+    let c = Configurator::parse(&r.sink.configurator.lock().unwrap().clone().unwrap());
+    assert_eq!(c.get("config_server_user"), Some("200"));
+    assert!(c.get("config_server_token").unwrap().starts_with("200/"));
+
+    // A logout: this PBX has no configuration for a phone without a user,
+    // so the phone waits for one, and keeps nothing of the user it had.
+    r.store.send(Command::SelectUser { id: String::new(), pin: String::new() }).await.unwrap();
+    wait("the logout ended", || selection(&r.store)).await.unwrap();
+    let p = r.store.get::<Provisioning>();
+    assert_eq!((p.phase.clone(), p.assigned_user.as_str()), (ProvisionPhase::AwaitingUser, ""));
+    let c = Configurator::parse(&r.sink.configurator.lock().unwrap().clone().unwrap());
+    assert_eq!((c.get("config_server_user"), c.get("config_server_token")), (None, None));
+}

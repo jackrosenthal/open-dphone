@@ -475,6 +475,10 @@ pub struct Provisioning {
     /// The server offered firmware; stored, not acted on unless enabled.
     pub offered_firmware: Option<String>,
     pub last_success_unix: Option<u64>,
+    /// How the last `Command::SelectUser` ended: `Ok`, or what the PBX or
+    /// the phone said against it.  `None` before the first, and while one
+    /// is under way.
+    pub selection: Option<Result<(), String>>,
 }
 
 // -------------------------------------------------------------- Accounts

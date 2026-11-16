@@ -36,6 +36,14 @@ struct Fail {
     retry: bool,
 }
 
+/// A `SelectUser` that has not ended yet.
+struct Selection {
+    /// The user and the token the phone had when the command came, while
+    /// the PBX has not granted the new user a token: what a refused login
+    /// goes back to.
+    previous: Option<(Option<String>, Vec<u8>)>,
+}
+
 impl From<DpmaError> for Fail {
     fn from(e: DpmaError) -> Fail {
         match e {
@@ -72,6 +80,9 @@ pub(crate) struct Machine {
     legacy_only: Option<String>,
     /// The pass that fetches the files the configuration names.
     resource_task: Option<tokio::task::JoinHandle<()>>,
+    /// The `SelectUser` under way: until it ends, nothing saved for the
+    /// user before stands in for what the command named.
+    selecting: Option<Selection>,
 }
 
 /// The two bodies a Handshake can carry (`dpma-proto`'s `cert`).
@@ -128,6 +139,7 @@ impl Machine {
             userlist_reqs: String::new(),
             legacy_only: None,
             resource_task: None,
+            selecting: None,
         }
     }
 
@@ -228,10 +240,12 @@ impl Machine {
                 }
                 _ = beat.tick() => self.store.heartbeat(Subsystem::Dpma),
             }
-            if want && self.net_up && !self.standalone {
+            while want && self.net_up && !self.standalone {
                 want = false;
                 retry_at = None;
-                match self.provision(full).await {
+                let result = self.provision(full).await;
+                full = true;
+                match &result {
                     Ok(Outcome::Provisioned) => {
                         self.attached = true;
                         ping_at = tokio::time::Instant::now() + Duration::from_secs(self.cfg.ping_secs.max(1));
@@ -250,7 +264,13 @@ impl Machine {
                         }
                     }
                 }
-                full = true;
+                if let Some(selection) = self.selecting.take()
+                    && self.selected(selection, &result)
+                {
+                    // The assignment the phone had comes back.
+                    retry_at = None;
+                    want = true;
+                }
             }
         }
     }
@@ -269,9 +289,19 @@ impl Machine {
                 Ok(Reply::Done)
             }
             Command::SelectUser { id, pin } => {
+                // The PBX decides about the user: the token the phone
+                // holds is for the user before, and with it the PBX would
+                // never be asked.  It is kept for a refusal.
+                let previous = match self.selecting.take() {
+                    Some(earlier) => earlier.previous,
+                    None => self.link.token().map(|token| (self.user.clone(), token)),
+                };
+                self.link.set_token(None);
+                self.selecting = Some(Selection { previous });
                 self.user = Some(id).filter(|u| !u.is_empty());
                 self.pin = Some(pin).filter(|p| !p.is_empty());
                 self.standalone = false;
+                self.store.update::<Provisioning, _>(|p| p.selection = None);
                 start = true;
                 Ok(Reply::Done)
             }
@@ -291,6 +321,7 @@ impl Machine {
                 self.token_reqs.clear();
                 self.userlist_reqs.clear();
                 self.legacy_only = None;
+                self.selecting = None;
                 self.stop_resources();
                 self.storage.remove(files::IDENTITY_CERT);
                 self.storage.remove(files::IDENTITY_KEY);
@@ -354,6 +385,44 @@ impl Machine {
             log::debug!("dpma: unexpected message id {:?}", String::from_utf8_lossy(&ev.id));
         }
         None
+    }
+
+    /// Ends a `SelectUser` with the pass that carried it out: tells the
+    /// state how it ended, and, when the PBX did not take the user, gives
+    /// the phone back the user and the token it had.  Returns whether
+    /// another pass is wanted for that.
+    fn selected(&mut self, selection: Selection, result: &Result<Outcome, Fail>) -> bool {
+        let outcome = match result {
+            Ok(Outcome::Provisioned) => Ok(()),
+            // Logged out, and the PBX has no configuration for a phone
+            // without a user: the phone waits for one.
+            Ok(Outcome::NeedUser) if self.user.is_none() => {
+                self.save_configurator(|c| {
+                    c.remove("config_server_token");
+                    c.remove("config_server_user");
+                    c.remove("config_user_password");
+                });
+                self.store.update::<Provisioning, _>(|p| p.assigned_user.clear());
+                Ok(())
+            }
+            Ok(Outcome::NeedUser) => Err("the PBX needs a PIN for the user".to_string()),
+            Ok(Outcome::NeedServer) => Err("the phone has no PBX".to_string()),
+            Err(f) => Err(match f.code {
+                Some(code) => format!("{} ({code})", f.reason),
+                None => f.reason.clone(),
+            }),
+        };
+        let restore = match (&outcome, selection.previous) {
+            (Err(_), Some((user, token))) => {
+                self.user = user;
+                self.pin = None;
+                self.link.set_token(Some(&token));
+                true
+            }
+            _ => false,
+        };
+        self.store.update::<Provisioning, _>(|p| p.selection = Some(outcome));
+        restore
     }
 
     fn configurator(&self) -> Configurator {
@@ -527,12 +596,15 @@ impl Machine {
         let saved = self.configurator();
         let server_addr = self.server.as_ref().map(|s| s.address.clone()).unwrap_or_default();
         let same_server = saved.get("config_server_url").is_none_or(|u| sip_uri(u) == sip_uri(&server_addr));
-        if self.user.is_none() && same_server {
+        // What is saved for the user is the user before's while a
+        // `SelectUser` is under way.
+        let fresh = self.selecting.is_some();
+        if self.user.is_none() && same_server && !fresh {
             self.user = saved.get("config_server_user").map(str::to_string);
         }
-        let saved_user_pass = saved.get("config_user_password").filter(|_| same_server).map(str::to_string);
+        let saved_user_pass = saved.get("config_user_password").filter(|_| same_server && !fresh).map(str::to_string);
         let saved_cfg_pass = saved.get("config_server_password").filter(|_| same_server).map(str::to_string);
-        if let (true, true, Some(t)) = (self.link.token().is_none(), same_server, saved.get("config_server_token")) {
+        if let (true, true, Some(t)) = (self.link.token().is_none(), same_server && !fresh, saved.get("config_server_token")) {
             self.link.set_token(Some(t.as_bytes()));
         }
         let user = self.user.clone().unwrap_or_default();
@@ -623,6 +695,11 @@ impl Machine {
                 return Err(Fail { reason: "the TokenResponse has no token".into(), code: None, retry: true });
             }
             self.link.set_token(Some(&resp.config_token));
+            // The PBX took the user: there is no going back to the one
+            // before.
+            if let Some(selection) = &mut self.selecting {
+                selection.previous = None;
+            }
             let assigned = String::from_utf8_lossy(&resp.username).into_owned();
             if self.user.is_none() && !assigned.is_empty() {
                 self.user = Some(assigned);
