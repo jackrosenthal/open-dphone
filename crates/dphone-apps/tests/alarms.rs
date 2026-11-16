@@ -107,12 +107,15 @@ fn an_alarm_is_added_with_a_time_days_and_a_ringtone() {
     r.softkey(APP, "New");
     assert_eq!(r.ui.texts(APP), ["New Alarm"]);
     let fields = rows(&r);
-    assert_eq!(fields.iter().map(|f| f.0.as_str()).collect::<Vec<_>>(), ["Time", "Repeat", "Ringtone", "Alarm"]);
-    assert_eq!(fields[1..], [row("Repeat", "Once"), row("Ringtone", "Marimba"), row("Alarm", "On")]);
-    assert_eq!(r.ui.softkeys(APP), ["Save", "Change", "Cancel"]);
+    assert_eq!(fields.iter().map(|f| f.0.as_str()).collect::<Vec<_>>(), ["Time", "Repeat", "Ringtone"]);
+    assert_eq!(fields[1..], [row("Repeat", "Once"), row("Ringtone", "Marimba")]);
+    assert_eq!(r.ui.softkeys(APP), ["Save", "Cancel"]);
 
-    // The time: typed as hour and minutes, with AM or PM.
+    // The time: Select opens a dialog over the fields, in which the time
+    // is typed as hour and minutes, with AM or PM.
     r.key(APP, Key::Select);
+    assert_eq!(r.ui.texts(APP)[..2], ["New Alarm", "Time"]);
+    assert_eq!(rows(&r).len(), 3, "the fields are still there");
     assert_eq!(r.ui.softkeys(APP), ["OK", "AM/PM", "Delete", "Cancel"]);
     type_digits(&mut r, "063");
     assert!(r.ui.texts(APP).iter().any(|t| t.starts_with("06:3_")), "{:?}", r.ui.texts(APP));
@@ -127,25 +130,34 @@ fn an_alarm_is_added_with_a_time_days_and_a_ringtone() {
     }
     assert!(r.ui.shows(APP, "06:30 AM"), "{:?}", r.ui.texts(APP));
     r.softkey(APP, "OK");
+    assert_eq!(r.ui.texts(APP), ["New Alarm"], "the dialog is gone");
     assert_eq!(rows(&r)[0], row("Time", "6:30 AM"));
+    assert_eq!(r.ui.softkeys(APP), ["Save", "Cancel"]);
 
-    // The days: Monday to Friday.
+    // The days: Select marks a day; Cancel leaves the alarm's days alone,
+    // and OK takes the marked ones.
     r.key(APP, Key::Down);
-    r.softkey(APP, "Change");
-    assert_eq!(r.ui.texts(APP), ["Repeat"]);
+    r.key(APP, Key::Select);
+    assert_eq!(r.ui.texts(APP), ["New Alarm", "Repeat"]);
     assert_eq!(rows(&r).len(), 7);
+    assert_eq!(r.ui.softkeys(APP), ["OK", "Cancel"]);
+    r.key(APP, Key::Select);
+    r.softkey(APP, "Cancel");
+    assert_eq!(rows(&r)[1], row("Repeat", "Once"));
+    r.key(APP, Key::Select);
     for _ in 0..5 {
         r.key(APP, Key::Down);
         r.key(APP, Key::Select);
     }
-    r.softkey(APP, "Done");
+    r.softkey(APP, "OK");
     assert_eq!(rows(&r)[1], row("Repeat", "Weekdays"));
 
     // The ringtone: Play sounds the highlighted one, Select takes it.
     r.key(APP, Key::Down);
     r.key(APP, Key::Select);
+    assert_eq!(r.ui.texts(APP), ["New Alarm", "Ringtone"]);
     assert_eq!(rows(&r), [row("Marimba", ""), row("Classic", ""), row("Chime", "")]);
-    assert_eq!(r.ui.softkeys(APP), ["Select", "Play", "Back"]);
+    assert_eq!(r.ui.softkeys(APP), ["Select", "Play", "Cancel"]);
     r.key(APP, Key::Down);
     r.key(APP, Key::Down);
     r.softkey(APP, "Select");
@@ -155,11 +167,11 @@ fn an_alarm_is_added_with_a_time_days_and_a_ringtone() {
     r.softkey(APP, "Save");
     assert_eq!(*log.lock().unwrap(), [Command::SetAlarm { alarm: alarm(6, 30, WEEKDAYS, "Chime") }]);
     assert_eq!(rows(&r), [row("6:30 AM", "Weekdays")]);
-    assert_eq!(r.ui.softkeys(APP), ["New", "Edit", "Turn Off", "Delete", "Exit"]);
+    assert_eq!(r.ui.softkeys(APP), ["New", "Edit", "Disable", "Delete", "Exit"]);
 }
 
 #[test]
-fn the_ringtone_screen_plays_a_tone_and_stops_it() {
+fn the_ringtone_dialog_plays_a_tone_and_stops_it() {
     let (mut r, _log) = rig();
     let audio = Arc::new(Mutex::new(Vec::new()));
     common::answer_commands(&r.store, Domain::Audio, audio.clone(), |_| Ok(Reply::Done));
@@ -170,9 +182,9 @@ fn the_ringtone_screen_plays_a_tone_and_stops_it() {
     r.key(APP, Key::Select);
     r.key(APP, Key::Down);
     r.softkey(APP, "Play");
-    r.softkey(APP, "Back");
+    r.softkey(APP, "Cancel");
     assert_eq!(*audio.lock().unwrap(), [Command::PlaySound { name: "Classic".into() }, Command::StopSound]);
-    // Back did not take the tone.
+    // Cancel did not take the tone.
     assert_eq!(rows(&r)[2], row("Ringtone", "Marimba"));
 }
 
@@ -186,40 +198,44 @@ fn alarms_are_changed_switched_and_deleted() {
     r.launch(APP);
     assert_eq!(rows(&r), [row("8:00 AM", "Mon"), row("1:15 PM", "Once")]);
 
-    // Off, and on again.
-    r.softkey(APP, "Turn Off");
-    assert_eq!(rows(&r)[0], row("8:00 AM", "Off"));
-    assert_eq!(r.ui.softkeys(APP)[2], "Turn On");
-    r.softkey(APP, "Turn On");
+    // Disabled, and enabled again.
+    r.softkey(APP, "Disable");
+    assert_eq!(rows(&r)[0], row("8:00 AM", "Disabled"));
+    assert_eq!(r.ui.softkeys(APP)[2], "Enable");
+    r.softkey(APP, "Enable");
     assert_eq!(rows(&r)[0], row("8:00 AM", "Mon"));
 
     // Select edits the highlighted alarm; Cancel leaves it as it was.
     r.key(APP, Key::Down);
-    assert_eq!(r.ui.softkeys(APP), ["New", "Edit", "Turn Off", "Delete", "Exit"]);
+    assert_eq!(r.ui.softkeys(APP), ["New", "Edit", "Disable", "Delete", "Exit"]);
     r.key(APP, Key::Select);
     assert_eq!(r.ui.texts(APP), ["Edit Alarm"]);
-    assert_eq!(rows(&r)[0], row("Time", "1:15 PM"));
+    assert_eq!(rows(&r), [row("Time", "1:15 PM"), row("Repeat", "Once"), row("Ringtone", "Classic")]);
     r.key(APP, Key::Select);
     assert!(r.ui.shows(APP, "01:15 PM"));
+    // Cancel closes the dialog, not the alarm's fields.
+    r.key(APP, Key::Cancel);
+    assert_eq!(r.ui.texts(APP), ["Edit Alarm"]);
+    r.key(APP, Key::Select);
     type_digits(&mut r, "2145");
     r.key(APP, Key::Select);
     assert_eq!(rows(&r)[0], row("Time", "9:45 PM"));
     r.softkey(APP, "Cancel");
     assert_eq!(rows(&r)[1], row("1:15 PM", "Once"));
-    // Changed and saved.
+    // Changed and saved: an alarm that is edited stays enabled or
+    // disabled as it was.
+    r.softkey(APP, "Disable");
     r.softkey(APP, "Edit");
-    for _ in 0..3 {
-        r.key(APP, Key::Down);
-    }
-    r.softkey(APP, "Change");
-    assert_eq!(rows(&r)[3], row("Alarm", "Off"));
+    r.key(APP, Key::Select);
+    type_digits(&mut r, "1320");
+    r.softkey(APP, "OK");
     r.softkey(APP, "Save");
-    assert_eq!(rows(&r)[1], row("1:15 PM", "Off"));
+    assert_eq!(rows(&r)[1], row("1:20 PM", "Disabled"));
 
     // Deleted.
     r.softkey(APP, "Delete");
     assert_eq!(rows(&r), [row("8:00 AM", "Mon")]);
-    assert_eq!(r.ui.softkeys(APP), ["New", "Edit", "Turn Off", "Delete", "Exit"]);
+    assert_eq!(r.ui.softkeys(APP), ["New", "Edit", "Disable", "Delete", "Exit"]);
 
     let sent = log.lock().unwrap().clone();
     let on = Alarm { id: 1, ..alarm(8, 0, 0b0000010, "Marimba") };
@@ -229,6 +245,7 @@ fn alarms_are_changed_switched_and_deleted() {
             Command::SetAlarm { alarm: Alarm { enabled: false, ..on.clone() } },
             Command::SetAlarm { alarm: on },
             Command::SetAlarm { alarm: Alarm { id: 2, enabled: false, ..alarm(13, 15, 0, "Classic") } },
+            Command::SetAlarm { alarm: Alarm { id: 2, enabled: false, ..alarm(13, 20, 0, "Classic") } },
             Command::RemoveAlarm { id: 2 },
         ]
     );
@@ -250,7 +267,7 @@ fn the_list_follows_changes_made_elsewhere() {
     r.store.update::<Alarms, _>(|a| a.snoozed = Some((1, 1_800_000_000)));
     r.settle();
     assert_eq!(rows(&r)[0], row("7:05 AM", "Snoozed"));
-    assert_eq!(r.ui.softkeys(APP), ["New", "Edit", "Turn Off", "Dismiss", "Delete", "Exit"]);
+    assert_eq!(r.ui.softkeys(APP), ["New", "Edit", "Disable", "Dismiss", "Delete", "Exit"]);
     r.softkey(APP, "Dismiss");
     assert_eq!(rows(&r)[0], row("7:05 AM", "Every day"));
     // An alarm that is being edited is not swept away by a change.
@@ -380,21 +397,28 @@ fn the_screens_on_every_kind_of_display() {
         p.tap(&[Key::Select]);
         let edit = p.shot("2-edit");
         assert!(edit != list, "{model:?}");
+        // Each dialog is drawn over the fields: the top of the screen,
+        // with the title, stays as it was.
+        let width = p.sim.frame(Screen::Main).unwrap().info.stride;
         p.tap(&[Key::Select]);
         let time = p.shot("3-time");
         assert!(time != edit, "{model:?}");
+        assert_eq!(time[..width * 12], edit[..width * 12], "{model:?}");
         p.tap(&[Key::Digit(0), Key::Digit(7), Key::Digit(1)]);
         let typed = p.shot("4-time-typed");
         assert!(typed != time, "{model:?}");
-        p.tap(&[Key::Digit(5), Key::Select, Key::Down, Key::Select]);
-        let days = p.shot("5-days");
-        assert!(days != typed, "{model:?}");
-        p.tap(&[Key::Cancel, Key::Down, Key::Down, Key::Select]);
-        let tones = p.shot("6-ringtone");
+        p.tap(&[Key::Digit(5), Key::Select]);
+        let edited = p.shot("5-edited");
+        assert!(edited != edit, "{model:?}: the new time shows");
+        p.tap(&[Key::Down, Key::Select]);
+        let days = p.shot("6-repeat");
+        assert!(days != edited, "{model:?}");
+        assert_eq!(days[..width * 12], edit[..width * 12], "{model:?}");
+        p.tap(&[Key::Cancel, Key::Down, Key::Select]);
+        let tones = p.shot("7-ringtone");
         assert!(tones != days, "{model:?}");
         p.tap(&[Key::Cancel]);
-        let edited = p.shot("7-edited");
-        assert!(edited != edit, "{model:?}: the new time shows");
+        assert_eq!(p.shot("8-closed")[..width * 12], edit[..width * 12], "{model:?}");
         assert_eq!(p.ui.screen_name(), "app:alarms");
     }
 }

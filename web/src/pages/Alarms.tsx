@@ -162,7 +162,7 @@ export function Alarms() {
                           Dismiss
                         </Button>
                       )}
-                      <Toggle label={a.enabled ? "On" : "Off"} checked={a.enabled} disabled={set.isPending} onChange={(enabled) => set.mutate({ alarm: { ...a, enabled } })} />
+                      <Toggle label={a.enabled ? "Enabled" : "Disabled"} checked={a.enabled} disabled={set.isPending} onChange={(enabled) => set.mutate({ alarm: { ...a, enabled } })} />
                       <Button size="sm" onClick={() => setEditing(a)}>
                         Edit
                       </Button>
