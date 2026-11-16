@@ -58,6 +58,7 @@ fn publishes_the_app_list() {
             "alarms",
             "boxpusher",
             "calendar",
+            "checks",
             "contacts",
             "desksparrow",
             "diagnostics",

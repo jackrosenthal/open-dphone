@@ -16,7 +16,7 @@ use crate::prepare::{self, Job, Prepared};
 use crate::services::Services;
 use crate::view::{Shell, WindowEvent, WindowKind};
 use dphone_state::{
-    AppInfo, Apps, Call, Command, CommandError, CommandReceiver, Domain, Event, Reply, Responder,
+    AppInfo, Apps, Command, CommandError, CommandReceiver, Domain, Event, Reply, Responder,
     Store, Subscription, Subsystem, Topic,
 };
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -109,7 +109,11 @@ pub struct AppManager {
     commands: CommandReceiver,
     sub: Subscription,
     generation: u64,
-    last_calls: Vec<Call>,
+    /// The calls as the apps were last told of them.
+    last_calls: Vec<wit::CallInfo>,
+    /// The apps that got the push of a hidden call (a call that belongs
+    /// to apps), by the call's id.
+    hidden_calls: HashMap<u32, Vec<String>>,
     last_mwi: Arc<dyn_mwi::Snapshot>,
     last_presence: Arc<dphone_state::Presence>,
     stop: Arc<AtomicBool>,
@@ -156,7 +160,8 @@ impl AppManager {
                 .subscribe(Box::new(move |signal| inbox.push(Inbound::StoreSignal(signal))));
         }
         Ok(AppManager {
-            last_calls: store.get::<dphone_state::Calls>().calls.clone(),
+            last_calls: store.get::<dphone_state::Calls>().calls.iter().map(host::call_info).collect(),
+            hidden_calls: HashMap::new(),
             last_mwi: store.get::<dphone_state::Mwi>(),
             last_presence: store.get::<dphone_state::Presence>(),
             cfg,
@@ -534,6 +539,7 @@ impl AppManager {
             pictures: HashMap::new(),
             images: HashSet::new(),
             playing: false,
+            preview_until_ms: 0,
             limits: wasmtime::StoreLimitsBuilder::new()
                 .memory_size(cap)
                 .memories(1)
@@ -556,6 +562,9 @@ impl AppManager {
                 self.running
                     .insert(name.to_string(), Running { store, app });
                 log::info!("app {name}: started");
+                // What the app asked for in `start` may be for another
+                // app, which sees who is running in the published list.
+                self.publish();
                 self.after_call(name);
                 Ok(())
             }
@@ -595,23 +604,37 @@ impl AppManager {
         self.publish();
     }
 
-    /// Ends the calls that belong to apps (hidden calls) when the app on
-    /// screen leaves it, as stock does when its app screen unloads: such
-    /// a call has no other screen from which to end it.
-    fn end_hidden_calls(&self) {
+    /// Ends the calls that belong to the app `name` (hidden calls whose
+    /// push the app got) when the app leaves the screen or stops, as
+    /// stock does when its app screen unloads: such a call has no other
+    /// screen from which to end it.  A call that several apps got ends
+    /// with the last of them, and a call that no app got (none observed
+    /// the call's event) ends when the app on screen leaves
+    /// (`was_foreground`).
+    fn end_hidden_calls(&mut self, name: &str, was_foreground: bool) {
         let calls = self.store.get::<dphone_state::Calls>();
         for call in calls.live().filter(|c| c.hidden) {
-            let _ = self.store.post(Command::Hangup { call: call.id });
+            let end = match self.hidden_calls.get_mut(&call.id.0) {
+                Some(owners) => {
+                    let was_owner = owners.iter().any(|o| o == name);
+                    owners.retain(|o| o != name);
+                    was_owner && owners.is_empty()
+                }
+                None => was_foreground,
+            };
+            if end {
+                self.hidden_calls.remove(&call.id.0);
+                let _ = self.store.post(Command::Hangup { call: call.id });
+            }
         }
     }
 
     fn kill(&mut self, name: &str) {
-        if self.foreground.as_deref() == Some(name) {
-            self.end_hidden_calls();
-        }
+        self.end_hidden_calls(name, self.foreground.as_deref() == Some(name));
         if let Some(r) = self.running.remove(name) {
             let has_idle = r.store.data().idle.is_some();
-            if r.store.data().playing {
+            let c = r.store.data();
+            if c.playing || dphone_state::clock::mono_ms() < c.preview_until_ms {
                 // Its sound does not outlive it.
                 let _ = self.store.post(Command::StopSound);
             }
@@ -853,12 +876,21 @@ impl AppManager {
 
     fn on_state(&mut self, wake: dphone_state::Wake) {
         if wake.changed(Topic::Calls) {
-            let calls = self.store.get::<dphone_state::Calls>().calls.clone();
+            // What an app sees of a call, but for the duration, which
+            // counts on without a change.
+            fn seen(c: &wit::CallInfo) -> (u32, u8, bool, wit::CallState, &str, &str) {
+                (c.id, c.account, c.incoming, c.state, &c.remote_name, &c.remote_number)
+            }
+            let calls: Vec<wit::CallInfo> =
+                self.store.get::<dphone_state::Calls>().calls.iter().map(host::call_info).collect();
+            // The end of a call comes with `Event::CallEnded`, once.
             let changed: Vec<wit::CallInfo> = calls
                 .iter()
-                .filter(|c| self.last_calls.iter().find(|o| o.id == c.id) != Some(c))
-                .map(host::call_info)
+                .filter(|c| c.state != wit::CallState::Ended)
+                .filter(|c| self.last_calls.iter().find(|o| o.id == c.id).map(seen) != Some(seen(c)))
+                .cloned()
                 .collect();
+            self.hidden_calls.retain(|id, _| calls.iter().any(|c| c.id == *id));
             self.last_calls = calls;
             if !changed.is_empty() {
                 for name in self.apps_where(|c| c.observe_calls && c.has(Capability::Calls)) {
@@ -918,7 +950,20 @@ impl AppManager {
         }
         for ev in wake.events {
             match ev {
-                Event::Push { name: push, body } => self.on_push(&push, &body),
+                Event::Push { name: push, body } => {
+                    let record = wit::Push {
+                        name: push,
+                        kind: String::new(),
+                        data: body,
+                        method: "MESSAGE".into(),
+                        call: None,
+                    };
+                    self.on_push(record)
+                }
+                Event::CallPush { name: push, kind, data, method, call } => {
+                    let record = wit::Push { name: push, kind, data, method, call: Some(call.0) };
+                    self.on_push(record)
+                }
                 Event::App {
                     app,
                     name: ev,
@@ -956,55 +1001,41 @@ impl AppManager {
         }
     }
 
-    /// A server push.  `body` is the event data; when it is a JSON object
-    /// with `type`, `data`, `method`, or `call` members (the SIP layer's
-    /// envelope for pushes that arrive on an INVITE or INFO), those fill
-    /// the matching fields.
-    fn on_push(&mut self, push: &str, body: &str) {
+    /// A server push, for the apps that observe its name.
+    fn on_push(&mut self, mut record: wit::Push) {
+        let push = record.name.clone();
         if push == "digium.phone.server_change" {
             for name in self.apps_where(|c| c.has(Capability::Events)) {
                 self.deliver(&name, wit::Event::ServerChange);
             }
             return;
         }
-        let targets = self.apps_where(|c| c.observed.contains(push));
+        let targets = self.apps_where(|c| c.observed.contains(&push));
         if targets.is_empty() {
             return;
         }
-        let mut record = wit::Push {
-            name: push.to_string(),
-            kind: String::new(),
-            data: body.to_string(),
-            method: "MESSAGE".into(),
-            call: None,
-        };
-        if let Ok(serde_json::Value::Object(m)) = serde_json::from_str::<serde_json::Value>(body)
-            && (m.contains_key("method") || m.contains_key("call"))
-        {
-            let text = |k: &str| match m.get(k) {
-                Some(serde_json::Value::String(s)) => s.clone(),
-                Some(serde_json::Value::Null) | None => String::new(),
-                Some(v) => v.to_string(),
-            };
-            record.kind = text("type");
-            record.data = text("data");
-            if let Some(method) = m.get("method").and_then(|v| v.as_str()) {
-                record.method = method.to_string();
-            }
-            record.call = m.get("call").and_then(|v| v.as_u64()).map(|c| c as u32);
-        }
         // An INVITE push names its call; if the SIP layer did not, take the
         // newest alerting call.
+        let calls = self.store.get::<dphone_state::Calls>();
         if record.call.is_none() && push.starts_with("digium.incomingCall.") {
             record.method = "INVITE".into();
-            record.call = self
-                .store
-                .get::<dphone_state::Calls>()
+            record.call = calls
                 .calls
                 .iter()
                 .filter(|c| c.state == dphone_state::CallState::Ringing)
                 .max_by_key(|c| c.started_mono_ms)
                 .map(|c| c.id.0);
+        }
+        // A hidden call is the call of the apps that get the call's push.
+        if let Some(id) = record.call
+            && calls.live().any(|c| c.hidden && c.id.0 == id)
+        {
+            let owners = self.hidden_calls.entry(id).or_default();
+            for name in &targets {
+                if !owners.contains(name) {
+                    owners.push(name.clone());
+                }
+            }
         }
         for name in targets {
             self.deliver(&name, wit::Event::Push(record.clone()));
@@ -1033,10 +1064,11 @@ impl AppManager {
                 wit::Event::Foreground
             }
             WindowEvent::Background => {
-                if self.foreground.as_deref() == Some(name) {
+                let was_foreground = self.foreground.as_deref() == Some(name);
+                if was_foreground {
                     self.foreground = None;
-                    self.end_hidden_calls();
                 }
+                self.end_hidden_calls(name, was_foreground);
                 let exit = match self.running.get_mut(name) {
                     Some(r) => {
                         let c = r.store.data_mut();

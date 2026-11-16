@@ -4,7 +4,7 @@ Placing and controlling calls, call events, and message-waiting counts.  Capabil
 
 A call that an app places or answers is an ordinary call of the phone: the phone shows the call screen, chooses the audio path, and writes the call log.  The app sees every call of the phone, not only calls the app started.
 
-The functions that return `Result` pass the request to the phone's call control and wait up to 0.5 seconds.  As [`Error`](types.md#error) describes, every refusal from call control arrives as `Error::Failed(text)`; the tables below quote the texts.
+The functions that return `Result` pass the request to the phone's call control and wait up to 0.5 seconds.  A request that call control refuses as not possible (no such call, a call in the wrong state, a bad argument) returns `Error::Invalid(text)`; the tables below quote the texts.  A request that call control tried and could not carry out returns `Error::Failed(text)`.  When call control does not answer within the 0.5 seconds, the function returns `Failed("the phone did not answer in time; what was asked may still happen")`, and the request may still be carried out afterward; [`list`](#list) and [`Event::Call`](app-events.md#call) show what happened.
 
 ## `dial`
 
@@ -23,11 +23,11 @@ The phone puts the other calls on hold.
 | Error | Cause |
 | --- | --- |
 | `Invalid("bad number")` | `number` is empty or longer than 256 bytes. |
-| `Failed("invalid: no such account")` | `account` names no account. |
-| `Failed("invalid: no account is configured")` | The phone has no account. |
-| `Failed("invalid: too many calls")` | The phone already has the most calls allowed (four unless configured otherwise). |
-| `Failed("invalid: too many headers")`, `Failed("invalid: the header ... cannot be set")` | `headers` breaks a rule above. |
-| `Failed(text)` | Another refusal of call control, a failure to open the audio, or no answer within 0.5 seconds (`timed out waiting for the handler`; the call may still start). |
+| `Invalid("no such account")` | `account` names no account. |
+| `Invalid("no account is configured")` | The phone has no account. |
+| `Invalid("too many calls")` | The phone already has the most calls allowed (four unless configured otherwise). |
+| `Invalid("too many headers")`, `Invalid("the header ... cannot be set")` | `headers` breaks a rule above. |
+| `Failed(text)` | A failure to open the audio or to start the call, or no answer within 0.5 seconds (the call may still start). |
 
 ```rust
 let call = calls::dial("*97", None, &[])?;
@@ -39,7 +39,7 @@ let call = calls::dial("*97", None, &[])?;
 pub fn answer(call: u32) -> Result<(), Error>
 ```
 
-Answers an incoming call that is ringing.  The phone chooses the audio path as for a call answered at the phone.  `Failed("invalid: no such call")` for an unknown identifier, and `Failed("invalid: the call is not ringing")` for an outgoing, answered, or ended call.
+Answers an incoming call that is ringing.  The phone chooses the audio path as for a call answered at the phone.  `Invalid("no such call")` for an unknown identifier, and `Invalid("the call is not ringing")` for an outgoing, answered, or ended call.
 
 ## `reject`
 
@@ -55,7 +55,7 @@ Declines an incoming call that is ringing, with the SIP status 603.  The errors 
 pub fn hangup(call: u32) -> Result<(), Error>
 ```
 
-Ends a call in any state.  A ringing incoming call is rejected with the SIP status 486.  A call that has already ended returns `Ok`; an unknown identifier returns `Failed("invalid: no such call")`.
+Ends a call in any state.  A ringing incoming call is rejected with the SIP status 486.  A call that has already ended returns `Ok`; an unknown identifier returns `Invalid("no such call")`.
 
 ## `send_dtmf`
 
@@ -65,7 +65,7 @@ pub fn send_dtmf(call: u32, digits: &str) -> Result<(), Error>
 
 WIT name: `send-dtmf`.
 
-Sends digits on a call, by the method the call negotiated (RTP telephone events, else SIP `INFO`).  `digits` is at most 64 characters, each `0` to `9`, `*`, or `#`; anything else returns `Invalid("digits must be 0-9, *, or #")` and sends nothing.  The digits are sent one by one, and the first failure stops the rest: `Failed("invalid: no such call")` or `Failed("invalid: the call has no media")`.
+Sends digits on a call, by the method the call negotiated (RTP telephone events, else SIP `INFO`).  `digits` is at most 64 characters, each `0` to `9`, `*`, or `#`; anything else returns `Invalid("digits must be 0-9, *, or #")` and sends nothing.  The digits are sent one by one, and the first failure stops the rest: `Invalid("no such call")` or `Invalid("the call has no media")`.
 
 ## `list`
 
@@ -81,7 +81,7 @@ Every call of the phone, as [`CallInfo`](types.md#calls).  A call that ended sta
 pub fn observe(on: bool)
 ```
 
-With `true`, the app receives [`Event::Call`](app-events.md#call) for every change of every call, on screen or not.  The setting starts as `false` in every new instance.
+With `true`, the app receives [`Event::Call`](app-events.md#call) for every change of every call that a [`CallInfo`](types.md#calls) shows, on screen or not.  The setting starts as `false` in every new instance.
 
 ## `get_mwi`
 
@@ -101,4 +101,4 @@ pub fn dial_voicemail(account: Option<u8>) -> Result<(), Error>
 
 WIT name: `dial-voicemail`.
 
-Calls the voicemail number of an account (`None`: chosen as in `dial`).  The call's identifier is not returned; `list` or `Event::Call` shows the call.  `Failed("invalid: no voicemail number is configured")` when the account has none, and otherwise the errors of `dial`.
+Calls the voicemail number of an account (`None`: chosen as in `dial`).  The call's identifier is not returned; `list` or `Event::Call` shows the call.  `Invalid("no voicemail number is configured")` when the account has none, and otherwise the errors of `dial`.

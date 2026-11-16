@@ -268,7 +268,7 @@ impl AppWindow for UiWindow {
             .create(tk::WidgetKind::Canvas, parent.map(id), rect(bounds))
             .0
     }
-    fn draw(&mut self, w: u32, ops: Vec<DrawOp>) {
+    fn draw(&mut self, w: u32, ops: Vec<DrawOp>) -> bool {
         let color = |c: Color| tk::Color::Rgb(c.r, c.g, c.b);
         let ops = ops
             .into_iter()
@@ -294,7 +294,7 @@ impl AppWindow for UiWindow {
                 },
             })
             .collect();
-        self.view.canvas_set_ops(id(w), ops);
+        self.view.canvas_set_ops(id(w), ops)
     }
     fn set_softkeys(&mut self, w: Option<u32>, keys: &[Softkey]) {
         let keys = keys

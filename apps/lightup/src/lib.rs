@@ -438,7 +438,7 @@ impl LightUp {
             timers::cancel(tick);
         }
         if self.since.is_some() {
-            self.tick = Some(timers::set((1000 - spent % 1000) as u32, false));
+            self.tick = timers::set((1000 - spent % 1000) as u32, false).ok();
         }
     }
 
@@ -544,7 +544,7 @@ impl LightUp {
             &[Softkey::new(SK_NEW, "New"), Softkey::new(SK_EXIT, "Exit")],
         );
         if let Some(making) = &mut self.making {
-            making.timer = Some(timers::set(PAUSE_MS, false));
+            making.timer = timers::set(PAUSE_MS, false).ok();
         }
     }
 
@@ -563,7 +563,7 @@ impl LightUp {
         };
         making.worked += timers::now_ms().saturating_sub(start);
         match progress {
-            Progress::Working => making.timer = Some(timers::set(PAUSE_MS, false)),
+            Progress::Working => making.timer = timers::set(PAUSE_MS, false).ok(),
             Progress::Done | Progress::Failed => {
                 dphone_app_sdk::log_info(&format!(
                     "{} {}: {} after {} ms, {} grids, {} steps",
@@ -1067,7 +1067,7 @@ impl App for LightUp {
                     if let Some(making) = &mut self.making
                         && making.timer.is_none()
                     {
-                        making.timer = Some(timers::set(PAUSE_MS, false));
+                        making.timer = timers::set(PAUSE_MS, false).ok();
                     }
                 }
                 _ => {}

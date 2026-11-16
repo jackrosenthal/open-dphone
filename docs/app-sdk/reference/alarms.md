@@ -23,7 +23,7 @@ pub struct Alarm {
 | `tone` | The ringtone, one of `tones()`. |
 | `enabled` | An alarm that is switched off does not ring. |
 
-The functions that return `Result` wait up to 1.5 seconds for the alarm clock, which writes the alarms to the flash before answering.  A refusal for a bad argument is `Error::Invalid(text)`; anything else, also a missing answer, is `Error::Failed(text)`.
+The functions that return `Result` wait up to 1.5 seconds for the alarm clock, which writes the alarms to the flash before answering.  A refusal for a bad argument is `Error::Invalid(text)`; a failure, also a missing answer, is `Error::Failed(text)`.  After a missing answer the alarm clock may still carry the request out.
 
 ## `list`
 
@@ -87,7 +87,7 @@ The names of the phone's ringtones, which are the tones an alarm can ring with.
 pub fn preview(tone: Option<&str>)
 ```
 
-`Some(name)` sounds a ringtone once, for choosing one; `None` stops the sound.  A name that is not a ringtone is not reported.  `None` stops whatever sound is playing, also a sound that an app started with [`audio::play`](audio.md#play).
+`Some(name)` sounds a ringtone for up to four seconds, for choosing one, in place of any sound that is playing.  A name that is not a ringtone is not reported.  `None` stops the preview that the app started, within the four seconds of that preview; at any other time `None` does nothing, so a sound that another app started plays on.
 
 ## `next`
 

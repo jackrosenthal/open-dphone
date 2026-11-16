@@ -46,7 +46,7 @@ pub fn show_app(name: &str) -> Result<(), String>
 
 Opens another app by the `name` of the app's manifest, starting the app if needed, and puts the app's window on top.
 
-The result only says whether `name` is formed like an app name: `Err("bad app name")` otherwise.  When no app has the name, the app is a disabled built-in app, or the app fails to start, the phone writes a warning to the log and the calling app is not told.
+The call fails, with a sentence that says why, when `name` is not formed like an app name, when the phone has no app of that name, and when the app is a built-in app that the configuration switches off.  `Ok` says that the request was recorded.  An app that then fails to start is not shown; the phone writes a warning to the log, and the calling app is not told.
 
 ## `reset_idle_timer`
 

@@ -575,8 +575,7 @@ impl Core {
     }
 
     /// A server event carried on a call's INVITE or on an INFO in its
-    /// dialog, passed on for apps.  The body is the envelope the app
-    /// manager reads: `type`, `data`, `method`, and `call`.
+    /// dialog, passed on for apps.
     pub fn emit_push(&self, req: &Request, method: &str, call: dphone_state::CallId) {
         let Some(name) = Self::event_name(req) else { return };
         let kind = util::header(&req.headers, "X-Event-Type").unwrap_or("").trim();
@@ -586,15 +585,14 @@ impl Core {
             None if !sdp => String::from_utf8_lossy(&req.body).into_owned(),
             None => String::new(),
         };
-        let body = format!(
-            "{{\"type\":{},\"data\":{},\"method\":{},\"call\":{}}}",
-            util::json_string(kind),
-            util::json_string(&data),
-            util::json_string(method),
-            call.0
-        );
         log::info!("sip: event {name} on {method} for call {}", call.0);
-        self.store.emit(dphone_state::Event::Push { name, body });
+        self.store.emit(dphone_state::Event::CallPush {
+            name,
+            kind: kind.to_string(),
+            data,
+            method: method.to_string(),
+            call,
+        });
     }
 
     pub fn heartbeat(&self) {

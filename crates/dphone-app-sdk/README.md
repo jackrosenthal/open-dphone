@@ -114,7 +114,7 @@ The manifest travels in the app's file: `export_app!` writes it, when the app is
 
 An app's data (pictures, sounds, tables) is in its code: `include_bytes!` and `include_str!`, as in any Rust program.  The phone unpacks nothing.
 
-- A picture: `ui::define_image("logo", include_bytes!("logo.png"))` gives a PNG a name, once; `ui::set_image` and the `icon` of a list item then take that name.  A name the app did not define is one of the phone's icons.  At most 512 KiB a picture, and 32 pictures.  An app that wants another picture on another model of phone chooses by `ui::metrics()`.
+- A picture: `ui::define_image("logo", include_bytes!("logo.png"))` gives a PNG a name, once; `ui::set_image` and the `icon` of a list item then take that name.  A name the app did not define is one of the phone's icons.  At most 512 KiB and 1,048,576 pixels a picture, and 32 pictures; `define_image` returns an error for content the phone cannot show.  An app that wants another picture on another model of phone chooses by `ui::get_metrics()`.
 - A sound: `audio::play(include_bytes!("tone.wav"), 0)`.
 - The data counts toward the app's memory (`memory_kib`), since it is part of the program.
 

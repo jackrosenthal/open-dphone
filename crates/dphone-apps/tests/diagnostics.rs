@@ -140,10 +140,17 @@ impl Phone {
         colors
     }
 
-    /// The color every lamp shows.
+    /// The color every lamp shows that the phone has: the lamp table of
+    /// a D60 lists line lamps that are not fitted, which no app is told
+    /// of and none sets.
     fn lamps(&self) -> LampColor {
-        let lamps = self.sim.lamps();
-        assert_eq!(lamps.len(), Lamp::for_model(self.model).len());
+        let all = self.sim.lamps();
+        assert_eq!(all.len(), Lamp::for_model(self.model).len());
+        let fitted = dphone_apps::Lamp::for_model(self.model).len();
+        let unfitted = all.len() - fitted;
+        let lamps: Vec<_> =
+            all.iter().filter(|(l, _)| !matches!(l, Lamp::Line(i) if *i >= self.model.line_keys())).collect();
+        assert_eq!((lamps.len(), unfitted), (fitted, (self.model.line_lamps() - self.model.line_keys()) as usize));
         assert!(lamps.iter().all(|(_, c)| *c == lamps[0].1), "{lamps:?}");
         lamps[0].1
     }

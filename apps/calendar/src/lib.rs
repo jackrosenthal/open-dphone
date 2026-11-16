@@ -246,7 +246,7 @@ impl App for Calendar {
                 self.today = today();
                 self.show_today();
                 if self.timer.is_none() {
-                    self.timer = Some(timers::set(CHECK_MS, true));
+                    self.timer = timers::set(CHECK_MS, true).ok();
                 }
             }
             Event::Background => {

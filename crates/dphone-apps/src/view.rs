@@ -29,7 +29,10 @@ pub enum Lamp {
 impl Lamp {
     /// The lamps of a model.
     pub fn for_model(model: Model) -> Vec<Lamp> {
-        let mut v: Vec<Lamp> = (0..model.line_lamps()).map(Lamp::Line).collect();
+        // The lamp table of a model may list more line lamps than the
+        // model has line keys (the D60 and D62 have two of the D65's six).
+        let lines = model.line_lamps().min(model.line_keys());
+        let mut v: Vec<Lamp> = (0..lines).map(Lamp::Line).collect();
         v.extend((0..model.blf_lamps()).map(Lamp::Blf));
         v.extend([Lamp::Message, Lamp::Mute, Lamp::Headset, Lamp::Speaker]);
         v
@@ -149,9 +152,11 @@ pub trait AppWindow: Send {
     fn create_canvas(&mut self, _parent: Option<u32>, _bounds: Rect) -> u32 {
         0
     }
-    /// Replaces what a canvas widget shows.  The host has checked the
-    /// limits of the interface.
-    fn draw(&mut self, _w: u32, _ops: Vec<DrawOp>) {}
+    /// Replaces what a canvas widget shows, and returns whether `w` is
+    /// one.  The host has checked the limits of the interface.
+    fn draw(&mut self, _w: u32, _ops: Vec<DrawOp>) -> bool {
+        false
+    }
     fn set_softkeys(&mut self, w: Option<u32>, keys: &[Softkey]);
     fn claim_keys(&mut self, w: Option<u32>, keys: &[Key]);
     /// Next pending user event, if any.

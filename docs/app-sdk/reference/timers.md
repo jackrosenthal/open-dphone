@@ -5,20 +5,20 @@ Timers and clocks.  Capability `timers`.
 ## `set`
 
 ```rust
-pub fn set(delay_ms: u32, repeat: bool) -> u32
+pub fn set(delay_ms: u32, repeat: bool) -> Result<u32, Error>
 ```
 
 Starts a timer and returns the timer's identifier.  The app receives [`Event::Timer(id)`](app-events.md#timer) when `delay_ms` milliseconds have passed; with `repeat`, the event arrives again every `delay_ms` milliseconds until the timer is cancelled.  A timer that does not repeat is gone after the event.
 
-- An app has at most 32 timers at a time.  Past that, `set` starts no timer and returns 0, which is never the identifier of a timer.
+- An app has at most 32 timers at a time.  Past that, `set` starts no timer and returns `Err(Error::Failed(_))`.  An identifier is never 0.
 - A repeating timer with a delay under 50 milliseconds runs at 50.
 - Timers run whether or not the app is on screen, and end with the instance.
 - Timers do not queue up.  When the phone is busy past several periods of a repeating timer, one event arrives, and the next is due one full period later.
 
 ```rust
-self.tick = timers::set(1000, true);
+self.tick = timers::set(1000, true).ok();   // an Option<u32>
 // in handle:
-// Event::Timer(id) if id == self.tick => self.redraw_clock(),
+// Event::Timer(id) if Some(id) == self.tick => self.redraw_clock(),
 ```
 
 ## `cancel`

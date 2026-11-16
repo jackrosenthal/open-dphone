@@ -4,7 +4,7 @@ The app's store of keys and values on the phone.  Capability `storage`.
 
 The phone keeps the store across restarts of the app and of the phone, across firmware updates, and when a newer version of the app is installed.  No other app can reach the store; the store belongs to the app's `name`.  Removing the app deletes the store.
 
-A key is a name that is not empty, does not start with `.`, and contains no `/`, `\`, or NUL character.  A value is any bytes, at most 1 MiB.  Each key is a file on the phone's flash, and writes count against the flash's free space, of which the phone always keeps 2 MiB unused.
+A key is a name that is not empty, does not start with `.`, contains no `/`, `\`, or NUL character, and is short enough to be a file name on the phone's flash (about 250 bytes).  A value is any bytes, at most 1 MiB.  Each key is a file on the phone's flash, and writes count against the flash's free space, of which the phone always keeps 2 MiB unused.
 
 ## `get`
 
@@ -26,10 +26,10 @@ Sets a key, replacing the value the key had.  The phone writes the new value to 
 
 | Error | Cause |
 | --- | --- |
-| `Invalid(text)` | The key is empty, starts with `.`, or contains `/`, `\`, or NUL; or the value is larger than 1 MiB. |
+| `Invalid(text)` | The key is empty, starts with `.`, contains `/`, `\`, or NUL, or is too long to be a file name; or the value is larger than 1 MiB. |
 | `NoSpace` | The value needs more room than the flash has free beyond the 2 MiB reserve.  Replacing a value counts only the growth. |
 | `Denied` | The key's file is a symbolic link. |
-| `Failed(text)` | The write failed; the text is the system's reason.  The phone sets no limit on a key's length, and a key too long to be a file name fails this way. |
+| `Failed(text)` | The write failed; the text is the system's reason. |
 
 ```rust
 storage::set("level", level.to_string().as_bytes())?;

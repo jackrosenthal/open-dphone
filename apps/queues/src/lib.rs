@@ -261,7 +261,7 @@ impl App for Queues {
                     self.draw_list();
                 }
                 self.refresh();
-                self.timer = Some(timers::set(REFRESH_MS, true));
+                self.timer = timers::set(REFRESH_MS, true).ok();
             }
             Event::Background | Event::Exit => {
                 self.shown = false;

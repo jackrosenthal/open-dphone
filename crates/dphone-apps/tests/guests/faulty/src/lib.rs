@@ -57,7 +57,7 @@ impl App for Faulty {
             }
             Event::Softkey(3) => ui::set_text(self.out, &storage_report()),
             Event::Softkey(4) => {
-                timers::set(20, false);
+                let _ = timers::set(20, false);
             }
             Event::Timer(_) => {
                 self.ticks += 1;

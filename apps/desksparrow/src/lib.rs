@@ -830,7 +830,7 @@ impl Sparrow {
                 self.state = State::Flying;
                 self.viewing = false;
                 self.stop_timer();
-                self.timer = Some(timers::set(rules.tick_ms, true));
+                self.timer = timers::set(rules.tick_ms, true).ok();
                 self.show();
             }
         }

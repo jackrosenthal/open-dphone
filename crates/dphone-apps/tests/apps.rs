@@ -434,9 +434,12 @@ fn voicemail_rejects_playback_call_when_not_on_screen() {
     call.state = CallState::Ringing;
     r.store
         .update::<dphone_state::Calls, _>(|c| c.calls.push(call));
-    r.store.emit(Event::Push {
+    r.store.emit(Event::CallPush {
         name: "digium.incomingCall.voicemail".into(),
-        body: r#"{"method":"INVITE","call":11,"data":""}"#.into(),
+        kind: String::new(),
+        data: String::new(),
+        method: "INVITE".into(),
+        call: CallId(11),
     });
     r.settle();
     assert!(
@@ -730,7 +733,7 @@ fn diagnostics_menu_tests_and_status_pages() {
     assert_eq!(r.ui.softkeys(APP), ["", "", "", "Back"]);
     assert!(!r.ui.captures(APP));
     let names: Vec<String> = dphone_apps::Lamp::for_model(dphone_state::Model::D60).into_iter().map(|l| l.name()).collect();
-    assert_eq!(names, ["line1", "line2", "line3", "line4", "line5", "line6", "message", "mute", "hdst", "spkr"]);
+    assert_eq!(names, ["line1", "line2", "message", "mute", "hdst", "spkr"]);
     let all = |color: LampColor| -> Vec<(String, LampColor)> { names.iter().map(|n| (n.clone(), color)).collect() };
     assert_eq!(r.ui.lamps(APP), all(LampColor::Red));
     for color in [LampColor::Green, LampColor::Amber, LampColor::Off, LampColor::Red] {

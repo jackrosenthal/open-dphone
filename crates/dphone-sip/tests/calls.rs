@@ -277,13 +277,22 @@ async fn parking_follows_the_configured_mode() {
     assert_eq!(a.store.get::<Calls>().get(consult).unwrap().transfer_of, Some(ca));
 }
 
-/// `Event::Push`es seen by a subscription, as (name, body).
-fn pushes(sub: &dphone_state::Subscription) -> Vec<(String, String)> {
+/// A server event that arrived with a call.
+struct CallPush {
+    name: String,
+    kind: String,
+    data: String,
+    method: String,
+    call: dphone_state::CallId,
+}
+
+/// `Event::CallPush`es seen by a subscription.
+fn pushes(sub: &dphone_state::Subscription) -> Vec<CallPush> {
     let mut out = Vec::new();
     while let Some(wake) = sub.try_take() {
         for e in wake.events {
-            if let dphone_state::Event::Push { name, body } = e {
-                out.push((name, body));
+            if let dphone_state::Event::CallPush { name, kind, data, method, call } = e {
+                out.push(CallPush { name, kind, data, method, call });
             }
         }
     }
@@ -326,11 +335,10 @@ async fn dial_headers_and_events_on_invite() {
     let cb = wait("B to have the call", || only_call(&b.store)).await;
     let got = wait("the event", || Some(pushes(&sub)).filter(|p| !p.is_empty())).await;
     assert_eq!(got.len(), 1);
-    assert_eq!(got[0].0, "digium.incomingCall.voicemail");
-    let body: serde_json::Value = serde_json::from_str(&got[0].1).unwrap();
-    assert_eq!(body["method"], "INVITE");
-    assert_eq!(body["call"], cb.0);
-    assert_eq!(body["data"], r#"{"folder":"INBOX"}"#);
+    assert_eq!(got[0].name, "digium.incomingCall.voicemail");
+    assert_eq!(got[0].method, "INVITE");
+    assert_eq!(got[0].call, cb);
+    assert_eq!(got[0].data, r#"{"folder":"INBOX"}"#);
     let call = b.store.get::<Calls>().get(cb).cloned().unwrap();
     assert!(call.hidden);
     assert_eq!(call.state, CallState::Ringing);
@@ -353,9 +361,8 @@ async fn dial_headers_and_events_on_invite() {
     a.store.send(Command::DialWith { target: b.uri(), account: None, headers }).await.unwrap();
     let cb2 = wait("B to ring", || b.store.get::<Calls>().ringing().next().map(|c| c.id)).await;
     let got = wait("the event", || Some(pushes(&sub)).filter(|p| !p.is_empty())).await;
-    assert_eq!(got[0].0, "example.callback");
-    let body: serde_json::Value = serde_json::from_str(&got[0].1).unwrap();
-    assert_eq!((body["call"].as_u64(), body["type"].as_str(), body["data"].as_str()), (Some(cb2.0 as u64), Some("example.callback"), Some("")));
+    assert_eq!(got[0].name, "example.callback");
+    assert_eq!((got[0].call, got[0].kind.as_str(), got[0].data.as_str()), (cb2, "example.callback", ""));
     assert!(!b.store.get::<Calls>().get(cb2).unwrap().hidden);
     assert_eq!(rings(&b), 1);
 }

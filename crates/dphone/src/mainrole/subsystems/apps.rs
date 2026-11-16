@@ -113,9 +113,28 @@ impl AppConfig {
     }
 }
 
+/// An app's `<application>` element as the app may read it: without the
+/// credentials, which stay with the host (it adds them to PBX requests).
+/// These are the values `config.app-setting` withholds: the attributes
+/// `password` and `secret` of the element and of its `<account>`s, and
+/// the `<setting>`s with those ids.
+fn without_credentials(mut application: Element) -> Element {
+    const WITHHELD: [&str; 2] = ["password", "secret"];
+    for name in WITHHELD {
+        application.remove_attr(name);
+    }
+    application.remove_children(|e| e.name == "setting" && e.attr("id").is_some_and(|id| WITHHELD.contains(&id)));
+    for account in application.elements_mut().filter(|e| e.name == "account") {
+        for name in WITHHELD {
+            account.remove_attr(name);
+        }
+    }
+    application
+}
+
 impl ConfigSource for AppConfig {
     fn app_config_xml(&self, app: &str) -> String {
-        self.application(app).map(|e| e.to_document()).unwrap_or_default()
+        self.application(app).map(|e| without_credentials(e).to_document()).unwrap_or_default()
     }
 
     fn app_account(&self, app: &str) -> Option<AppAccount> {
@@ -184,7 +203,14 @@ impl ConfigSource for AppConfig {
     }
 }
 
-pub fn start(ctx: &Context, ui: Option<UiHandle>, config: Option<SharedConfig>, telephony: Telephony, net: NetHandle) {
+pub fn start(
+    ctx: &Context,
+    ui: Option<UiHandle>,
+    config: Option<SharedConfig>,
+    telephony: Telephony,
+    net: NetHandle,
+    app_store: super::appstore::AppStore,
+) {
     ctx.store.set_health(Subsystem::Apps, HealthStatus::Starting);
     let Some(ui) = ui else {
         warn!("apps: no UI; the app runtime is not started");
@@ -208,8 +234,6 @@ pub fn start(ctx: &Context, ui: Option<UiHandle>, config: Option<SharedConfig>, 
         .read::<dphone_state::System, _>(|s| s.mac)
         .map(|m| m.iter().map(|b| format!("{b:02x}")).collect::<String>())
         .unwrap_or_default();
-    let app_store = super::appstore::AppStore::new(telephony.clone(), runtime.clone());
-    app_store.follow(ctx.store.clone());
     let services = Services {
         pbx: Arc::new(Pbx { telephony, runtime: runtime.clone() }),
         store: Arc::new(app_store),
@@ -243,5 +267,32 @@ pub fn start(ctx: &Context, ui: Option<UiHandle>, config: Option<SharedConfig>, 
     if let Err(e) = spawned {
         error!("apps: cannot start the app runtime thread: {e}");
         ctx.store.set_health(Subsystem::Apps, HealthStatus::Failed(e.to_string()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_app_reads_its_configuration_without_the_credentials() {
+        let application = Element::parse(
+            r#"<application id="voicemail" secret="s1" refresh="30">
+                 <account id="100" username="100" password="p1" appserver="dasp://pbx/json" />
+                 <setting id="folder" value="INBOX" />
+                 <setting id="password" value="p2" />
+               </application>"#,
+        )
+        .unwrap();
+        let text = without_credentials(application).to_document();
+        for withheld in ["p1", "p2", "s1", "password", "secret"] {
+            assert!(!text.contains(withheld), "{withheld} in {text}");
+        }
+        let read = Element::parse(&text).unwrap();
+        assert_eq!(read.attr("refresh"), Some("30"));
+        let account = read.child("account").unwrap();
+        assert_eq!((account.attr("id"), account.attr("username")), (Some("100"), Some("100")));
+        assert_eq!(account.attr("appserver"), Some("dasp://pbx/json"));
+        assert_eq!(read.child_with_id("setting", "folder").and_then(|s| s.attr("value")), Some("INBOX"));
     }
 }

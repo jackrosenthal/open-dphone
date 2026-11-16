@@ -31,4 +31,4 @@ audio::play(include_bytes!("chime.wav"), 0)?;
 pub fn stop()
 ```
 
-Stops the sound that is playing; the app that started the sound receives `Event::PlaybackStopped`.  The call does not check who started the sound: `stop` also stops another app's sound and the preview of a ringtone.  When nothing plays, nothing happens.
+Stops the sound that the app started with `play`, when that sound is still playing; the app then receives `Event::PlaybackStopped`.  When the app has no sound playing, nothing happens: another app's sound and the preview of a ringtone play on.

@@ -296,8 +296,9 @@ Errors:
 | `Invalid("a picture needs a plain name")` | `name` is empty, `.`, or `..`, or contains `/`, `\`, or a NUL character. |
 | `Invalid("a picture may be 512 KiB")` | `png` is larger than 512 KiB. |
 | `Invalid("an app may define 32 pictures")` | The app already has 32 names and `name` is a new one. |
+| `Invalid("not a PNG picture the phone can show (at most 1,048,576 pixels)")` | `png` is not the content of a PNG file, the file is damaged, or the picture has more than 1,048,576 pixels. |
 
-The phone decodes the picture when a widget first uses the name, not in `define_image`: content that is not a PNG, or a picture of more than 1,048,576 pixels, still returns `Ok`.  The phone then writes a warning to the log, and the name falls back to the phone's icon of that name, or to nothing.  A picture larger than the window is reduced to fit the window, keeping the shape; pictures are never enlarged.  The gray skins show a picture in four levels by brightness.
+The phone decodes the picture in `define_image`, so `Ok` means that the picture can be shown.  A refused definition changes nothing: a picture defined earlier under the same name stays, and a name without a picture still means the phone's icon of that name, or nothing.  A picture larger than the window is reduced to fit the window, keeping the shape; pictures are never enlarged.  The gray skins show a picture in four levels by brightness.
 
 ### `set_image`
 

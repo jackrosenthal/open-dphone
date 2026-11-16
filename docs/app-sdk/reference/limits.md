@@ -29,7 +29,7 @@ The app's data (`include_bytes!`, `include_str!`) is part of the program and cou
 | --- | --- | --- |
 | Pictures defined by an app | 32 names | `define_image` returns `Error::Invalid`. |
 | Size of a picture file | 512 KiB | `define_image` returns `Error::Invalid`. |
-| Pixels of a picture | 1,048,576 | The picture is not shown, and the phone logs a warning. |
+| Pixels of a picture | 1,048,576 | `define_image` returns `Error::Invalid`. |
 | Characters typed into an input | 255, or the value of `set_max_length` (at most 65,535) | Further keys are ignored. |
 | Softkeys shown at a time | 4 | A "More" key pages through the rest, three at a time. |
 | Operations in one `canvas::draw` | 512 | `draw` returns `Err`; the canvas is unchanged. |
@@ -41,7 +41,7 @@ The app's data (`include_bytes!`, `include_str!`) is part of the program and cou
 
 | Limit | Value | At the limit |
 | --- | --- | --- |
-| Timers of an app | 32 | `timers::set` returns 0 and starts no timer. |
+| Timers of an app | 32 | `timers::set` returns `Error::Failed` and starts no timer. |
 | Period of a repeating timer | 50 milliseconds at least | A shorter period runs at 50 milliseconds. |
 
 ## Storage
@@ -49,6 +49,7 @@ The app's data (`include_bytes!`, `include_str!`) is part of the program and cou
 | Limit | Value | At the limit |
 | --- | --- | --- |
 | Value of a `storage` key | 1 MiB | `storage::set` returns `Error::Invalid`. |
+| Length of a `storage` key | What a file name on the flash can hold (about 250 bytes) | `storage::set` returns `Error::Invalid`. |
 | Free flash kept by the phone | 2 MiB | `storage::set` returns `Error::NoSpace`. |
 | Key of `pbx_storage` | 1 to 64 characters of letters, digits, `.`, `_`, `-`, `/`, `:` | The request ends `Refused`. |
 | Value of a `pbx_storage` key | 4096 bytes | The request ends `Refused`. |
@@ -69,12 +70,12 @@ The app's data (`include_bytes!`, `include_str!`) is part of the program and cou
 | Limit | Value | At the limit |
 | --- | --- | --- |
 | Number given to `calls::dial` | 256 bytes | `Error::Invalid`. |
-| Extra headers of `calls::dial` | 30; names up to 64 characters, values up to 512 bytes | `Error::Failed`. |
+| Extra headers of `calls::dial` | 30; names up to 64 characters, values up to 512 bytes | `Error::Invalid`. |
 | Digits of one `calls::send_dtmf` | 64 | `Error::Invalid`. |
-| Calls of the phone | 4 unless configured otherwise | `calls::dial` returns `Error::Failed`. |
-| Answer from call control, presence, or provisioning | 0.5 seconds | `Error::Failed("timed out waiting for the handler")`. |
-| Targets of `presence::subscribe` | 256 | Further calls are ignored. |
-| Names of `events::observe` | 64 | Further calls are ignored. |
+| Calls of the phone | 4 unless configured otherwise | `calls::dial` returns `Error::Invalid`. |
+| Answer from call control, presence, or provisioning | 0.5 seconds | `Error::Failed`; the request may still be carried out. |
+| Targets of `presence::subscribe` | 256 | `subscribe` returns `Error::Failed`. |
+| Names of `events::observe` | 64 | `observe` returns `Error::Failed`. |
 | Extension and PIN of `hotdesk::login` | 64 bytes each | `Error::Invalid`. |
 
 ## Audio, alarms, and the log
@@ -84,6 +85,6 @@ The app's data (`include_bytes!`, `include_str!`) is part of the program and cou
 | Sound given to `audio::play` | 8 MiB and five minutes | `Error::Failed`. |
 | Sounds playing | 1 for the whole phone | A new sound replaces the one playing. |
 | Alarms | 16 | `alarms::set` returns `Error::Invalid`. |
-| Answer from the alarm clock | 1.5 seconds | `Error::Failed`. |
+| Answer from the alarm clock | 1.5 seconds | `Error::Failed`; the request may still be carried out. |
 | Message of `runtime::log` | 512 bytes | The message is cut. |
 | Entries of `diagnostics::log_tail` | 100 | The list is shorter than asked. |

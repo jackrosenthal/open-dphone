@@ -154,3 +154,13 @@ fn text_is_in_the_skins_font_with_its_glyphs_in_the_middle_of_the_box() {
         assert_eq!(painted(&ui, (0, 0, 60, 40), ground), None);
     }
 }
+
+#[test]
+fn only_a_canvas_takes_a_drawing() {
+    let (_ui, view, canvas) = rig(Model::D60);
+    let text = view.create(WidgetKind::Text, None, Rect::new(0, 0, 10, 10));
+    assert!(view.canvas_set_ops(canvas, vec![fill(0, 0, 1, 1, RED)]));
+    assert!(!view.canvas_set_ops(text, vec![fill(0, 0, 1, 1, RED)]));
+    view.destroy(canvas);
+    assert!(!view.canvas_set_ops(canvas, Vec::new()));
+}

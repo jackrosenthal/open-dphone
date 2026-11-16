@@ -822,10 +822,15 @@ impl Tree {
         }
     }
 
-    /// Replaces what a `Canvas` shows.
-    pub fn canvas_set_ops(&mut self, id: WidgetId, ops: Vec<DrawOp>) {
-        if let Some(n) = self.node_mut(id) {
-            n.ops = ops.into();
+    /// Replaces what a `Canvas` shows.  Returns whether `id` is a canvas;
+    /// any other widget is left as it was.
+    pub fn canvas_set_ops(&mut self, id: WidgetId, ops: Vec<DrawOp>) -> bool {
+        match self.node_mut(id).filter(|n| n.kind == WidgetKind::Canvas) {
+            Some(n) => {
+                n.ops = ops.into();
+                true
+            }
+            None => false,
         }
     }
 
@@ -996,7 +1001,7 @@ impl AppView {
         fn input_set_max_len(&self, id: WidgetId, max: u16);
         fn input_set_placeholder(&self, id: WidgetId, text: &str);
         fn set_image(&self, id: WidgetId, image: ImageSource);
-        fn canvas_set_ops(&self, id: WidgetId, ops: Vec<DrawOp>);
+        fn canvas_set_ops(&self, id: WidgetId, ops: Vec<DrawOp>) -> bool;
         fn focus(&self, id: Option<WidgetId>);
         fn focused(&self) -> Option<WidgetId>;
         fn set_softkeys(&self, owner: Option<WidgetId>, keys: Vec<Softkey>);

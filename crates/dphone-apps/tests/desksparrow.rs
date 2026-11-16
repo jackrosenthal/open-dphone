@@ -638,7 +638,7 @@ impl AppWindow for WatchedWindow {
     fn create_canvas(&mut self, parent: Option<u32>, bounds: Rect) -> u32 {
         self.inner.create_canvas(parent, bounds)
     }
-    fn draw(&mut self, w: u32, ops: Vec<DrawOp>) {
+    fn draw(&mut self, w: u32, ops: Vec<DrawOp>) -> bool {
         {
             let mut seen = self.seen.lock().unwrap();
             seen.draws += 1;

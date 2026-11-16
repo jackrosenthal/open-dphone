@@ -376,7 +376,9 @@ impl Voicemail {
 
 impl App for Voicemail {
     fn start(&mut self) {
-        events::observe(PLAYBACK_EVENT);
+        if let Err(e) = events::observe(PLAYBACK_EVENT) {
+            dphone_app_sdk::log_warn(&format!("cannot observe {PLAYBACK_EVENT}: {e:?}"));
+        }
         calls::observe(true);
         // Stay loaded so a playback call that arrives late is still handled.
         runtime::set_exit_after_background(false);

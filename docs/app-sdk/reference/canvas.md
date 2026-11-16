@@ -119,4 +119,4 @@ Replaces what the canvas shows.  A list over a limit is refused whole, and the c
 
 The `Err` value is a sentence that names the limit.
 
-The list is checked before the widget: `draw` on a handle that does not exist, or on a widget of another kind, returns `Ok` and shows nothing.  An empty list clears the canvas.
+The list is checked before the widget.  `draw` on a handle that does not exist, on the root, or on a widget of another kind returns `Err("not a canvas")` and changes nothing.  An empty list clears the canvas.

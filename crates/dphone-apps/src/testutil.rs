@@ -517,12 +517,14 @@ impl AppWindow for FakeWindow {
     fn create_canvas(&mut self, parent: Option<u32>, bounds: Rect) -> u32 {
         self.add(WidgetKind::Group, parent, bounds, true)
     }
-    fn draw(&mut self, w: u32, ops: Vec<DrawOp>) {
-        self.with(|win| {
-            if let Some(n) = win.nodes.get_mut(&w).filter(|n| n.drawing.is_some()) {
+    fn draw(&mut self, w: u32, ops: Vec<DrawOp>) -> bool {
+        self.with(|win| match win.nodes.get_mut(&w).filter(|n| n.drawing.is_some()) {
+            Some(n) => {
                 n.drawing = Some(ops);
                 win.draws += 1;
+                true
             }
+            None => false,
         })
     }
     fn destroy(&mut self, id: u32) {
@@ -611,8 +613,11 @@ impl AppWindow for FakeWindow {
         self.node(w, |n| n.image = name.to_string())
     }
     fn define_image(&mut self, name: &str, file: &[u8]) -> bool {
+        if !file.starts_with(b"\x89PNG") {
+            return false;
+        }
         self.with(|w| w.images.push((name.to_string(), file.len())));
-        file.starts_with(b"\x89PNG")
+        true
     }
     fn set_softkeys(&mut self, id: Option<u32>, keys: &[Softkey]) {
         self.with(|w| match id {

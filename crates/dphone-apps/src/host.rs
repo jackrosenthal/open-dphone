@@ -155,8 +155,20 @@ pub(crate) struct AppCtx {
     pub images: HashSet<(bool, String)>,
     /// A sound file of this app is playing.
     pub playing: bool,
+    /// Until when (monotonic milliseconds) the ringtone preview this app
+    /// started sounds; 0 when the app has none.
+    pub preview_until_ms: u64,
     pub limits: wasmtime::StoreLimits,
 }
+
+/// How long a ringtone preview sounds (the audio side ends it then).
+const PREVIEW_MS: u64 = 4000;
+
+/// The most timers an app may have at a time.
+const TIMERS_MAX: usize = 32;
+/// The most presence targets an app may watch, and the most push names.
+const PRESENCE_MAX: usize = 256;
+const OBSERVED_MAX: usize = 64;
 
 /// The largest picture an app may define, and the most pictures.
 const IMAGE_MAX: usize = 512 * 1024;
@@ -177,6 +189,10 @@ fn io_error(e: std::io::Error) -> Error {
     match e.kind() {
         std::io::ErrorKind::NotFound => Error::NotFound,
         std::io::ErrorKind::StorageFull => Error::NoSpace,
+        // A key longer than a file name can be.
+        std::io::ErrorKind::InvalidFilename => {
+            Error::Invalid("the key is longer than the store can keep".into())
+        }
         _ => Error::Failed(e.to_string()),
     }
 }
@@ -306,6 +322,21 @@ pub(crate) fn format_time(unix: u64, offset: i32, h24: bool, style: u8) -> Strin
     }
 }
 
+/// What an app gets for a command the phone did not carry out, under the
+/// kind the interface has for it.
+pub(crate) fn command_error(e: dphone_state::CommandError) -> Error {
+    use dphone_state::CommandError;
+    match e {
+        CommandError::Invalid(why) => Error::Invalid(why),
+        CommandError::Denied(_) => Error::Denied,
+        CommandError::Failed(why) => Error::Failed(why),
+        CommandError::Timeout => Error::Failed(
+            "the phone did not answer in time; what was asked may still happen".into(),
+        ),
+        e @ (CommandError::NoHandler(_) | CommandError::Dropped) => Error::Failed(e.to_string()),
+    }
+}
+
 impl AppCtx {
     fn win(&mut self, w: u32) -> Option<(&mut (dyn AppWindow + 'static), Option<u32>)> {
         if w & IDLE_BIT != 0 {
@@ -364,7 +395,12 @@ impl AppCtx {
         self.store
             .send(c)
             .wait_timeout(Duration::from_millis(500))
-            .map_err(|e| Error::Failed(e.to_string()))
+            .map_err(command_error)
+    }
+
+    /// The apps the phone offers, as the manager last published them.
+    fn peers(&self) -> Arc<dphone_state::Apps> {
+        self.store.get::<dphone_state::Apps>()
     }
 
     pub fn has(&self, cap: Capability) -> bool {
@@ -390,6 +426,13 @@ impl api::runtime::Host for AppCtx {
     fn show_app(&mut self, name: String) -> Result<(), String> {
         if crate::manifest::validate_name(&name).is_err() {
             return Err("bad app name".into());
+        }
+        let apps = self.peers();
+        if apps.disabled.iter().any(|a| a.name == name) {
+            return Err(format!("the app {name:?} is switched off"));
+        }
+        if !apps.installed.iter().any(|a| a.name == name) {
+            return Err(format!("no app named {name:?}"));
         }
         self.actions.push(Action::ShowApp(name));
         Ok(())
@@ -522,13 +565,20 @@ impl api::ui::Host for AppCtx {
         if !self.pictures.contains_key(&name) && self.pictures.len() >= IMAGES_MAX {
             return Err(Error::Invalid("an app may define 32 pictures".into()));
         }
+        // The app's window decodes the picture now, so that the app
+        // learns here of content the phone cannot show.  A refused
+        // picture leaves an earlier one of the name as it was.
+        if !self.window.define_image(&name, &png) {
+            return Err(Error::Invalid(
+                "not a PNG picture the phone can show (at most 1,048,576 pixels)".into(),
+            ));
+        }
         self.pictures.insert(name.clone(), png.into());
-        // Windows that have the old picture of this name get the new one
-        // now; the others when the app first uses the name there.
-        for (idle, w) in [(false, 0), (true, IDLE_BIT)] {
-            if self.images.remove(&(idle, name.clone())) {
-                self.load_image(w, &name);
-            }
+        self.images.insert((false, name.clone()));
+        // An idle window that has the old picture of this name gets the
+        // new one now; otherwise when the app first uses the name there.
+        if self.images.remove(&(true, name.clone())) {
+            self.load_image(IDLE_BIT, &name);
         }
         Ok(())
     }
@@ -555,10 +605,10 @@ impl api::ui::Host for AppCtx {
 }
 
 impl api::timers::Host for AppCtx {
-    fn set(&mut self, delay_ms: u32, repeat: bool) -> u32 {
+    fn set(&mut self, delay_ms: u32, repeat: bool) -> Result<u32, Error> {
         // A handful of timers is plenty; refuse to grow without bound.
-        if self.timers.len() >= 32 {
-            return 0;
+        if self.timers.len() >= TIMERS_MAX {
+            return Err(Error::Failed(format!("an app may have {TIMERS_MAX} timers")));
         }
         self.next_timer = self.next_timer.wrapping_add(1).max(1);
         let id = self.next_timer;
@@ -569,7 +619,7 @@ impl api::timers::Host for AppCtx {
             deadline_ms: dphone_state::clock::mono_ms() + delay as u64,
             repeat_ms: repeat.then_some(delay),
         });
-        id
+        Ok(id)
     }
     fn cancel(&mut self, id: u32) {
         self.timers.retain(|t| t.id != id);
@@ -1039,10 +1089,12 @@ impl api::calls::Host for AppCtx {
 }
 
 impl api::presence::Host for AppCtx {
-    fn subscribe(&mut self, target: String) {
-        if self.presence_subs.len() < 256 {
-            self.presence_subs.insert(target);
+    fn subscribe(&mut self, target: String) -> Result<(), Error> {
+        if !self.presence_subs.contains(&target) && self.presence_subs.len() >= PRESENCE_MAX {
+            return Err(Error::Failed(format!("an app may watch {PRESENCE_MAX} targets")));
         }
+        self.presence_subs.insert(target);
+        Ok(())
     }
     fn unsubscribe(&mut self, target: String) {
         self.presence_subs.remove(&target);
@@ -1077,10 +1129,12 @@ impl api::presence::Host for AppCtx {
 }
 
 impl api::events::Host for AppCtx {
-    fn observe(&mut self, name: String) {
-        if self.observed.len() < 64 {
-            self.observed.insert(name);
+    fn observe(&mut self, name: String) -> Result<(), Error> {
+        if !self.observed.contains(&name) && self.observed.len() >= OBSERVED_MAX {
+            return Err(Error::Failed(format!("an app may observe {OBSERVED_MAX} names")));
         }
+        self.observed.insert(name);
+        Ok(())
     }
     fn stop_observing(&mut self, name: String) {
         self.observed.remove(&name);
@@ -1088,6 +1142,11 @@ impl api::events::Host for AppCtx {
     fn send(&mut self, app: String, name: String, payload: String) -> Result<(), String> {
         if crate::manifest::validate_name(&app).is_err() {
             return Err("bad app name".into());
+        }
+        let running =
+            app == self.name || self.peers().installed.iter().any(|a| a.name == app && a.running);
+        if !running {
+            return Err(format!("the app {app:?} is not running"));
         }
         self.actions.push(Action::Send { app, name, payload });
         Ok(())
@@ -1105,10 +1164,14 @@ impl api::audio::Host for AppCtx {
             })
             .wait_timeout(Duration::from_secs(5))
             .map(|_| self.playing = true)
-            .map_err(|e| Error::Failed(e.to_string()))
+            .map_err(command_error)
     }
     fn stop(&mut self) {
-        let _ = self.store.post(Command::StopSound);
+        // Only the app's sound: what another app plays, and a ringtone
+        // preview, are not this app's to stop.
+        if self.playing {
+            let _ = self.store.post(Command::StopSound);
+        }
     }
 }
 
@@ -1231,10 +1294,7 @@ impl AppCtx {
     /// A command for the alarm clock, which writes the alarms to the
     /// flash before it answers.
     fn alarm_command(&self, c: Command) -> Result<Reply, Error> {
-        self.store.send(c).wait_timeout(Duration::from_millis(1500)).map_err(|e| match e {
-            dphone_state::CommandError::Invalid(why) => Error::Invalid(why),
-            e => Error::Failed(e.to_string()),
-        })
+        self.store.send(c).wait_timeout(Duration::from_millis(1500)).map_err(command_error)
     }
 }
 
@@ -1275,10 +1335,20 @@ impl api::alarms::Host for AppCtx {
         self.store.get::<dphone_state::Alarms>().tones.clone()
     }
     fn preview(&mut self, tone: Option<String>) {
-        let _ = self.store.post(match tone {
-            Some(name) => Command::PlaySound { name },
-            None => Command::StopSound,
-        });
+        let now = dphone_state::clock::mono_ms();
+        match tone {
+            Some(name) => {
+                self.preview_until_ms = now + PREVIEW_MS;
+                let _ = self.store.post(Command::PlaySound { name });
+            }
+            // Only the preview this app started, while it sounds: another
+            // app's sound is not this app's to stop.
+            None if now < self.preview_until_ms => {
+                self.preview_until_ms = 0;
+                let _ = self.store.post(Command::StopSound);
+            }
+            None => {}
+        }
     }
     fn next(&mut self) -> Option<(u32, u64)> {
         self.store.get::<dphone_state::Alarms>().next
@@ -1356,8 +1426,11 @@ impl api::canvas::Host for AppCtx {
     }
     fn draw(&mut self, w: u32, ops: Vec<api::canvas::Op>) -> Result<(), String> {
         check_drawing(&ops)?;
-        self.on_widget(w, |win, id| win.draw(id, ops));
-        Ok(())
+        let drawn = match self.win(w) {
+            Some((win, Some(id))) => win.draw(id, ops),
+            _ => false,
+        };
+        if drawn { Ok(()) } else { Err("not a canvas".into()) }
     }
 }
 
@@ -1472,6 +1545,34 @@ mod tests {
         // Nine full-size bitmaps are 72 KiB.
         let many: Vec<Op> = (0..9).map(|_| bitmap(256, 256, 1, 8192)).collect();
         assert!(check_drawing(&many).is_err());
+    }
+
+    #[test]
+    fn a_refused_command_keeps_its_kind() {
+        use dphone_state::CommandError;
+        assert!(matches!(
+            command_error(CommandError::Invalid("no such call".into())),
+            Error::Invalid(why) if why == "no such call"
+        ));
+        assert!(matches!(command_error(CommandError::Denied("policy".into())), Error::Denied));
+        assert!(matches!(
+            command_error(CommandError::Failed("no route".into())),
+            Error::Failed(why) if why == "no route"
+        ));
+        // The phone may still do what was asked, and the text says so.
+        assert!(matches!(
+            command_error(CommandError::Timeout),
+            Error::Failed(why) if why.contains("may still happen")
+        ));
+        assert!(matches!(command_error(CommandError::Dropped), Error::Failed(_)));
+    }
+
+    #[test]
+    fn the_line_lamps_are_those_of_the_line_keys() {
+        use dphone_state::Model;
+        let lines = |m| Lamp::for_model(m).into_iter().filter(|l| matches!(l, Lamp::Line(_))).count();
+        assert_eq!([lines(Model::D60), lines(Model::D62), lines(Model::D65)], [2, 2, 6]);
+        assert_eq!([lines(Model::D40), lines(Model::D45), lines(Model::D50), lines(Model::D70)], [2, 2, 4, 6]);
     }
 
     #[test]

@@ -176,7 +176,7 @@ The result of [`http::request`](http.md#request).  `Ok(response)` carries any HT
 Event::Call(info)
 ```
 
-A call appeared, or the phone's record of a call changed (the state, the remote party, and also details that `CallInfo` does not show, so two events in a row can carry equal values).  The event arrives at apps that called [`calls::observe(true)`](calls.md#observe), for every call of the phone, not only calls the app placed.  The end of a call arrives as two events with the state `CallState::Ended`.
+A call appeared, or a value that [`CallInfo`](types.md#calls) shows changed: the state, or the remote party's name or number.  The count of seconds in `duration` alone causes no event.  The event arrives at apps that called [`calls::observe(true)`](calls.md#observe), for every call of the phone, not only calls the app placed.  The end of a call arrives as one event with the state `CallState::Ended`.
 
 ## `Push`
 
@@ -196,9 +196,9 @@ The PBX sent the phone an event whose name the app observes ([`events::observe`]
 
 For an event carried by an `INVITE` or `INFO`, the name is the last of the headers `X-Digium-Event-Name`, `X-Event-Name`, and `X-Event-Type` in the request.
 
-When the payload of an event from the DPMA session is a JSON object with a member `method` or `call`, the phone takes `kind`, `data`, `method`, and `call` from the object's members `type`, `data`, `method`, and `call` instead of passing the payload as `data`.
+An incoming call whose event name the phone's configuration gives to apps (by default `digium.incomingCall.voicemail`) does not ring and has no call screen.  The app answers or rejects the call with [`calls::answer`](calls.md#answer) or [`calls::reject`](calls.md#reject), using `push.call`.  If such an event names no call, the phone fills `call` with the newest ringing call and sets `method` to `"INVITE"` for every name that starts with `digium.incomingCall.`.
 
-An incoming call whose event name the phone's configuration gives to apps (by default `digium.incomingCall.voicemail`) does not ring and has no call screen.  The app answers or rejects the call with [`calls::answer`](calls.md#answer) or [`calls::reject`](calls.md#reject), using `push.call`.  If such an event names no call, the phone fills `call` with the newest ringing call and sets `method` to `"INVITE"` for every name that starts with `digium.incomingCall.`.  The phone ends these calls when the app on screen leaves the screen.
+Such a call belongs to the apps that received the call's push.  The phone ends the call when the last of those apps has left the screen or stopped, because the call has no screen from which the user could end the call.  An app that is not on screen when the push arrives keeps the call until the app has been on screen and left, or stops.  A call whose event no running app observes ends when the app on screen leaves the screen.
 
 ## `Mwi`
 

@@ -189,7 +189,10 @@ pub trait HttpClient: Send + Sync {
 /// Configuration the apps read.
 pub trait ConfigSource: Send + Sync {
     /// The provisioned `<application>` element for the app, as XML ("" if
-    /// none).
+    /// none), without the credentials: the app reads this text as it is,
+    /// so the attributes `password` and `secret` of the element and of
+    /// its `<account>`s, and the `<setting>`s with those ids, must not be
+    /// in it.
     fn app_config_xml(&self, app: &str) -> String;
     /// The app's application account, if provisioned.
     fn app_account(&self, app: &str) -> Option<AppAccount>;

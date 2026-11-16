@@ -13,6 +13,8 @@ The phone's configuration can hold an element for an app, which the PBX provisio
 </appconfig>
 ```
 
+The phone keeps the credentials: the phone adds them to the app's PBX requests, and no function of this interface hands them out.
+
 The `id` of `<application>` is the `name` of the app's manifest.  Every running app that uses `config` receives [`Event::NewConfig`](app-events.md#newconfig) when the phone applies a new configuration.
 
 ## `app_config`
@@ -23,7 +25,9 @@ pub fn app_config() -> String
 
 WIT name: `app-config`.
 
-The app's `<application>` element as XML text, with every attribute and child element, or `""` when the configuration has none for the app.  The SDK's [`xml::parse`](helpers.md#xml) reads the text.  The text includes the `password` attribute of `<account>` as provisioned, although `app_setting` withholds that value.
+The app's `<application>` element as XML text, or `""` when the configuration has none for the app.  The SDK's [`xml::parse`](helpers.md#xml) reads the text.
+
+The text has every attribute and child element but the credentials, which are the values that `app_setting` withholds: the attributes `password` and `secret` of `<application>` and of each `<account>`, and each child `<setting>` whose `id` is `password` or `secret`.  For the example above, the `<account>` in the text has `id`, `username`, and `appserver`.
 
 ## `app_setting`
 
@@ -35,7 +39,7 @@ WIT name: `app-setting`.
 
 One value of the app's configuration, looked up in this order:
 
-1. `password` and `secret` always return `None`: the phone adds the credentials to PBX requests and does not hand them out.
+1. `password` and `secret` always return `None`.
 2. `account_id` returns the `id` attribute of the app's `<account>`, when there is an `<account>`.
 3. The attribute `name` of `<application>`.
 4. The `value` attribute of the child `<setting id="name">`.

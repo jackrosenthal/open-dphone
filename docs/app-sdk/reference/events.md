@@ -7,12 +7,12 @@ Every running app that uses this interface also receives [`Event::ServerChange`]
 ## `observe`
 
 ```rust
-pub fn observe(name: &str)
+pub fn observe(name: &str) -> Result<(), Error>
 ```
 
 Asks for [`Event::Push`](app-events.md#push) whenever the PBX pushes an event with exactly this name, e.g., `digium.parkingLot.parked`.  The observation lasts for the life of the instance, so an app that must not miss pushes is of kind `Background`.
 
-An app can observe at most 64 names; further calls are ignored without an error.
+An app can observe at most 64 names.  One more name is refused with `Err(Error::Failed(_))`; a name that the app already observes is not one more.
 
 ## `stop_observing`
 
@@ -32,4 +32,4 @@ pub fn send(app: &str, name: &str, payload: &str) -> Result<(), String>
 
 Sends [`Event::Message((name, payload))`](app-events.md#message) to the running app whose manifest `name` is `app`.  The message is delivered after the current handler returns.
 
-The result only says whether `app` is formed like an app name: `Err("bad app name")` otherwise.  When the app is not running or does not exist, the message is dropped and the sender is not told.  The phone does not start an app to deliver a message.
+The call fails, with a sentence that says why, when `app` is not formed like an app name or no app of that name is running; no message is sent then.  The phone does not start an app to deliver a message.  `Ok` says that the app was running when the message was sent: an app that stops before the sender's handler returns does not get the message.

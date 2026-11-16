@@ -198,8 +198,11 @@ impl Contacts {
             presence::unsubscribe(&w);
         }
         for c in self.groups.iter().flat_map(|g| &g.contacts) {
-            if !c.watch.is_empty() && !self.watched.contains(&c.watch) && self.watched.len() < 200 {
-                presence::subscribe(&c.watch);
+            if !c.watch.is_empty()
+                && !self.watched.contains(&c.watch)
+                && self.watched.len() < 200
+                && presence::subscribe(&c.watch).is_ok()
+            {
                 self.watched.push(c.watch.clone());
             }
         }

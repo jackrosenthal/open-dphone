@@ -343,7 +343,7 @@ impl Diagnostics {
             rows,
         };
         if self.timer.is_none() {
-            self.timer = Some(timers::set(REFRESH_MS, true));
+            self.timer = timers::set(REFRESH_MS, true).ok();
         }
     }
 
@@ -476,7 +476,7 @@ impl Diagnostics {
         );
         self.light(step);
         if self.timer.is_none() {
-            self.timer = Some(timers::set(LAMP_STEP_MS, true));
+            self.timer = timers::set(LAMP_STEP_MS, true).ok();
         }
     }
 

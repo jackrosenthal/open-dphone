@@ -1,7 +1,7 @@
 # Guests used only by the host tests; never shipped.
 [workspace]
 resolver = "3"
-members = ["faulty", "probe", "storeprobe"]
+members = ["checks", "faulty", "probe", "storeprobe"]
 
 [workspace.package]
 version = "3.0.0"

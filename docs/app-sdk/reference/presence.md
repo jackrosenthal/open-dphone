@@ -7,12 +7,12 @@ The phone watches the contacts that the phone's configuration subscribes to.  Th
 ## `subscribe`
 
 ```rust
-pub fn subscribe(target: &str)
+pub fn subscribe(target: &str) -> Result<(), Error>
 ```
 
 Asks for [`Event::Presence`](app-events.md#presence) whenever the watched contact that matches `target` changes.  The `target` field of each event is the string given here.  For a target that matches no watched contact, no event ever arrives.
 
-An app can subscribe to at most 256 targets; further calls are ignored without an error.  Subscribing sends no event with the current state; `get` reads the state.  The subscriptions end with the instance.
+An app can subscribe to at most 256 targets.  One more target is refused with `Err(Error::Failed(_))`; a target that the app already subscribes to is not one more.  Subscribing sends no event with the current state; `get` reads the state.  The subscriptions end with the instance.
 
 ## `unsubscribe`
 
@@ -40,7 +40,7 @@ WIT name: `set-status`.
 
 Sets the presence of the phone's user: the phone shows the status and publishes the status to the PBX where the configuration says so.  `status` is one of `available`, `chat`, `away`, `dnd`, `xa`, and `unavailable`, in any letter case; `text` is the status message and may be empty.
 
-`Invalid("unknown presence status")` for another status.  `Failed(text)` when the phone's SIP side does not answer within 0.5 seconds.
+`Invalid("unknown presence status")` for another status.  `Failed(text)` when the phone's SIP side does not answer within 0.5 seconds; the status may still change afterward.
 
 ## `get_status`
 

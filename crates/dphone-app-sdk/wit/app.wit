@@ -216,7 +216,8 @@ interface types {
     /// The call it arrived with, for INVITE and INFO pushes (e.g.,
     /// `digium.incomingCall.voicemail`); the app may answer or reject it.
     /// A call whose event the configuration gives to apps does not ring
-    /// and has no call screen; it ends when the app leaves the screen.
+    /// and has no call screen; it ends when the apps that got this push
+    /// have left the screen or stopped.
     call: option<call-id>,
   }
 
@@ -246,7 +247,9 @@ interface types {
     timer(timer-id),
     pbx(tuple<request-id, pbx-outcome>),
     http(tuple<request-id, result<http-response, string>>),
-    /// A call changed state (after `calls.observe(true)`).
+    /// A call changed (after `calls.observe(true)`): its state or the
+    /// remote party's name or number.  The end of a call arrives once,
+    /// with the state `ended`.
     call(call-info),
     push(push),
     mwi(mwi),
@@ -270,7 +273,8 @@ interface types {
     /// The app's store on the PBX can be reached (again): requests that
     /// ended `unreachable` are worth another try, and what the app read
     /// before may have changed since.
-    pbx-storage-online,    /// The phone's alarm clock changed: an alarm was set, changed, or
+    pbx-storage-online,
+    /// The phone's alarm clock changed: an alarm was set, changed, or
     /// removed (from this app, another, or the web interface), rang, or
     /// was snoozed or dismissed.  For apps that use `alarms`.
     alarms-changed,
@@ -287,7 +291,9 @@ interface runtime {
   restart: func();
   /// Keep running when backgrounded (stock `exitAfterBackground = false`).
   set-exit-after-background: func(exit: bool);
-  /// Show another app.
+  /// Show another app, after the current handler returns.  Fails when
+  /// the phone has no app of that name, or the configuration switches
+  /// the app off.
   show-app: func(name: string) -> result<_, string>;
   /// Count as user activity: wakes the backlight and restarts its
   /// timeout.  Has an effect only while the app is on screen.
@@ -340,8 +346,9 @@ interface ui {
   /// Gives a picture of the app's a name, for `set-image` and for the
   /// icons of list items: `png` is a PNG file's content, which the app
   /// holds in its data (e.g., with `include_bytes!`).  At most 512 KiB
-  /// a picture, and 32 pictures.  Defining a name again replaces the
-  /// picture.
+  /// and 1,048,576 pixels a picture, and 32 pictures.  Content that is
+  /// not a PNG picture the phone can show is refused (`invalid`).
+  /// Defining a name again replaces the picture.
   define-image: func(name: string, png: list<u8>) -> result<_, error>;
 
   /// Image by name: a picture the app defined, else an icon of the
@@ -373,8 +380,11 @@ interface ui {
 
 /// Capability `timers`.
 interface timers {
-  use types.{timer-id};
-  set: func(delay-ms: u32, repeat: bool) -> timer-id;
+  use types.{timer-id, error};
+  /// Starts a timer: `event.timer` arrives after `delay-ms`, and with
+  /// `repeat` every `delay-ms` after that (at least 50).  An app has at
+  /// most 32 timers at a time; one more is refused (`failed`).
+  set: func(delay-ms: u32, repeat: bool) -> result<timer-id, error>;
   cancel: func(id: timer-id);
   /// Monotonic milliseconds.
   now-ms: func() -> u64;
@@ -385,8 +395,8 @@ interface timers {
 /// Capability `storage`: the app's store of keys and values.  The phone
 /// keeps it across restarts and firmware updates, no other app can reach
 /// it, and it is deleted when the app is removed.  A key is a name that
-/// does not start with `.` and has no `/`, `\`, or NUL in it; a value is
-/// at most 1 MiB.
+/// does not start with `.`, has no `/`, `\`, or NUL in it, and is short
+/// enough to be a file name (about 250 bytes); a value is at most 1 MiB.
 interface storage {
   use types.{error};
   /// The value of a key, if the key is set.
@@ -402,7 +412,9 @@ interface storage {
 /// Capability `config`.
 interface config {
   use types.{account-info};
-  /// This app's provisioned `<application>` element as XML ("" if none).
+  /// This app's provisioned `<application>` element as XML ("" if none),
+  /// without the credentials (`password` and `secret`), which the host
+  /// keeps: it adds them to PBX requests.
   app-config: func() -> string;
   /// One attribute of this app's `<application>`/`<account>`/`<setting>`s.
   app-setting: func(name: string) -> option<string>;
@@ -484,7 +496,11 @@ interface http {
   cancel: func(id: request-id);
 }
 
-/// Capability `calls`.
+/// Capability `calls`.  What call control refuses as not possible (no
+/// such call, a call in the wrong state, a bad argument) is `invalid`;
+/// what it tried and could not do is `failed`, and so is an answer that
+/// does not come in time, after which the request may still be carried
+/// out.
 interface calls {
   use types.{call-id, call-info, error, header, mwi};
   /// `headers` (at most 30) are added to the INVITE; the headers SIP
@@ -504,8 +520,9 @@ interface calls {
 /// Capability `presence`.
 interface presence {
   use types.{presence, error};
-  /// Watch an extension; changes arrive as `event.presence`.
-  subscribe: func(target: string);
+  /// Watch an extension; changes arrive as `event.presence`.  An app
+  /// watches at most 256 targets; one more is refused (`failed`).
+  subscribe: func(target: string) -> result<_, error>;
   unsubscribe: func(target: string);
   get: func(target: string) -> option<presence>;
   /// Set the presence of the phone's user (line display and SIP PUBLISH
@@ -517,10 +534,14 @@ interface presence {
 
 /// Capability `events`.
 interface events {
-  /// Receive pushes with this event name as `event.push`.
-  observe: func(name: string);
+  use types.{error};
+  /// Receive pushes with this event name as `event.push`.  An app
+  /// observes at most 64 names; one more is refused (`failed`).
+  observe: func(name: string) -> result<_, error>;
   stop-observing: func(name: string);
-  /// Send `event.message(name, payload)` to another running app.
+  /// Send `event.message(name, payload)` to another running app, after
+  /// the current handler returns.  Fails when no app of that name is
+  /// running.
   send: func(app: string, name: string, payload: string) -> result<_, string>;
 }
 
@@ -534,6 +555,8 @@ interface audio {
   /// or A-law).  At most five minutes.  One sound plays at a time;
   /// `event.playback-stopped` follows when it is over.
   play: func(sound: list<u8>, start: u32) -> result<_, error>;
+  /// Stops the sound this app started with `play`, if it still plays.
+  /// Another app's sound and a ringtone preview play on.
   stop: func();
 }
 
@@ -682,7 +705,8 @@ interface canvas {
   create: func(parent: widget, bounds: rect) -> widget;
   /// Replaces what the canvas shows.  At most 512 operations, 64 KiB of
   /// bitmap data, and 64 bytes in a text; a list over a limit is refused
-  /// and the canvas keeps what it showed.
+  /// and the canvas keeps what it showed.  A widget that is not a canvas
+  /// (or no longer exists) is refused too.
   draw: func(w: widget, ops: list<op>) -> result<_, string>;
 }
 
@@ -723,7 +747,7 @@ interface alarms {
   /// The ringtones an alarm can ring with: the phone's.
   tones: func() -> list<string>;
   /// Sounds a ringtone for a few seconds, for choosing one (`none`:
-  /// stops it).
+  /// stops the preview this app started, if it still sounds).
   preview: func(tone: option<string>);
   /// The next time an alarm rings: the alarm's `id` and the time, in
   /// seconds since the Unix epoch.  A snoozed alarm counts.

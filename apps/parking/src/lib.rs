@@ -130,7 +130,9 @@ impl Parking {
 
 impl App for Parking {
     fn start(&mut self) {
-        events::observe(PARKED_EVENT);
+        if let Err(e) = events::observe(PARKED_EVENT) {
+            dphone_app_sdk::log_warn(&format!("cannot observe {PARKED_EVENT}: {e:?}"));
+        }
     }
 
     fn handle(&mut self, event: Event) {
@@ -144,7 +146,7 @@ impl App for Parking {
                     &[Softkey::new(SK_EXIT, "Exit")],
                 );
                 self.refresh();
-                self.timer = Some(timers::set(REFRESH_MS, true));
+                self.timer = timers::set(REFRESH_MS, true).ok();
             }
             Event::Background | Event::Exit => {
                 self.shown = false;

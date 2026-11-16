@@ -111,7 +111,7 @@ pub enum Error {
 | `NoSpace` | The flash has no room; the phone always keeps 2 MiB free. |
 | `Failed(text)` | The phone tried and failed; the text is the reason. |
 
-The functions of [`calls`](calls.md), [`presence`](presence.md), and [`hotdesk`](hotdesk.md) pass a request to another part of the phone and wait up to 0.5 seconds for the answer.  Every refusal from that part arrives as `Failed(text)`, also a refusal for a bad argument, with a text that begins `invalid: ` or `failed: `; no answer in time is `Failed("timed out waiting for the handler")`.  `Invalid` from these functions comes only from the checks the page of each function names.
+The functions of [`calls`](calls.md), [`presence`](presence.md), [`hotdesk`](hotdesk.md), and [`alarms`](alarms.md) pass a request to another part of the phone and wait for the answer (0.5 seconds; 1.5 seconds for `alarms`).  A request that the other part refuses as not possible (a bad argument, no such call, a call in the wrong state) returns `Invalid(text)`, a request the other part will not carry out for the app returns `Denied`, and a request the other part tried and could not carry out returns `Failed(text)`.  No answer in time is `Failed("the phone did not answer in time; what was asked may still happen")`: the request was passed on, and the other part may still carry the request out.
 
 ## HTTP
 

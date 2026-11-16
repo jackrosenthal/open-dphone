@@ -20,7 +20,7 @@ The lamps of this model, in this order:
 
 | Names | Lamps |
 | --- | --- |
-| `line1`, `line2`, ... | The lamps of the line keys, from the top: 2 on the D40 and D45, 4 on the D50, and 6 on the D60, D62, D65, and D70.  The list has six names on the D60 and D62 although those models have two line keys. |
+| `line1`, `line2`, ... | The lamps of the line keys, from the top: 2 on the D40, D45, D60, and D62, 4 on the D50, and 6 on the D65 and D70. |
 | `blf1` to `blf10` | The lamps of the rapid-dial keys, from the top, on the D50 and D70. |
 | `message` | Message waiting. |
 | `mute`, `hdst`, `spkr` | The lamps of the mute, headset, and speaker keys. |

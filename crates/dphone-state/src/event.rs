@@ -34,6 +34,10 @@ pub enum Event {
     /// A DPMA push or other server event for apps and the core:
     /// `name` is the event (`digium.config.update`, an app event name, ...).
     Push { name: String, body: String },
+    /// A server event that arrived on a call's INVITE or on an INFO in
+    /// the call's dialog, for apps: `kind` is `X-Event-Type`, `data` the
+    /// event's data, and `method` the SIP method that carried it.
+    CallPush { name: String, kind: String, data: String, method: String, call: CallId },
     /// A SIP MESSAGE that is not DPMA traffic.
     Message { account: AccountId, from: Party, content_type: String, body: String },
     /// A configuration merge finished (`generation` as in `ConfigInfo`).
