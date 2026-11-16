@@ -125,7 +125,7 @@ while the option is there.  Stock firmware ignores the settings.
 | `dphone_static_gateway=<address>` | The gateway with the static address. |
 | `dphone_static_dns=<address>[,<address>...]` | The DNS servers with the static address. |
 | `dphone_disabled_apps=<app>[,<app>...]` | The built-in apps the phone does not offer, e.g., `calendar,parking`.  Default is none. |
-| `dphone_idle_softkeys=<softkey>[,<softkey>...]` | The softkeys of the idle screen, in order: `call_log`, `contacts`, `status`, `menu`, `apps`, `dnd`, `forward`, `redial`, or `app:<app>` for an app, e.g., `call_log,contacts,app:parking,menu`.  Default is `call_log,contacts,status,menu,apps,dnd,forward`. |
+| `dphone_idle_softkeys=<softkey>[,<softkey>...]` | The softkeys of the idle screen, in order: `call_log`, `contacts`, `status`, `menu`, `apps`, `dnd`, `forward`, `redial`, `theme` (the theme selector of the color models D60, D62, and D65; the other models leave it out), or `app:<app>` for an app, e.g., `call_log,contacts,app:parking,menu`.  Default is `call_log,contacts,status,menu,apps,dnd,forward`, and `theme` after them on the color models. |
 | `dphone_theme=<name>` | The built-in theme of a color model (D60, D62, or D65): the wallpaper and the colors of the phone's screens, e.g., `dusk`.  The phone's theme selector lists the names.  A `wallpaper_file` goes before the theme.  Default is the phone's theme. |
 | `dphone_palette_file=<file>` | The palette file for the wallpaper of `wallpaper_file`: the colors of the phone's screens, as Open DPhone's `palette.proto` describes, e.g., `lobby.txtpb`.  Default is the phone's own palette. |
 | `dphone_ignore_provisioned_firmware=yes\|no` | Whether the phone ignores the firmware this configuration offers it.  Default is no. |
@@ -155,6 +155,11 @@ official DPMA does not have) and keeps the data in AstDB, in the family
 Each app has keys that all phones share, and keys for each user.  The
 user is the phone section (`type=phone`) the phone is provisioned as,
 shown to others by its `full_name`.
+
+The phones keep one thing of their own there, under the name `dphone`,
+which no app can have: the theme a user chose on a color model (the
+user's key `theme`).  A phone that was reset, and another phone of the
+same user, take the theme from it.
 
 On a server with more than one tenant, give each tenant's phones a
 tenant key with `dphone_app_data_tenant`.  Phones with the same key

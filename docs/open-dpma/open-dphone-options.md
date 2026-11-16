@@ -116,7 +116,7 @@ The softkeys of the idle screen, in order from the left.
 
 - **Value:** softkeys, separated by commas.  Each is one of the functions below, or `app:<name>` for a softkey that opens the app of that name.
 - **Repeatable:** each occurrence adds softkeys at the end; a softkey written twice appears once.  When one softkey of a line is unknown, the module skips the whole line.
-- **Without the option:** `call_log,contacts,status,menu,apps,dnd,forward`.
+- **Without the option:** `call_log,contacts,status,menu,apps,dnd,forward`, and `theme` after them on the color models D60, D62, and D65.
 
 | Function | Softkey |
 | --- | --- |
@@ -128,6 +128,7 @@ The softkeys of the idle screen, in order from the left.
 | `dnd` | Switches Do Not Disturb on and off. |
 | `forward` | The call forwarding menu. |
 | `redial` | Redial. |
+| `theme` | The theme selector.  Only the color models D60, D62, and D65 have themes; the other models leave the softkey out. |
 
 For example, `dphone_idle_softkeys=call_log,contacts,app:parking,menu`.
 

@@ -90,7 +90,7 @@ fn add_addresses(list: &mut Vec<std::net::Ipv4Addr>, value: &[u8]) -> Res {
 
 /// The functions an idle softkey can have, besides opening an app
 /// (`app:<name>`).
-const IDLE_SOFTKEYS: [&[u8]; 8] = [
+const IDLE_SOFTKEYS: [&[u8]; 9] = [
     b"call_log",
     b"contacts",
     b"status",
@@ -99,6 +99,9 @@ const IDLE_SOFTKEYS: [&[u8]; 8] = [
     b"dnd",
     b"forward",
     b"redial",
+    // The theme selector of the color models; a gray model, which has no
+    // themes, leaves the softkey out.
+    b"theme",
 ];
 
 /// Adds the softkeys of a comma-separated list to `list` in order, each
