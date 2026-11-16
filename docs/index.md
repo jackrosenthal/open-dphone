@@ -7,15 +7,40 @@ description: Open firmware for the Digium D-series desk phones, and Open DPMA, t
 
 Open DPhone is open firmware for the Digium D-series desk phones: the D40, D45, D50, D60, D62, D65, and D70.  The firmware replaces the stock firmware with a mainline Linux kernel and a phone application written in Rust, and is free software under the GNU General Public License, version 2 or later.
 
-<!--
-  RENDER: the 3D render of a D65 running Open DPhone goes here.
-  When docs/assets/d65-render.png exists, remove this comment's opening
-  and closing lines so that the figure below is part of the page.
-
-<figure markdown="span">
-  ![A Digium D65 desk phone running Open DPhone](assets/d65-render.png){ width="720" }
+<link rel="stylesheet" href="assets/d65-viewer/viewer.css">
+<figure class="d65-viewer">
+  <div class="d65-viewer__phone">
+    <picture>
+      <source srcset="assets/d65-viewer/phone.webp" type="image/webp">
+      <img src="assets/d65-render.png" width="720" height="715" alt="A Digium D65 desk phone running Open DPhone">
+    </picture>
+    <img class="d65-viewer__screen" style="--d65-n: 1" src="assets/d65-viewer/screens/02-idle-dusk.webp" alt="">
+    <img class="d65-viewer__screen" style="--d65-n: 2" src="assets/d65-viewer/screens/03-idle-sunrise.webp" alt="">
+    <img class="d65-viewer__screen" style="--d65-n: 3" src="assets/d65-viewer/screens/04-idle-regatta.webp" alt="">
+    <img class="d65-viewer__screen" style="--d65-n: 4" src="assets/d65-viewer/screens/05-apps-glacier.webp" alt="">
+    <img class="d65-viewer__screen" style="--d65-n: 5" src="assets/d65-viewer/screens/06-light-up.webp" alt="">
+    <img class="d65-viewer__screen" style="--d65-n: 6" src="assets/d65-viewer/screens/07-desk-sparrow.webp" alt="">
+    <img class="d65-viewer__screen" style="--d65-n: 7" src="assets/d65-viewer/screens/08-box-pusher.webp" alt="">
+    <img class="d65-viewer__screen" style="--d65-n: 8" src="assets/d65-viewer/screens/09-alarms.webp" alt="">
+    <img class="d65-viewer__screen" style="--d65-n: 9" src="assets/d65-viewer/screens/10-menu-amethyst.webp" alt="">
+    <img class="d65-viewer__screen" style="--d65-n: 10" src="assets/d65-viewer/screens/11-call-incoming-evergreen.webp" alt="">
+    <img class="d65-viewer__screen" style="--d65-n: 11" src="assets/d65-viewer/screens/12-call-active-ember.webp" alt="">
+  </div>
+  <figcaption>
+    <span style="--d65-n: 0">The idle screen shows the wallpaper Harbor.</span>
+    <span style="--d65-n: 1">The idle screen shows the wallpaper Dusk.</span>
+    <span style="--d65-n: 2">The idle screen shows the wallpaper Sunrise.</span>
+    <span style="--d65-n: 3">The idle screen shows the wallpaper Regatta.</span>
+    <span style="--d65-n: 4">The Applications menu takes the palette of the wallpaper Glacier.</span>
+    <span style="--d65-n: 5">Light Up is one of the built-in games.</span>
+    <span style="--d65-n: 6">Desk Sparrow is one of the built-in games.</span>
+    <span style="--d65-n: 7">Box Pusher is one of the built-in games.</span>
+    <span style="--d65-n: 8">The app Alarms lists the alarms that are set.</span>
+    <span style="--d65-n: 9">The menu takes the palette of the wallpaper Amethyst.</span>
+    <span style="--d65-n: 10">A call comes in, in the palette of the wallpaper Evergreen.</span>
+    <span style="--d65-n: 11">A call is connected, in the palette of the wallpaper Ember.</span>
+  </figcaption>
 </figure>
--->
 
 [Download the firmware](https://github.com/jackrosenthal/open-dphone/releases){ .md-button .md-button--primary }
 [Install Open DPMA](open-dpma/index.md){ .md-button }
