@@ -9,7 +9,7 @@ A phone's configuration contains the SIP password for every line in the phone se
 | Site | Setting | Result |
 | --- | --- | --- |
 | Each phone belongs to one desk. | `config_auth=mac`, with `mac` in every phone section | A phone gets only the section that matches the phone's MAC address, and nobody types a PIN. |
-| Same, but MAC addresses are not trusted. | `config_auth=mac_pin` or `mac_globalpin` | The user must also know a PIN. |
+| Each phone belongs to one desk, but MAC addresses are not trusted. | `config_auth=mac_pin` or `mac_globalpin` | The user must also know a PIN. |
 | Users move between phones. | `config_auth=pin`, with `pin` in every phone section | The PIN identifies the user at any phone. |
 
 After a change, check `Config Authentication` in the output of `digium_phones show settings`.  The module does not apply a misspelled value, so `disabled` stays in effect, and the log has a warning that names the value.
@@ -35,7 +35,7 @@ Set `userlist_auth=globalpin` unless everyone on the phones' network is allowed 
 
 A phone that has completed the handshake can request any file under `file_directory` by name.  The request needs no configuration token and is not subject to `config_auth`.  Subdirectories are included, and names that escape the directory with `..` are refused.
 
-Keep only files that every phone may read in the directory.  A `config_file` document must be in the directory, so any phone can request the document.
+Use the directory only for files that every phone may read.  A `config_file` document must be in the directory, so any phone can request the document.
 
 ### Authentication incidents
 

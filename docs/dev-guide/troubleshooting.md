@@ -9,7 +9,7 @@ The init role supervises the main role and recovers from most failures without i
 | The main role exits or crashes. | The init role restarts the main role after a delay that doubles with each consecutive failure, up to 60 seconds. |
 | The main role hangs: no heartbeat for 120 seconds after a start, or for 30 seconds after that. | The init role kills and restarts the main role. |
 | The main role fails three times in a row. | The init role starts the main role in safe mode, which runs only the network, the SSH server (if the SSH setting is on), and the diagnostic commands.  The user interface, telephony, audio, the apps, and the web interface are not started. |
-| The main role fails at all. | The [serial console](ssh-and-serial-console.md#serial-console) takes over the EHS port, regardless of the setting, until a working main role applies the setting again. |
+| The main role fails, even once. | The [serial console](ssh-and-serial-console.md#serial-console) takes over the EHS port, regardless of the setting, until a working main role applies the setting again. |
 | No main role has sent a heartbeat for 600 seconds. | The init role restarts the phone. |
 | The kernel or the init role hangs. | The hardware watchdog, which only the init role feeds, resets the phone. |
 | nvdata cannot be mounted. | Nothing is erased.  A file system in RAM takes the place of nvdata, the phone runs with default settings, and the web interface shows a **Recovery** page. |
@@ -44,7 +44,7 @@ Reboot or power-cycle the phone.  Nothing was written to the firmware banks, so 
 
 ## Installed image fails
 
-Wait.  The trial boot gives the new image three boots, and each failed boot ends with a restart: by the watchdog, by the kernel after a panic, or by the init role when the main role is not healthy within 300 seconds.  After the third boot, the early-boot stage selects the previous bank.  Power-cycling the phone also ends a boot, and the boot still counts.
+No action is needed.  The trial boot gives the new image three boots, and each failed boot ends with a restart: by the watchdog, by the kernel after a panic, or by the init role when the main role is not healthy within 300 seconds.  After the third boot, the early-boot stage selects the previous bank.  Power-cycling the phone also ends a boot, and the boot still counts.
 
 Once the previous firmware is running again, the **Firmware** card in the web interface reports why the update was rolled back.
 

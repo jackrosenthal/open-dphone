@@ -31,6 +31,8 @@ To see the values that the module holds for a phone section, run `digium_phones 
 
 ## Summary
 
+An on/off option accepts the same values as the other [on/off options](configuration.md#file-format) in the file, e.g., `yes` or `no`.
+
 | Option | Value | Default |
 | --- | --- | --- |
 | [`dphone_ssh_enabled`](#dphone_ssh_enabled) | On/off | SSH server off |

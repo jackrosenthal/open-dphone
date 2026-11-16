@@ -86,6 +86,6 @@ Open DPhone and Open DPMA are better together, but each works without the other.
 
 | Phone firmware | PBX module | Result |
 | --- | --- | --- |
-| Open DPhone | Open DPMA | Every feature of both. |
+| Open DPhone | Open DPMA | All features of the firmware and the module are available. |
 | Open DPhone | The original `res_digium_phone`{ .nowrap } | The phone is provisioned like a stock phone.  Open DPhone options and app data on the PBX are unavailable, because the original module supports neither. |
 | Stock firmware | Open DPMA | The phone works the same as with the original module, without the original module's bugs and security issues. |

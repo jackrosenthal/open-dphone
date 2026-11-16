@@ -153,6 +153,8 @@ Use `abandon` when you find a mistake in an image that you just installed, eithe
 
 ## Return to stock firmware
 
+How to return a phone to stock firmware depends on what the other bank holds:
+
 - If stock firmware is still in the other bank, [switch to that bank](#dphone-update-switch-bank).
 - Otherwise, install a stock firmware image for the phone's model through the web interface or with `dphone update install`.  Both accept stock images, and the web interface asks for confirmation first.
 

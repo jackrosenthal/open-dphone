@@ -28,7 +28,7 @@ cd open-dphone
 | `kernel/` | The port of Linux 7.3 to the phones, as patches and added files.  `kernel/README.md` describes the kernel's constraints and how to work on the port. |
 | `nix/`, `flake.nix` | The build recipes. |
 | `open-dpma/` | Open DPMA, the Asterisk module, which has a separate README. |
-| `xtask/` | `cargo xtask`, the developer commands that are not builds. |
+| `xtask/` | The [`cargo xtask` commands](#xtask-commands). |
 | `assets/` | The fonts, icons, and artwork used by the user interface. |
 | `docs/`, `zensical.toml` | This documentation site. |
 

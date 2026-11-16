@@ -43,7 +43,7 @@ A pushed binary does not update the following:
 
 The image is the same EFF image that the build produces and that `dphone update install` installs.  The command accepts only an Open DPhone image for the phone's model.
 
-Loading briefly needs enough free memory for two copies of the image, and a copy in `/tmp` would take up the same RAM.  Pipe the image to the command over SSH so that no copy is stored on the phone:
+While loading, the command briefly needs enough free memory for two copies of the image, and a copy in `/tmp` would use up that memory.  Pipe the image to the command over SSH so that no copy is stored on the phone:
 
 ```sh
 ssh root@192.0.2.20 dphone ramboot - < result
@@ -53,10 +53,10 @@ ssh root@192.0.2.20 dphone ramboot - < result
 
 In the RAM-booted system:
 
-- **nvdata is the phone's real nvdata.**  The settings, the network address, and the SSH keys are unchanged, so the same `ssh` command works.  Anything that the RAM-booted system writes to nvdata persists after the phone returns to the installed firmware.
-- **`dphone update status` reports that the phone is running from neither bank.**
-- **A pending trial boot is neither counted nor confirmed.**
-- **The full `dphone update` command is available.**  Once an image has proved to work, you can [install the image](firmware-updates.md#dphone-update-install) from the RAM-booted system.
+- nvdata is the phone's real nvdata.  The settings, the network address, and the SSH keys are unchanged, so the same `ssh` command works.  Anything that the RAM-booted system writes to nvdata persists after the phone returns to the installed firmware.
+- `dphone update status` reports that the phone is running from neither bank.
+- A pending trial boot is neither counted nor confirmed.
+- The full `dphone update` command is available.  Once an image has proved to work, you can [install the image](firmware-updates.md#dphone-update-install) from the RAM-booted system.
 
 ### Return to the installed firmware
 
