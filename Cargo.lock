@@ -430,16 +430,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cargo-dphone-app"
-version = "3.0.0"
-dependencies = [
- "clap",
- "dphone-app-sdk",
- "serde_json",
- "wit-component 0.263.0",
-]
-
-[[package]]
 name = "cbc"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1138,8 +1128,8 @@ dependencies = [
 name = "dphone-apps"
 version = "3.0.0"
 dependencies = [
- "cargo-dphone-app",
  "clap",
+ "dphone-app-sdk",
  "dphone-apps",
  "dphone-hal",
  "dphone-state",
@@ -1152,6 +1142,7 @@ dependencies = [
  "serde",
  "serde_json",
  "wasmtime",
+ "wit-component 0.263.0",
 ]
 
 [[package]]

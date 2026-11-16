@@ -2,9 +2,8 @@
 # from the firmware workspace); its crates are plain cdylibs for
 # wasm32-unknown-unknown, each with its manifest and its data files in the
 # module (`export_app!` of the SDK).  `dphone-apps-build stage` then makes
-# a component of each module, as `cargo dphone-app` does for an app that is
-# installed (the same code: `crates/cargo-dphone-app`), compiles it to
-# Pulley bytecode for the phone, and lays out
+# a component of each module, as `wasm-tools component new` does for an app
+# that is installed, compiles it to Pulley bytecode for the phone, and lays out
 # <name>/{app.pb,<name>.cwasm,data files}, which the image installs as
 # /usr/share/dphone/apps.
 #

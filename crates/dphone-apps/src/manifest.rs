@@ -158,7 +158,7 @@ impl fmt::Display for ManifestError {
         match self {
             ManifestError::NotWasm => write!(
                 f,
-                "not an app: an app is a WebAssembly component (a .wasm file made by cargo dphone-app)"
+                "not an app: an app is a WebAssembly component (a .wasm file made by wasm-tools component new)"
             ),
             ManifestError::JavaScript => write!(
                 f,

@@ -22,10 +22,13 @@
 //! [`AppWindow`] traits; with the `ui` feature, `uishell::UiShell`
 //! implements them over `dphone-ui`.
 
+#[cfg(feature = "build-tool")]
+pub mod build;
 pub mod engine;
 mod host;
 pub mod install;
 pub mod manager;
+pub mod manifest;
 mod prepare;
 pub mod services;
 pub mod view;
@@ -35,9 +38,6 @@ pub mod testutil;
 #[cfg(feature = "ui")]
 pub mod uishell;
 
-/// The app manifest, read from an app file: the code the tool app makers
-/// build their apps with reads it with.
-pub use cargo_dphone_app::manifest;
 pub use engine::{AppEngine, EngineError};
 pub use install::{AppFile, InstallError, Installer};
 pub use prepare::{MAX_COMPONENT, capabilities};

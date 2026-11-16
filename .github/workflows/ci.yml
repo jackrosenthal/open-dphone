@@ -23,8 +23,8 @@
 #
 # A pushed tag vX.Y.Z (the workspace version in Cargo.toml) also publishes
 # the seven images and the modules as a GitHub Release, with SHA256SUMS,
-# and then publishes dpma-bytes, dpma-proto, dphone-app-sdk, and
-# cargo-dphone-app to crates.io (trusted publishing).
+# and then publishes dpma-bytes, dpma-proto, and dphone-app-sdk to
+# crates.io (trusted publishing).
 name: CI
 
 on:
@@ -410,9 +410,8 @@ jobs:
       contents: read
       id-token: write
     env:
-      # In dependency order: dpma-proto uses dpma-bytes, and the packaging
-      # tool's tests use the SDK.
-      CRATES: dpma-bytes dpma-proto dphone-app-sdk cargo-dphone-app
+      # In dependency order: dpma-proto uses dpma-bytes.
+      CRATES: dpma-bytes dpma-proto dphone-app-sdk
     steps:
       - uses: actions/checkout@v7
 

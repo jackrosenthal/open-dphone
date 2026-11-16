@@ -15,7 +15,7 @@ default = []
 # which precompiles the built-in apps, and the host tests.
 compile = ["wasmtime/cranelift", "wasmtime/pulley"]
 # The host tool that componentizes, precompiles, and packs apps.
-build-tool = ["compile", "cargo-dphone-app/tool", "cli"]
+build-tool = ["compile", "dep:wit-component", "cli"]
 # The command lines of this crate's programs.
 cli = ["dep:clap"]
 # Fake view and services for tests.
@@ -33,8 +33,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rustix = { version = "1", features = ["fs", "process", "thread"] }
 wasmtime = { version = "50", default-features = false, features = ["runtime", "component-model", "std"] }
-# The manifest an app file carries, read by the code the tool app makers use.
-cargo-dphone-app = { path = "../cargo-dphone-app", default-features = false }
+# Makes a component of the module cargo builds for a built-in app; the
+# phone binary does not have it.
+wit-component = { version = "0.263", optional = true }
 
 [[bin]]
 name = "dphone-apps-build"
@@ -47,6 +48,8 @@ required-features = ["test-util", "cli"]
 
 [dev-dependencies]
 dphone-apps = { path = ".", features = ["build-tool", "test-util", "ui"] }
+# The writer of the manifest this crate reads (tests/sdk.rs).
+dphone-app-sdk = { path = "../dphone-app-sdk" }
 # The games' tests draw them with the phone UI on the simulator's display.
 dphone-hal = { path = "../dphone-hal" }
 dphone-ui = { path = "../dphone-ui" }

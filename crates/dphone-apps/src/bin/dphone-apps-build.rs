@@ -2,13 +2,10 @@
 //! cargo produces for the built-in apps into what the image carries of
 //! each (the phone's record of the app and the code compiled for the
 //! phone).  The Nix derivations and the tests use it.
-//!
-//! The component and the manifest are made and read by `cargo-dphone-app`,
-//! the tool app makers use: there is one way from an app crate to an app.
 
-use cargo_dphone_app::{Manifest, ManifestError, manifest::RECORD};
 use clap::{Args, Parser, ValueEnum};
 use dphone_apps::engine::{AppEngine, Target};
+use dphone_apps::{Manifest, ManifestError, manifest::RECORD};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
@@ -111,11 +108,11 @@ fn stage(wasm_dir: &Path, out: &Path, target: Target, keep_wasm: bool) -> Res<()
             Err(ManifestError::NoManifest) => continue,
             Err(e) => return Err(format!("{}: {e}", path.display())),
         }
-        // The app file, made as `cargo dphone-app` makes it for an app
-        // that is installed; a built-in app is in the image as the phone
-        // would keep it, with the code compiled here.
+        // The app file, made as `wasm-tools component new` makes it for an
+        // app that is installed; a built-in app is in the image as the
+        // phone would keep it, with the code compiled here.
         let app =
-            cargo_dphone_app::build(&module).map_err(|e| format!("{}: {e}", path.display()))?;
+            dphone_apps::build::build(&module).map_err(|e| format!("{}: {e}", path.display()))?;
         let m = &app.manifest;
         let code = engine
             .precompile(&app.component)

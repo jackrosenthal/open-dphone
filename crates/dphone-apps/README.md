@@ -3,13 +3,13 @@
 The app runtime of Open DPhone: WebAssembly components run by Wasmtime's Pulley interpreter, the host side of the app interface, app packages, and the `AppManager` the main role runs.
 
 - The interface is defined once, in `crates/dphone-app-sdk/wit/app.wit`.  `dphone-app-sdk` is the guest crate generated from it, published to crates.io for app makers (its README tells how to write an app); this crate generates the host side from the same file.  The built-in apps are in `apps/`.
-- An app is one file: a WebAssembly component with its manifest in it (the custom section `dphone-app`, written by the SDK's `export_app!`; `crates/cargo-dphone-app` reads it, here and in the tool app makers build with).  Its data is in its code (`include_bytes!`); nothing is unpacked on the phone.
+- An app is one file: a WebAssembly component with its manifest in it (the custom section `dphone-app`, written by the SDK's `export_app!`; `src/manifest.rs` reads it).  Its data is in its code (`include_bytes!`); nothing is unpacked on the phone.
 - An app gets the host interfaces its component imports, and no others: capabilities are not declared.  `hotdesk` and `diagnostics` are reserved for built-in apps: an app that imports one is not installed.
 - Each app has a memory cap (4 MiB by default, 16 MiB at most via `memory_kib`) and a time budget per event (2 s); going over either stops the app.
 
 ## Building apps
 
-Apps are plain `cdylib` crates for `wasm32-unknown-unknown`.  `cargo dphone-app` (`crates/cargo-dphone-app`, published with the SDK) builds one into the file the phone installs.  For the firmware's own apps, the host tool `dphone-apps-build` (feature `build-tool`) makes the same component with the same code and compiles it to Pulley bytecode for the phone:
+Apps are plain `cdylib` crates for `wasm32-unknown-unknown`.  An app maker builds one with cargo and makes a component of the module with `wasm-tools component new`, which is the file the phone installs (the SDK's README has the commands).  For the firmware's own apps, the host tool `dphone-apps-build` (feature `build-tool`) makes the component itself (`src/build.rs`) and compiles it to Pulley bytecode for the phone:
 
 ```text
 cd apps && cargo build --release                      # modules in <target>/wasm32-unknown-unknown/release

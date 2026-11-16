@@ -2,13 +2,13 @@
 //! crate reads: the two are written by hand against the same
 //! `manifest.proto`, and this holds them to each other.
 
-use cargo_dphone_app::{AppType, Manifest};
+use dphone_apps::manifest::{AppType, Manifest};
 use dphone_app_sdk::manifest::{AppKind, Manifest as Written};
 
 /// A module that holds nothing but the section.
 fn module(section: &[u8]) -> Vec<u8> {
     let name = dphone_app_sdk::manifest::SECTION.as_bytes();
-    assert_eq!(name, cargo_dphone_app::manifest::SECTION.as_bytes());
+    assert_eq!(name, dphone_apps::manifest::SECTION.as_bytes());
     let mut body = vec![name.len() as u8];
     body.extend_from_slice(name);
     body.extend_from_slice(section);
@@ -72,7 +72,7 @@ fn every_field_arrives() {
     assert_eq!(m.section(), SECTION);
     assert_eq!(
         dphone_app_sdk::manifest::MODELS,
-        cargo_dphone_app::manifest::MODELS
+        dphone_apps::manifest::MODELS
     );
 }
 

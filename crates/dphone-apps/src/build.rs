@@ -1,4 +1,6 @@
-//! From the module cargo builds to the app file: a component.
+//! From the module cargo builds for a built-in app to the app file: a
+//! component.  This is what `wasm-tools component new` does for an app
+//! that is installed.
 
 use crate::manifest::{Capability, Manifest};
 
@@ -51,18 +53,4 @@ pub fn build(module: &[u8]) -> Result<BuiltApp, String> {
         manifest,
         component,
     })
-}
-
-impl BuiltApp {
-    /// What the phone refuses in an app that is installed (as opposed to
-    /// one built into the firmware).
-    pub fn check_installable(&self) -> Result<(), String> {
-        match self.manifest.capabilities.iter().find(|c| c.builtin_only()) {
-            Some(c) => Err(format!(
-                "the app uses the interface {:?}, which is for the firmware's built-in apps; the phone refuses to install it",
-                c.name()
-            )),
-            None => Ok(()),
-        }
-    }
 }

@@ -5,11 +5,11 @@
 // icon) is in the file itself: the custom section
 // "dphone-app" of the app's WebAssembly module holds one `Manifest`
 // message in protobuf's binary form.  The macro `export_app!` of the crate
-// `dphone-app-sdk` writes the section when the app is compiled; the crate
-// `cargo-dphone-app` reads it, on the phone and in the build tool.  Both
-// are written by hand against this file (the SDK's writer runs at compile
-// time, in `const` code), and a test of `cargo-dphone-app` holds them to
-// each other.
+// `dphone-app-sdk` writes the section when the app is compiled; the
+// firmware's crate `dphone-apps` reads it, on the phone and when the
+// firmware is built.  Both are written by hand against this file (the SDK's
+// writer runs at compile time, in `const` code), and a test of `dphone-apps`
+// holds them to each other.
 //
 // The interfaces of the phone an app uses are not in the manifest: the
 // phone takes them from the imports of the WebAssembly component.  Nor are

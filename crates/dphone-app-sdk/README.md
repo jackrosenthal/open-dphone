@@ -143,22 +143,23 @@ The phone stops an app that takes more than two seconds to handle one event, or 
 
 ## Building
 
-The tool `cargo-dphone-app`, published with this crate and at the same version, builds an app.  Install it and the WebAssembly target once:
+Building an app takes the WebAssembly target of Rust and `wasm-tools`.  Install them once:
 
 ```text
-cargo install cargo-dphone-app
 rustup target add wasm32-unknown-unknown
+cargo install wasm-tools
 ```
 
 Then, in the app's directory:
 
 ```text
-cargo dphone-app
+cargo build --release --target wasm32-unknown-unknown
+wasm-tools component new target/wasm32-unknown-unknown/release/hello.wasm -o hello.wasm
 ```
 
-This builds the crate in release mode for `wasm32-unknown-unknown`, makes a WebAssembly component of the module, and writes the app: one file, `target/dphone-app/hello.wasm` (named after the manifest's `name`), with the manifest and all of the app's data in it.  The tool reads the file as the phone will and refuses what the phone would refuse; it prints the app's name and the capabilities it uses.
+The first command builds the crate into a WebAssembly module, which cargo names after the crate (with `_` for every `-` in the crate's name).  The second makes a WebAssembly component of the module, and that is the app: one file, here `hello.wasm`, with the manifest and all of the app's data in it.  The phone goes by the manifest's `name`, not by the name of the file.
 
-The phone compiles the app's code when the app is installed, which takes it about 2 seconds and another 0.12 seconds for every KiB of code.  It takes a file of up to 8 MiB with up to 1 MiB of code in it (the tool prints both).
+The phone compiles the app's code when the app is installed, which takes it about 2 seconds and another 0.12 seconds for every KiB of code.  It takes a file of up to 8 MiB with up to 1 MiB of code in it.
 
 ## Installing
 
