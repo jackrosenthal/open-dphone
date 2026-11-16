@@ -270,6 +270,8 @@ struct Stack {
     stack: Vec<Box<dyn Screen>>,
     soft_page: u8,
     seen_ringing: Vec<CallId>,
+    /// The ringing alarm whose screen was put up.
+    alarm_shown: Option<u32>,
     /// When the trial cover ends at the latest (monotonic milliseconds);
     /// set when a pending trial is first seen.
     cover_until: Option<u64>,
@@ -303,6 +305,7 @@ impl Stack {
             stack: Vec::new(),
             soft_page: 0,
             seen_ringing: Vec::new(),
+            alarm_shown: None,
             cover_until: None,
         };
         s.kind = s.wanted(st, now_ms);
@@ -433,6 +436,32 @@ impl Stack {
             }
             (false, Some(i)) => self.truncate(cx, i),
             (false, None) => {}
+        }
+        self.sync_alarm(cx);
+    }
+
+    /// The ringing alarm's screen: put over whatever is on screen when an
+    /// alarm begins to ring, and taken away when it stops.  A user who
+    /// leaves it is not brought back to it.
+    fn sync_alarm(&mut self, cx: &Cx) {
+        let ringing = cx.st.alarms.ringing.as_ref().map(|r| r.id);
+        if ringing == self.alarm_shown {
+            return;
+        }
+        self.alarm_shown = ringing;
+        let pos = self.stack.iter().position(|s| s.tag() == Tag::Alarm);
+        match (ringing, pos) {
+            (Some(_), None) => self.push(cx, Box::new(crate::screens::alarm::AlarmScreen)),
+            (None, Some(i)) => {
+                let was_top = i + 1 == self.stack.len();
+                let mut s = self.stack.remove(i);
+                s.leave(cx);
+                if was_top {
+                    self.soft_page = 0;
+                    self.top().enter(cx);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -1297,7 +1326,9 @@ impl Ui {
             _ => {}
         }
         let ringing = self.store.read::<ds::Calls, _>(|c| c.ringing().next().is_some());
-        if ringing {
+        // An alarm that begins to ring lights the screen, as a call does.
+        let alarm = self.store.read::<ds::Alarms, _>(|a| a.ringing.as_ref().map(|r| r.id));
+        if ringing || (alarm.is_some() && alarm != self.nav.alarm_shown) {
             self.activity();
         }
         self.with_cx(|nav, cx| nav.sync(cx));

@@ -270,7 +270,10 @@ interface types {
     /// The app's store on the PBX can be reached (again): requests that
     /// ended `unreachable` are worth another try, and what the app read
     /// before may have changed since.
-    pbx-storage-online,
+    pbx-storage-online,    /// The phone's alarm clock changed: an alarm was set, changed, or
+    /// removed (from this app, another, or the web interface), rang, or
+    /// was snoozed or dismissed.  For apps that use `alarms`.
+    alarms-changed,
   }
 }
 
@@ -683,6 +686,58 @@ interface canvas {
   draw: func(w: widget, ops: list<op>) -> result<_, string>;
 }
 
+/// Capability `alarms`: the phone's alarm clock.  The phone keeps the
+/// alarms and rings them, whether or not any app runs: when an alarm is
+/// due it sounds the alarm's ringtone and shows the alarm with Snooze and
+/// Dismiss over whatever is on screen.  An app that uses this interface
+/// shows the alarms and changes them; `event.alarms-changed` tells it when
+/// they changed.
+interface alarms {
+  use types.{error};
+
+  record alarm {
+    /// Identifies the alarm.  0 in `set` adds an alarm.
+    id: u32,
+    /// The time of day, in the phone's time zone.
+    hour: u8,
+    minute: u8,
+    /// The days of the week it rings on: bit 0 is Sunday, bit 6
+    /// Saturday.  0 is a one-time alarm: it rings the next time the
+    /// clock shows its time, and is then switched off.
+    days: u8,
+    /// The ringtone it rings with, one of `tones`.  Empty in `set`: the
+    /// phone's first.
+    tone: string,
+    /// An alarm that is switched off does not ring.
+    enabled: bool,
+  }
+
+  /// The alarms, in the order they were added.
+  %list: func() -> list<alarm>;
+  /// Adds an alarm (`id` 0) or changes the one with that `id`; returns
+  /// its `id`.  An alarm that is changed counts from now: its time
+  /// earlier today is not due until tomorrow.  The phone keeps at most
+  /// 16 alarms.
+  set: func(a: alarm) -> result<u32, error>;
+  remove: func(id: u32) -> result<_, error>;
+  /// The ringtones an alarm can ring with: the phone's.
+  tones: func() -> list<string>;
+  /// Sounds a ringtone for a few seconds, for choosing one (`none`:
+  /// stops it).
+  preview: func(tone: option<string>);
+  /// The next time an alarm rings: the alarm's `id` and the time, in
+  /// seconds since the Unix epoch.  A snoozed alarm counts.
+  next: func() -> option<tuple<u32, u64>>;
+  /// The snoozed alarm, if one is: its `id`, and when it rings again.
+  snoozed: func() -> option<tuple<u32, u64>>;
+  /// Ends the alarm that is ringing or snoozed.
+  dismiss: func() -> result<_, error>;
+  /// Whether the idle screen shows an icon while an alarm is upcoming
+  /// (one rings within 24 hours, or is snoozed).
+  icon: func() -> bool;
+  set-icon: func(on: bool) -> result<_, error>;
+}
+
 interface guest {
   use types.{event};
   /// Called once after instantiation.
@@ -709,5 +764,6 @@ world app {
   import lamps;
   import input;
   import canvas;
+  import alarms;
   export guest;
 }

@@ -54,6 +54,8 @@ pub const ON: &str = "On";
 pub const OFF: &str = "Off";
 pub const TOGGLE: &str = "Toggle";
 pub const DISMISS: &str = "Dismiss";
+pub const SNOOZE: &str = "Snooze";
+pub const ALARM: &str = "Alarm";
 pub const ROLLBACK: &str = "Roll back";
 
 // Boot, recovery, provisioning.

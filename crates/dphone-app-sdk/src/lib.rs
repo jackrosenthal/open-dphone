@@ -50,7 +50,7 @@ pub use bindings::dphone::app::types::{
     PbxUser, Presence, Push, Rect, Size, Skin, Softkey, WidgetEvent, WidgetKind,
 };
 pub use bindings::dphone::app::{
-    audio, calls, canvas, config, diagnostics, events, hotdesk, http, input, l10n, lamps, pbx,
+    alarms, audio, calls, canvas, config, diagnostics, events, hotdesk, http, input, l10n, lamps, pbx,
     pbx_storage, presence, runtime, storage, timers, ui,
 };
 

@@ -84,6 +84,9 @@ pub(crate) fn status_icons(cx: &Cx) -> Vec<(&'static str, u32)> {
     if st.features.forward.any() {
         v.push(("forward", 0));
     }
+    if st.alarms.icon {
+        v.push(("alarm", 0));
+    }
     if st.audio.headset_mode {
         v.push(("headset", 0));
     }

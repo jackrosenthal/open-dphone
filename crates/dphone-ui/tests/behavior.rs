@@ -1278,3 +1278,84 @@ fn the_trial_cover_leaves_start_up_and_installing_alone() {
     assert_eq!(r.screen(), "update");
     assert!(r.audio_cmds().is_empty());
 }
+
+fn ring_alarm(r: &mut Rig, id: Option<u32>) {
+    r.store.update::<Alarms, _>(|a| a.ringing = id.map(|id| AlarmRinging { id, hour: 8, minute: 0 }));
+    r.ui.pump();
+}
+
+/// The alarm clock is the main role's; the UI shows the alarm that rings
+/// over whatever is on screen, an app included, and its softkeys ask the
+/// alarm clock to snooze or dismiss it.
+#[test]
+fn a_ringing_alarm_shows_over_an_app_with_snooze_and_dismiss() {
+    let mut r = Rig::new(Model::D60);
+    let alarms = r.store.handle(Domain::Alarms);
+    let (view, events) = AppView::new("demo", Model::D60);
+    r.ui.handle().open_app(view.clone());
+    r.ui.pump();
+    assert_eq!(r.screen(), "app:demo");
+    assert_eq!(events.try_recv(), Some(AppEvent::Foreground));
+
+    ring_alarm(&mut r, Some(3));
+    assert_eq!(r.screen(), "alarm");
+    assert_eq!(events.try_recv(), Some(AppEvent::Background));
+    r.tap(Key::Soft(1));
+    assert_eq!(Rig::drain(&alarms), [Command::SnoozeAlarm]);
+    // The screen stays until the alarm clock says the alarm stopped; the
+    // app is then on screen again.
+    assert_eq!(r.screen(), "alarm");
+    ring_alarm(&mut r, None);
+    assert_eq!(r.screen(), "app:demo");
+    assert_eq!(events.try_recv(), Some(AppEvent::Foreground));
+
+    // It rings again: Dismiss, and Cancel snoozes.
+    ring_alarm(&mut r, Some(3));
+    assert_eq!(r.screen(), "alarm");
+    r.tap(Key::Soft(4));
+    assert_eq!(Rig::drain(&alarms), [Command::DismissAlarm]);
+    r.tap(Key::Cancel);
+    assert_eq!(Rig::drain(&alarms), [Command::SnoozeAlarm]);
+    ring_alarm(&mut r, None);
+    assert_eq!(r.screen(), "app:demo");
+}
+
+#[test]
+fn a_ringing_alarm_shows_on_every_model_and_lights_the_screen() {
+    for model in [Model::D40, Model::D50, Model::D60, Model::D70] {
+        let mut hal = Hal::sim(model);
+        let sim = hal.sim.clone().unwrap();
+        let store = Store::new(model);
+        store.update::<System, _>(|s| s.phase = Phase::Running);
+        let mut ui = Ui::from_hal(&mut hal, store.clone(), UiConfig { backlight_timeout_secs: 1, brightness: 10, ..Default::default() });
+        ui.pump();
+        let lit = sim.brightness(Screen::Main);
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        ui.pump();
+        assert_ne!(sim.brightness(Screen::Main), lit, "{model:?}: dimmed");
+        store.update::<Alarms, _>(|a| a.ringing = Some(AlarmRinging { id: 1, hour: 6, minute: 30 }));
+        ui.pump();
+        assert_eq!(ui.screen_name(), "alarm", "{model:?}");
+        assert_eq!(sim.brightness(Screen::Main), lit, "{model:?}: lit again");
+        store.update::<Alarms, _>(|a| a.ringing = None);
+        ui.pump();
+        assert_eq!(ui.screen_name(), "idle", "{model:?}");
+    }
+}
+
+/// A user who leaves the ringing alarm's screen is not brought back to it
+/// while that alarm rings.
+#[test]
+fn leaving_the_ringing_alarm_is_possible() {
+    let mut r = Rig::new(Model::D60);
+    ring_alarm(&mut r, Some(1));
+    assert_eq!(r.screen(), "alarm");
+    r.tap(Key::Line(1));
+    r.store.update::<Features, _>(|f| f.dnd = !f.dnd);
+    r.ui.pump();
+    assert_ne!(r.screen(), "alarm");
+    // The next alarm shows again.
+    ring_alarm(&mut r, None);
+    ring_alarm(&mut r, Some(2));
+    assert_eq!(r.screen(), "alarm");
+}

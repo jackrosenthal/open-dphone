@@ -16,6 +16,7 @@
 // Output for a person goes through `out` (see there for why).
 #![deny(clippy::print_stdout, clippy::print_stderr)]
 
+pub mod alarms;
 pub mod cli;
 pub mod clock;
 pub mod cmds;

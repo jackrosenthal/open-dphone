@@ -1227,6 +1227,76 @@ impl api::input::Host for AppCtx {
     }
 }
 
+impl AppCtx {
+    /// A command for the alarm clock, which writes the alarms to the
+    /// flash before it answers.
+    fn alarm_command(&self, c: Command) -> Result<Reply, Error> {
+        self.store.send(c).wait_timeout(Duration::from_millis(1500)).map_err(|e| match e {
+            dphone_state::CommandError::Invalid(why) => Error::Invalid(why),
+            e => Error::Failed(e.to_string()),
+        })
+    }
+}
+
+impl api::alarms::Host for AppCtx {
+    fn list(&mut self) -> Vec<api::alarms::Alarm> {
+        let alarms = self.store.get::<dphone_state::Alarms>();
+        alarms
+            .alarms
+            .iter()
+            .map(|a| api::alarms::Alarm {
+                id: a.id,
+                hour: a.hour,
+                minute: a.minute,
+                days: a.days,
+                tone: a.tone.clone(),
+                enabled: a.enabled,
+            })
+            .collect()
+    }
+    fn set(&mut self, a: api::alarms::Alarm) -> Result<u32, Error> {
+        let alarm = dphone_state::Alarm {
+            id: a.id,
+            hour: a.hour,
+            minute: a.minute,
+            days: a.days,
+            tone: a.tone,
+            enabled: a.enabled,
+        };
+        match self.alarm_command(Command::SetAlarm { alarm })? {
+            Reply::Id(id) => Ok(id as u32),
+            _ => Ok(a.id),
+        }
+    }
+    fn remove(&mut self, id: u32) -> Result<(), Error> {
+        self.alarm_command(Command::RemoveAlarm { id }).map(|_| ())
+    }
+    fn tones(&mut self) -> Vec<String> {
+        self.store.get::<dphone_state::Alarms>().tones.clone()
+    }
+    fn preview(&mut self, tone: Option<String>) {
+        let _ = self.store.post(match tone {
+            Some(name) => Command::PlaySound { name },
+            None => Command::StopSound,
+        });
+    }
+    fn next(&mut self) -> Option<(u32, u64)> {
+        self.store.get::<dphone_state::Alarms>().next
+    }
+    fn snoozed(&mut self) -> Option<(u32, u64)> {
+        self.store.get::<dphone_state::Alarms>().snoozed
+    }
+    fn dismiss(&mut self) -> Result<(), Error> {
+        self.alarm_command(Command::DismissAlarm).map(|_| ())
+    }
+    fn icon(&mut self) -> bool {
+        self.store.get::<dphone_state::Alarms>().show_icon
+    }
+    fn set_icon(&mut self, on: bool) -> Result<(), Error> {
+        self.alarm_command(Command::SetAlarmIcon { on }).map(|_| ())
+    }
+}
+
 /// The most operations one `canvas.draw` may carry.
 const CANVAS_OPS_MAX: usize = 512;
 /// The most bitmap data one `canvas.draw` may carry.
@@ -1321,6 +1391,7 @@ pub(crate) fn link(
             Capability::Diagnostics => api::diagnostics::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Lamps => api::lamps::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Input => api::input::add_to_linker::<_, H>(linker, |c| c)?,
+            Capability::Alarms => api::alarms::add_to_linker::<_, H>(linker, |c| c)?,
         }
     }
     Ok(())

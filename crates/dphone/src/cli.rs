@@ -35,6 +35,7 @@ use crate::diag::builtin::{HealthCommand, LogCommand, PingCommand, RestartComman
 use crate::init;
 use crate::mainrole::subsystems::{
     ConfigCommand, StateCommand,
+    alarms::AlarmsCommand,
     audio::{AudioCommand, DspCommand},
     ehs::EhsCommand,
     expansion::ExpansionCommand,
@@ -89,6 +90,7 @@ enum Command {
 /// command here and registers the handler when it starts.
 #[derive(Debug, Subcommand)]
 pub enum Remote {
+    Alarms(AlarmsCommand),
     App(AppCommand),
     Audio(AudioCommand),
     Call(CallCommand),
@@ -291,6 +293,7 @@ mod tests {
         let tree = Remote::augment_subcommands(clap::Command::new("dphone"));
         let in_tree: Vec<&str> = tree.get_subcommands().map(|c| c.get_name()).collect();
         let own = [
+            AlarmsCommand::command(),
             AppCommand::command(),
             AudioCommand::command(),
             CallCommand::command(),

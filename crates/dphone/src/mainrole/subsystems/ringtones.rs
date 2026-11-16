@@ -38,6 +38,18 @@ pub fn names(nvdata: &Path) -> Vec<String> {
     names
 }
 
+/// Every ringtone the phone can ring with: the built-in rings, the default
+/// first, and then the user ringtones.
+pub fn all(nvdata: &Path) -> Vec<String> {
+    let mut all: Vec<String> = BuiltinRing::ALL.iter().map(|r| r.name().to_string()).collect();
+    for name in names(nvdata) {
+        if !all.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
+            all.push(name);
+        }
+    }
+    all
+}
+
 /// Samples of a headerless signed 16-bit little-endian file.
 pub fn decode_sln16(bytes: &[u8]) -> Arc<[i16]> {
     bytes.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)).collect()

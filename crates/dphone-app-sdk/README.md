@@ -141,6 +141,7 @@ Each interface of the phone except `runtime` is a capability, and each is a modu
 | `diagnostics` | The state of the phone: its subsystems and its log. |
 | `lamps` | The phone's lamps, while the app is on screen. |
 | `input` | Every key and the hookswitch, while the app is on screen and asks for them. |
+| `alarms` | The phone's alarm clock: the alarms, and setting them. |
 
 `runtime` (logging, leaving the screen, exiting, random numbers) is not a capability: every app has it.
 
@@ -272,6 +273,40 @@ After `pbx_storage::watch(true)`, the app gets `Event::PbxStorageChanged(change)
 A request ends `Unreachable(text)` when the phone has no session with the PBX (it is not provisioned, the network is down, or the PBX is) or the PBX does not answer (it may be one that keeps no app data).  The phone keeps nothing to send later: what the app wanted to write is the app's to keep, in `storage` if it must outlast the app, and to write again.  `Event::PbxStorageOnline` says when: it comes to every running app that uses `pbx_storage` each time the store comes into reach, and also means that what the app read before may have changed.  `pbx_storage::online()` says whether the store is in reach now.  A `set` or `remove` that ends `Unreachable` because no answer came may still have been done; with `expect`, writing again then ends in `Conflict` with the entry it wrote.
 
 `Refused(text)` is the PBX's refusal of a request that it will refuse again: a key that cannot be one, a value over the limit, or a store that already has as many keys as it may.
+
+## The alarm clock
+
+The alarm clock is the phone's, not an app's: the phone keeps the alarms, and when one is due it sounds the alarm's ringtone and shows the alarm with Snooze and Dismiss over whatever is on screen, whether or not any app runs.  `alarms` is the interface to it for an app that shows the alarms and changes them, as the built-in Alarms app does (`apps/alarms`); the web interface's page "Alarms" changes the same alarms.
+
+An `Alarm` has an `id`, a time of day (`hour` and `minute`, in the phone's time zone), the days of the week it rings on (`days`: bit 0 is Sunday, bit 6 Saturday; 0 is a one-time alarm, which rings the next time the clock shows its time and is then switched off), a `tone` (one of the phone's ringtones), and `enabled`.
+
+| Function | Does |
+| --- | --- |
+| `list()` | The alarms, in the order they were added. |
+| `set(alarm)` | Adds an alarm (`id` 0) or changes the one with that `id`, and returns its `id`.  The phone keeps at most 16 alarms. |
+| `remove(id)` | Removes an alarm. |
+| `tones()` | The ringtones an alarm can ring with. |
+| `preview(tone)` | Sounds a ringtone for a few seconds, for choosing one; `None` stops it. |
+| `next()` | The next time an alarm rings: its `id` and the time, in seconds since the Unix epoch. |
+| `snoozed()` | The snoozed alarm, if one is, and when it rings again. |
+| `dismiss()` | Ends the alarm that is ringing or snoozed. |
+| `icon()`, `set_icon(on)` | Whether the idle screen shows an icon while an alarm is upcoming (one rings within 24 hours, or is snoozed). |
+
+`Event::AlarmsChanged` comes to every running app that uses `alarms` whenever the alarm clock changed: an alarm was set, changed, or removed, from any side, or rang, or was snoozed or dismissed.
+
+```rust,ignore
+use dphone_app_sdk::alarms::{self, Alarm};
+
+// Every Monday at 8:00, with the phone's first ringtone.
+let id = alarms::set(&Alarm {
+    id: 0,
+    hour: 8,
+    minute: 0,
+    days: 1 << 1,
+    tone: String::new(),
+    enabled: true,
+})?;
+```
 
 ## Building
 

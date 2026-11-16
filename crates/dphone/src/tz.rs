@@ -23,6 +23,22 @@ pub fn utc_offset(setting: &str, unix: i64) -> i32 {
     Rule::parse(rule).map(|r| r.offset_at(unix)).unwrap_or(0)
 }
 
+/// A time zone setting, read once: for asking the offset at many times.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Zone(Option<Rule>);
+
+impl Zone {
+    /// The zone of a setting value, as [`utc_offset`] takes it.
+    pub fn new(setting: &str) -> Zone {
+        Zone(Rule::parse(rule_for(setting).unwrap_or(setting.trim())))
+    }
+
+    /// Seconds east of UTC at `unix`.
+    pub fn offset_at(&self, unix: i64) -> i32 {
+        self.0.map(|r| r.offset_at(unix)).unwrap_or(0)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Day {
     /// `Mm.w.d`: month 1..=12, week 1..=5 (5 = last), weekday 0 = Sunday.

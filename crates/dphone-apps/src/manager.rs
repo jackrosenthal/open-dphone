@@ -147,7 +147,7 @@ impl AppManager {
         };
         installer.recover();
         let commands = store.handle(Domain::Apps);
-        let sub = store.subscribe_events([Topic::Calls, Topic::Mwi, Topic::Presence]);
+        let sub = store.subscribe_events([Topic::Calls, Topic::Mwi, Topic::Presence, Topic::Alarms]);
         let inbox = Arc::new(Inbox::default());
         {
             let inbox = inbox.clone();
@@ -909,6 +909,11 @@ impl AppManager {
                         self.deliver(&name, wit::Event::Presence(host::presence_of(e, t)));
                     }
                 }
+            }
+        }
+        if wake.changed(Topic::Alarms) {
+            for name in self.apps_where(|c| c.has(Capability::Alarms)) {
+                self.deliver(&name, wit::Event::AlarmsChanged);
             }
         }
         for ev in wake.events {

@@ -134,6 +134,8 @@ struct Inner {
     preview_is_volume: bool,
     /// The ringtone that incoming calls ring with (`active_ringtone`).
     ringtone: String,
+    /// The ringer is sounding for the alarm clock.
+    alarm: bool,
     /// The sound file playing for an app.
     playback: Option<Playback>,
     /// Sound files stopped or replaced, until the engine says where they
@@ -212,6 +214,7 @@ impl AudioService {
                 previews: 0,
                 preview_is_volume: false,
                 ringtone: String::new(),
+                alarm: false,
                 playback: None,
                 ended: Vec::new(),
                 playbacks: 0,
@@ -401,6 +404,9 @@ impl AudioService {
     pub fn ring(&self, name: Option<&str>) {
         {
             let mut inner = self.inner.lock().unwrap();
+            // Whoever rings or silences the ringer now, it is no longer
+            // the alarm clock's.
+            inner.alarm = false;
             if let Some(p) = inner.playback.take() {
                 // The engine reports where the file was cut off.
                 inner.ended.push(p);
@@ -416,6 +422,25 @@ impl AudioService {
             let _ = inner.send(Ec::PlayRing(source, ring_gain_q12(level)));
         }
         self.refresh();
+    }
+
+    /// Rings for the alarm clock, with a ringtone as [`AudioService::ring`]
+    /// takes it, until `None`.  The ringer stays everyone else's: a call
+    /// that rings, or a sound that plays, takes it over, and `None` then
+    /// silences nothing.
+    pub fn alarm(&self, tone: Option<&str>) {
+        match tone {
+            Some(tone) => {
+                self.ring(Some(tone));
+                self.inner.lock().unwrap().alarm = true;
+            }
+            None => {
+                let mine = self.inner.lock().unwrap().alarm;
+                if mine {
+                    self.ring(None);
+                }
+            }
+        }
     }
 
     /// Plays `samples` (16 kHz) once for `app`, from `start_secs` in, in
@@ -435,6 +460,7 @@ impl AudioService {
             }
             inner.preview = 0;
             inner.ringing = false;
+            inner.alarm = false;
             inner.playbacks = inner.playbacks.wrapping_add(1);
             let token = inner.playbacks;
             let start = (start_secs as usize).saturating_mul(dphone_media::ring::RING_RATE as usize);

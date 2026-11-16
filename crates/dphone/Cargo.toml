@@ -36,6 +36,7 @@ async-trait = "0.1"
 dphone-apps = { path = "../dphone-apps", features = ["ui", "compile"] }
 dphone-web = { path = "../dphone-web", optional = true }
 dphone-ui = { path = "../dphone-ui" }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dphone-vpm = { path = "../dphone-vpm" }
 dphone-media = { path = "../dphone-media" }

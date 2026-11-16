@@ -592,3 +592,30 @@ fn idle_service_icons() {
         assert!(registered != link_down, "{model:?}: no icon for no link");
     }
 }
+
+/// The alarm clock's native screens: the idle screen with the icon of an
+/// upcoming alarm, and the alarm that rings.
+#[test]
+fn alarm_clock() {
+    for model in [Model::D40, Model::D50, Model::D60, Model::D65, Model::D70] {
+        let mut r = Rig::new(model);
+        r.running();
+        r.store.update::<CallLog, _>(|l| l.missed_unseen = 0);
+        r.store.update::<Accounts, _>(|a| {
+            a.accounts[0].registration = Registration::Registered { host: ActiveHost::Primary, expires_mono_ms: MONO + 60_000 }
+        });
+        r.ui.pump();
+        let plain = r.sim.frame(Screen::Main).unwrap().pixels;
+        r.store.update::<Alarms, _>(|a| {
+            a.alarms = vec![Alarm { id: 1, hour: 8, minute: 0, days: 0b0111110, tone: "Chime".into(), enabled: true }];
+            a.show_icon = true;
+            a.icon = true;
+        });
+        r.shot("70-idle-alarm-icon");
+        assert!(plain != r.sim.frame(Screen::Main).unwrap().pixels, "{model:?}: no icon for an upcoming alarm");
+        r.store.update::<Alarms, _>(|a| a.ringing = Some(AlarmRinging { id: 1, hour: 8, minute: 0 }));
+        r.ui.pump();
+        assert_eq!(r.ui.screen_name(), "alarm");
+        r.shot("71-alarm-ringing");
+    }
+}

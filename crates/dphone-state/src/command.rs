@@ -41,10 +41,12 @@ pub enum Domain {
     Paging,
     /// Bluetooth headsets (the `dphone` main role).
     Bluetooth,
+    /// The alarm clock (the `dphone` main role).
+    Alarms,
 }
 
 impl Domain {
-    pub const COUNT: usize = 11;
+    pub const COUNT: usize = 12;
 }
 
 /// Which forward rule a [`Command::SetForward`] changes.
@@ -231,6 +233,20 @@ pub enum Command {
     /// Drop the headset connection.
     BluetoothDisconnect,
 
+    // ---- Alarms
+    /// Add an alarm (`alarm.id` 0; replies [`Reply::Id`] with its new
+    /// identifier) or change the alarm with that identifier.
+    SetAlarm { alarm: crate::Alarm },
+    RemoveAlarm { id: u32 },
+    /// Show an icon on the idle screen while an alarm is upcoming, or
+    /// never.
+    SetAlarmIcon { on: bool },
+    /// Silence the ringing alarm; it rings again after
+    /// [`crate::Alarms::snooze_secs`].
+    SnoozeAlarm,
+    /// End the ringing alarm, or the snoozed one.
+    DismissAlarm,
+
     Reboot { reason: String },
     FactoryReset,
     /// Recovery only (nvdata could not be mounted): erase the nvdata
@@ -271,6 +287,9 @@ impl Command {
             SetBluetooth { .. } | BluetoothDiscovery { .. } | BluetoothPair { .. }
             | BluetoothAnswerPairing { .. } | BluetoothUnpair { .. } | BluetoothConnect { .. }
             | BluetoothDisconnect => Domain::Bluetooth,
+            SetAlarm { .. } | RemoveAlarm { .. } | SetAlarmIcon { .. } | SnoozeAlarm | DismissAlarm => {
+                Domain::Alarms
+            }
         }
     }
 }

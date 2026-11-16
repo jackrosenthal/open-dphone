@@ -40,10 +40,11 @@ pub enum Topic {
     Paging,
     Expansion,
     Bluetooth,
+    Alarms,
 }
 
 impl Topic {
-    pub const ALL: [Topic; 21] = [
+    pub const ALL: [Topic; 22] = [
         Topic::System,
         Topic::Network,
         Topic::Provisioning,
@@ -65,6 +66,7 @@ impl Topic {
         Topic::Paging,
         Topic::Expansion,
         Topic::Bluetooth,
+        Topic::Alarms,
     ];
 }
 
@@ -142,6 +144,7 @@ pub struct State {
     pub paging: Arc<Paging>,
     pub expansion: Arc<Expansion>,
     pub bluetooth: Arc<Bluetooth>,
+    pub alarms: Arc<Alarms>,
 }
 
 impl State {
@@ -167,6 +170,7 @@ impl State {
             paging: Default::default(),
             expansion: Default::default(),
             bluetooth: Default::default(),
+            alarms: Default::default(),
         }
     }
 }
@@ -215,6 +219,7 @@ topic_state!(Ui, Ui, ui);
 topic_state!(Paging, Paging, paging);
 topic_state!(Expansion, Expansion, expansion);
 topic_state!(Bluetooth, Bluetooth, bluetooth);
+topic_state!(Alarms, Alarms, alarms);
 
 // ---------------------------------------------------------------- System
 
@@ -1612,6 +1617,74 @@ pub struct Paging {
     pub activity: PageActivity,
     /// Why the last page could not be sent or played; empty when fine.
     pub error: String,
+}
+
+// ---------------------------------------------------------------- Alarms
+
+/// One alarm of the alarm clock.
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Alarm {
+    /// Identifies the alarm; never 0 for an alarm the phone has.
+    pub id: u32,
+    /// The time of day, in the phone's time zone.
+    pub hour: u8,
+    pub minute: u8,
+    /// The days of the week it rings on: bit 0 is Sunday, bit 6 Saturday.
+    /// 0 is a one-time alarm: it rings the next time the clock shows its
+    /// time, and is then switched off.
+    pub days: u8,
+    /// The ringtone it rings with (one of [`Alarms::tones`]).
+    pub tone: String,
+    pub enabled: bool,
+}
+
+impl Alarm {
+    /// Every day of the week.
+    pub const EVERY_DAY: u8 = 0x7f;
+}
+
+/// The alarm that is ringing.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AlarmRinging {
+    pub id: u32,
+    /// The alarm's time of day, for the screen.
+    pub hour: u8,
+    pub minute: u8,
+}
+
+/// The alarm clock.  Owner: the `dphone` main role (alarms subsystem).
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Alarms {
+    pub alarms: Vec<Alarm>,
+    /// The ringtones an alarm can ring with.
+    pub tones: Vec<String>,
+    /// The setting: show an icon on the idle screen while an alarm is
+    /// upcoming.
+    pub show_icon: bool,
+    /// The idle screen shows the alarm icon now: the setting is on, and an
+    /// alarm will ring within [`Alarms::UPCOMING_SECS`] or is snoozed.
+    pub icon: bool,
+    /// The next time an alarm rings (a snoozed alarm included): the alarm
+    /// and the Unix time.
+    pub next: Option<(u32, u64)>,
+    /// The alarm that is ringing now.
+    pub ringing: Option<AlarmRinging>,
+    /// The snoozed alarm, and the Unix time at which it rings again.
+    pub snoozed: Option<(u32, u64)>,
+    /// How long a snooze lasts, in seconds.
+    pub snooze_secs: u32,
+}
+
+impl Alarms {
+    /// The most alarms the phone keeps.
+    pub const MAX: usize = 16;
+    /// An alarm is upcoming, for the idle screen's icon, when it rings
+    /// within this many seconds.
+    pub const UPCOMING_SECS: u64 = 24 * 3600;
+
+    pub fn get(&self, id: u32) -> Option<&Alarm> {
+        self.alarms.iter().find(|a| a.id == id)
+    }
 }
 
 // ------------------------------------------------------------- Expansion

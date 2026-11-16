@@ -792,3 +792,60 @@ fn ssh_exec_and_sftp_with_openssh_client() {
         assert_eq!(std::fs::read(d.join("tree/payload.bin")).unwrap(), payload);
     }
 }
+
+/// The alarm clock in the real main role: an alarm set through it is kept
+/// in nvdata, and one that was ringing when the phone went down rings
+/// again when it is up, on the ringer and on screen, where the softkeys
+/// snooze and dismiss it.  (When each alarm is due is tested with the
+/// engine, `src/alarms.rs`, which has a clock that can be moved.)
+#[test]
+fn the_alarm_clock_keeps_its_alarms_and_rings_after_a_restart() {
+    let dir = temp();
+    let (mut main, socket) = start_main(dir.path(), &["--no-ssh"]);
+    wait_for("diag socket", Duration::from_secs(10), || socket.exists());
+    wait_for("the alarm clock", Duration::from_secs(10), || diag(&socket, &["alarms"]).0 == 0);
+    let (code, out, err) = diag(&socket, &["alarms", "add", "07:00", "--days", "mon,wed", "--tone", "chime"]);
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("1 07:00 mon,wed Chime on\n") && out.contains("next: 1 at "), "{out}");
+    let (code, _, err) = diag(&socket, &["alarms", "add", "25:00"]);
+    assert_eq!(code, 1, "{err}");
+    let (code, _, _) = diag(&socket, &["restart"]);
+    assert_eq!(code, 0);
+    assert_eq!(main.0.wait().unwrap().code(), Some(0));
+
+    // As a phone that lost power while the alarm rang leaves it.
+    let file = dir.path().join("nv/alarms.json");
+    let mut saved: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(saved["alarms"][0]["hour"], 7);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    saved["pending"] = serde_json::json!({ "id": 1, "until": now });
+    std::fs::write(&file, saved.to_string()).unwrap();
+
+    let (mut main, socket) = start_main(dir.path(), &["--no-ssh"]);
+    wait_for("the alarm to ring", Duration::from_secs(15), || diag(&socket, &["alarms"]).1.contains("ringing: 1\n"));
+    wait_for("the alarm's screen", Duration::from_secs(5), || diag(&socket, &["state", "ui"]).1.contains("\"alarm\""));
+    let (_, audio, _) = diag(&socket, &["state", "audio"]);
+    assert!(audio.contains("ringing: true"), "{audio}");
+
+    // Snooze, the first softkey.
+    let (code, _, err) = diag(&socket, &["key", "sk1"]);
+    assert_eq!(code, 0, "{err}");
+    wait_for("the snooze", Duration::from_secs(5), || diag(&socket, &["alarms"]).1.contains("snoozed: 1 until "));
+    let (_, out, _) = diag(&socket, &["alarms"]);
+    assert!(!out.contains("ringing"), "{out}");
+    wait_for("the ringer to stop", Duration::from_secs(5), || diag(&socket, &["state", "audio"]).1.contains("ringing: false"));
+    assert!(!diag(&socket, &["state", "ui"]).1.contains("\"alarm\""));
+
+    let (code, out, _) = diag(&socket, &["alarms", "dismiss"]);
+    assert_eq!(code, 0);
+    assert!(!out.contains("snoozed") && out.contains("1 07:00 mon,wed Chime on\n"), "{out}");
+    let (code, out, _) = diag(&socket, &["alarms", "remove", "1"]);
+    assert_eq!(code, 0);
+    assert!(!out.contains("07:00"), "{out}");
+
+    let (code, _, _) = diag(&socket, &["restart"]);
+    assert_eq!(code, 0);
+    assert_eq!(main.0.wait().unwrap().code(), Some(0));
+    let saved: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(saved["alarms"], serde_json::json!([]));
+}

@@ -11,6 +11,7 @@ use crate::UiConfig;
 use dphone_hal::Lamp;
 use dphone_state::{Command, Key, LampColor, Model, State, Store};
 
+pub(crate) mod alarm;
 pub(crate) mod app;
 pub(crate) mod bluetooth;
 pub(crate) mod boot;
@@ -68,6 +69,8 @@ pub(crate) enum Tag {
     /// A dialer; `off_hook` ones close when the handset goes down.
     Dialer,
     App,
+    /// The ringing alarm.
+    Alarm,
 }
 
 pub(crate) type Soft = (u32, String);

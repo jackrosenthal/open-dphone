@@ -34,6 +34,7 @@ use log::{error, info, warn};
 use super::{Context, Options};
 use crate::diag::Output;
 
+pub mod alarms;
 pub mod apphttp;
 pub mod appstore;
 pub mod apps;
@@ -206,6 +207,15 @@ pub async fn start(ctx: &Context, opts: &Options) {
             paging.apply_config(&cfg);
         }
         hub.on_change(move |cfg| paging.apply_config(cfg));
+    }
+
+    // The alarm clock.
+    {
+        let alarms = alarms::start(ctx, audio.clone());
+        if let Some(cfg) = config.as_ref().map(|c| c.lock().unwrap().config()) {
+            alarms.apply_config(&cfg);
+        }
+        hub.on_change(move |cfg| alarms.apply_config(cfg));
     }
 
     let _ = (audio, hal, telephony, ui);
