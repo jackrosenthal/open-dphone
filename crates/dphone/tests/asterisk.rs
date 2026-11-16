@@ -17,12 +17,22 @@
 //! for the phone's own behavior (`dphone_*`): each arrives as a setting of
 //! the fetched configuration and reads back from the merged one.
 //!
+//! A second test has three phones on one server, each with an installed
+//! app that keeps data in its store on the PBX (the app interface
+//! `pbx-storage`, the server's app data): what the app writes on one phone,
+//! the app on a phone of the same tenant is told of and reads, with the
+//! name of the user who wrote it, and the app on a phone of another tenant
+//! does not.  Asterisk is then started again and the writer's phone reset:
+//! the user's data comes back from the server.
+//!
 //! Skipped unless `DPHONE_TEST_ASTERISK` names an Asterisk installation
 //! (the prefix that holds `bin/asterisk`, the sample configuration in
 //! `etc/asterisk`, and the data in `var/lib/asterisk`) and
 //! `DPHONE_TEST_ASTERISK_MODULES` a module directory with `res_dpma_rs.so`
 //! in it.  With `DPHONE_TEST_REQUIRE_ASTERISK` set (the Nix check sets it,
-//! and supplies both: nix/asterisk.nix) it fails instead of skipping.
+//! and supplies both: nix/asterisk.nix) it fails instead of skipping.  The
+//! second test also needs `DPHONE_APPS_STAGED`, the directory in which the
+//! test guests of `crates/dphone-apps` are staged (its README tells how).
 
 use std::net::UdpSocket;
 use std::path::{Path, PathBuf};
@@ -40,6 +50,9 @@ struct Server {
     prefix: PathBuf,
     modules: PathBuf,
 }
+
+/// One server at a time: both tests have theirs on [`SIP_PORT`].
+static ONE_SERVER: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn server() -> Option<Server> {
     let found = std::env::var_os("DPHONE_TEST_ASTERISK")
@@ -299,6 +312,7 @@ fn id_of(entry: &str) -> String {
 #[test]
 fn provisions_and_registers_against_asterisk() {
     let Some(server) = server() else { return };
+    let _one = ONE_SERVER.lock().unwrap_or_else(|e| e.into_inner());
     let dir = temp();
     let callee = Callee::start();
     let conf = configure(&dir.path().join("ast"), &server, callee.port());
@@ -464,4 +478,195 @@ fn provisions_and_registers_against_asterisk() {
     assert_eq!(written(&nv.join("fetched-config.xml")), fetched_before, "the configuration was fetched again");
     let zone = diag(&socket, &["config", "get", "time_zone"]).expect("config get");
     assert!(zone.contains("America/Chicago"), "{zone}");
+}
+
+/// The MAC addresses of the phones of the app data test.
+const MAC_ALICE: &str = "000fd3000011";
+const MAC_BOB: &str = "000fd3000012";
+const MAC_CAROL: &str = "000fd3000013";
+
+/// The DPMA configuration of the app data test: Alice's and Bob's phones
+/// are of the tenant `office`, by a template; Carol's is of another.
+fn app_data_conf() -> String {
+    format!(
+        "[general]\nuserlist_auth=disabled\nconfig_auth=mac\nservice_discovery_enabled=no\n\n\
+         [everywhere]\ntype=network\nalias=Everywhere\ncidr=0.0.0.0/0\nregistration_address=127.0.0.1\n\
+         registration_port={SIP_PORT}\ntransport=udp\n\n\
+         [office](!)\ntype=phone\nnetwork=everywhere\ndphone_app_data_tenant=office\n\n\
+         [alice](office)\nmac={MAC_ALICE}\nline=1001\nfull_name=Alice Example\n\n\
+         [bob](office)\nmac={MAC_BOB}\nline=1002\nfull_name=Bob Watched\n\n\
+         [carol]\ntype=phone\nnetwork=everywhere\nmac={MAC_CAROL}\nline=1003\nfull_name=Carol Elsewhere\n\
+         dphone_app_data_tenant=elsewhere\n\n\
+         [1001]\ntype=line\n\n[1002]\ntype=line\n\n[1003]\ntype=line\n"
+    )
+}
+
+/// The directory with the staged test guests, if the test is to run.
+fn staged_guests() -> Option<PathBuf> {
+    let staged = std::env::var_os("DPHONE_APPS_STAGED").map(PathBuf::from);
+    if staged.is_none() {
+        assert!(
+            std::env::var_os("DPHONE_TEST_REQUIRE_ASTERISK").is_none(),
+            "DPHONE_TEST_REQUIRE_ASTERISK is set, but DPHONE_APPS_STAGED is not"
+        );
+        eprintln!("SKIPPED: set DPHONE_APPS_STAGED to run this test");
+    }
+    staged
+}
+
+fn free_port() -> u16 {
+    UdpSocket::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+}
+
+/// A simulated phone with the test guest `storeprobe` installed.
+struct AppPhone {
+    socket: PathBuf,
+    _main: KillOnDrop,
+}
+
+impl AppPhone {
+    /// Starts a phone that has never run: `dir` is new.  Its MAC address
+    /// makes it the phone of one user on the server; `role` is what the
+    /// app is to do (its storage key `role`).  The app is installed as
+    /// the phone keeps an installed app, without compiled code, which the
+    /// phone makes when it starts.
+    fn start(dir: &Path, mac: &str, role: &str, staged: &Path, log: &Path) -> AppPhone {
+        let (nv, run) = (dir.join("nv"), dir.join("run"));
+        let colons: Vec<&str> = (0..6).map(|i| &mac[2 * i..2 * i + 2]).collect();
+        write(&nv.join("etc/enet.cfg"), &format!("ENETCFG_MAC={}\n", colons.join(":")));
+        write(
+            &nv.join("configurator.xml"),
+            &format!("<config>\n    <setting id=\"config_server_url\" value=\"sip:proxy@127.0.0.1:{SIP_PORT}\" />\n</config>\n"),
+        );
+        // A SIP port of the phone's own: three phones run here at once.
+        write(
+            &nv.join("ui-config.xml"),
+            &format!("<config>\n    <setting id=\"transport_udp_port\" value=\"{}\" />\n</config>\n", free_port()),
+        );
+        let app = nv.join("wasmapps/storeprobe");
+        std::fs::create_dir_all(&app).unwrap();
+        for file in ["storeprobe.wasm", "app.pb"] {
+            std::fs::copy(staged.join("storeprobe").join(file), app.join(file))
+                .unwrap_or_else(|e| panic!("{file} of the staged storeprobe: {e}"));
+        }
+        write(&nv.join("appdata/storeprobe/role"), role);
+        let main = KillOnDrop(
+            Command::new(BIN)
+                .args(["main", "--sim", "--model", "d60", "--no-ssh", "--web-port"])
+                .arg(free_port().to_string())
+                .arg("--nvdata")
+                .arg(&nv)
+                .arg("--run-dir")
+                .arg(&run)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(std::fs::File::create(log).unwrap())
+                .spawn()
+                .unwrap(),
+        );
+        let socket = run.join("diag.sock");
+        wait_for("the diag socket", Duration::from_secs(30), || diag(&socket, &["ping"]).map(|_| ()));
+        AppPhone { socket, _main: main }
+    }
+
+    fn log(&self) -> String {
+        diag(&self.socket, &["log", "-n", "5000"]).unwrap_or_default()
+    }
+
+    /// Waits until the app has logged `said`.
+    fn says(&self, said: &str) {
+        let line = format!("storeprobe: {said}");
+        wait_for(&line, Duration::from_secs(90), || self.log().contains(&line).then_some(()));
+    }
+}
+
+fn start_asterisk(server: &Server, conf: &Path) -> KillOnDrop {
+    let asterisk = KillOnDrop(
+        Command::new(server.prefix.join("bin/asterisk"))
+            .arg("-f")
+            .arg("-C")
+            .arg(conf)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("asterisk starts"),
+    );
+    wait_for("Asterisk to boot", Duration::from_secs(120), || cli(server, conf, "core waitfullybooted"));
+    asterisk
+}
+
+#[test]
+fn an_app_writes_a_value_that_an_app_on_another_phone_reads() {
+    let Some(server) = server() else { return };
+    let Some(staged) = staged_guests() else { return };
+    let _one = ONE_SERVER.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = temp();
+    let conf = configure(&dir.path().join("ast"), &server, 9);
+    write(&conf.with_file_name("res_digium_phone.conf"), &app_data_conf());
+    let log = |name: &str| dir.path().join(format!("{name}.log"));
+    let _show = ShowOnPanic(vec![
+        dir.path().join("ast/log/messages.log"),
+        log("alice"),
+        log("bob"),
+        log("carol"),
+        log("alice-reset"),
+    ]);
+    let asterisk = start_asterisk(&server, &conf);
+    let phone = cli(&server, &conf, "digium_phones show phone alice").unwrap();
+    assert!(phone.contains("Open DPhone app data tenant: office"), "{phone}");
+
+    // Bob's phone first: its app reads, finds nothing, and watches.
+    let bob = AppPhone::start(&dir.path().join("bob"), MAC_BOB, "reader", &staged, &log("bob"));
+    bob.says("store in reach; the user is Some(\"Bob Watched (bob)\")");
+    bob.says("read greeting: not set");
+    bob.says("read progress: not set");
+
+    // Alice's app writes a shared key and one of her own; the server
+    // says who wrote them.
+    let alice = AppPhone::start(&dir.path().join("alice"), MAC_ALICE, "writer", &staged, &log("alice"));
+    alice.says("stored greeting=\"hello from the writer\" by Alice Example");
+    alice.says("stored progress=\"level 3\" by Alice Example");
+
+    // Bob's app is told of the shared key and reads it.  Alice's own key
+    // is not Bob's.
+    bob.says("changed PbxScope::Shared greeting");
+    bob.says("read greeting=\"hello from the writer\" by Alice Example");
+    let said = bob.log();
+    assert!(!said.contains("storeprobe: read progress="), "{said}");
+    assert!(!said.contains("changed PbxScope::User"), "{said}");
+
+    // Carol's phone is of another tenant: for her app there is no such
+    // key.
+    let carol = AppPhone::start(&dir.path().join("carol"), MAC_CAROL, "reader", &staged, &log("carol"));
+    carol.says("store in reach; the user is Some(\"Carol Elsewhere (carol)\")");
+    carol.says("read greeting: not set");
+
+    // Where the server keeps it: in AstDB, by tenant, app, and user.
+    let db = cli(&server, &conf, "database show DPhoneAppData").unwrap();
+    for key in [
+        "/DPhoneAppData/@office/storeprobe/s/greeting",
+        "/DPhoneAppData/@office/storeprobe/u/alice/progress",
+        "/DPhoneAppData/watch/bob",
+    ] {
+        assert!(db.contains(key), "{key}: {db}");
+    }
+    assert!(!db.contains("@elsewhere"), "{db}");
+
+    // The server stops and starts again, and Alice's phone is reset:
+    // nothing is left on it, and the app is installed anew.  Her data is
+    // on the server, and comes back.
+    drop(alice);
+    drop(carol);
+    // An orderly stop: Asterisk writes AstDB to disk a moment after a
+    // change, and a killed one may not have.
+    let mut asterisk = asterisk;
+    cli(&server, &conf, "core stop now");
+    wait_for("Asterisk to stop", Duration::from_secs(60), || asterisk.0.try_wait().unwrap().map(|_| ()));
+    let _asterisk = start_asterisk(&server, &conf);
+    let reset = AppPhone::start(&dir.path().join("alice-reset"), MAC_ALICE, "reader", &staged, &log("alice-reset"));
+    reset.says("store in reach; the user is Some(\"Alice Example (alice)\")");
+    reset.says("read progress=\"level 3\" by Alice Example");
+    reset.says("read greeting=\"hello from the writer\" by Alice Example");
+    drop(bob);
 }

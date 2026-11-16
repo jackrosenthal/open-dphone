@@ -1,6 +1,6 @@
 //! What the app host needs from the rest of the firmware, as traits the
-//! integrator implements: the DPMA application transport, an HTTP client,
-//! and configuration.  Call control, presence, and audio go through the
+//! integrator implements: the DPMA application transport, the apps' store
+//! on the PBX, an HTTP client, and configuration.  Call control, presence, and audio go through the
 //! `dphone-state` command bus and need no adapter.
 
 use std::sync::Arc;
@@ -51,6 +51,118 @@ pub struct PbxRequest {
 /// response document with the HTTP-style preamble already stripped.
 pub trait PbxRequests: Send + Sync {
     fn request(&self, request: PbxRequest, done: Completion<Result<Vec<u8>, String>>);
+}
+
+/// Whose keys of an app's store on the PBX.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum StoreScope {
+    Shared,
+    User,
+}
+
+/// The phone's user, as the PBX knows them.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StoreUser {
+    pub id: String,
+    pub name: String,
+    pub extension: String,
+}
+
+/// One key of an app's store on the PBX.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StoreEntry {
+    pub key: String,
+    pub value: Vec<u8>,
+    pub version: u64,
+    pub modified: u64,
+    pub author_id: String,
+    pub author_name: String,
+}
+
+/// A request to the PBX's store for the app `app`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StoreOp {
+    Get {
+        app: String,
+        scope: StoreScope,
+        key: String,
+    },
+    List {
+        app: String,
+        scope: StoreScope,
+        prefix: String,
+        after: String,
+    },
+    Set {
+        app: String,
+        scope: StoreScope,
+        key: String,
+        value: Vec<u8>,
+        expect: Option<u64>,
+    },
+    Remove {
+        app: String,
+        scope: StoreScope,
+        key: String,
+        expect: Option<u64>,
+    },
+}
+
+/// How a [`StoreOp`] ended (`pbx-storage-outcome` of the app interface).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StoreReply {
+    Entry(Option<StoreEntry>),
+    Entries(Vec<StoreEntry>, bool),
+    Stored(StoreEntry),
+    Removed,
+    Conflict(Option<StoreEntry>),
+    Unreachable(String),
+    Refused(String),
+}
+
+/// What the store tells the app host without being asked.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StoreSignal {
+    /// The store can be reached (again), and the user is known.
+    Online,
+    /// Another phone set or removed a key of `app`.
+    Changed {
+        app: String,
+        scope: StoreScope,
+        key: String,
+    },
+}
+
+/// The apps' store of keys and values on the PBX (the DPMA
+/// `AppDataRequest`).
+pub trait PbxStore: Send + Sync {
+    fn request(&self, op: StoreOp, done: Completion<StoreReply>);
+    /// The phone's user, once the PBX has said who it is.
+    fn user(&self) -> Option<StoreUser>;
+    /// Whether the store can be reached now.
+    fn online(&self) -> bool;
+    /// The apps whose changes are wanted as [`StoreSignal::Changed`]: all
+    /// of them, each time the set changes.
+    fn watch(&self, apps: &[String]);
+    /// Registers who gets the signals.  They may come from any thread.
+    fn subscribe(&self, f: Box<dyn Fn(StoreSignal) + Send + Sync>);
+}
+
+/// A [`PbxStore`] for a phone without a PBX to keep one.
+pub struct NoStore;
+
+impl PbxStore for NoStore {
+    fn request(&self, _op: StoreOp, done: Completion<StoreReply>) {
+        done.complete(StoreReply::Unreachable("this phone has no PBX".into()));
+    }
+    fn user(&self) -> Option<StoreUser> {
+        None
+    }
+    fn online(&self) -> bool {
+        false
+    }
+    fn watch(&self, _apps: &[String]) {}
+    fn subscribe(&self, _f: Box<dyn Fn(StoreSignal) + Send + Sync>) {}
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -123,6 +235,7 @@ pub const APP_VISIBLE_SETTINGS: &[&str] = &[
 #[derive(Clone)]
 pub struct Services {
     pub pbx: Arc<dyn PbxRequests>,
+    pub store: Arc<dyn PbxStore>,
     pub http: Arc<dyn HttpClient>,
     pub config: Arc<dyn ConfigSource>,
 }

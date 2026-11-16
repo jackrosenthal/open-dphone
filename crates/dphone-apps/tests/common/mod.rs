@@ -8,7 +8,7 @@
 #![allow(dead_code)]
 
 use dphone_apps::engine::Target;
-use dphone_apps::testutil::{FakeConfig, FakePbx, FakeUi, services};
+use dphone_apps::testutil::{FakeConfig, FakePbx, FakeStore, FakeUi, services_with_store};
 use dphone_apps::{AppManager, ManagerConfig};
 use dphone_state::{Command, CommandResult, Domain, Model, Reply, Store};
 use std::path::{Path, PathBuf};
@@ -70,6 +70,8 @@ pub struct Rig {
     pub mgr: AppManager,
     pub ui: FakeUi,
     pub pbx: FakePbx,
+    /// The PBX's store of app data, as this phone reaches it.
+    pub app_data: FakeStore,
     pub store: Store,
     pub commands: Arc<Mutex<Vec<Command>>>,
     pub nvdata: PathBuf,
@@ -131,6 +133,45 @@ impl Rig {
         model: Model,
         budget: std::time::Duration,
     ) -> Rig {
+        Rig::with_app_data(root, config, model, budget, FakeStore::default())
+    }
+
+    /// A phone whose PBX store of app data is `app_data`: with
+    /// `FakeStore::phone` of another rig's, a second phone of the same
+    /// PBX.
+    pub fn on_pbx(app_data: FakeStore) -> Rig {
+        let budget = std::time::Duration::from_millis(300);
+        Rig::with_app_data(staged(), FakeConfig::default(), Model::D60, budget, app_data)
+    }
+
+    /// A rig with other services than the fakes: `change` gets the
+    /// rig's, and returns what the apps are to have.
+    pub fn with_services(
+        change: impl FnOnce(dphone_apps::Services) -> dphone_apps::Services,
+    ) -> Rig {
+        let budget = std::time::Duration::from_millis(300);
+        let config = FakeConfig::default();
+        Rig::build(staged(), config, Model::D60, budget, FakeStore::default(), change)
+    }
+
+    pub fn with_app_data(
+        root: &Path,
+        config: FakeConfig,
+        model: Model,
+        budget: std::time::Duration,
+        app_data: FakeStore,
+    ) -> Rig {
+        Rig::build(root, config, model, budget, app_data, |services| services)
+    }
+
+    fn build(
+        root: &Path,
+        config: FakeConfig,
+        model: Model,
+        budget: std::time::Duration,
+        app_data: FakeStore,
+        change: impl FnOnce(dphone_apps::Services) -> dphone_apps::Services,
+    ) -> Rig {
         let dir = temp_dir("rig");
         let store = Store::new(model);
         let ui = FakeUi::new(model);
@@ -148,13 +189,14 @@ impl Rig {
         let mut cfg = ManagerConfig::rooted(root, &nvdata);
         cfg.target = Target::Pulley64;
         cfg.call_budget = budget;
-        let mut mgr = AppManager::new(cfg, store.clone(), ui.shell(), services(&pbx, config))
-            .expect("engine");
+        let services = change(services_with_store(&pbx, config, &app_data));
+        let mut mgr = AppManager::new(cfg, store.clone(), ui.shell(), services).expect("engine");
         mgr.scan();
         Rig {
             mgr,
             ui,
             pbx,
+            app_data,
             store,
             commands,
             nvdata,

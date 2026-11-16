@@ -119,6 +119,9 @@ pub struct AppManager {
     jobs: VecDeque<(Job, Option<Responder>)>,
     /// The compilation the worker thread is doing now.
     compiling: Option<(Job, Option<Responder>)>,
+    /// The apps that watch their store on the PBX, as the store was last
+    /// told.
+    store_watch: Vec<String>,
 }
 
 mod dyn_mwi {
@@ -145,6 +148,13 @@ impl AppManager {
         installer.recover();
         let commands = store.handle(Domain::Apps);
         let sub = store.subscribe_events([Topic::Calls, Topic::Mwi, Topic::Presence]);
+        let inbox = Arc::new(Inbox::default());
+        {
+            let inbox = inbox.clone();
+            services
+                .store
+                .subscribe(Box::new(move |signal| inbox.push(Inbound::StoreSignal(signal))));
+        }
         Ok(AppManager {
             last_calls: store.get::<dphone_state::Calls>().calls.clone(),
             last_mwi: store.get::<dphone_state::Mwi>(),
@@ -154,7 +164,7 @@ impl AppManager {
             store,
             shell,
             services,
-            inbox: Arc::new(Inbox::default()),
+            inbox,
             installer,
             known: BTreeMap::new(),
             running: HashMap::new(),
@@ -167,6 +177,7 @@ impl AppManager {
             external_waker: None,
             jobs: VecDeque::new(),
             compiling: None,
+            store_watch: Vec::new(),
         })
     }
 
@@ -516,6 +527,7 @@ impl AppManager {
             pending: HashSet::new(),
             observed: HashSet::new(),
             observe_calls: false,
+            store_watch: false,
             presence_subs: HashSet::new(),
             exit_after_background: true,
             foreground: false,
@@ -614,6 +626,43 @@ impl AppManager {
             }
             self.idle_shown.remove(name);
             log::info!("app {name}: stopped");
+            self.sync_store_watch();
+        }
+    }
+
+    /// Tells the PBX's store which apps watch it, when that has changed.
+    fn sync_store_watch(&mut self) {
+        let watching =
+            self.apps_where(|c| c.store_watch && c.has(Capability::PbxStorage));
+        if watching != self.store_watch {
+            self.services.store.watch(&watching);
+            self.store_watch = watching;
+        }
+    }
+
+    /// The PBX's store came within reach, or a key of an app changed
+    /// there.
+    fn on_store_signal(&mut self, signal: crate::services::StoreSignal) {
+        use crate::services::StoreSignal;
+        match signal {
+            StoreSignal::Online => {
+                for name in self.apps_where(|c| c.has(Capability::PbxStorage)) {
+                    self.deliver(&name, wit::Event::PbxStorageOnline);
+                }
+            }
+            StoreSignal::Changed { app, scope, key } => {
+                let watching = self
+                    .running
+                    .get(&app)
+                    .is_some_and(|r| r.store.data().store_watch);
+                if watching {
+                    let change = wit::PbxStorageChange {
+                        scope: host::pbx_scope(scope),
+                        key,
+                    };
+                    self.deliver(&app, wit::Event::PbxStorageChanged(change));
+                }
+            }
         }
     }
 
@@ -682,6 +731,7 @@ impl AppManager {
                         self.deliver(&app, wit::Event::Message((ev, payload)));
                     }
                 }
+                Action::StoreWatch => self.sync_store_watch(),
             }
         }
     }
@@ -1049,6 +1099,16 @@ impl AppManager {
                     self.on_compiled(outcome);
                     continue;
                 }
+                Inbound::StoreSignal(signal) => {
+                    self.on_store_signal(signal);
+                    continue;
+                }
+                Inbound::Store {
+                    app,
+                    generation,
+                    id,
+                    outcome,
+                } => (app, generation, id, wit::Event::PbxStorage((id, outcome))),
                 Inbound::Pbx {
                     app,
                     generation,

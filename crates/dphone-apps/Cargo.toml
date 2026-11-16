@@ -18,14 +18,16 @@ compile = ["wasmtime/cranelift", "wasmtime/pulley"]
 build-tool = ["compile", "dep:wit-component", "cli"]
 # The command lines of this crate's programs.
 cli = ["dep:clap"]
-# Fake view and services for tests.
-test-util = []
+# Fake view and services for tests.  The fake PBX store keeps its keys as
+# the DPMA module does, with the code they share (`dpma-proto`).
+test-util = ["dep:dpma-proto"]
 # `UiShell`: the adapter from the phone UI toolkit to this crate's `Shell`.
 ui = ["dep:dphone-ui"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"], optional = true }
 dphone-state = { path = "../dphone-state" }
+dpma-proto = { workspace = true, optional = true }
 dphone-ui = { path = "../dphone-ui", optional = true }
 getrandom = "0.3"
 log = "0.4"

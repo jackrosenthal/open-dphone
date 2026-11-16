@@ -7,6 +7,7 @@
 //! ```ignore
 //! let services = Services {
 //!     pbx: Arc::new(my_dpma_adapter),        // impl PbxRequests (dasp://)
+//!     store: Arc::new(my_store_adapter),     // impl PbxStore (app data)
 //!     http: Arc::new(my_http_client),        // impl HttpClient
 //!     config: Arc::new(my_config_adapter),   // impl ConfigSource
 //! };
@@ -44,8 +45,9 @@ pub use prepare::{MAX_COMPONENT, capabilities};
 pub use manager::{AppManager, ManagerConfig};
 pub use manifest::{Capability, Manifest, ManifestError};
 pub use services::{
-    AppAccount, Completion, ConfigSource, HttpClient, HttpReply, HttpRequest, PbxRequest,
-    PbxRequests, Services,
+    AppAccount, Completion, ConfigSource, HttpClient, HttpReply, HttpRequest, NoStore,
+    PbxRequest, PbxRequests, PbxStore, Services, StoreEntry, StoreOp, StoreReply, StoreScope,
+    StoreSignal, StoreUser,
 };
 pub use view::{
     Align, AppWindow, Bitmap, Color, ColorRole, DrawOp, Font, InputMode, Lamp, ListItem, Metrics,

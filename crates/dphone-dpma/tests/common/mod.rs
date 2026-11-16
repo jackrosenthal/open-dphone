@@ -54,6 +54,8 @@ pub struct FakeServer {
     pub file_requests: Vec<String>,
     /// Every TokenRequest: user name, password, and configuration password.
     pub token_requests: Vec<(String, String, String)>,
+    /// The app data, kept as the real server keeps it.
+    pub app_data: dpma_proto::appdata::store::MemoryBackend,
 }
 
 impl FakeServer {
@@ -79,6 +81,7 @@ impl FakeServer {
             files: HashMap::new(),
             file_requests: Vec::new(),
             token_requests: Vec::new(),
+            app_data: Default::default(),
         }
     }
 
@@ -231,7 +234,8 @@ impl FakeServer {
             return out;
         }
 
-        let carries_token = [types::VERIFY_REQUEST, types::CONFIG_REQUEST].contains(&request_type.as_str());
+        let carries_token =
+            [types::VERIFY_REQUEST, types::CONFIG_REQUEST, types::APP_DATA_REQUEST].contains(&request_type.as_str());
         let token_ok = carries_token && self.present_token(&request.config_token, &request.mac);
         match request_type.as_str() {
             types::USERLIST_REQUEST => {
@@ -286,6 +290,30 @@ impl FakeServer {
                     reply.append(b"RIFFdata");
                 } else {
                     reply.error = errors::msg::FILE_NOT_FOUND;
+                }
+            }
+            types::APP_DATA_REQUEST => {
+                use dpma_proto::appdata::{store, ErrorCode, Op, Response, User};
+                // The phone is the one the token names, as on the real
+                // server; these phones have no tenant key.
+                let phone = String::from_utf8_lossy(&request.config_token).split('/').next().unwrap_or_default().to_string();
+                let name = self.users.iter().find(|(e, _, _)| *e == phone).map(|(_, n, _)| n.clone()).unwrap_or_default();
+                let user = User { id: phone.clone(), name, extension: phone.clone() };
+                if !token_ok {
+                    reply.error = errors::msg::INVALID_TOKEN;
+                } else {
+                    let response = match Op::decode(&request.body) {
+                        Err(why) => Response::error(ErrorCode::Invalid, why),
+                        Ok(op) => {
+                            let who = store::Who { tenant: b"", phone: phone.as_bytes(), user: &user };
+                            if let Op::Hello { watch } = &op {
+                                store::set_watch(&mut self.app_data, phone.as_bytes(), watch);
+                            }
+                            let (outcome, _) = store::apply(&mut self.app_data, &who, &op, 1_794_607_500);
+                            Response { user: Some(user.clone()), outcome }
+                        }
+                    };
+                    reply.append(&response.encode());
                 }
             }
             types::ASTERISK_REQUEST => {

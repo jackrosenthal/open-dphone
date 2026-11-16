@@ -119,6 +119,27 @@ async fn first_boot_user_token_config_and_pushes() {
     assert_eq!(r.dpma.app_request("file://ringtone1", None, b"").await.unwrap().body, b"RIFFdata");
     assert!(matches!(r.dpma.file("nothing").await, Err(DpmaError::Server { code: -98, .. })));
 
+    // So does app data, which the server keeps for the phone the token
+    // names.
+    use dphone_dpma::appdata::{Op, Outcome, Scope};
+    let set = |value: &[u8], expect| Op::Set { app: "game".into(), scope: Scope::Shared, key: "best".into(), value: value.to_vec(), expect };
+    let stored = r.dpma.app_data(&set(b"53", Some(0))).await.unwrap();
+    let user = stored.user.unwrap();
+    assert_eq!((user.id.as_str(), user.name.as_str()), ("100", "Desk"));
+    let Outcome::Stored(entry) = stored.outcome else { panic!("{:?}", stored.outcome) };
+    assert_eq!((entry.value.as_slice(), entry.author_name.as_str()), (&b"53"[..], "Desk"));
+    let again = r.dpma.app_data(&set(b"54", Some(0))).await.unwrap();
+    assert_eq!(again.outcome, Outcome::Conflict(Some(entry.clone())));
+    let got = r.dpma.app_data(&Op::Get { app: "game".into(), scope: Scope::Shared, key: "best".into() }).await.unwrap();
+    assert_eq!(got.outcome, Outcome::Entry(Some(entry)));
+    // A value larger than one MESSAGE carries goes in pieces, both ways.
+    let big: Vec<u8> = (0..4096u32).map(|i| (i % 251) as u8).collect();
+    let stored = r.dpma.app_data(&Op::Set { app: "game".into(), scope: Scope::User, key: "save".into(), value: big.clone(), expect: None }).await.unwrap();
+    assert!(matches!(stored.outcome, Outcome::Stored(e) if e.value == big));
+    let hello = r.dpma.app_data(&Op::Hello { watch: vec!["game".into()] }).await.unwrap();
+    assert_eq!(hello.outcome, Outcome::Hello);
+    assert!(r.server.lock().unwrap().app_data.0.contains_key("watch/100"));
+
     // digium.config.update: fetch again with the same token.
     r.server.lock().unwrap().config = CONFIG.replace("789", "555").into_bytes();
     let push = r.server.lock().unwrap().event("digium.config.update", b"<config></config>");

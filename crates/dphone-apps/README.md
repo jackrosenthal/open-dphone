@@ -50,7 +50,7 @@ The cost of the compiler in the phone binary: 12.99 MB without it, 17.65 MB with
 
 ## Tests
 
-`cargo test -p dphone-apps` builds the apps and a misbehaving test guest, stages them for the 64-bit interpreter, and runs them under the real manager with a fake screen and a scripted PBX.  Set `DPHONE_APPS_STAGED` to a directory staged with `--target pulley64` (apps and `tests/guests`) to skip the build step.
+`cargo test -p dphone-apps` builds the apps and a misbehaving test guest, stages them for the 64-bit interpreter, and runs them under the real manager with a fake screen and a scripted PBX (`testutil`: `FakePbx` answers PBX requests, and `FakeStore` is the PBX's store of app data, which several rigs can share as the phones of one PBX).  Set `DPHONE_APPS_STAGED` to a directory staged with `--target pulley64` (apps and `tests/guests`) to skip the build step.  With the same variable, and an Asterisk, `cargo test -p dphone --test asterisk` installs the guest `storeprobe` on simulated phones.
 
 The unit tests of the apps (those of each app crate, and those of a game's library, which lies in the app's directory, e.g., `apps/lightup/game`) are in the `apps/` workspace, which `cargo test` in the firmware workspace does not reach.  Run them with `cargo host-test` in `apps/`: an alias for `cargo test --target host-tuple`, because that workspace otherwise builds for WebAssembly.  The Nix check `tests` runs both.
 

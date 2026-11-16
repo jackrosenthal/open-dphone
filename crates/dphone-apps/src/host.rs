@@ -3,7 +3,10 @@
 //! implementation of every imported interface.
 
 use crate::manifest::{Capability, Manifest};
-use crate::services::{APP_VISIBLE_SETTINGS, Completion, HttpRequest, PbxRequest, Services};
+use crate::services::{
+    APP_VISIBLE_SETTINGS, Completion, HttpRequest, PbxRequest, Services, StoreEntry, StoreOp,
+    StoreReply, StoreScope, StoreSignal,
+};
 use crate::view::{AppWindow, Lamp};
 use dphone_state::{
     AccountId, AudioPath, BlfState, Call, CallId, CallState as StCallState, Command, Direction,
@@ -72,6 +75,14 @@ pub(crate) enum Inbound {
         id: u32,
         result: Result<HttpResponse, String>,
     },
+    Store {
+        app: String,
+        generation: u64,
+        id: u32,
+        outcome: PbxStorageOutcome,
+    },
+    /// The PBX's store came within reach, or a key changed there.
+    StoreSignal(StoreSignal),
     /// The worker thread finished a compilation.
     Compiled(crate::prepare::Outcome),
 }
@@ -102,6 +113,8 @@ pub(crate) enum Action {
         name: String,
         payload: String,
     },
+    /// The app began or stopped watching its store on the PBX.
+    StoreWatch,
 }
 
 pub(crate) struct Timer {
@@ -131,6 +144,8 @@ pub(crate) struct AppCtx {
     pub pending: HashSet<u32>,
     pub observed: HashSet<String>,
     pub observe_calls: bool,
+    /// The app wants `event.pbx-storage-changed`.
+    pub store_watch: bool,
     pub presence_subs: HashSet<String>,
     pub exit_after_background: bool,
     pub foreground: bool,
@@ -771,6 +786,121 @@ impl api::pbx::Host for AppCtx {
     }
 }
 
+fn store_scope(scope: PbxScope) -> StoreScope {
+    match scope {
+        PbxScope::Shared => StoreScope::Shared,
+        PbxScope::User => StoreScope::User,
+    }
+}
+
+pub(crate) fn pbx_scope(scope: StoreScope) -> PbxScope {
+    match scope {
+        StoreScope::Shared => PbxScope::Shared,
+        StoreScope::User => PbxScope::User,
+    }
+}
+
+fn pbx_entry(e: StoreEntry) -> PbxEntry {
+    PbxEntry {
+        key: e.key,
+        value: e.value,
+        version: e.version,
+        modified: e.modified,
+        author_id: e.author_id,
+        author_name: e.author_name,
+    }
+}
+
+/// What the app gets for a reply of the PBX's store.
+pub(crate) fn storage_outcome(reply: StoreReply) -> PbxStorageOutcome {
+    match reply {
+        StoreReply::Entry(e) => PbxStorageOutcome::Entry(e.map(pbx_entry)),
+        StoreReply::Entries(list, more) => {
+            PbxStorageOutcome::Entries((list.into_iter().map(pbx_entry).collect(), more))
+        }
+        StoreReply::Stored(e) => PbxStorageOutcome::Stored(pbx_entry(e)),
+        StoreReply::Removed => PbxStorageOutcome::Removed,
+        StoreReply::Conflict(e) => PbxStorageOutcome::Conflict(e.map(pbx_entry)),
+        StoreReply::Unreachable(why) => PbxStorageOutcome::Unreachable(why),
+        StoreReply::Refused(why) => PbxStorageOutcome::Refused(why),
+    }
+}
+
+impl AppCtx {
+    /// Sends a request to the PBX's store; the reply comes to the app as
+    /// `event.pbx-storage`.  The app's name goes with it from here, so an
+    /// app reaches no keys but its own.
+    fn store_request(&mut self, op: impl FnOnce(String) -> StoreOp) -> u32 {
+        let id = self.next_request();
+        let inbox = self.inbox.clone();
+        let (app, generation) = (self.name.clone(), self.generation);
+        let done = Completion::new(move |reply| {
+            inbox.push(Inbound::Store {
+                app,
+                generation,
+                id,
+                outcome: storage_outcome(reply),
+            })
+        });
+        self.services.store.request(op(self.name.clone()), done);
+        id
+    }
+}
+
+impl api::pbx_storage::Host for AppCtx {
+    fn get(&mut self, scope: PbxScope, key: String) -> u32 {
+        let scope = store_scope(scope);
+        self.store_request(|app| StoreOp::Get { app, scope, key })
+    }
+    fn list(&mut self, scope: PbxScope, prefix: String, after: String) -> u32 {
+        let scope = store_scope(scope);
+        self.store_request(|app| StoreOp::List {
+            app,
+            scope,
+            prefix,
+            after,
+        })
+    }
+    fn set(&mut self, scope: PbxScope, key: String, value: Vec<u8>, expect: Option<u64>) -> u32 {
+        let scope = store_scope(scope);
+        self.store_request(|app| StoreOp::Set {
+            app,
+            scope,
+            key,
+            value,
+            expect,
+        })
+    }
+    fn remove(&mut self, scope: PbxScope, key: String, expect: Option<u64>) -> u32 {
+        let scope = store_scope(scope);
+        self.store_request(|app| StoreOp::Remove {
+            app,
+            scope,
+            key,
+            expect,
+        })
+    }
+    fn cancel(&mut self, id: u32) {
+        self.pending.remove(&id);
+    }
+    fn watch(&mut self, on: bool) {
+        if self.store_watch != on {
+            self.store_watch = on;
+            self.actions.push(Action::StoreWatch);
+        }
+    }
+    fn online(&mut self) -> bool {
+        self.services.store.online()
+    }
+    fn user(&mut self) -> Option<PbxUser> {
+        self.services.store.user().map(|u| PbxUser {
+            id: u.id,
+            name: u.name,
+            extension: u.extension,
+        })
+    }
+}
+
 impl api::http::Host for AppCtx {
     fn request(&mut self, method: String, url: String, headers: Vec<Header>, body: Vec<u8>) -> u32 {
         let id = self.next_request();
@@ -1179,6 +1309,7 @@ pub(crate) fn link(
             Capability::Storage => api::storage::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Config => api::config::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Pbx => api::pbx::add_to_linker::<_, H>(linker, |c| c)?,
+            Capability::PbxStorage => api::pbx_storage::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Http => api::http::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Calls => api::calls::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Presence => api::presence::add_to_linker::<_, H>(linker, |c| c)?,

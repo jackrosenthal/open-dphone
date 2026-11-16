@@ -5,7 +5,7 @@ use crate::{DpmaConfig, Message, Transport};
 use dphone_state::clock;
 use dpma_proto::client::Session;
 use dpma_proto::message::{Incoming, Request, Sender, Transactions};
-use dpma_proto::{documents, errors, framing, headers, types};
+use dpma_proto::{appdata, documents, errors, framing, headers, types};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -198,6 +198,17 @@ impl Link {
             .header(headers::HTTP_STATUS)
             .and_then(|s| String::from_utf8_lossy(s).split_whitespace().next().and_then(|c| c.parse::<u16>().ok()));
         Ok(split_http(&resp.body, header_status))
+    }
+
+    /// One operation on the server's app data (`dpma_proto::appdata`).
+    /// The request carries the configuration token, which tells the
+    /// server whose phone this is.
+    pub async fn app_data(&self, op: &appdata::Op) -> Result<appdata::Response, DpmaError> {
+        let resp = self.request(types::APP_DATA_REQUEST, op.encode(), |_| {}).await?;
+        if resp.error != 0 {
+            return Err(DpmaError::Server { code: resp.error, text: errors::msg_error_text(resp.error).to_string() });
+        }
+        appdata::Response::decode(&resp.body).map_err(DpmaError::Protocol)
     }
 
     pub async fn file(&self, name: &str) -> Result<Vec<u8>, DpmaError> {

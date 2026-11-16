@@ -31,6 +31,7 @@ mod machine;
 pub mod sip;
 pub mod xml;
 
+pub use dpma_proto::appdata;
 pub use dpma_proto::message::Message;
 pub use link::{AppResponse, DpmaError};
 
@@ -197,6 +198,15 @@ impl DpmaHandle {
             dpma_proto::types::HTTP_REQUEST
         };
         self.link.app(kind, credentials, document).await
+    }
+
+    /// One operation on the server's app data: the store of keys and
+    /// values that the phones' apps share through the server
+    /// (`dpma_proto::appdata`).  The server takes the user, and the tenant,
+    /// from the phone's configuration token.  A server without app data
+    /// (the official DPMA) does not answer: [`DpmaError::Timeout`].
+    pub async fn app_data(&self, op: &appdata::Op) -> Result<appdata::Response, DpmaError> {
+        self.link.app_data(op).await
     }
 
     /// A resource by name (`FileRequest` for `file://NAME`).

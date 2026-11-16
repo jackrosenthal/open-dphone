@@ -1,8 +1,9 @@
 //! dphone-apps: the WebAssembly app runtime, on its own thread.
 //!
 //! The manager owns the `Apps` state and command domain.  Apps reach the
-//! PBX through DPMA (`dasp://`), HTTP and HTTPS through the client in
-//! `apphttp`, and the configuration through the merged view.
+//! PBX through DPMA (`dasp://`), their store of keys and values there
+//! through `appstore`, HTTP and HTTPS through the client in `apphttp`, and
+//! the configuration through the merged view.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -207,8 +208,11 @@ pub fn start(ctx: &Context, ui: Option<UiHandle>, config: Option<SharedConfig>, 
         .read::<dphone_state::System, _>(|s| s.mac)
         .map(|m| m.iter().map(|b| format!("{b:02x}")).collect::<String>())
         .unwrap_or_default();
+    let app_store = super::appstore::AppStore::new(telephony.clone(), runtime.clone());
+    app_store.follow(ctx.store.clone());
     let services = Services {
         pbx: Arc::new(Pbx { telephony, runtime: runtime.clone() }),
+        store: Arc::new(app_store),
         http: Arc::new(Http { runtime, net, config: config.clone() }),
         config: Arc::new(AppConfig { config, mac }),
     };

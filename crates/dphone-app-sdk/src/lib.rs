@@ -46,12 +46,12 @@ pub mod xml;
 
 pub use bindings::dphone::app::types::{
     AccountInfo, Align, CallInfo, CallState, Error, Event, Font, Header, HttpResponse, InputMode,
-    ListItem, Metrics, Mwi, PbxOutcome, Presence, Push, Rect, Size, Skin, Softkey,
-    WidgetEvent, WidgetKind,
+    ListItem, Metrics, Mwi, PbxEntry, PbxOutcome, PbxScope, PbxStorageChange, PbxStorageOutcome,
+    PbxUser, Presence, Push, Rect, Size, Skin, Softkey, WidgetEvent, WidgetKind,
 };
 pub use bindings::dphone::app::{
     audio, calls, canvas, config, diagnostics, events, hotdesk, http, input, l10n, lamps, pbx,
-    presence, runtime, storage, timers, ui,
+    pbx_storage, presence, runtime, storage, timers, ui,
 };
 
 /// A widget handle.
@@ -161,9 +161,10 @@ pub mod prelude {
     pub use crate::manifest::AppKind;
     pub use crate::nav::{Form, Message};
     pub use crate::{
-        App, Event, ListItem, PbxOutcome, ROOT, Rect, Skin, Softkey, Widget, WidgetEvent,
-        WidgetKind, audio, calls, config, content_rect, events, http, l10n, pbx, presence,
-        row_height, runtime, screen, storage, timers, ui,
+        App, Event, ListItem, PbxEntry, PbxOutcome, PbxScope, PbxStorageOutcome, ROOT, Rect,
+        Skin, Softkey, Widget, WidgetEvent, WidgetKind, audio, calls, config, content_rect,
+        events, http, l10n, pbx, pbx_storage, presence, row_height, runtime, screen, storage,
+        timers, ui,
     };
 }
 

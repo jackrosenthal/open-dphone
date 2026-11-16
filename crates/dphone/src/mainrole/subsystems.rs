@@ -35,6 +35,7 @@ use super::{Context, Options};
 use crate::diag::Output;
 
 pub mod apphttp;
+pub mod appstore;
 pub mod apps;
 pub mod audio;
 pub mod blfitems;

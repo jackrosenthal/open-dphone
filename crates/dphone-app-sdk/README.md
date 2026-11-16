@@ -130,6 +130,7 @@ Each interface of the phone except `runtime` is a capability, and each is a modu
 | `storage` | The app's store of keys and values, which the phone keeps and no other app can reach. |
 | `config` | The app's provisioned configuration, the accounts, and settings of the phone that apps may read. |
 | `pbx` | Requests to the PBX. |
+| `pbx_storage` | The app's store of keys and values on the PBX, which the app's copies on all phones share. |
 | `http` | HTTP requests. |
 | `calls` | Placing and controlling calls, and call events. |
 | `presence` | The presence of other extensions, and the status of the phone's user. |
@@ -144,6 +145,133 @@ Each interface of the phone except `runtime` is a capability, and each is a modu
 `runtime` (logging, leaving the screen, exiting, random numbers) is not a capability: every app has it.
 
 The phone stops an app that takes more than two seconds to handle one event, or that asks for more memory than its limit.
+
+## Data on the PBX
+
+`storage` keeps keys and values on the phone.  `pbx_storage` keeps them on the PBX, so that they are the same on every phone and outlast a phone: a game's table of best times, or how far a user has come, which is there again after the phone is reset.  It needs a PBX with Open DPhone's module for Asterisk (dpma-rs); there is nothing to configure in the app or on the phone.
+
+An app has two sets of keys there, and no other app can reach either:
+
+- `PbxScope::Shared`: one set for the app's copies on all phones.
+- `PbxScope::User`: one set for each user.  The user is who the phone is provisioned for, so a user's keys are the same on every phone that user has.
+
+A key is 1 to 64 characters, each a letter, a digit, or one of `.`, `_`, `-`, `/`, and `:`; a value is at most 4096 bytes.  An app has at most 1024 shared keys, and 64 keys for each user.  A PBX that serves several tenants keeps a store for each, and a phone reaches only its tenant's.
+
+Every request returns an id at once, and its result comes as `Event::PbxStorage((id, outcome))`:
+
+| Function | Asks | The outcome |
+| --- | --- | --- |
+| `get(scope, key)` | The entry of a key. | `Entry(Some(entry))`, or `Entry(None)` if the key is not set. |
+| `list(scope, prefix, after)` | The entries whose keys start with `prefix` and come after the key `after` (`""` for the first ones), in the order of their keys. | `Entries((entries, more))`: at most 64 entries and about 16 KiB of values.  If `more`, ask again with the last key as `after`. |
+| `set(scope, key, value, expect)` | To set a key. | `Stored(entry)`, or `Conflict` (below). |
+| `remove(scope, key, expect)` | To remove a key. | `Removed`, or `Conflict`. |
+
+Any of them can also end `Unreachable(text)` or `Refused(text)` (below).  `cancel(id)` forgets a request: its result does not come.
+
+A `PbxEntry` has the `key`, the `value`, a `version`, the time it was set (`modified`, in seconds since the Unix epoch by the PBX's clock), and who set it: `author_id` and `author_name`, which the PBX fills in, so an entry of a table of best times says whose it is without the app writing a name.
+
+### Who the user is
+
+`pbx_storage::user()` is the phone's user as the PBX knows them: `id` (which identifies the user and does not change), `name` (to show), and `extension`.  It is `None` until the store was first reached after the phone started.
+
+### Two phones that write at the same time
+
+Each write gives the entry a `version` that the key never had before.  `expect` says what the write is to replace:
+
+- `None`: whatever is there.
+- `Some(0)`: nothing; the key must not be set.
+- `Some(version)`: the entry with that version.
+
+When the key is not as expected, nothing is changed, and the outcome is `Conflict(current)` with the entry that is there now (`None` if the key is not set).  An app that changes a value that other phones change too, such as a list, reads it, changes it, writes it with the version it read, and on `Conflict` changes the entry it was shown and writes again.  Without `expect`, the later of two writes replaces the earlier.
+
+A list of the best times that phones share, kept in one key:
+
+```rust,ignore
+const TABLE: &str = "best/7x7-easy";
+
+impl Game {
+    /// The player finished in `secs` seconds.
+    fn finished(&mut self, secs: u32) {
+        self.mine = Some(secs);
+        self.asked = pbx_storage::get(PbxScope::Shared, TABLE);
+    }
+
+    /// Writes the table again with the player's time in it, over exactly
+    /// the entry it was read from.
+    fn add_mine(&mut self, current: Option<PbxEntry>) {
+        let Some(secs) = self.mine else { return };
+        let name = pbx_storage::user().map(|u| u.name).unwrap_or_default();
+        let (mut rows, version) = match &current {
+            Some(entry) => (parse(&entry.value), entry.version),
+            None => (Vec::new(), 0),
+        };
+        rows.push((secs, name));
+        rows.sort();
+        rows.truncate(10);
+        self.asked = pbx_storage::set(PbxScope::Shared, TABLE, &format(&rows), Some(version));
+    }
+}
+
+impl App for Game {
+    fn handle(&mut self, event: Event) {
+        match event {
+            Event::PbxStorage((id, outcome)) if id == self.asked => match outcome {
+                // The table as it is: add to it.  After a conflict this is
+                // the table another phone wrote meanwhile.
+                PbxStorageOutcome::Entry(current) | PbxStorageOutcome::Conflict(current) => {
+                    self.add_mine(current)
+                }
+                PbxStorageOutcome::Stored(entry) => {
+                    self.mine = None;
+                    self.show(parse(&entry.value));
+                }
+                // Kept in `self.mine` (and in `storage`, to outlast the
+                // app): written at `Event::PbxStorageOnline`.
+                PbxStorageOutcome::Unreachable(_) => {}
+                other => log_warn(&format!("the table was not written: {other:?}")),
+            },
+            Event::PbxStorageOnline if self.mine.is_some() => {
+                self.asked = pbx_storage::get(PbxScope::Shared, TABLE);
+            }
+            _ => {}
+        }
+    }
+}
+```
+
+A user's progress, which one phone writes at a time, needs no `expect`:
+
+```rust,ignore
+// When the player finishes a level:
+storage::set("level", level.to_string().as_bytes()).ok();
+pbx_storage::set(PbxScope::User, "level", level.to_string().as_bytes(), None);
+
+// When the app starts, and at `Event::PbxStorageOnline`:
+self.asked = pbx_storage::get(PbxScope::User, "level");
+
+// Then, in `handle`:
+Event::PbxStorage((id, PbxStorageOutcome::Entry(entry))) if id == self.asked => {
+    let theirs = entry.and_then(|e| String::from_utf8(e.value).ok()?.parse::<u32>().ok());
+    match theirs {
+        // The phone was reset, or the user played on another phone.
+        Some(level) if level > self.level => self.level = level,
+        // The PBX was out of reach when the player came this far.
+        _ => {
+            pbx_storage::set(PbxScope::User, "level", self.level.to_string().as_bytes(), None);
+        }
+    }
+}
+```
+
+### Changes from other phones
+
+After `pbx_storage::watch(true)`, the app gets `Event::PbxStorageChanged(change)` whenever another phone sets or removes one of its shared keys, with the `scope` and the `key`, while the app runs; it reads the key again if it shows it.  A phone is not told of its own writes, nor of a user's keys.  An app that is not running is told nothing: it reads what it shows when it starts.
+
+### When the PBX cannot be reached
+
+A request ends `Unreachable(text)` when the phone has no session with the PBX (it is not provisioned, the network is down, or the PBX is) or the PBX does not answer (it may be one that keeps no app data).  The phone keeps nothing to send later: what the app wanted to write is the app's to keep, in `storage` if it must outlast the app, and to write again.  `Event::PbxStorageOnline` says when: it comes to every running app that uses `pbx_storage` each time the store comes into reach, and also means that what the app read before may have changed.  `pbx_storage::online()` says whether the store is in reach now.  A `set` or `remove` that ends `Unreachable` because no answer came may still have been done; with `expect`, writing again then ends in `Conflict` with the entry it wrote.
+
+`Refused(text)` is the PBX's refusal of a request that it will refuse again: a key that cannot be one, a value over the limit, or a store that already has as many keys as it may.
 
 ## Building
 

@@ -3,8 +3,9 @@
 //! configuration.
 
 use crate::services::{
-    AppAccount, Completion, ConfigSource, HttpClient, HttpReply, HttpRequest, PbxRequest,
-    PbxRequests, Services,
+    AppAccount, Completion, ConfigSource, HttpClient, HttpReply, HttpRequest, NoStore,
+    PbxRequest, PbxRequests, PbxStore, Services, StoreEntry, StoreOp, StoreReply, StoreScope,
+    StoreSignal, StoreUser,
 };
 use crate::view::*;
 use dphone_state::Key;
@@ -860,10 +861,275 @@ impl ConfigSource for FakeConfig {
     }
 }
 
+type Subscriber = Box<dyn Fn(StoreSignal) + Send + Sync>;
+
+/// One phone's side of a [`FakeStore`].
+struct StoreSide {
+    user: StoreUser,
+    tenant: String,
+    online: std::sync::atomic::AtomicBool,
+    watch: Mutex<Vec<String>>,
+    subscriber: Mutex<Option<Subscriber>>,
+    log: Mutex<Vec<StoreOp>>,
+}
+
+#[derive(Default)]
+struct StorePbx {
+    backend: dpma_proto::appdata::store::MemoryBackend,
+    sides: Vec<Arc<StoreSide>>,
+    now: u64,
+}
+
+/// A PBX's store of app data, as one phone reaches it.  It keeps its keys
+/// as the DPMA module does (the same code decides every answer), at once
+/// and in memory.  [`FakeStore::phone`] is another phone of the same PBX,
+/// for tests with two phones.
+#[derive(Clone)]
+pub struct FakeStore {
+    pbx: Arc<Mutex<StorePbx>>,
+    side: Arc<StoreSide>,
+}
+
+impl Default for FakeStore {
+    /// A PBX with one phone, of the user `100` named "Desk" with the
+    /// extension 100, in reach.
+    fn default() -> FakeStore {
+        let pbx = Arc::new(Mutex::new(StorePbx {
+            now: 1_794_607_500,
+            ..Default::default()
+        }));
+        FakeStore::join(pbx, "100", "Desk", "")
+    }
+}
+
+impl FakeStore {
+    fn join(pbx: Arc<Mutex<StorePbx>>, id: &str, name: &str, tenant: &str) -> FakeStore {
+        let side = Arc::new(StoreSide {
+            user: StoreUser {
+                id: id.into(),
+                name: name.into(),
+                extension: id.into(),
+            },
+            tenant: tenant.into(),
+            online: true.into(),
+            watch: Mutex::new(Vec::new()),
+            subscriber: Mutex::new(None),
+            log: Mutex::new(Vec::new()),
+        });
+        pbx.lock().unwrap().sides.push(side.clone());
+        FakeStore { pbx, side }
+    }
+
+    /// Another phone of the same PBX, of the user `id` (also the
+    /// extension) named `name`.
+    pub fn phone(&self, id: &str, name: &str) -> FakeStore {
+        FakeStore::join(self.pbx.clone(), id, name, &self.side.tenant)
+    }
+
+    /// Another phone of the same PBX, of another tenant.
+    pub fn phone_of_tenant(&self, id: &str, name: &str, tenant: &str) -> FakeStore {
+        FakeStore::join(self.pbx.clone(), id, name, tenant)
+    }
+
+    /// Puts the PBX in or out of this phone's reach.  Coming into reach
+    /// is signaled, as on the phone.
+    pub fn set_online(&self, online: bool) {
+        let was = self
+            .side
+            .online
+            .swap(online, std::sync::atomic::Ordering::SeqCst);
+        if online && !was {
+            self.signal(&self.side, StoreSignal::Online);
+        }
+    }
+
+    /// The PBX's clock, which stamps what is written.
+    pub fn set_time(&self, unix: u64) {
+        self.pbx.lock().unwrap().now = unix;
+    }
+
+    /// Every request this phone made, in order.
+    pub fn ops(&self) -> Vec<StoreOp> {
+        self.side.log.lock().unwrap().clone()
+    }
+
+    /// The apps this phone watches.
+    pub fn watched(&self) -> Vec<String> {
+        self.side.watch.lock().unwrap().clone()
+    }
+
+    fn signal(&self, side: &StoreSide, signal: StoreSignal) {
+        if let Some(f) = side.subscriber.lock().unwrap().as_ref() {
+            f(signal);
+        }
+    }
+
+    /// Does a request as this phone and returns its answer, as
+    /// [`PbxStore::request`] does through its completion.
+    pub fn run(&self, op: StoreOp) -> StoreReply {
+        use dpma_proto::appdata::store::{Who, apply};
+        use dpma_proto::appdata::{Entry, Op, Outcome, Scope, User};
+        self.side.log.lock().unwrap().push(op.clone());
+        if !self.side.online.load(std::sync::atomic::Ordering::SeqCst) {
+            return StoreReply::Unreachable("not attached to a DPMA server".into());
+        }
+        let scope = |s| match s {
+            StoreScope::Shared => Scope::Shared,
+            StoreScope::User => Scope::User,
+        };
+        let op = match op {
+            StoreOp::Get { app, scope: s, key } => Op::Get {
+                app,
+                scope: scope(s),
+                key,
+            },
+            StoreOp::List {
+                app,
+                scope: s,
+                prefix,
+                after,
+            } => Op::List {
+                app,
+                scope: scope(s),
+                prefix,
+                after,
+            },
+            StoreOp::Set {
+                app,
+                scope: s,
+                key,
+                value,
+                expect,
+            } => Op::Set {
+                app,
+                scope: scope(s),
+                key,
+                value,
+                expect,
+            },
+            StoreOp::Remove {
+                app,
+                scope: s,
+                key,
+                expect,
+            } => Op::Remove {
+                app,
+                scope: scope(s),
+                key,
+                expect,
+            },
+        };
+        // Through the documents, so that what the server would refuse to
+        // read is refused here.
+        let op = match Op::decode(&op.encode()) {
+            Ok(op) => op,
+            Err(why) => return StoreReply::Refused(why),
+        };
+        let user = User {
+            id: self.side.user.id.clone(),
+            name: self.side.user.name.clone(),
+            extension: self.side.user.extension.clone(),
+        };
+        let who = Who {
+            tenant: self.side.tenant.as_bytes(),
+            phone: user.id.as_bytes(),
+            user: &user,
+        };
+        let (outcome, change, others) = {
+            let mut pbx = self.pbx.lock().unwrap();
+            let now = pbx.now;
+            let (outcome, change) = apply(&mut pbx.backend, &who, &op, now);
+            (outcome, change, pbx.sides.clone())
+        };
+        if let Some(change) = change {
+            for other in others {
+                let hears = !Arc::ptr_eq(&other, &self.side)
+                    && other.tenant == self.side.tenant
+                    && other.online.load(std::sync::atomic::Ordering::SeqCst)
+                    && other.watch.lock().unwrap().contains(&change.app);
+                if hears {
+                    self.signal(
+                        &other,
+                        StoreSignal::Changed {
+                            app: change.app.clone(),
+                            scope: StoreScope::Shared,
+                            key: change.key.clone(),
+                        },
+                    );
+                }
+            }
+        }
+        let entry = |e: Entry| StoreEntry {
+            key: e.key,
+            value: e.value,
+            version: e.version,
+            modified: e.modified,
+            author_id: e.author_id,
+            author_name: e.author_name,
+        };
+        match outcome {
+            Outcome::Hello | Outcome::Removed => StoreReply::Removed,
+            Outcome::Entry(e) => StoreReply::Entry(e.map(entry)),
+            Outcome::Entries { entries, more } => {
+                StoreReply::Entries(entries.into_iter().map(entry).collect(), more)
+            }
+            Outcome::Stored(e) => StoreReply::Stored(entry(e)),
+            Outcome::Conflict(e) => StoreReply::Conflict(e.map(entry)),
+            Outcome::Error { message, .. } => StoreReply::Refused(message),
+        }
+    }
+
+    /// The value of a key of `app`, as this phone reads it.
+    pub fn value(&self, app: &str, scope: StoreScope, key: &str) -> Option<Vec<u8>> {
+        let op = StoreOp::Get {
+            app: app.into(),
+            scope,
+            key: key.into(),
+        };
+        // Not a request of the phone's: it is not in the log.
+        let log = self.side.log.lock().unwrap().len();
+        let reply = self.run(op);
+        self.side.log.lock().unwrap().truncate(log);
+        match reply {
+            StoreReply::Entry(e) => e.map(|e| e.value),
+            _ => None,
+        }
+    }
+}
+
+impl PbxStore for FakeStore {
+    fn request(&self, op: StoreOp, done: Completion<StoreReply>) {
+        done.complete(self.run(op));
+    }
+    fn user(&self) -> Option<StoreUser> {
+        // The phone has reached this PBX before: it knows its user.
+        Some(self.side.user.clone())
+    }
+    fn online(&self) -> bool {
+        self.side.online.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    fn watch(&self, apps: &[String]) {
+        *self.side.watch.lock().unwrap() = apps.to_vec();
+    }
+    fn subscribe(&self, f: Box<dyn Fn(StoreSignal) + Send + Sync>) {
+        *self.side.subscriber.lock().unwrap() = Some(f);
+    }
+}
+
+/// Services without a PBX store.
 pub fn services(pbx: &FakePbx, config: FakeConfig) -> Services {
     Services {
         pbx: Arc::new(pbx.clone()),
+        store: Arc::new(NoStore),
         http: Arc::new(NoHttp),
         config: Arc::new(config),
+    }
+}
+
+/// Services with `store` as the PBX's store of app data.
+pub fn services_with_store(pbx: &FakePbx, config: FakeConfig, store: &FakeStore) -> Services {
+    Services {
+        store: Arc::new(store.clone()),
+        ..services(pbx, config)
     }
 }

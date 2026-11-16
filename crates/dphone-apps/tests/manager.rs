@@ -67,6 +67,7 @@ fn publishes_the_app_list() {
             "probe",
             "queues",
             "status",
+            "storeprobe",
             "voicemail"
         ]
     );

@@ -181,6 +181,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "storeprobe"
+version = "3.0.0"
+dependencies = [
+ "dphone-app-sdk",
+]
+
+[[package]]
 name = "syn"
 version = "3.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
