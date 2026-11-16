@@ -6,14 +6,18 @@
 //! test scratch directory (`CARGO_TARGET_TMPDIR`), or in the directory
 //! `BOX_PUSHER_PREVIEWS` names.  The rules, the levels, and the solver
 //! that proves them are tested in the crate `boxpusher-game` (`apps/boxpusher/game`).
+//!
+//! The progress is kept on the PBX too, whose store of app data is a
+//! `FakeStore` here: the last tests before the pictures are of a second
+//! phone, a PBX out of reach, and a phone and a PBX that differ.
 
 mod common;
 
 use common::{Rig, staged, temp_dir};
 use dphone_apps::engine::Target;
-use dphone_apps::testutil::{FakeConfig, FakePbx, services};
+use dphone_apps::testutil::{FakeConfig, FakePbx, FakeStore, services_with_store};
 use dphone_apps::uishell::UiShell;
-use dphone_apps::{AppManager, DrawOp, ManagerConfig};
+use dphone_apps::{AppManager, DrawOp, ManagerConfig, StoreOp, StoreReply, StoreScope};
 use dphone_hal::{Hal, Screen};
 use dphone_state::{AccountId, Call, CallState, Calls, Direction, Key, Model, Party, Phase, Store, System};
 use dphone_ui::{Ui, UiConfig};
@@ -207,7 +211,9 @@ fn progress_is_kept_and_a_call_does_not_end_the_game() {
     assert_eq!(canvases(&r).1, pieces);
     r.softkey(APP, "Exit");
 
-    // A progress file that makes no sense is the beginning.
+    // A progress file that makes no sense is the beginning, on a phone
+    // whose PBX is out of reach.
+    r.app_data.set_online(false);
     let file = r.nvdata.join("appdata").join(APP).join("progress");
     for nonsense in ["", "level=99\nsolved=3\nmoves=zz\n", "solved=x\nlevel=5\n", "\u{0}\u{1}"] {
         std::fs::write(&file, nonsense).unwrap();
@@ -222,6 +228,21 @@ fn progress_is_kept_and_a_call_does_not_end_the_game() {
     assert_eq!(panel(&r)[0], "Level 28");
     r.softkey(APP, "Levels");
     assert_eq!(r.ui.items(APP).len(), 28);
+    r.softkey(APP, "Back");
+    r.softkey(APP, "Exit");
+
+    // With the PBX in reach, a progress file that was lost is the PBX's
+    // progress, and the levels the phone has solved go to the PBX.
+    r.app_data.set_online(true);
+    std::fs::write(&file, "").unwrap();
+    r.launch(APP);
+    assert_eq!(panel(&r), ["Level 2", "Moves 2", "Pushes 1"]);
+    std::fs::write(&file, "level=27\nsolved=28\nmoves=\n").unwrap();
+    r.softkey(APP, "Exit");
+    r.launch(APP);
+    assert_eq!(panel(&r)[0], "Level 28");
+    let on_pbx = r.app_data.value(APP, StoreScope::User, "progress").unwrap();
+    assert_eq!(String::from_utf8(on_pbx).unwrap(), "level=27\nsolved=28\nmoves=\n");
 }
 
 #[test]
@@ -260,8 +281,8 @@ fn it_plays_on_the_gray_screens_in_black_and_white() {
 fn it_is_a_built_in_app_that_can_be_switched_off() {
     assert_eq!(
         common::capabilities(APP),
-        ["ui", "storage", "canvas"],
-        "no sound, no calls, no network, no timers"
+        ["ui", "storage", "pbx-storage", "canvas"],
+        "no sound, no calls, no network but its keys on the PBX, no timers"
     );
     let config = FakeConfig::default();
     let disabled = config.disabled.clone();
@@ -279,6 +300,374 @@ fn it_is_a_built_in_app_that_can_be_switched_off() {
     let apps = r.store.get::<dphone_state::Apps>();
     assert!(apps.installed.iter().all(|a| a.name != APP));
     assert!(apps.disabled.iter().any(|a| a.name == APP));
+}
+
+// ------------------------------------------------- progress on the PBX
+
+const LEVEL_1: [Key; 3] = [Key::Right, Key::Right, Key::Right];
+const LEVEL_2: [Key; 5] = [Key::Up, Key::Right, Key::Up, Key::Right, Key::Down];
+
+/// A phone of `user` on the PBX of `pbx`, with nothing of the game on it.
+fn phone(pbx: &FakeStore, user: &str) -> Rig {
+    Rig::on_pbx(pbx.phone(user, user))
+}
+
+/// What the PBX has of a user's progress, read from another phone of the
+/// user (one that is in reach when the user's is not).
+fn on_pbx(pbx: &FakeStore, user: &str) -> Option<String> {
+    let value = pbx.phone(user, user).value(APP, StoreScope::User, "progress");
+    value.map(|v| String::from_utf8(v).unwrap())
+}
+
+/// Writes a user's progress on the PBX as another phone of the user
+/// does; returns the entry's version.
+fn write_on_pbx(pbx: &FakeStore, user: &str, progress: &str) -> u64 {
+    let reply = pbx.phone(user, user).run(StoreOp::Set {
+        app: APP.into(),
+        scope: StoreScope::User,
+        key: "progress".into(),
+        value: progress.as_bytes().to_vec(),
+        expect: None,
+    });
+    match reply {
+        StoreReply::Stored(entry) => entry.version,
+        other => panic!("{other:?}"),
+    }
+}
+
+fn storage(r: &Rig) -> PathBuf {
+    r.nvdata.join("appdata").join(APP)
+}
+
+/// Puts a file in the game's storage on the phone.
+fn put(r: &Rig, key: &str, value: &str) {
+    std::fs::create_dir_all(storage(r)).unwrap();
+    std::fs::write(storage(r).join(key), value).unwrap();
+}
+
+/// The game's storage of one phone, copied to another: the same phone
+/// with another user provisioned.
+fn carry(from: &Rig, to: &Rig) {
+    std::fs::create_dir_all(storage(to)).unwrap();
+    for file in std::fs::read_dir(storage(from)).unwrap() {
+        let file = file.unwrap();
+        std::fs::copy(file.path(), storage(to).join(file.file_name())).unwrap();
+    }
+}
+
+/// The requests to write that the phone made.
+fn writes(r: &Rig) -> usize {
+    let ops = r.app_data.ops();
+    ops.iter().filter(|op| matches!(op, StoreOp::Set { .. })).count()
+}
+
+#[test]
+fn a_reset_phone_and_a_second_phone_go_on_where_the_user_was() {
+    let pbx = FakeStore::default();
+    let mut first = phone(&pbx, "101");
+    first.launch(APP);
+    // Nothing is written for a game that has not begun.
+    assert_eq!(on_pbx(&pbx, "101"), None);
+    keys(&mut first, &LEVEL_1);
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=\n"));
+    first.softkey(APP, "Next");
+    keys(&mut first, &[Key::Up, Key::Right]);
+    // The steps in a level go when the game leaves the screen.
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=\n"));
+    // What the phone keeps of the PBX's entry: whose, and which.
+    let known = std::fs::read_to_string(storage(&first).join("pbx")).unwrap();
+    assert!(known.starts_with("user=101\nversion="), "{known}");
+    assert!(known.ends_with("\nlevel=1\nsolved=1\nmoves=\n"), "{known}");
+    first.softkey(APP, "Exit");
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=ur\n"));
+    // The game stopped before the PBX's answer: what it sent is kept.
+    let known = std::fs::read_to_string(storage(&first).join("pbx")).unwrap();
+    assert!(known.ends_with("\nmoves=\nsent:\nlevel=1\nsolved=1\nmoves=ur\n"), "{known}");
+
+    // The phone after a reset, or another phone of the user: nothing of
+    // the game is on it.
+    let mut second = phone(&pbx, "101");
+    second.launch(APP);
+    assert_eq!(panel(&second), ["Level 2", "Moves 2", "Pushes 1"]);
+    assert_eq!(progress(&second), "level=1\nsolved=1\nmoves=ur\n");
+    assert_eq!(writes(&second), 0, "the PBX has it already");
+    // The steps can be undone there too.
+    second.softkey(APP, "Undo");
+    assert_eq!(panel(&second), ["Level 2", "Moves 1", "Pushes 1"]);
+    second.softkey(APP, "Levels");
+    assert_eq!(second.ui.items(APP).len(), 2);
+    second.softkey(APP, "Back");
+    // The user leaves the second phone a step earlier in the level than
+    // the first, and finds the first there too: what the first sent as
+    // the game was left counts as arrived.
+    second.softkey(APP, "Exit");
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=u\n"));
+    first.launch(APP);
+    assert_eq!(panel(&first), ["Level 2", "Moves 1", "Pushes 1"]);
+    first.softkey(APP, "Exit");
+    second.launch(APP);
+    assert_eq!(panel(&second), ["Level 2", "Moves 1", "Pushes 1"]);
+
+    // Another user starts at the beginning, and has keys of their own.
+    let mut other = phone(&pbx, "102");
+    other.launch(APP);
+    assert_eq!(panel(&other), ["Level 1", "Moves 0", "Pushes 0"]);
+    other.softkey(APP, "Exit");
+    assert_eq!(on_pbx(&pbx, "102"), None);
+
+    // The user goes on at the second phone, and then at the first.
+    keys(&mut second, &[Key::Right, Key::Up, Key::Right, Key::Down]);
+    assert_eq!(panel(&second)[0], "Level 2 solved!");
+    second.softkey(APP, "Exit");
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=2\nsolved=2\nmoves=\n"));
+    first.launch(APP);
+    assert_eq!(panel(&first), ["Level 3", "Moves 0", "Pushes 0"]);
+    assert_eq!(progress(&first), "level=2\nsolved=2\nmoves=\n");
+    assert_eq!(on_pbx(&pbx, "102"), None);
+}
+
+#[test]
+fn a_game_left_running_takes_up_what_was_played_on_another_phone() {
+    let pbx = FakeStore::default();
+    let mut r = phone(&pbx, "101");
+    r.launch(APP);
+    r.key(APP, Key::Right);
+    // A call's screen is over the game, and meanwhile the user solves
+    // five levels at another phone.
+    r.ui.cover(APP, true);
+    r.settle();
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=0\nsolved=0\nmoves=r\n"));
+    write_on_pbx(&pbx, "101", "level=5\nsolved=5\nmoves=\n");
+    r.ui.cover(APP, false);
+    r.settle();
+    assert_eq!(panel(&r), ["Level 6", "Moves 0", "Pushes 0"]);
+    assert_eq!(progress(&r), "level=5\nsolved=5\nmoves=\n");
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=5\nsolved=5\nmoves=\n"));
+}
+
+#[test]
+fn what_is_played_out_of_reach_goes_to_the_pbx_when_it_is_in_reach() {
+    let pbx = FakeStore::default();
+    let mut r = phone(&pbx, "101");
+    r.app_data.set_online(false);
+    r.launch(APP);
+    keys(&mut r, &LEVEL_1);
+    r.softkey(APP, "Next");
+    r.key(APP, Key::Up);
+    // The game goes on as ever, and keeps its progress on the phone.
+    assert_eq!(panel(&r), ["Level 2", "Moves 1", "Pushes 1"]);
+    assert_eq!(progress(&r), "level=1\nsolved=1\nmoves=\n");
+    assert_eq!(on_pbx(&pbx, "101"), None);
+    assert_eq!(writes(&r), 0, "nothing is asked of a PBX out of reach");
+
+    // The PBX comes into reach while the game is on screen.
+    r.app_data.set_online(true);
+    r.settle();
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=u\n"));
+    assert_eq!(panel(&r), ["Level 2", "Moves 1", "Pushes 1"]);
+
+    // Out of reach again until after the game was left: the progress
+    // goes the next time the game is started.
+    r.app_data.set_online(false);
+    keys(&mut r, &[Key::Right, Key::Up, Key::Right, Key::Down]);
+    assert_eq!(panel(&r)[0], "Level 2 solved!");
+    r.softkey(APP, "Exit");
+    assert_eq!(progress(&r), "level=2\nsolved=2\nmoves=\n");
+    r.app_data.set_online(true);
+    r.settle();
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=u\n"));
+    r.launch(APP);
+    assert_eq!(panel(&r), ["Level 3", "Moves 0", "Pushes 0"]);
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=2\nsolved=2\nmoves=\n"));
+}
+
+#[test]
+fn a_phone_whose_pbx_keeps_no_app_data_plays_and_keeps_its_progress() {
+    let mut r = Rig::with_services(|mut services| {
+        services.store = std::sync::Arc::new(dphone_apps::NoStore);
+        services
+    });
+    r.launch(APP);
+    keys(&mut r, &LEVEL_1);
+    assert_eq!(panel(&r)[0], "Level 1 solved!");
+    r.softkey(APP, "Next");
+    keys(&mut r, &LEVEL_2);
+    assert_eq!(panel(&r)[0], "Level 2 solved!");
+    r.softkey(APP, "Levels");
+    assert_eq!(r.ui.items(APP).len(), 3);
+    r.softkey(APP, "Back");
+    r.key(APP, Key::Down);
+    r.softkey(APP, "Exit");
+    assert_eq!(progress(&r), "level=2\nsolved=2\nmoves=d\n");
+    r.launch(APP);
+    assert_eq!(panel(&r), ["Level 3", "Moves 1", "Pushes 0"]);
+}
+
+/// A phone of the user 101 on which the game has `progress`, and that
+/// last knew the PBX to have `known`; meanwhile the PBX has `theirs`.
+/// The game is started.
+fn differing(progress: &str, known: Option<&str>, theirs: Option<&str>) -> (FakeStore, Rig) {
+    let pbx = FakeStore::default();
+    let r = phone(&pbx, "101");
+    put(&r, "progress", progress);
+    if let Some(known) = known {
+        let version = write_on_pbx(&pbx, "101", known);
+        put(&r, "pbx", &format!("user=101\nversion={version}\n{known}"));
+    }
+    if let Some(theirs) = theirs {
+        write_on_pbx(&pbx, "101", theirs);
+    }
+    let mut r = r;
+    r.launch(APP);
+    (pbx, r)
+}
+
+#[test]
+fn a_phone_and_a_pbx_that_differ_agree_on_the_right_progress() {
+    let was = "level=1\nsolved=1\nmoves=\n";
+    let mine = "level=3\nsolved=3\nmoves=\n";
+
+    // The phone played out of reach, and the PBX has what it had: the
+    // phone's progress goes to the PBX.
+    let (pbx, r) = differing(mine, Some(was), None);
+    assert_eq!(panel(&r)[0], "Level 4");
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some(mine));
+
+    // The phone has nothing new, and the PBX has: the PBX's progress is
+    // gone on with, even to an earlier level, and no level closes.
+    let (pbx, r) = differing(mine, Some(mine), Some("level=5\nsolved=5\nmoves=\n"));
+    assert_eq!(panel(&r)[0], "Level 6");
+    assert_eq!(progress(&r), "level=5\nsolved=5\nmoves=\n");
+    assert_eq!(writes(&r), 0);
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=5\nsolved=5\nmoves=\n"));
+    let (pbx, mut r) = differing(mine, Some(mine), Some("level=0\nsolved=2\nmoves=r\n"));
+    assert_eq!(panel(&r), ["Level 1", "Moves 1", "Pushes 0"]);
+    r.softkey(APP, "Levels");
+    assert_eq!(r.ui.items(APP).len(), 4);
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=0\nsolved=3\nmoves=r\n"));
+
+    // Both have something new.  The PBX has more levels solved: the
+    // PBX's.
+    let (pbx, r) = differing(mine, Some(was), Some("level=4\nsolved=7\nmoves=\n"));
+    assert_eq!(panel(&r)[0], "Level 5");
+    assert_eq!(progress(&r), "level=4\nsolved=7\nmoves=\n");
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=4\nsolved=7\nmoves=\n"));
+    // The phone has more, or as many: the phone's.
+    for theirs in ["level=2\nsolved=2\nmoves=u\n", "level=0\nsolved=3\nmoves=r\n"] {
+        let (pbx, r) = differing(mine, Some(was), Some(theirs));
+        assert_eq!(panel(&r), ["Level 4", "Moves 0", "Pushes 0"], "{theirs:?}");
+        assert_eq!(on_pbx(&pbx, "101").as_deref(), Some(mine));
+    }
+
+    // A phone from before the progress went to the PBX: the same, with
+    // a PBX that has nothing yet, less, or more.
+    let (pbx, r) = differing(mine, None, None);
+    assert_eq!(panel(&r)[0], "Level 4");
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some(mine));
+    let (pbx, r) = differing(mine, None, Some(was));
+    assert_eq!(panel(&r)[0], "Level 4");
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some(mine));
+    let (pbx, r) = differing(mine, None, Some("level=9\nsolved=9\nmoves=\n"));
+    assert_eq!(panel(&r)[0], "Level 10");
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=9\nsolved=9\nmoves=\n"));
+
+    // The PBX lost what it had: it gets the phone's again.
+    let (pbx, r) = differing(mine, None, None);
+    put(&r, "pbx", &format!("user=101\nversion=77\n{mine}"));
+    let reply = pbx.phone("101", "101").run(StoreOp::Remove {
+        app: APP.into(),
+        scope: StoreScope::User,
+        key: "progress".into(),
+        expect: None,
+    });
+    assert!(matches!(reply, StoreReply::Removed), "{reply:?}");
+    let mut r = r;
+    r.softkey(APP, "Exit");
+    r.launch(APP);
+    assert_eq!(panel(&r)[0], "Level 4");
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some(mine));
+
+    // A value on the PBX that makes no sense closes no level.
+    let (pbx, r) = differing(mine, Some(mine), Some("\u{0}nonsense"));
+    assert_eq!(panel(&r)[0], "Level 1");
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=0\nsolved=3\nmoves=\n"));
+}
+
+#[test]
+fn a_player_who_is_playing_is_not_moved_to_another_level() {
+    // The PBX answers after the player's first step (here: it comes into
+    // reach then).  It has more levels solved.
+    let pbx = FakeStore::default();
+    write_on_pbx(&pbx, "101", "level=5\nsolved=5\nmoves=\n");
+    let mut r = phone(&pbx, "101");
+    r.app_data.set_online(false);
+    r.launch(APP);
+    r.key(APP, Key::Right);
+    r.app_data.set_online(true);
+    r.settle();
+    assert_eq!(panel(&r), ["Level 1", "Moves 1", "Pushes 0"]);
+    // The levels are open all the same, and the PBX is told where the
+    // player is.
+    r.softkey(APP, "Levels");
+    assert_eq!(r.ui.items(APP).len(), 6);
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=0\nsolved=5\nmoves=r\n"));
+
+    // The same with the list of levels on screen: it is the longer list.
+    let pbx = FakeStore::default();
+    write_on_pbx(&pbx, "101", "level=5\nsolved=5\nmoves=\n");
+    let mut r = phone(&pbx, "101");
+    r.app_data.set_online(false);
+    r.launch(APP);
+    r.softkey(APP, "Levels");
+    assert_eq!(r.ui.items(APP).len(), 1);
+    r.app_data.set_online(true);
+    r.settle();
+    assert_eq!(r.ui.items(APP).len(), 6);
+    assert_eq!(r.ui.softkeys(APP), ["Play", "Back"]);
+}
+
+#[test]
+fn a_phone_that_gets_another_user_keeps_each_users_progress_apart() {
+    let pbx = FakeStore::default();
+    let mut desk = phone(&pbx, "101");
+    desk.launch(APP);
+    keys(&mut desk, &LEVEL_1);
+    desk.softkey(APP, "Next");
+    // The PBX goes out of reach, and 101 solves another level.
+    desk.app_data.set_online(false);
+    keys(&mut desk, &LEVEL_2);
+    desk.softkey(APP, "Exit");
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=\n"));
+
+    // The phone is provisioned for 102, who has not played.
+    let mut desk_102 = phone(&pbx, "102");
+    carry(&desk, &desk_102);
+    desk_102.launch(APP);
+    assert_eq!(panel(&desk_102), ["Level 1", "Moves 0", "Pushes 0"]);
+    desk_102.softkey(APP, "Levels");
+    assert_eq!(desk_102.ui.items(APP).len(), 1);
+    desk_102.softkey(APP, "Back");
+    keys(&mut desk_102, &LEVEL_1);
+    desk_102.softkey(APP, "Exit");
+    assert_eq!(on_pbx(&pbx, "102").as_deref(), Some("level=1\nsolved=1\nmoves=\n"));
+    // Neither user's progress went to the other's keys.
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=\n"));
+
+    // 101 is back at the phone: the level solved out of reach is there,
+    // and goes to the PBX.
+    let mut desk_101 = phone(&pbx, "101");
+    carry(&desk_102, &desk_101);
+    desk_101.launch(APP);
+    assert_eq!(panel(&desk_101), ["Level 3", "Moves 0", "Pushes 0"]);
+    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=2\nsolved=2\nmoves=\n"));
+    assert_eq!(on_pbx(&pbx, "102").as_deref(), Some("level=1\nsolved=1\nmoves=\n"));
+    // Nothing is set aside any longer.
+    let mut files: Vec<String> = std::fs::read_dir(storage(&desk_101))
+        .unwrap()
+        .map(|f| f.unwrap().file_name().into_string().unwrap())
+        .collect();
+    files.sort();
+    assert_eq!(files, ["pbx", "progress"]);
 }
 
 // --------------------------------------------------- with the phone UI
@@ -316,7 +705,7 @@ impl Phone {
             cfg,
             store.clone(),
             Box::new(UiShell::new(ui.handle(), model)),
-            services(&FakePbx::default(), FakeConfig::default()),
+            services_with_store(&FakePbx::default(), FakeConfig::default(), &FakeStore::default()),
         )
         .expect("engine");
         mgr.scan();

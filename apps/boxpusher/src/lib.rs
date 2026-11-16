@@ -1,18 +1,27 @@
 //! Box Pusher: push every box onto a target.  The game itself (rules,
 //! levels, pictures) is the crate `boxpusher-game`, in `game/` beside this
-//! one; this is the app around it: the screens, the keys, and the progress
-//! kept on the phone.
+//! one; this is the app around it: the screens, the keys, and the progress,
+//! kept on the phone and on the PBX.
 //!
 //! The arrow keys, or 2, 4, 6, and 8, move the figure.  A level's floor,
 //! walls, and targets are drawn once on one canvas; the boxes and the
 //! figure are on a second canvas over it, the only thing drawn again
 //! after a step.  The app makes no sound and uses no timer, and like any
 //! app it leaves the screen to a call.
+//!
+//! The progress is written to the phone's storage, and from there to the
+//! user's keys on the PBX, so a phone that was reset, or another phone of
+//! the same user, goes on where the user was.  The game never waits for
+//! the PBX: it starts with what the phone has, and what the PBX answers
+//! is taken up when it comes (see `Progress::reconcile` for which of the
+//! two counts).  Without a PBX that keeps app data, the game is as it is
+//! with one out of reach: the progress stays on the phone.
 
-use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{Align, Font, canvas, read_string};
 use boxpusher_game::draw::{Layout, Op, Painter, Palette, Rgb};
+use boxpusher_game::progress::{Known, Progress};
 use boxpusher_game::{Dir, Game, LEVELS, Level, Step};
+use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::{Align, Font, canvas, log_warn, read_string};
 
 const SK_UNDO: u32 = 1;
 const SK_RESTART: u32 = 2;
@@ -23,13 +32,21 @@ const SK_AGAIN: u32 = 6;
 const SK_PLAY: u32 = 7;
 const SK_BACK: u32 = 8;
 
-/// The key, in the app's storage, that holds the progress: the level
-/// being played, how many levels are solved, and the steps taken in the
-/// level so far.
+/// The key that holds the progress (the level being played, how many
+/// levels are solved, and the steps taken in the level so far), in the
+/// app's storage on the phone and among the user's keys on the PBX.
 const PROGRESS: &str = "progress";
-/// The most steps the progress file holds.  A level left after more than
-/// this starts over the next time; the longest level takes about 120.
-const STEPS_KEPT: usize = 2000;
+/// The key, in the app's storage, that holds what the PBX was last known
+/// to have, and whose it is.
+const KNOWN: &str = "pbx";
+
+/// The keys, in the app's storage, of the progress and of what the PBX
+/// was known to have for a user who left the phone with progress that the
+/// PBX did not have yet.
+fn left_keys(user: &str) -> (String, String) {
+    let hex: String = user.bytes().map(|b| format!("{b:02x}")).collect();
+    (format!("{PROGRESS}-{hex}"), format!("{KNOWN}-{hex}"))
+}
 
 #[derive(Default, PartialEq)]
 enum Screen {
@@ -62,6 +79,15 @@ struct BoxPusher {
     list: Option<Widget>,
     /// What the progress file holds.
     saved: String,
+    /// What the PBX was last known to have.
+    known: Known,
+    /// The request that reads the PBX's progress.
+    asked: Option<u32>,
+    /// The request that writes the progress to the PBX, and what it
+    /// writes.
+    writing: Option<(u32, Progress)>,
+    /// The player has pressed a key since the game came on screen.
+    played: bool,
 }
 
 fn color(c: Rgb) -> canvas::Color {
@@ -124,36 +150,203 @@ impl BoxPusher {
     /// the beginning.
     fn restore(&mut self) {
         self.saved = read_string(PROGRESS).unwrap_or_default();
-        let saved = self.saved.clone();
-        let field = |name: &str| {
-            saved
-                .lines()
-                .find_map(|l| l.strip_prefix(name)?.strip_prefix('='))
-                .unwrap_or("")
-        };
-        let number = |name: &str| field(name).parse::<usize>().unwrap_or(0);
-        self.solved = number("solved").min(LEVELS.len());
-        self.level = number("level").min(self.solved).min(LEVELS.len() - 1);
+        self.known = Known::parse(&read_string(KNOWN).unwrap_or_default());
+        self.take(&Progress::parse(&self.saved));
+        if let Some(me) = pbx_storage::user() {
+            self.change_user(&me.id);
+        }
+    }
+
+    /// Goes on from `progress`.
+    fn take(&mut self, progress: &Progress) {
+        self.solved = progress.solved;
+        self.level = progress.level;
         let mut game = load(self.level);
-        game.replay(field("moves"));
+        game.replay(&progress.moves);
         if game.solved() {
             game.restart();
         }
         self.game = Some(game);
     }
 
-    /// Writes the progress file if it would change.
-    fn save(&mut self) {
-        let mut moves = self.game.as_ref().map(Game::record).unwrap_or_default();
-        if moves.len() > STEPS_KEPT {
-            moves.clear();
+    /// Where the player is now.
+    fn progress(&self) -> Progress {
+        Progress {
+            level: self.level,
+            solved: self.solved,
+            moves: self.game.as_ref().map(Game::record).unwrap_or_default(),
         }
-        let now = format!(
-            "level={}\nsolved={}\nmoves={}\n",
-            self.level, self.solved, moves
-        );
+    }
+
+    /// Writes the progress file if it would change.
+    fn keep(&mut self) {
+        // Before the file is read there is nothing to write over it.
+        if self.screen == Screen::None {
+            return;
+        }
+        let now = self.progress().text();
         if now != self.saved && storage::set(PROGRESS, now.as_bytes()).is_ok() {
             self.saved = now;
+        }
+    }
+
+    /// Writes the progress down: on the phone, and from there to the PBX.
+    fn save(&mut self) {
+        self.keep();
+        self.send();
+    }
+
+    /// Writes the progress file to the PBX, over the entry the phone
+    /// knows, if the PBX is in reach and does not have it.  Out of reach,
+    /// the file waits for `Event::PbxStorageOnline`.
+    fn send(&mut self) {
+        if self.screen == Screen::None || self.writing.is_some() || !pbx_storage::online() {
+            return;
+        }
+        // Another user's progress is not written to this user's keys: the
+        // PBX's answer to `ask` sorts that out first.
+        let me = pbx_storage::user().map(|u| u.id).unwrap_or_default();
+        if me.is_empty() || !(self.known.user.is_empty() || self.known.user == me) {
+            return;
+        }
+        let now = Progress::parse(&self.saved);
+        if now == self.known.progress {
+            return;
+        }
+        let id = pbx_storage::set(
+            PbxScope::User,
+            PROGRESS,
+            now.text().as_bytes(),
+            Some(self.known.version),
+        );
+        // The answer may not come (the game is left, or the PBX goes out
+        // of reach): what was sent is kept until it does.
+        self.known.sent = Some(now.clone());
+        let _ = storage::set(KNOWN, self.known.text().as_bytes());
+        self.writing = Some((id, now));
+    }
+
+    /// Asks the PBX for the user's progress.
+    fn ask(&mut self) {
+        if self.screen == Screen::None {
+            return;
+        }
+        if let Some(earlier) = self.asked.take() {
+            pbx_storage::cancel(earlier);
+        }
+        self.asked = Some(pbx_storage::get(PbxScope::User, PROGRESS));
+    }
+
+    /// Notes what the PBX has.
+    fn know(&mut self, user: &str, version: u64, progress: Progress) {
+        let known = Known {
+            user: user.to_string(),
+            version,
+            progress,
+            sent: None,
+        };
+        if known != self.known {
+            self.known = known;
+            let _ = storage::set(KNOWN, self.known.text().as_bytes());
+        }
+    }
+
+    /// The progress on the phone is that of the user it last went to the
+    /// PBX for.  If the phone has another user now, what the PBX does not
+    /// have of the earlier user's is set aside for when that user is back
+    /// on this phone, and the game goes on with what this user left here,
+    /// or from the beginning.  True if the user changed.
+    fn change_user(&mut self, me: &str) -> bool {
+        if self.known.user.is_empty() || self.known.user == me {
+            return false;
+        }
+        self.keep();
+        let (progress, known) = left_keys(&self.known.user);
+        if Progress::parse(&self.saved) != self.known.progress {
+            let _ = storage::set(&progress, self.saved.as_bytes());
+            let _ = storage::set(&known, self.known.text().as_bytes());
+        }
+        let (progress, known) = left_keys(me);
+        self.saved = read_string(&progress).unwrap_or_default();
+        self.known = Known::parse(&read_string(&known).unwrap_or_default());
+        self.known.user = me.to_string();
+        let _ = storage::set(PROGRESS, self.saved.as_bytes());
+        let _ = storage::set(KNOWN, self.known.text().as_bytes());
+        let _ = storage::remove(&progress);
+        let _ = storage::remove(&known);
+        self.take(&Progress::parse(&self.saved));
+        true
+    }
+
+    /// The PBX has `entry` for the user: goes on with whichever of the
+    /// phone's progress and the PBX's counts, and writes it where it is
+    /// missing.
+    fn reconcile(&mut self, entry: Option<PbxEntry>) {
+        let Some(me) = pbx_storage::user() else {
+            return;
+        };
+        let changed = self.change_user(&me.id);
+        if changed {
+            self.played = false;
+        }
+        let mine = self.progress();
+        let theirs = entry.map(|e| {
+            (
+                e.version,
+                Progress::parse(&String::from_utf8_lossy(&e.value)),
+            )
+        });
+        let next = mine.reconcile(
+            &self.known,
+            theirs
+                .as_ref()
+                .map(|(version, progress)| (*version, progress)),
+            self.played,
+        );
+        let (version, theirs) = theirs.unwrap_or_default();
+        self.know(&me.id, version, theirs);
+        if changed || (next.level, &next.moves) != (mine.level, &mine.moves) {
+            self.take(&next);
+            self.show_play();
+        } else if next.solved != mine.solved {
+            self.solved = next.solved;
+            if self.screen == Screen::Levels {
+                self.show_levels();
+            }
+        }
+        self.save();
+    }
+
+    /// The answer to a request to the PBX.
+    fn answered(&mut self, id: u32, outcome: PbxStorageOutcome) {
+        if self.asked == Some(id) {
+            self.asked = None;
+            match outcome {
+                PbxStorageOutcome::Entry(entry) => self.reconcile(entry),
+                // The progress stays on the phone until the PBX is in
+                // reach.
+                PbxStorageOutcome::Unreachable(_) => {}
+                other => log_warn(&format!("the progress was not read: {other:?}")),
+            }
+        } else if self.writing.as_ref().is_some_and(|w| w.0 == id) {
+            let Some((_, sent)) = self.writing.take() else {
+                return;
+            };
+            match outcome {
+                PbxStorageOutcome::Stored(entry) => {
+                    let me = pbx_storage::user().map(|u| u.id).unwrap_or_default();
+                    self.know(&me, entry.version, sent);
+                    // What was played meanwhile.
+                    self.send();
+                }
+                // Another phone of the user wrote first, or an earlier
+                // write whose answer was lost.
+                PbxStorageOutcome::Conflict(entry) => self.reconcile(entry),
+                // It may have arrived all the same: `ask`, when the PBX
+                // is in reach, shows.
+                PbxStorageOutcome::Unreachable(_) => {}
+                other => log_warn(&format!("the progress was not written: {other:?}")),
+            }
         }
     }
 
@@ -348,13 +541,21 @@ impl App for BoxPusher {
     }
 
     fn handle(&mut self, event: Event) {
+        if matches!(event, Event::Softkey(_) | Event::Key(_) | Event::Widget(_)) {
+            self.played = true;
+        }
         match event {
             Event::Foreground => {
                 if self.screen == Screen::None {
                     self.restore();
                     self.show_play();
                 }
+                // The user may have played on another phone meanwhile.
+                self.played = false;
+                self.ask();
             }
+            Event::PbxStorage((id, outcome)) => self.answered(id, outcome),
+            Event::PbxStorageOnline => self.ask(),
             Event::Background | Event::Exit => self.save(),
             Event::Softkey(SK_EXIT) => self.leave(),
             Event::Softkey(SK_LEVELS) => self.show_levels(),
