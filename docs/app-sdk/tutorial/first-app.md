@@ -114,7 +114,7 @@ wasm-tools component new \
 2. On the **Apps** page, click **Install App** and choose `freshpot.wasm`.
 3. Wait a few seconds while the phone compiles the app.
 
-A newer build installs the same way.  The phone replaces the app and stops the running copy; open the app again.
+A newer build installs the same way.  If the app is running, the phone stops the running copy and starts the new build off screen; open the app to see the new build.
 
 ## First run
 

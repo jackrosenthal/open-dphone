@@ -13,7 +13,15 @@ pub trait App: Default + 'static {
 
 The phone creates one instance with `Default::default()`, calls `start` once, and then calls `handle` once for each [event](app-events.md), sequentially, on one thread.
 
-No function blocks.  A function that needs the network, such as a PBX or HTTP request, returns an ID at once, and the result arrives later as an event with that ID.
+A function that needs the network, such as a PBX or HTTP request, returns an ID at once, and the result arrives later as an event with that ID.  These functions wait for the phone's answer:
+
+| Function | Longest wait |
+| --- | --- |
+| [`calls`](calls.md) functions that return `Result` | 0.5 seconds; in `send_dtmf`, 0.5 seconds for each digit |
+| [`presence::set_status`](presence.md#set_status) | 0.5 seconds |
+| [`hotdesk::login`](hotdesk.md#login), [`hotdesk::logout`](hotdesk.md#logout) | 0.5 seconds |
+| [`alarms`](alarms.md) functions that return `Result` | 1.5 seconds |
+| [`audio::play`](audio.md#play) | 5 seconds |
 
 ## Faults and restarts
 

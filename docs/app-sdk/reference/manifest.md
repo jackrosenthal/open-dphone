@@ -63,6 +63,6 @@ The phone runs these checks in order and reports the first failure:
 | The flash has room for the file and the compiled code, with 2 MiB to spare. | Not enough space. |
 | The component compiles, imports only interfaces of the firmware, and links against them. | `the app cannot be loaded: ...`, or `the app imports "<name>", which is not an interface of this firmware`. |
 
-Installing an app with the `name` of an installed app replaces that app and keeps the app's storage.  A running instance of the replaced app receives `Event::Exit`, and the new version starts.  Removing an app deletes the app's storage on the phone, but not the app's keys on the PBX.
+Installing an app with the `name` of an installed app replaces that app and keeps the app's storage.  A running instance of the replaced app receives `Event::Exit`, and the new version starts and runs off screen until the app is opened.  Removing an app deletes the app's storage on the phone, but not the app's keys on the PBX.
 
 After a firmware update that changes the WebAssembly engine, the phone recompiles every installed app at startup.  Until an app is recompiled, opening the app fails with `the app is being compiled for this firmware; try again in a moment`.
