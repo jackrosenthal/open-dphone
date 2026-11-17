@@ -121,7 +121,7 @@
     <setting id="display_mc_notification" value="1"/>
     <setting id="display_mc_notifications" value="1"/>
     <setting id="use_call_photos" value="0" url=""/>
-    <setting id="default_ringtone" value="Flutey Phone" conflict="freeze"/>
+    <setting id="default_ringtone" value="Solarium" conflict="freeze"/>
 
     <!-- Display -->
     <setting id="brightness" value="5"/>
@@ -160,7 +160,7 @@
 
     <ringtones>
         <tones>
-            <tone id="Flutey Phone" display="Flutey Phone" type="phone"/>
+            <tone id="Solarium" display="Solarium" type="phone"/>
             <tone id="Acheron" display="Acheron" type="phone"/>
             <tone id="Andromeda" display="Andromeda" type="phone"/>
             <tone id="Aquila" display="Aquila" type="phone"/>
@@ -210,6 +210,7 @@
             <tone id="Enter the Nexus" display="Enter the Nexus" type="phone"/>
             <tone id="Eridani" display="Eridani" type="phone"/>
             <tone id="Ether Shake" display="Ether Shake" type="phone"/>
+            <tone id="Flutey Phone" display="Flutey Phone" type="phone"/>
             <tone id="Free Flight" display="Free Flight" type="phone"/>
             <tone id="Friendly Ghost" display="Friendly Ghost" type="phone"/>
             <tone id="Funk Y'all" display="Funk Y'all" type="phone"/>
@@ -284,7 +285,6 @@
             <tone id="She's All That" display="She's All That" type="phone"/>
             <tone id="Silky Way" display="Silky Way" type="phone"/>
             <tone id="Sitar Versus Sitar" display="Sitar Versus Sitar" type="phone"/>
-            <tone id="Solarium" display="Solarium" type="phone"/>
             <tone id="Solarium Classic" display="Solarium Classic" type="phone"/>
             <tone id="Springy Jalopy" display="Springy Jalopy" type="phone"/>
             <tone id="Steppin' Out" display="Steppin' Out" type="phone"/>

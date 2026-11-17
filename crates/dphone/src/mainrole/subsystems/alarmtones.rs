@@ -185,8 +185,9 @@ mod tests {
         }
         // Without its file a tone still rings: with the default ringtone.
         let empty = tempfile::tempdir().unwrap();
-        let default = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/ringtones/flutey-phone.wav");
-        let default = decode_wav(&std::fs::read(default).unwrap()).unwrap();
+        let RingSource::Pcm { samples: default, .. } = super::super::ringtones::source(super::super::ringtones::DEFAULT) else {
+            panic!("the default ringtone")
+        };
         match source_in(empty.path(), "Osmium") {
             RingSource::Pcm { samples, .. } => assert_eq!(samples[..], default[..]),
             other => panic!("{other:?}"),

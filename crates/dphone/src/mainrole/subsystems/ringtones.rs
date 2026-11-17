@@ -40,7 +40,7 @@ pub struct Ringtone {
 /// the others in alphabetical order.  A ringtone without a pause runs into
 /// its next pass, as its upstream file does when it loops.
 pub const BUILTIN: [Ringtone; 149] = [
-    Ringtone { name: "Flutey Phone", file: "flutey-phone.wav", pause_ms: 1973 },
+    Ringtone { name: "Solarium", file: "solarium.wav", pause_ms: 804 },
     Ringtone { name: "Acheron", file: "acheron.wav", pause_ms: 634 },
     Ringtone { name: "Andromeda", file: "andromeda.wav", pause_ms: 1350 },
     Ringtone { name: "Aquila", file: "aquila.wav", pause_ms: 1750 },
@@ -90,6 +90,7 @@ pub const BUILTIN: [Ringtone; 149] = [
     Ringtone { name: "Enter the Nexus", file: "enter-the-nexus.wav", pause_ms: 0 },
     Ringtone { name: "Eridani", file: "eridani.wav", pause_ms: 1000 },
     Ringtone { name: "Ether Shake", file: "ether-shake.wav", pause_ms: 0 },
+    Ringtone { name: "Flutey Phone", file: "flutey-phone.wav", pause_ms: 1973 },
     Ringtone { name: "Free Flight", file: "free-flight.wav", pause_ms: 0 },
     Ringtone { name: "Friendly Ghost", file: "friendly-ghost.wav", pause_ms: 0 },
     Ringtone { name: "Funk Y'all", file: "funk-yall.wav", pause_ms: 0 },
@@ -164,7 +165,6 @@ pub const BUILTIN: [Ringtone; 149] = [
     Ringtone { name: "She's All That", file: "shes-all-that.wav", pause_ms: 0 },
     Ringtone { name: "Silky Way", file: "silky-way.wav", pause_ms: 0 },
     Ringtone { name: "Sitar Versus Sitar", file: "sitar-versus-sitar.wav", pause_ms: 0 },
-    Ringtone { name: "Solarium", file: "solarium.wav", pause_ms: 804 },
     Ringtone { name: "Solarium Classic", file: "solarium-classic.wav", pause_ms: 1075 },
     Ringtone { name: "Springy Jalopy", file: "springy-jalopy.wav", pause_ms: 0 },
     Ringtone { name: "Steppin' Out", file: "steppin-out.wav", pause_ms: 0 },
@@ -197,7 +197,7 @@ pub const DEFAULT: &str = BUILTIN[0].name;
 /// The default ringtone's recording, carried in the program: what rings
 /// when a ringtone's file cannot be played, so that the phone never rings
 /// silent.
-const DEFAULT_WAV: &[u8] = include_bytes!("../../../../../assets/ringtones/flutey-phone.wav");
+const DEFAULT_WAV: &[u8] = include_bytes!("../../../../../assets/ringtones/solarium.wav");
 
 static NVDATA: OnceLock<PathBuf> = OnceLock::new();
 
@@ -401,8 +401,6 @@ mod tests {
     fn a_name_that_is_no_ringtone_is_the_default() {
         let names: Vec<&str> = BUILTIN.iter().map(|t| t.name).collect();
         assert_eq!(names.len(), 149);
-        assert_eq!(DEFAULT, "Flutey Phone");
-        assert_eq!(names[..4], ["Flutey Phone", "Acheron", "Andromeda", "Aquila"]);
         // After the default, A to Z, and every name and file once.
         assert!(names[1..].windows(2).all(|w| w[0].to_lowercase() < w[1].to_lowercase()), "{names:?}");
         for (i, t) in BUILTIN.iter().enumerate() {

@@ -12,7 +12,7 @@ The build file of the directory, `data/sounds/Android.bp`, names the license for
 
 ## The default
 
-Flutey Phone (`Ring_Synth_04.ogg`) is the default: the ringtone a phone rings with when nothing else is chosen, and for a name that is no ringtone.  It is the default of the Android Open Source Project's own builds: `target/product/full_base.mk` of <https://android.googlesource.com/platform/build> sets `ro.config.ringtone?=Ring_Synth_04.ogg` among the "Additional settings used in all AOSP builds" (at commit `045a3d6a3e359633a14853a5a5e1e4f2a11cbdae`).  It is also short: 1.7 s of sound and a 2 s pause, 27,418 bytes, so the program carries a copy of it at little cost.
+Solarium (`ringtones/ogg/Solarium.ogg`) is the default: the ringtone a phone rings with when nothing else is chosen, and for a name that is no ringtone.  It is the owner's choice, in place of Flutey Phone (`Ring_Synth_04.ogg`), the default of the Android Open Source Project's own builds (`target/product/full_base.mk` of <https://android.googlesource.com/platform/build> sets `ro.config.ringtone?=Ring_Synth_04.ogg` among the "Additional settings used in all AOSP builds", at commit `045a3d6a3e359633a14853a5a5e1e4f2a11cbdae`).  The program carries a copy of it, 129,818 bytes (8.1 s of sound and a 0.8 s pause), which rings when a ringtone's file cannot be played.
 
 ## Names and order
 
@@ -22,13 +22,13 @@ A ringtone has the title that Android gives the sound: the file's `TITLE` tag, o
 - An older sound takes another title that Android gives it: Digital Phone, the title of `Ring_Digital_02.ogg` (Android 1), for the recording that Android 2.3 to 4.3 install as Pyxis and Android 4.4 as Sedna.
 - An older sound without another title adds "Classic": Android 4.4's Callisto, Dione (Atria in Android 4.2 and 4.3), Ganymede, Luna, Oberon, Phobos, Triton, and Umbriel, and Android 2.3's Lyra, Sceptrum, Solarium, and Ursa Minor (in `ringtones`), whose titles newer sounds of `ringtones/ogg` have.  No release installs the newer Lyra, and the newer Ursa Minor is tagged "UrsaMinor".
 
-The list has the default, Flutey Phone, first, and the others in alphabetical order.
+The list has the default, Solarium, first, and the others in alphabetical order.
 
 ## The ringtones
 
 | Ringtone | File | Upstream file in `data/sounds` (git blob) | Upstream title | Seconds kept | Gain | Pause |
 | --- | --- | --- | --- | --- | --- | --- |
-| Flutey Phone | `flutey-phone.wav` | `Ring_Synth_04.ogg` (`ec2d9ac01faf57cbec8405dc1e98c37b92ebebc8`) | Flutey Phone | 0.03 to 1.74 | +2 dB | 1973 ms |
+| Solarium | `solarium.wav` | `ringtones/ogg/Solarium.ogg` (`8c9d3073b8ce1557ed1c328d3f314b2b6737cf4a`) | Solarium | 0 to 8.11 | -4 dB | 804 ms |
 | Acheron | `acheron.wav` | `ringtones/ogg/Acheron.ogg` (`67d73884648eada23729c84fc7fb43a4fb3e7f4a`) | Acheron | 0 to 7.08 | -3.5 dB | 634 ms |
 | Andromeda | `andromeda.wav` | `ringtones/ogg/Andromeda.ogg` (`26c230e134ee0d7bdd8e42b9abd2867412cb885c`) | Andromeda | 0 to 1.65 | -4 dB | 1350 ms |
 | Aquila | `aquila.wav` | `ringtones/ogg/Aquila.ogg` (`9eab4ffb4766a8c871da15221682c5be3975618a`) | Aquila | 0 to 1.25 | -3.5 dB | 1750 ms |
@@ -78,6 +78,7 @@ The list has the default, Flutey Phone, first, and the others in alphabetical or
 | Enter the Nexus | `enter-the-nexus.wav` | `newwavelabs/Enter_the_Nexus.ogg` (`ba304541d4e2870bdaf360c399fb5ac72ee7f87b`) | Enter the Nexus | 0 to the end | -2 dB | none |
 | Eridani | `eridani.wav` | `ringtones/ogg/Eridani.ogg` (`8d8a1f0ec516b02602cbcb902fca5019557733f4`) | Eridani | 0 to 4 | +3.5 dB | 1000 ms |
 | Ether Shake | `ether-shake.wav` | `newwavelabs/EtherShake.ogg` (`178aa21fc1bd4c61672a80f413b14f7c581e4d88`) | Ether Shake | 0 to the end | 0 dB | none |
+| Flutey Phone | `flutey-phone.wav` | `Ring_Synth_04.ogg` (`ec2d9ac01faf57cbec8405dc1e98c37b92ebebc8`) | Flutey Phone | 0.03 to 1.74 | +2 dB | 1973 ms |
 | Free Flight | `free-flight.wav` | `ringtones/FreeFlight.ogg` (`76dfabe619edc6394104b2f13d2d6102c3b42576`) | Free Flight | 0 to the end | +0.5 dB | none |
 | Friendly Ghost | `friendly-ghost.wav` | `newwavelabs/FriendlyGhost.ogg` (`d99388097a9338364f2dd4b1555fdaf19a7082b6`) | Friendly Ghost | 0 to the end | -5.5 dB | none |
 | Funk Y'all | `funk-yall.wav` | `newwavelabs/Funk_Yall.ogg` (`5b98643cec9e8d76e73c294d6dc804267a98d0a6`) | Funk Y'all | 0 to the end | -3.5 dB | none |
@@ -152,7 +153,6 @@ The list has the default, Flutey Phone, first, and the others in alphabetical or
 | She's All That | `shes-all-that.wav` | `newwavelabs/Shes_All_That.ogg` (`86afbb3983bf5f1d6a455dc029ce373c3a5a0869`) | She's All That | 0 to the end | -2.5 dB | none |
 | Silky Way | `silky-way.wav` | `newwavelabs/SilkyWay.ogg` (`e5a38ec05c0f0e56aee11ec762b950069e56ec7e`) | Silky Way | 0 to the end | -1.5 dB | none |
 | Sitar Versus Sitar | `sitar-versus-sitar.wav` | `newwavelabs/SitarVsSitar.ogg` (`cfe9c8043153a08536600773a878fa9edabcf34c`) | Sitar Versus Sitar | 0 to the end | +0.5 dB | none |
-| Solarium | `solarium.wav` | `ringtones/ogg/Solarium.ogg` (`8c9d3073b8ce1557ed1c328d3f314b2b6737cf4a`) | Solarium | 0 to 8.11 | -4 dB | 804 ms |
 | Solarium Classic | `solarium-classic.wav` | `ringtones/Solarium.ogg` (`d27f141dd9304a44accfa2742e30c40a16ef9dd2`) | Solarium | 0 to 6.82 | -5 dB | 1075 ms |
 | Springy Jalopy | `springy-jalopy.wav` | `newwavelabs/SpringyJalopy.ogg` (`b837affb75b509801bb91bb8e95cc80b69a50372`) | Springy Jalopy | 0 to the end | +7 dB | none |
 | Steppin' Out | `steppin-out.wav` | `newwavelabs/Steppin_Out.ogg` (`5ee5fd18e44d97f7f4ec8daa2bdd09f7b146a445`) | Steppin' Out | 0 to the end | -2 dB | none |
