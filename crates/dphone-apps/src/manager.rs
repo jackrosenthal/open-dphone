@@ -466,7 +466,10 @@ impl AppManager {
                 id: k.manifest.id.clone(),
                 display_name: k.manifest.display_name.clone(),
                 description: k.manifest.description.clone(),
-                kind: k.manifest.kind.name().to_string(),
+                kind: match k.manifest.kind {
+                    AppType::Foreground => dphone_state::AppKind::Foreground,
+                    AppType::Background => dphone_state::AppKind::Background,
+                },
                 has_idle: k.manifest.has_idle,
                 hidden: k.manifest.hidden,
                 builtin: k.builtin,
@@ -999,7 +1002,7 @@ impl AppManager {
             .get::<Apps>()
             .disabled
             .iter()
-            .filter(|a| a.kind == AppType::Background.name() || a.has_idle)
+            .filter(|a| a.kind == dphone_state::AppKind::Background || a.has_idle)
             .filter(|a| self.services.config.app_enabled(&a.name))
             .map(|a| a.name.clone())
             .collect();

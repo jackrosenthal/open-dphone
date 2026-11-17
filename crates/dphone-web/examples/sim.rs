@@ -275,7 +275,7 @@ fn fabricate(store: &Store, model: Model) {
             id: name.into(),
             display_name: display.into(),
             description: desc.into(),
-            kind: "foreground".into(),
+            kind: st::AppKind::Foreground,
             builtin: true,
             ..Default::default()
         };
@@ -701,7 +701,7 @@ fn spawn_handlers(store: &Store, hal: Hal, config: Arc<Mutex<ConfigStore>>) {
                 a.installed.push(st::AppInfo {
                     name: format!("uploaded{}", a.installed.len()),
                     display_name: format!("Uploaded app ({size} bytes)"),
-                    kind: "foreground".into(),
+                    kind: st::AppKind::Foreground,
                     ..Default::default()
                 })
             });

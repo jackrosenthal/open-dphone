@@ -1413,6 +1413,16 @@ impl std::fmt::Debug for Picture {
     }
 }
 
+/// When an app runs (stock manifest `type`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum AppKind {
+    /// While it is on screen.
+    #[default]
+    Foreground,
+    /// From the phone's start, without being on screen.
+    Background,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct AppInfo {
     /// Package name (stock manifest `name`); the key for commands.
@@ -1422,12 +1432,13 @@ pub struct AppInfo {
     pub display_name: String,
     pub description: String,
     /// Stock manifest `type`.
-    pub kind: String,
+    pub kind: AppKind,
     pub has_idle: bool,
     pub hidden: bool,
     pub builtin: bool,
-    /// The name of one of the phone's own app icons the app asks for, if
-    /// it has no icon of its own (the manifest's `phone_icon`).
+    /// The name of one of the phone's icons (e.g., `app-calendar`) that
+    /// the app asks for, if it has no icon of its own (the manifest's
+    /// `phone_icon`).
     pub icon: String,
     /// The app's own icon for this model of phone, from its manifest
     /// (empty: it has none).

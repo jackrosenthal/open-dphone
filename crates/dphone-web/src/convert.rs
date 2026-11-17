@@ -453,11 +453,10 @@ pub fn health(h: &st::Health) -> Vec<pb::SubsystemHealth> {
 
 /// The kind of an app, which the app manager gives by the names of the
 /// manifest's kinds.
-fn app_kind(kind: &str) -> pb::AppKind {
+fn app_kind(kind: st::AppKind) -> pb::AppKind {
     match kind {
-        "foreground" => pb::AppKind::Foreground,
-        "background" => pb::AppKind::Background,
-        _ => pb::AppKind::Unspecified,
+        st::AppKind::Foreground => pb::AppKind::Foreground,
+        st::AppKind::Background => pb::AppKind::Background,
     }
 }
 
@@ -475,7 +474,7 @@ pub fn apps(a: &st::Apps) -> pb::AppsSnapshot {
                 id: i.id.clone(),
                 display_name: if i.display_name.is_empty() { i.name.clone() } else { i.display_name.clone() },
                 description: i.description.clone(),
-                kind: app_kind(&i.kind).into(),
+                kind: app_kind(i.kind).into(),
                 has_idle: i.has_idle,
                 hidden: i.hidden,
                 builtin: i.builtin,
