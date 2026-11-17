@@ -1022,4 +1022,25 @@ impl Config {
             .child_with_id("setting", id)?
             .attr("value")
     }
+
+    /// A format of the locale (`time_short_format`, `date_short_format`,
+    /// `date_time_format`, or `idle_screen_clock_format`) as the stock
+    /// phone application resolves it when it loads the localization: a
+    /// top-level `<setting>` (the phone menu writes one), else the active
+    /// locale's, else `en_US`'s.  A locale is found by its `id` in any
+    /// case.  The defaults are only in `<locales>`.
+    pub fn localization_setting(&self, id: &str) -> Option<&str> {
+        if let Some(value) = self.setting(id) {
+            return Some(value);
+        }
+        let locales = self.root.child("locales")?;
+        let of = |locale: &str| {
+            locales
+                .children_named("locale")
+                .find(|l| l.attr("id").is_some_and(|i| i.eq_ignore_ascii_case(locale)))?
+                .child_with_id("setting", id)?
+                .attr("value")
+        };
+        of(self.setting("locale").unwrap_or("en_US")).or_else(|| of("en_US"))
+    }
 }

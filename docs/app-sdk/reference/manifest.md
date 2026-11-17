@@ -21,7 +21,7 @@ dphone_app_sdk::export_app! {
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `name` | `&str` | Required | Identifies the app, the app's [storage](storage.md), and the app's configuration (`<application id="name">`).  1 to 64 characters: an ASCII letter or digit, then ASCII letters, digits, `_`, `.`, or `,`.  The phone rejects the name of a built-in app, and `dphone`. |
+| `name` | `&str` | Required | Identifies the app, the app's [storage](storage.md), and the app's configuration (`<appconfig id="name">`).  1 to 64 characters: an ASCII letter or digit, then ASCII letters, digits, `_`, `.`, or `,`.  The phone rejects the name of a built-in app, and `dphone`. |
 | `id` | `&str` | `""` | An identifier such as `"org.example.weather"`.  The phone stores and reports the value, and otherwise ignores the value. |
 | `display_name` | `&str` | Required | The name that the phone shows, exactly as written.  No translations. |
 | `description` | `&str` | `""` | One line, shown next to the name in the web interface. |

@@ -18,8 +18,8 @@ impl<T> Completion<T> {
     }
 }
 
-/// The provisioned application account of an app (`<application>` /
-/// `<account>` in the configuration).
+/// The provisioned application account of an app (the `<account>` of its
+/// `<appconfig>` in the configuration).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AppAccount {
     pub account_id: String,
@@ -188,15 +188,16 @@ pub trait HttpClient: Send + Sync {
 
 /// Configuration the apps read.
 pub trait ConfigSource: Send + Sync {
-    /// The provisioned `<application>` element for the app, as XML ("" if
-    /// none), without the credentials: the app reads this text as it is,
-    /// so the attributes `password` and `secret` of the element and of
-    /// its `<account>`s, and the `<setting>`s with those ids, must not be
-    /// in it.
+    /// The provisioned `<appconfig id="app">` element for the app, as XML
+    /// ("" if none), without the credentials: the app reads this text as
+    /// it is, so the attributes `password` and `secret` of the element
+    /// and of its children (its `<account>` and its `<settings>`) must not
+    /// be in it.
     fn app_config_xml(&self, app: &str) -> String;
     /// The app's application account, if provisioned.
     fn app_account(&self, app: &str) -> Option<AppAccount>;
-    /// A named attribute or `<setting>` of the app's configuration.
+    /// A named attribute of the app's `<settings>`, else of its
+    /// `<appconfig>`.
     fn app_setting(&self, app: &str, name: &str) -> Option<String>;
     /// False when the configuration disables or does not list a built-in.
     fn app_enabled(&self, _app: &str) -> bool {

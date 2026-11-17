@@ -1,13 +1,11 @@
 # `config`
 
-The phone's configuration can hold an element for the app, whose `id` is the app's manifest `name`:
+The phone's configuration can hold an element for the app, `<appconfig>`, whose `id` is the app's manifest `name`.  It has the form in which DPMA provisions the stock apps:
 
 ```xml
-<appconfig>
-  <application id="weather" units="metric">
-    <account id="101" username="101" password="..." appserver="dasp://pbx/json" />
-    <setting id="city" value="Huntsville" />
-  </application>
+<appconfig id="weather">
+  <account account_id="101" username="101" password="..." appserver="dasp://pbx/json" apiformat="json" />
+  <settings units="metric" city="Huntsville" />
 </appconfig>
 ```
 
@@ -19,7 +17,7 @@ The phone adds the credentials to the app's PBX requests; no function returns th
 pub fn app_config() -> String
 ```
 
-The app's `<application>` element as XML text, or `""` if the configuration has none.  [`xml::parse`](helpers.md#xml) reads the text.  The text omits the credentials: the `password` and `secret` attributes of `<application>` and of each `<account>`, and each child `<setting>` whose `id` is `password` or `secret`.
+The app's `<appconfig>` element as XML text, or `""` if the configuration has none.  [`xml::parse`](helpers.md#xml) reads the text.  The text omits the credentials: the `password` and `secret` attributes of `<appconfig>` and of its children (`<account>` and `<settings>`).
 
 ## `app_setting`
 
@@ -30,11 +28,11 @@ pub fn app_setting(name: &str) -> Option<String>
 One value of the app's configuration, by the first rule that applies:
 
 1. `password` and `secret` return `None`.
-2. `account_id` returns the `id` attribute of the app's `<account>`, if any.
-3. The attribute of `<application>` named `name`.
-4. The `value` attribute of the child `<setting>` whose `id` is `name`.
+2. `account_id` returns the `account_id` attribute of the app's `<account>`, if any.
+3. The attribute of `<settings>` named `name`.
+4. The attribute of `<appconfig>` named `name`.
 
-`None` if nothing matches or the app has no `<application>`.  In the example, `app_setting("units")` is `Some("metric")`, `app_setting("city")` is `Some("Huntsville")`, and `app_setting("account_id")` is `Some("101")`.
+`None` if nothing matches or the app has no `<appconfig>`.  In the example, `app_setting("units")` is `Some("metric")`, `app_setting("city")` is `Some("Huntsville")`, and `app_setting("account_id")` is `Some("101")`.
 
 ## `setting`
 
@@ -42,7 +40,7 @@ One value of the app's configuration, by the first rule that applies:
 pub fn setting(id: PhoneSetting) -> Option<String>
 ```
 
-One of the phone's settings, exactly as written in the configuration; `None` if the configuration doesn't set the setting.
+One of the phone's settings, exactly as written in the configuration; `None` if the configuration doesn't set the setting.  `TimeFormat` and `DateFormat` are the active locale's (in `<locales>`, else `en_US`'s) unless the configuration sets its own.
 
 | `PhoneSetting` | Setting in the phone's configuration |
 | --- | --- |

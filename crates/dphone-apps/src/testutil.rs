@@ -872,7 +872,7 @@ impl FakeConfig {
 
 impl ConfigSource for FakeConfig {
     fn app_config_xml(&self, app: &str) -> String {
-        format!("<application id=\"{app}\"/>")
+        format!("<appconfig id=\"{app}\"/>")
     }
     fn app_account(&self, _app: &str) -> Option<AppAccount> {
         self.account.clone()

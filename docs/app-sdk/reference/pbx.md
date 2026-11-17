@@ -31,7 +31,7 @@ The `Transport` texts:
 
 | Text | Cause |
 | --- | --- |
-| `this app has no application account configured` | The configuration has no `<application>` with an `<account>` for the app. |
+| `this app has no application account configured` | The configuration has no `<appconfig>` with an `<account>` for the app. |
 | `the application server address is not usable` | `appserver` doesn't start with `dasp://`, `http://`, or `https://`. |
 | `the phone has no such call` | `start_recording` or `stop_recording` named a call that the phone doesn't have. |
 | `not provisioned: no DPMA session` | The account uses `dasp://`, and the phone has no session with the PBX. |

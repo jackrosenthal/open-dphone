@@ -689,14 +689,16 @@ interface config {
     brightness,
   }
 
-  /// This app's provisioned `<application>` element as XML ("" if none),
+  /// This app's provisioned `<appconfig>` element as XML ("" if none),
   /// without the credentials (`password` and `secret`), which the host
   /// keeps: it adds them to PBX requests.
   app-config: func() -> string;
-  /// One attribute of this app's `<application>`/`<account>`/`<setting>`s.
+  /// One attribute of this app's `<settings>`, else of its `<appconfig>`;
+  /// `account_id` is its `<account>`'s.
   app-setting: func(name: string) -> option<string>;
   /// A phone setting, as the configuration writes it (`none` if the
-  /// configuration does not set it).
+  /// configuration does not set it); the time and date formats are the
+  /// active locale's unless the configuration sets its own.
   setting: func(id: phone-setting) -> option<string>;
   accounts: func() -> list<account-info>;
   model: func() -> phone-model;

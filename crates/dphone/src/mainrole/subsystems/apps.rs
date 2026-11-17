@@ -97,15 +97,13 @@ struct AppConfig {
 }
 
 impl AppConfig {
-    /// The provisioned `<application id="app">` element, wherever the
-    /// configuration lists it.
-    fn application(&self, app: &str) -> Option<Element> {
+    /// The app's configuration: the `<appconfig id="app">` element, as
+    /// DPMA sends it and as the stock engine hands it to a stock app
+    /// (`digium.app.config.xml`, which `lib/app.js` reads as `appconfig`
+    /// with its `account` and `settings`).
+    fn appconfig(&self, app: &str) -> Option<Element> {
         let cfg = self.config.as_ref()?.lock().ok()?.config();
-        cfg.root()
-            .children_named("appconfig")
-            .flat_map(|a| a.children_named("application"))
-            .find(|e| e.attr("id") == Some(app))
-            .cloned()
+        cfg.appconfig(app).cloned()
     }
 
     fn merged(&self) -> Option<Arc<dphone_config::Config>> {
@@ -113,36 +111,37 @@ impl AppConfig {
     }
 }
 
-/// An app's `<application>` element as the app may read it: without the
+/// An app's `<appconfig>` element as the app may read it: without the
 /// credentials, which stay with the host (it adds them to PBX requests).
 /// These are the values `config.app-setting` withholds: the attributes
-/// `password` and `secret` of the element and of its `<account>`s, and
-/// the `<setting>`s with those ids.
-fn without_credentials(mut application: Element) -> Element {
+/// `password` and `secret` of the element and of its children (its
+/// `<account>` and its `<settings>`).
+fn without_credentials(mut appconfig: Element) -> Element {
     const WITHHELD: [&str; 2] = ["password", "secret"];
     for name in WITHHELD {
-        application.remove_attr(name);
+        appconfig.remove_attr(name);
     }
-    application.remove_children(|e| e.name == "setting" && e.attr("id").is_some_and(|id| WITHHELD.contains(&id)));
-    for account in application.elements_mut().filter(|e| e.name == "account") {
+    for child in appconfig.elements_mut() {
         for name in WITHHELD {
-            account.remove_attr(name);
+            child.remove_attr(name);
         }
     }
-    application
+    appconfig
 }
 
 impl ConfigSource for AppConfig {
     fn app_config_xml(&self, app: &str) -> String {
-        self.application(app).map(|e| without_credentials(e).to_document()).unwrap_or_default()
+        self.appconfig(app).map(|e| without_credentials(e).to_document()).unwrap_or_default()
     }
 
+    /// The `<account>` of the app's `<appconfig>`, with the attributes
+    /// stock's `lib/app.js` and `lib/pbx.js` read.
     fn app_account(&self, app: &str) -> Option<AppAccount> {
-        let application = self.application(app)?;
-        let account = application.child("account")?;
+        let appconfig = self.appconfig(app)?;
+        let account = appconfig.child("account")?;
         let get = |name: &str| account.attr(name).unwrap_or_default().to_string();
         Some(AppAccount {
-            account_id: get("id"),
+            account_id: get("account_id"),
             username: get("username"),
             password: get("password"),
             appserver: get("appserver"),
@@ -150,12 +149,11 @@ impl ConfigSource for AppConfig {
         })
     }
 
+    /// An attribute of the app's `<settings>` (where DPMA puts an app's
+    /// settings), else of its `<appconfig>`.
     fn app_setting(&self, app: &str, name: &str) -> Option<String> {
-        let application = self.application(app)?;
-        application
-            .attr(name)
-            .map(str::to_string)
-            .or_else(|| application.child_with_id("setting", name).and_then(|s| s.attr("value")).map(str::to_string))
+        let appconfig = self.appconfig(app)?;
+        appconfig.child("settings").and_then(|s| s.attr(name)).or_else(|| appconfig.attr(name)).map(str::to_string)
     }
 
     fn app_enabled(&self, app: &str) -> bool {
@@ -164,14 +162,15 @@ impl ConfigSource for AppConfig {
 
     fn setting(&self, id: &str) -> Option<String> {
         let cfg = self.merged()?;
-        // The app interface's names for two stock settings differ.
-        let id = match id {
-            "timezone" => "time_zone",
-            "time_format" => "time_short_format",
-            "date_format" => "date_short_format",
-            other => other,
-        };
-        cfg.setting(id).map(str::to_string)
+        // The app interface's names for three stock settings differ, and
+        // the formats are the locale's unless the phone sets its own.
+        match id {
+            "timezone" => cfg.setting("time_zone"),
+            "time_format" => cfg.localization_setting("time_short_format"),
+            "date_format" => cfg.localization_setting("date_short_format"),
+            other => cfg.setting(other),
+        }
+        .map(str::to_string)
     }
 
     fn mac_address(&self) -> String {
@@ -198,7 +197,7 @@ impl ConfigSource for AppConfig {
 
     fn clock_24h(&self) -> bool {
         self.merged()
-            .and_then(|c| c.setting("time_short_format").map(|f| f.contains('H') || f.contains('k')))
+            .and_then(|c| c.localization_setting("time_short_format").map(|f| f.contains('H') || f.contains('k')))
             .unwrap_or(false)
     }
 }
@@ -272,27 +271,125 @@ pub fn start(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
+    use dphone_config::{ConfigStore, Model, Nvdata};
+
     use super::*;
 
+    /// The app parts of a phone's configuration as Open DPMA writes them
+    /// (`build_config` of `res_open_dpma`, which writes what the original
+    /// `res_digium_phone` does): a phone `alice` with PIN 4321 and line
+    /// 101 on the network `network1`, and the custom application `weather`
+    /// with the options `units=metric` and `password=p2`.  The application
+    /// screen's list names the apps; each app's `<appconfig>` has its
+    /// account and settings.
+    const FROM_OPEN_DPMA: &str = concat!(
+        "<config>\n",
+        "<networks>\n",
+        "<network id=\"network1\" display_name=\"Office\" cidr=\"0.0.0.0/0\" />\n",
+        "</networks>\n",
+        "<appconfig id=\"appscreen\">\n",
+        "<application id=\"voicemail\"/>\n",
+        "<application id=\"parking\"/>\n",
+        "<application id=\"status\"/>\n",
+        "<application id=\"contacts\"/>\n",
+        "<application id=\"queues\"/>\n",
+        "<auto_start />\n",
+        "</appconfig>\n",
+        "<appconfig id=\"status\" network_id=\"network1\">\n",
+        "<send_dnd status=\"dnd\" /><send_dnd status=\"xa\" />",
+        "<account server_uuid=\"1c0ffee0\" account_id=\"101\" username=\"alice\" password=\"4321\" appserver=\"dasp://10.10.0.2/json\" apiformat=\"json\" />\n",
+        "<auto_start />\n",
+        "<full_application />\n",
+        "</appconfig>\n",
+        "<appconfig id=\"queues\" network_id=\"network1\">\n",
+        "<account server_uuid=\"1c0ffee0\" account_id=\"101\" username=\"alice\" password=\"4321\" appserver=\"dasp://10.10.0.2/json\" apiformat=\"json\" />\n",
+        "<auto_start />\n",
+        "</appconfig>\n",
+        "<appconfig id=\"weather\" network_id=\"network1\">\n",
+        "<url url=\"http://10.10.0.2/files/weather.zip\" />\n",
+        "<account server_uuid=\"1c0ffee0\" account_id=\"101\" username=\"alice\" password=\"4321\" appserver=\"dasp://10.10.0.2/json\" apiformat=\"json\" />\n",
+        "<settings \n",
+        "units=\"metric\" \n",
+        "password=\"p2\" \n",
+        "/>\n",
+        "</appconfig>\n",
+        "<appconfig id=\"parking\" network_id=\"network1\">\n",
+        "<account server_uuid=\"1c0ffee0\" account_id=\"101\" username=\"alice\" password=\"4321\" appserver=\"dasp://10.10.0.2/json\" apiformat=\"json\" />\n",
+        "<auto_start />\n",
+        "</appconfig>\n",
+        "<appconfig id=\"voicemail\" network_id=\"network1\">\n",
+        "<account server_uuid=\"1c0ffee0\" account_id=\"101\" username=\"alice\" password=\"4321\" appserver=\"dasp://10.10.0.2/json\" apiformat=\"json\" />\n",
+        "<settings require_password=\"1\"/>\n",
+        "</appconfig>\n",
+        "</config>\n",
+    );
+
+    /// What the app host reads of the configuration of a phone (its nvdata
+    /// in a temporary directory) that was sent `config`.
+    fn phone_with(config: &str) -> (tempfile::TempDir, AppConfig) {
+        let dir = tempfile::tempdir().unwrap();
+        let nv = Nvdata::new(dir.path().join("nvdata"));
+        nv.ensure_layout().unwrap();
+        let mut store = ConfigStore::open(nv, Model::D60, dir.path().join("tmp")).unwrap();
+        store.apply_fetched(config).unwrap();
+        let apps = AppConfig { config: Some(Arc::new(Mutex::new(store))), mac: "000fd3000001".into() };
+        (dir, apps)
+    }
+
     #[test]
-    fn an_app_reads_its_configuration_without_the_credentials() {
-        let application = Element::parse(
-            r#"<application id="voicemail" secret="s1" refresh="30">
-                 <account id="100" username="100" password="p1" appserver="dasp://pbx/json" />
-                 <setting id="folder" value="INBOX" />
-                 <setting id="password" value="p2" />
-               </application>"#,
-        )
-        .unwrap();
-        let text = without_credentials(application).to_document();
-        for withheld in ["p1", "p2", "s1", "password", "secret"] {
-            assert!(!text.contains(withheld), "{withheld} in {text}");
+    fn the_pbx_apps_get_their_accounts_as_open_dpma_provisions_them() {
+        let (_dir, apps) = phone_with(FROM_OPEN_DPMA);
+        let account = AppAccount {
+            account_id: "101".into(),
+            username: "alice".into(),
+            password: "4321".into(),
+            appserver: "dasp://10.10.0.2/json".into(),
+            apiformat: "json".into(),
+        };
+        for app in ["voicemail", "status", "parking", "queues"] {
+            assert_eq!(apps.app_account(app).as_ref(), Some(&account), "{app}");
         }
-        let read = Element::parse(&text).unwrap();
-        assert_eq!(read.attr("refresh"), Some("30"));
-        let account = read.child("account").unwrap();
-        assert_eq!((account.attr("id"), account.attr("username")), (Some("100"), Some("100")));
-        assert_eq!(account.attr("appserver"), Some("dasp://pbx/json"));
-        assert_eq!(read.child_with_id("setting", "folder").and_then(|s| s.attr("value")), Some("INBOX"));
+    }
+
+    #[test]
+    fn an_app_reads_its_appconfig_without_the_credentials() {
+        let (_dir, apps) = phone_with(FROM_OPEN_DPMA);
+        let expected = Element::parse(concat!(
+            "<appconfig id=\"weather\" network_id=\"network1\">",
+            "<url url=\"http://10.10.0.2/files/weather.zip\" />",
+            "<account server_uuid=\"1c0ffee0\" account_id=\"101\" username=\"alice\" appserver=\"dasp://10.10.0.2/json\" apiformat=\"json\" />",
+            "<settings units=\"metric\" />",
+            "</appconfig>",
+        ))
+        .unwrap();
+        assert_eq!(Element::parse(&apps.app_config_xml("weather")).unwrap(), expected);
+    }
+
+    #[test]
+    fn an_app_setting_is_an_attribute_of_the_apps_settings_or_appconfig() {
+        let (_dir, apps) = phone_with(FROM_OPEN_DPMA);
+        assert_eq!(apps.app_setting("weather", "units").as_deref(), Some("metric"));
+        assert_eq!(apps.app_setting("voicemail", "require_password").as_deref(), Some("1"));
+        assert_eq!(apps.app_setting("status", "network_id").as_deref(), Some("network1"));
+    }
+
+    #[test]
+    fn an_app_reads_the_time_and_date_formats_of_the_locale() {
+        let (_dir, apps) = phone_with("<config/>");
+        assert_eq!(apps.setting("time_format").as_deref(), Some("h:mm a"));
+        assert_eq!(apps.setting("date_format").as_deref(), Some("M/d/yy"));
+    }
+
+    #[test]
+    fn the_apps_clock_has_24_hours_when_the_locales_time_format_has() {
+        let (_dir, apps) = phone_with(concat!(
+            "<config>\n",
+            "<setting id=\"locale\" value=\"de_DE\" conflict=\"freeze\" />\n",
+            "<locales><locale id=\"de_DE\"><setting id=\"time_short_format\" value=\"HH:mm\"/></locale></locales>\n",
+            "</config>\n",
+        ));
+        assert!(apps.clock_24h());
     }
 }

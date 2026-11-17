@@ -177,6 +177,33 @@ fn lldp_layer_and_unparsable_layers() {
     assert!(matches!(s.write_layer(Layer::G729Legacy, &Element::new("config")), Err(ConfigError::ReadOnlyLayer(_))));
 }
 
+/// The formats of the locale, as the stock phone application resolves
+/// them: the active locale's (found by its id in any case), and for what
+/// it lacks, or for a locale the configuration does not have, `en_US`'s.
+#[test]
+fn a_localization_format_is_the_active_locales_else_en_us() {
+    let (_d, mut s) = store(Model::D60);
+    let c = s
+        .apply_fetched(concat!(
+            "<config><setting id=\"locale\" value=\"de_de\"/>",
+            "<locales><locale id=\"de_DE\"><setting id=\"time_short_format\" value=\"HH:mm\"/></locale></locales>",
+            "</config>"
+        ))
+        .unwrap();
+    assert_eq!(c.localization_setting("time_short_format"), Some("HH:mm"));
+    assert_eq!(c.localization_setting("date_short_format"), Some("M/d/yy"));
+    let c = s.apply_fetched("<config><setting id=\"locale\" value=\"fr_FR\"/></config>").unwrap();
+    assert_eq!(c.localization_setting("time_short_format"), Some("h:mm a"));
+}
+
+/// A top-level setting of a format goes before the locale's.
+#[test]
+fn a_localization_format_set_at_the_top_level_goes_first() {
+    let (_d, mut s) = store(Model::D60);
+    let c = s.set("time_short_format", "HH.mm").unwrap();
+    assert_eq!(c.localization_setting("time_short_format"), Some("HH.mm"));
+}
+
 #[test]
 fn web_password() {
     let (_d, mut s) = store(Model::D60);
