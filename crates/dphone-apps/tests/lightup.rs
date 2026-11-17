@@ -1938,7 +1938,7 @@ fn lines(r: &Rig) -> Vec<[String; 3]> {
     // three.
     let texts = r.ui.texts(APP);
     let rest = &texts[1..];
-    if rest.len() % 4 != 0 || rest.iter().step_by(4).any(|t| !t.is_empty()) {
+    if !rest.len().is_multiple_of(4) || rest.iter().step_by(4).any(|t| !t.is_empty()) {
         return Vec::new();
     }
     rest.chunks(4)
