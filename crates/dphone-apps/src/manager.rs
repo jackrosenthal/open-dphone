@@ -9,7 +9,7 @@
 use crate::engine::{AppEngine, EPOCH_TICK, EngineError, Target};
 use crate::host::bindings::App;
 use crate::host::bindings::dphone::app::types as wit;
-use crate::host::{self, Action, AppCtx, IDLE_BIT, Inbound, Inbox, Timer};
+use crate::host::{self, Action, AppCtx, Budget, IDLE_BIT, Inbound, Inbox, Timer};
 use crate::install::{InstallError, Installer};
 use crate::manifest::{AppType, Capability, Manifest};
 use crate::prepare::{self, Job, Prepared};
@@ -25,6 +25,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
+use wasmtime::UpdateDeadline;
 use wasmtime::component::{Component, Linker};
 
 #[derive(Clone, Debug)]
@@ -41,9 +42,11 @@ pub struct ManagerConfig {
     pub memory_cap: usize,
     /// The most a manifest may ask for.
     pub memory_hard_cap: usize,
-    /// Longest one event handler may run before the app is stopped.
+    /// Longest the app's code may run in one event handler before the
+    /// app is stopped.  Time a host function waits for the phone's answer
+    /// does not count.
     pub call_budget: Duration,
-    /// Longest `start` may run.
+    /// Longest the app's code may run in `start`, counted the same way.
     pub start_budget: Duration,
     /// How long after a fault an app that starts with the phone is
     /// started again: this long after the first fault, and twice as long
@@ -588,12 +591,13 @@ impl AppManager {
                 .table_elements(50_000)
                 .instances(8)
                 .build(),
+            budget: Budget::new(self.cfg.start_budget),
             manifest,
         };
         let mut store = wasmtime::Store::new(self.engine.wasmtime(), ctx);
         store.limiter(|c| &mut c.limits);
-        store.epoch_deadline_trap();
-        store.set_epoch_deadline(ticks(self.cfg.start_budget));
+        store.epoch_deadline_callback(|s| Ok(at_deadline(&s.data().budget)));
+        arm(&mut store, self.cfg.start_budget);
         hold_changes(store.data_mut(), true);
         let started = App::instantiate(&mut store, &component, &linker).and_then(|app| {
             app.dphone_app_guest().call_start(&mut store)?;
@@ -811,11 +815,11 @@ impl AppManager {
     /// Calls the app's event handler.  A trap (including running over the
     /// time budget or the memory cap) stops the app.
     fn call(&mut self, name: &str, event: &wit::Event) -> bool {
-        let budget = ticks(self.cfg.call_budget);
+        let budget = self.cfg.call_budget;
         let Some(r) = self.running.get_mut(name) else {
             return false;
         };
-        r.store.set_epoch_deadline(budget);
+        arm(&mut r.store, budget);
         // What the handler changes in the app's windows is shown when the
         // handler has returned, together.
         hold_changes(r.store.data_mut(), true);
@@ -1407,8 +1411,28 @@ fn hold_changes(c: &mut AppCtx, on: bool) {
     }
 }
 
+/// Gives the guest call that follows `limit` of the app's code running.
+fn arm(store: &mut wasmtime::Store<AppCtx>, limit: Duration) {
+    store.data_mut().budget = Budget::new(limit);
+    store.set_epoch_deadline(ticks(limit));
+}
+
+/// What happens when a guest call reaches the epoch deadline: the app
+/// stops if the app's code has run for the whole limit.  Otherwise (after
+/// a wait for the phone's answer, for one) the deadline moves to when the
+/// rest of the limit runs out.
+fn at_deadline(budget: &Budget) -> UpdateDeadline {
+    match budget.left() {
+        left if left.is_zero() => UpdateDeadline::Interrupt,
+        left => UpdateDeadline::Continue(ticks(left)),
+    }
+}
+
+/// Epoch ticks in `d`, rounded up, and at least one.
 fn ticks(d: Duration) -> u64 {
-    (d.as_millis() as u64 / EPOCH_TICK.as_millis() as u64).max(1)
+    (d.as_millis() as u64)
+        .div_ceil(EPOCH_TICK.as_millis() as u64)
+        .max(1)
 }
 
 #[cfg(test)]

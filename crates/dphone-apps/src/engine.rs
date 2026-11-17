@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use wasmtime::component::Component;
 
-/// One epoch tick.  Guest call budgets are counted in these.
+/// One epoch tick: how often a running guest's time limit is checked.
 pub const EPOCH_TICK: Duration = Duration::from_millis(10);
 
 #[derive(Debug)]

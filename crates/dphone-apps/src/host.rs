@@ -15,7 +15,7 @@ use dphone_state::{
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub(crate) mod bindings {
     wasmtime::component::bindgen!({
@@ -123,6 +123,32 @@ pub(crate) struct Timer {
     pub repeat_ms: Option<u32>,
 }
 
+/// The time limit of the guest call in progress (`start` or one
+/// `handle`).  The limit counts the time since the call began, less the
+/// time host functions spent waiting for the phone's answer.
+pub(crate) struct Budget {
+    limit: Duration,
+    since: Instant,
+    waited: Duration,
+}
+
+impl Budget {
+    pub fn new(limit: Duration) -> Budget {
+        Budget {
+            limit,
+            since: Instant::now(),
+            waited: Duration::ZERO,
+        }
+    }
+
+    /// What is left of the limit; zero when the app's code has run for
+    /// all of the limit.
+    pub fn left(&self) -> Duration {
+        let ran = self.since.elapsed().saturating_sub(self.waited);
+        self.limit.saturating_sub(ran)
+    }
+}
+
 pub(crate) struct AppCtx {
     pub name: String,
     pub manifest: Manifest,
@@ -163,6 +189,7 @@ pub(crate) struct AppCtx {
     /// started sounds; 0 when the app has none.
     pub preview_until_ms: u64,
     pub limits: wasmtime::StoreLimits,
+    pub budget: Budget,
 }
 
 /// How long an alarm tone preview sounds (the audio side ends it then).
@@ -402,11 +429,17 @@ impl AppCtx {
         }
     }
 
-    fn command(&self, c: Command) -> Result<Reply, Error> {
-        self.store
-            .send(c)
-            .wait_timeout(Duration::from_millis(500))
-            .map_err(command_error)
+    /// Sends a command and waits up to `timeout` for the phone's answer.
+    /// The wait does not count toward the app's time limit.
+    fn wait_for(&mut self, c: Command, timeout: Duration) -> Result<Reply, Error> {
+        let since = Instant::now();
+        let answer = self.store.send(c).wait_timeout(timeout);
+        self.budget.waited += since.elapsed();
+        answer.map_err(command_error)
+    }
+
+    fn command(&mut self, c: Command) -> Result<Reply, Error> {
+        self.wait_for(c, Duration::from_millis(500))
     }
 
     /// The apps the phone offers, as the manager last published them.
@@ -1168,15 +1201,13 @@ impl api::events::Host for AppCtx {
 impl api::audio::Host for AppCtx {
     fn play(&mut self, sound: Vec<u8>, start: u32) -> Result<(), Error> {
         // The audio side decodes the sound before it answers.
-        self.store
-            .send(Command::PlayData {
-                sound: dphone_state::SoundData(sound),
-                start_secs: start,
-                app: self.name.clone(),
-            })
-            .wait_timeout(Duration::from_secs(5))
+        let play = Command::PlayData {
+            sound: dphone_state::SoundData(sound),
+            start_secs: start,
+            app: self.name.clone(),
+        };
+        self.wait_for(play, Duration::from_secs(5))
             .map(|_| self.playing = true)
-            .map_err(command_error)
     }
     fn stop(&mut self) {
         // Only the app's sound: what another app plays, and a ringtone
@@ -1305,8 +1336,8 @@ impl api::input::Host for AppCtx {
 impl AppCtx {
     /// A command for the alarm clock, which writes the alarms to the
     /// flash before it answers.
-    fn alarm_command(&self, c: Command) -> Result<Reply, Error> {
-        self.store.send(c).wait_timeout(Duration::from_millis(1500)).map_err(command_error)
+    fn alarm_command(&mut self, c: Command) -> Result<Reply, Error> {
+        self.wait_for(c, Duration::from_millis(1500))
     }
 }
 

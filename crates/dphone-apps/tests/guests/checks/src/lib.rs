@@ -46,6 +46,53 @@ fn fill() -> Vec<Op> {
     vec![Op::Fill((Rect::new(0, 0, 4, 4), Color { r: 255, g: 0, b: 0 }))]
 }
 
+/// The functions that wait for the phone's answer.
+const WAITS: [&str; 13] = [
+    "dial",
+    "answer",
+    "reject",
+    "hangup",
+    "send-dtmf",
+    "dial-voicemail",
+    "set-status",
+    "login",
+    "logout",
+    "set-alarm",
+    "remove-alarm",
+    "dismiss",
+    "play",
+];
+
+/// Calls the function of `WAITS` that `which` names, and shows the
+/// result.
+fn wait(which: &str) -> String {
+    let alarm = alarms::Alarm {
+        id: 0,
+        hour: 7,
+        minute: 0,
+        days: 0,
+        tone: String::new(),
+        enabled: true,
+    };
+    let result = match which {
+        "dial" => calls::dial("100", None, &[]).map(|_| ()),
+        "answer" => calls::answer(1),
+        "reject" => calls::reject(1),
+        "hangup" => calls::hangup(1),
+        "send-dtmf" => calls::send_dtmf(1, "12"),
+        "dial-voicemail" => calls::dial_voicemail(None),
+        "set-status" => presence::set_status("available", ""),
+        "login" => hotdesk::login("100", "0000"),
+        "logout" => hotdesk::logout(),
+        "set-alarm" => alarms::set(&alarm).map(|_| ()),
+        "remove-alarm" => alarms::remove(1),
+        "dismiss" => alarms::dismiss(),
+        "play" => audio::play(TONE, 0),
+        other => return format!("unknown: {other}"),
+    };
+    format!("{which}={result:?}")
+}
+
 impl Checks {
     fn ask(&mut self, what: &str, arg: &str) -> String {
         match what {
@@ -148,6 +195,18 @@ impl Checks {
             "leave" => {
                 runtime::background();
                 "left".to_string()
+            }
+            // One function that waits for the phone's answer, or "all".
+            "wait" if arg == "all" => WAITS.map(wait).join(" "),
+            "wait" => wait(arg),
+            // A wait, then the app's code runs without end.
+            "wait-then-spin" => {
+                let _ = wait(arg);
+                let mut x = 0u32;
+                loop {
+                    x = x.wrapping_add(1);
+                    core::hint::black_box(x);
+                }
             }
             other => format!("unknown: {other}"),
         }

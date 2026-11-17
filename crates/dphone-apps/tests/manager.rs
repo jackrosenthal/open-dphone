@@ -204,6 +204,69 @@ fn a_spinning_app_is_stopped() {
     assert_eq!(r.ui.texts("faulty"), ["ready"]);
 }
 
+/// Answers the commands of the functions that wait for the phone's
+/// answer after `delay`, as a slow phone does; returns the commands, as
+/// they are answered.
+fn answer_slowly(
+    r: &Rig,
+    delay: std::time::Duration,
+) -> std::sync::Arc<std::sync::Mutex<Vec<Command>>> {
+    use dphone_state::Domain;
+    let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    for domain in [Domain::Calls, Domain::Provisioning, Domain::Alarms, Domain::Audio] {
+        common::answer_commands(&r.store, domain, log.clone(), move |c| {
+            std::thread::sleep(delay);
+            Ok(match c {
+                Command::Dial { .. } => Reply::Call(dphone_state::CallId(7)),
+                _ => Reply::Done,
+            })
+        });
+    }
+    log
+}
+
+/// Asks the test guest `checks` to do something (see the guest).
+fn ask_checks(r: &mut Rig, what: &str, arg: &str) {
+    r.store.emit(Event::App { app: "checks".into(), name: what.into(), payload: arg.into() });
+    r.settle();
+}
+
+#[test]
+fn waits_for_the_phone_do_not_count_toward_the_time_limit() {
+    let ms = std::time::Duration::from_millis;
+    // Each answer takes longer than the app's limit (300 ms), and less
+    // than the shortest wait (0.5 seconds).
+    let mut r = Rig::new(FakeConfig::default());
+    r.launch("checks");
+    let answered = answer_slowly(&r, ms(350));
+    let t = std::time::Instant::now();
+    ask_checks(&mut r, "wait", "all");
+    // Two digits for `send_dtmf`: 14 answers.
+    assert!(t.elapsed() >= ms(14 * 350), "{:?}", t.elapsed());
+    assert!(r.mgr.is_running("checks"));
+    assert_eq!(
+        r.ui.texts("checks")[0],
+        "dial=Ok(()) answer=Ok(()) reject=Ok(()) hangup=Ok(()) send-dtmf=Ok(()) \
+         dial-voicemail=Ok(()) set-status=Ok(()) login=Ok(()) logout=Ok(()) set-alarm=Ok(()) \
+         remove-alarm=Ok(()) dismiss=Ok(()) play=Ok(())"
+    );
+    assert_eq!(answered.lock().unwrap().len(), 14);
+}
+
+#[test]
+fn an_app_that_runs_past_the_time_limit_after_a_wait_is_stopped() {
+    let ms = std::time::Duration::from_millis;
+    let mut r = Rig::new(FakeConfig::default());
+    r.launch("checks");
+    answer_slowly(&r, ms(1000));
+    let t = std::time::Instant::now();
+    ask_checks(&mut r, "wait-then-spin", "set-alarm");
+    // The app's code had the whole limit (300 ms) after the wait.
+    assert!(t.elapsed() >= ms(1300), "{:?}", t.elapsed());
+    assert!(t.elapsed() < ms(5000), "{:?}", t.elapsed());
+    assert!(!r.mgr.is_running("checks"));
+}
+
 #[test]
 fn a_memory_hog_is_stopped() {
     let mut r = rig();

@@ -5,7 +5,7 @@ The app runtime of Open DPhone: WebAssembly components run by Wasmtime's Pulley 
 - The interface is defined once, in `crates/dphone-app-sdk/wit/app.wit`.  `dphone-app-sdk` is the guest crate generated from it, published to crates.io for app makers (its README tells how to write an app); this crate generates the host side from the same file.  The built-in apps are in `apps/`.
 - An app is one file: a WebAssembly component with its manifest in it (the custom section `dphone-app`, written by the SDK's `export_app!`; `src/manifest.rs` reads it).  Its data is in its code (`include_bytes!`); nothing is unpacked on the phone.
 - An app gets the host interfaces its component imports, and no others: capabilities are not declared.
-- Each app has a memory cap (4 MiB by default, 16 MiB at most via `memory_kib`) and a time budget per event (2 s); going over either stops the app.
+- Each app has a memory cap (4 MiB by default, 16 MiB at most via `memory_kib`) and a time budget per event (2 s of its code running; a host function's wait for the phone's answer does not count); going over either stops the app.
 
 ## Building apps
 
