@@ -5,12 +5,12 @@
 //! A table is the value of one key of the app's store on the PBX,
 //! [`Kind::key`] (e.g., `best/7x7-easy`).  It is text, a line for each
 //! row, the best first: the time in milliseconds, the player's id at
-//! the PBX, and the player's name, with a tab between them.  A player
-//! is in a table once, with the best of their times, and a table has at
-//! most [`ROWS`] rows.
+//! the PBX, and the player's name, with a tab between them.  Each solved
+//! puzzle's time is a row of its own, so a player can have several, and
+//! a table has at most [`ROWS`] rows.
 //!
-//! The times to write are text as well, a line for each kind of puzzle
-//! that has one: the kind (`7x7-easy`), a space, and the milliseconds.
+//! The times to write are text as well, a line for each time: the kind
+//! of puzzle (`7x7-easy`), a space, and the milliseconds.
 
 use crate::generate::{Difficulty, SIZES};
 
@@ -114,7 +114,7 @@ pub fn clock(ms: u64) -> String {
     }
 }
 
-/// A row of a table: a player and the best of their times.
+/// A row of a table: a player and one of their times.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Row {
     /// Milliseconds.
@@ -143,8 +143,9 @@ fn field(text: &str, chars: usize) -> String {
 
 impl Table {
     /// The table a value of the store holds.  What is not a row is left
-    /// out, and so is what a table cannot hold: a second row of a
-    /// player, and rows beyond [`ROWS`].
+    /// out, and so is what a table cannot hold: a row that is another
+    /// row again (the same player and the same time), and rows beyond
+    /// [`ROWS`].
     pub fn parse(value: &[u8]) -> Table {
         let mut table = Table::default();
         for line in String::from_utf8_lossy(value).lines() {
@@ -173,26 +174,22 @@ impl Table {
         &self.rows
     }
 
-    /// Where a player's row is.
+    /// Where a player's best row is.
     pub fn place(&self, id: &str) -> Option<usize> {
         self.rows.iter().position(|r| r.id == id)
     }
 
-    /// Puts a time of a player in the table: after the times that are
-    /// as good (who was first stays first), and in place of the player's
-    /// row if the table has one.  False if the table is as it was: the
-    /// player has a time as good in it, or the time is not among the
-    /// best [`ROWS`].
+    /// Puts a time of a player in the table, as a row of its own beside
+    /// the player's other rows: after the times that are as good (who
+    /// was first stays first).  False if the table is as it was: the time
+    /// is not among the best [`ROWS`], or the player has a row with this
+    /// very time, to the millisecond, which is this time written before
+    /// (e.g., by a write whose answer did not come).
     pub fn add(&mut self, ms: u64, id: &str, name: &str) -> bool {
         let id = field(id, usize::MAX);
         let at = self.rows.iter().take_while(|r| r.ms <= ms).count();
-        match self.place(&id) {
-            Some(had) if had < at => return false,
-            Some(had) => {
-                self.rows.remove(had);
-            }
-            None if at >= ROWS => return false,
-            None => {}
+        if at >= ROWS || self.rows.iter().any(|r| r.ms == ms && r.id == id) {
+            return false;
         }
         let name = field(name, NAME_CHARS);
         self.rows.insert(at, Row { ms, id, name });
@@ -202,7 +199,8 @@ impl Table {
 }
 
 /// The times a phone has yet to write to the tables: for each kind of
-/// puzzle the best of them.
+/// puzzle the best [`ROWS`] of them, since no other could make the
+/// table once they are written.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Pending {
     times: Vec<(Kind, u64)>,
@@ -238,33 +236,40 @@ impl Pending {
         &self.times
     }
 
-    /// The time to write for a kind of puzzle.
-    pub fn of(&self, kind: Kind) -> Option<u64> {
-        self.times.iter().find(|t| t.0 == kind).map(|t| t.1)
+    /// The times to write for a kind of puzzle, the one that has waited
+    /// longest first.
+    pub fn of(&self, kind: Kind) -> impl Iterator<Item = u64> + '_ {
+        self.times.iter().filter(move |t| t.0 == kind).map(|t| t.1)
     }
 
-    /// A time to write.  False if a time as good already waits for its
-    /// kind of puzzle.
+    /// A time to write.  If [`ROWS`] times of its kind wait already, it
+    /// takes the place of the worst of them (of equals, the one that has
+    /// waited least), and false if each of them is as good.
     pub fn add(&mut self, kind: Kind, ms: u64) -> bool {
-        match self.times.iter_mut().find(|t| t.0 == kind) {
-            Some(time) if time.1 <= ms => false,
-            Some(time) => {
-                time.1 = ms;
-                true
+        let of_kind = self.times.iter().enumerate().filter(|(_, t)| t.0 == kind);
+        if of_kind.clone().count() >= ROWS
+            && let Some((n, most)) = of_kind
+                .map(|(n, t)| (n, t.1))
+                .max_by_key(|&(n, time)| (time, n))
+        {
+            if most <= ms {
+                return false;
             }
-            None => {
-                self.times.push((kind, ms));
-                true
-            }
+            self.times.remove(n);
         }
+        self.times.push((kind, ms));
+        true
     }
 
-    /// The time was written (or need not be): it waits no longer.  A
-    /// better time that came meanwhile still does.  False if nothing
-    /// changed.
+    /// The time was written (or need not be): it waits no longer.  The
+    /// other times of its kind still do.  False if it did not wait.
     pub fn done(&mut self, kind: Kind, ms: u64) -> bool {
-        let before = self.times.len();
-        self.times.retain(|t| !(t.0 == kind && t.1 >= ms));
-        self.times.len() != before
+        match self.times.iter().position(|t| *t == (kind, ms)) {
+            Some(n) => {
+                self.times.remove(n);
+                true
+            }
+            None => false,
+        }
     }
 }

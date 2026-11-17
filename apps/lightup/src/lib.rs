@@ -829,7 +829,8 @@ impl LightUp {
     }
 
     /// Draws the table on show: the rows the PBX last gave, with the
-    /// time of this phone that is not written there yet in its place.
+    /// times of this phone that are not written there yet in their
+    /// places.
     fn draw_scores(&mut self) {
         let kind = self.shown;
         let title = match self.reached {
@@ -841,7 +842,7 @@ impl LightUp {
         self.list = None;
         let (id, name) = player().unwrap_or((String::new(), "You".to_string()));
         let mut table = self.tables[kind.index()].clone().unwrap_or_default();
-        if let Some(ms) = self.pending.of(kind) {
+        for ms in self.pending.of(kind) {
             table.add(ms, &id, &name);
         }
         if table.rows().is_empty() {
@@ -866,7 +867,7 @@ impl LightUp {
                 })
                 .collect();
             ui::set_items(list, &items);
-            // The player's row, if the table has one.
+            // The player's best row, if the table has one.
             if let Some(at) = table.place(&id) {
                 ui::set_selected(list, at as u32);
             }
@@ -986,8 +987,9 @@ impl LightUp {
                     self.writing = Some((kind, ms, id));
                     return;
                 }
-                // The table has a time of the player's as good, or ten
-                // better times: there is nothing to write.
+                // The table has ten times as good, or has this one (it
+                // was written, and the answer did not come): there is
+                // nothing to write.
                 if self.pending.done(kind, ms) {
                     self.keep_pending();
                 }
