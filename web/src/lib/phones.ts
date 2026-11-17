@@ -166,12 +166,29 @@ function newFamily(lineKeys: number, pageKey: boolean): Panel {
   for (let i = 0; i < lineKeys; i++) {
     keys.push({ id: `line${i + 1}`, cx: linePos[i][0], cy: linePos[i][1], w: 30, h: 16, r: 8, fill: SILVER, lamp: `line${i + 1}` });
   }
-  // D65: two silver keys side by side under the line keys page the
-  // rapid-dial keys.
+  // D65: one silver rocker under the line keys, as wide as the two columns
+  // of line keys together, pages the rapid-dial keys: the left half is the
+  // previous page, the right half the next.  The halves are drawn as one
+  // control (`rocker`, below); each half is a key of its own.
+  const rocker = { x0: Math.min(...linePos.map((p) => p[0])) - 15, x1: Math.max(...linePos.map((p) => p[0])) + 15, cy: 327, h: 16 };
+  const rockerMid = (rocker.x0 + rocker.x1) / 2;
   if (pageKey) {
-    keys.push({ id: "blfleft", cx: 664, cy: 327, w: 31, h: 15, r: 5, fill: SILVER });
-    keys.push({ id: "blfright", cx: 696, cy: 327, w: 31, h: 15, r: 5, fill: SILVER });
+    keys.push({ id: "blfleft", cx: (rocker.x0 + rockerMid) / 2, cy: rocker.cy, w: rockerMid - rocker.x0, h: rocker.h, r: 6, fill: SILVER, bare: true });
+    keys.push({ id: "blfright", cx: (rockerMid + rocker.x1) / 2, cy: rocker.cy, w: rocker.x1 - rockerMid, h: rocker.h, r: 6, fill: SILVER, bare: true });
   }
+  // The rocker's print: a triangle toward each end (the icons page-left and
+  // page-right, 11 units, 11 units in from the end) and a fine line across
+  // the middle, where the rocker pivots.
+  const triangle = (cx: number, pts: [number, number][]) =>
+    "M" + pts.map(([x, y]) => `${cx - 5.5 + (x * 11) / 24} ${rocker.cy - 5.5 + (y * 11) / 24}`).join("L") + "Z";
+  const rockerShapes: Shape[] = pageKey
+    ? [
+        { d: rect(rocker.x0, rocker.cy - rocker.h / 2, rocker.x1 - rocker.x0, rocker.h, 6), fill: SILVER, stroke: "#00000066" },
+        { d: `M${rockerMid} ${rocker.cy - rocker.h / 2}V${rocker.cy + rocker.h / 2}`, fill: "none", stroke: "#9aa1a8" },
+        { d: triangle(rocker.x0 + 11, [[17, 4.5], [6, 12], [17, 19.5]]), fill: "#69727d" },
+        { d: triangle(rocker.x1 - 11, [[7, 4.5], [18, 12], [7, 19.5]]), fill: "#69727d" },
+      ]
+    : [];
 
   // Soft keys: silver ovals under the display.
   const softX = [355, 427, 500, 573];
@@ -229,9 +246,9 @@ function newFamily(lineKeys: number, pageKey: boolean): Panel {
       { d: "M290 112H736Q758 112 758 134V412H268V134Q268 112 290 112Z", fill: "#0e0f11", gloss: true },
       // Lower panel: matte.
       { d: "M268 410H758V693Q758 715 736 715H290Q268 715 268 693Z", fill: "#2a2c2f" },
-      // The left page key (drawn on every D65; it works where the phone
-      // reports that key).
-      ...(pageKey ? [{ d: rect(648.5, 319.5, 31, 15, 5), fill: SILVER, stroke: "#00000066" }] : []),
+      // The page rocker, drawn whole on every D65; each half works where
+      // the phone reports that half's key.
+      ...rockerShapes,
       // The joined bars and the navigation disc.
       { d: rect(407, 660, 124, 20, 10), fill: BLACK, stroke: "#050506" },
       { d: "M469 662V678", fill: "none", stroke: "#3a3c40" },
