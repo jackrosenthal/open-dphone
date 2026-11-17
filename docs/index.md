@@ -46,7 +46,7 @@ Open DPhone is an independent project and is not affiliated with or endorsed by 
 
 ## Features
 
-- **Apps.**  Apps are WebAssembly components written in Rust with the [App SDK](app-sdk/index.md).  Each app runs in a sandbox with only the phone interfaces that the app's code calls.  With Open DPMA, apps can store data on the PBX that every phone shares.  The stock firmware's JavaScript apps do not run on Open DPhone.
+- **Apps.**  Apps are WebAssembly components that target the phone's [app interface](app-sdk/index.md).  Each app runs in a sandbox with only the phone interfaces that the app's code calls.  With Open DPMA, apps can store data on the PBX that every phone shares.  The stock firmware's JavaScript apps do not run on Open DPhone.
 - **Themes.**  On the D60, D62, and D65, a theme pairs a wallpaper with a color palette for every screen.  With Open DPMA, a user's theme follows the user to other phones and survives a factory reset.
 - **Web interface.**  Beyond the stock settings, the web interface manages calls, Bluetooth devices, and alarms, and mirrors the phone's screen.
 - **Shell access.**  A root shell is available over SSH, on a serial console on the EHS port, and in the web interface.

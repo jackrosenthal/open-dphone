@@ -1,7 +1,5 @@
 # `config`
 
-Read-only access to the app's provisioned configuration, the phone's accounts, and some of the phone's settings.
-
 The phone's configuration can hold an element for the app, whose `id` is the app's manifest `name`:
 
 ```xml

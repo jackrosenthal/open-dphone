@@ -1,6 +1,6 @@
 # SSH and serial console
 
-Open DPhone provides a root shell over SSH and on a serial console on the EHS port.  Both are off by default.  The shell is [brush](https://github.com/reubeno/brush), which is Bash-compatible, with the uutils versions of the common utilities, `sed`, and the [`dphone` command](dphone-command.md).
+SSH and the serial console are off by default.  The shell is [brush](https://github.com/reubeno/brush), which is Bash-compatible, with the uutils versions of the common utilities, `sed`, and the [`dphone` command](dphone-command.md).
 
 ## SSH
 

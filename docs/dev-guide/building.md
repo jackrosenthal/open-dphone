@@ -56,7 +56,7 @@ nix run .#dphone-image -- eff info result
 
 `nix develop` opens a shell with the Nix build's Rust toolchain, the targets for the phone and for WebAssembly, and the other tools that the build scripts and the web frontend need.
 
-The root `Cargo.toml` lists the firmware's crates, `xtask`, and the Open DPMA crates.  Three Open DPMA crates (`dpma-sys`, `dpma-ast`, and `res_open_dpma`) read the headers of an Asterisk source tree and build only with `ASTERISK_SOURCE_DIR` set, so exclude them from workspace-wide commands:
+Three Open DPMA crates (`dpma-sys`, `dpma-ast`, and `res_open_dpma`) read the headers of an Asterisk source tree and build only with `ASTERISK_SOURCE_DIR` set, so exclude them from workspace-wide commands:
 
 ```sh
 cargo build --workspace --exclude dpma-sys --exclude dpma-ast --exclude res_open_dpma

@@ -1,6 +1,6 @@
 # `events`
 
-Events pushed by the PBX, and messages between apps.  Every running app that uses `events` receives [`Event::ServerChange`](app-events.md#serverchange).
+Every running app that uses `events` receives [`Event::ServerChange`](app-events.md#serverchange).
 
 ## `observe`
 

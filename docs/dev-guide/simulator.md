@@ -4,7 +4,7 @@ Run the commands on this page from the root of the repository, in a [`nix develo
 
 ## Phone simulator
 
-`dphone main --sim` runs the main role on the hardware layer's simulator backend: the user interface draws to an in-memory frame buffer, the audio devices are simulated, and the workstation's network configuration is untouched.  The configuration, the SIP stack, the DPMA client, the app runtime, the web interface, and the SSH server are the phone's code.
+`dphone main --sim` runs the main role on the hardware layer's simulator backend: the user interface draws to an in-memory frame buffer, the audio devices are simulated, and the workstation's network configuration is untouched.
 
 ```sh
 cargo run -p dphone -- main --sim --model d60 --nvdata /tmp/dphone-sim
