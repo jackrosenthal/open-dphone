@@ -11,31 +11,31 @@ Open DPhone is open-source firmware for the Digium D40, D45, D50, D60, D62, D65,
 
 <div class="phone-show">
   <span class="phone-viewer phone-viewer--d40">
-    <img class="phone-viewer__still" src="assets/phones/d40/phone.avif" width="834" height="658" alt="A Digium D40 desk phone running Open DPhone">
+    <img class="phone-viewer__still" src="assets/phones/d40/phone.avif" width="822" height="647" alt="A Digium D40 desk phone running Open DPhone">
     <img class="phone-viewer__screen" style="--t: 3s" src="assets/phones/d40/screens/02-apps.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 6s" src="assets/phones/d40/screens/03-box-pusher.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 9s" src="assets/phones/d40/screens/04-call-incoming.avif" alt="">
   </span>
   <span class="phone-viewer phone-viewer--d50">
-    <img class="phone-viewer__still" src="assets/phones/d50/phone.avif" width="834" height="658" alt="A Digium D50 desk phone running Open DPhone">
+    <img class="phone-viewer__still" src="assets/phones/d50/phone.avif" width="822" height="647" alt="A Digium D50 desk phone running Open DPhone">
     <img class="phone-viewer__screen" style="--t: 15s" src="assets/phones/d50/screens/02-voicemail.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 18s" src="assets/phones/d50/screens/03-light-up.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 21s" src="assets/phones/d50/screens/04-call-conference.avif" alt="">
   </span>
   <span class="phone-viewer phone-viewer--d60">
-    <img class="phone-viewer__still" src="assets/phones/d60/phone.avif" width="834" height="658" alt="A Digium D60 desk phone running Open DPhone">
+    <img class="phone-viewer__still" src="assets/phones/d60/phone.avif" width="822" height="647" alt="A Digium D60 desk phone running Open DPhone">
     <img class="phone-viewer__screen" style="--t: 27s" src="assets/phones/d60/screens/02-apps-nebula.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 30s" src="assets/phones/d60/screens/03-desk-sparrow.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 33s" src="assets/phones/d60/screens/04-call-two-prism.avif" alt="">
   </span>
   <span class="phone-viewer phone-viewer--d65">
-    <img class="phone-viewer__still" src="assets/phones/d65/phone.avif" width="834" height="658" alt="A Digium D65 desk phone running Open DPhone">
+    <img class="phone-viewer__still" src="assets/phones/d65/phone.avif" width="822" height="647" alt="A Digium D65 desk phone running Open DPhone">
     <img class="phone-viewer__screen" style="--t: 39s" src="assets/phones/d65/screens/02-idle-sunrise.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 42s" src="assets/phones/d65/screens/03-apps-glacier.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 45s" src="assets/phones/d65/screens/04-call-active-ember.avif" alt="">
   </span>
   <span class="phone-viewer phone-viewer--d70">
-    <img class="phone-viewer__still" src="assets/phones/d70/phone.avif" width="834" height="658" alt="A Digium D70 desk phone running Open DPhone">
+    <img class="phone-viewer__still" src="assets/phones/d70/phone.avif" width="822" height="647" alt="A Digium D70 desk phone running Open DPhone">
     <img class="phone-viewer__screen" style="--t: 51s" src="assets/phones/d70/screens/02-apps.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 54s" src="assets/phones/d70/screens/03-desk-sparrow.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 57s" src="assets/phones/d70/screens/04-call-incoming.avif" alt="">
