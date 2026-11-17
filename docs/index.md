@@ -7,26 +7,80 @@ description: Open firmware for the Digium D-series desk phones, and Open DPMA, t
 
 Open DPhone is open-source firmware for the Digium D-series desk phones: the D40, D45, D50, D60, D62, D65, and D70.  Open DPhone replaces the stock firmware with a mainline Linux kernel and a phone application written in Rust, and is licensed under the GNU General Public License, version 2 or later.
 
-<link rel="stylesheet" href="assets/d65-viewer/viewer.css">
-<figure class="d65-viewer">
-  <div class="d65-viewer__phone">
-    <picture>
-      <source srcset="assets/d65-viewer/phone.webp" type="image/webp">
-      <img src="assets/d65-render.png" width="720" height="715" alt="A Digium D65 desk phone running Open DPhone">
-    </picture>
-    <img class="d65-viewer__screen" style="--d65-n: 1" src="assets/d65-viewer/screens/02-idle-dusk.webp" alt="">
-    <img class="d65-viewer__screen" style="--d65-n: 2" src="assets/d65-viewer/screens/03-idle-sunrise.webp" alt="">
-    <img class="d65-viewer__screen" style="--d65-n: 3" src="assets/d65-viewer/screens/04-idle-regatta.webp" alt="">
-    <img class="d65-viewer__screen" style="--d65-n: 4" src="assets/d65-viewer/screens/05-apps-glacier.webp" alt="">
-    <img class="d65-viewer__screen" style="--d65-n: 5" src="assets/d65-viewer/screens/06-light-up.webp" alt="">
-    <img class="d65-viewer__screen" style="--d65-n: 6" src="assets/d65-viewer/screens/07-desk-sparrow.webp" alt="">
-    <img class="d65-viewer__screen" style="--d65-n: 7" src="assets/d65-viewer/screens/08-box-pusher.webp" alt="">
-    <img class="d65-viewer__screen" style="--d65-n: 8" src="assets/d65-viewer/screens/09-alarms.webp" alt="">
-    <img class="d65-viewer__screen" style="--d65-n: 9" src="assets/d65-viewer/screens/10-menu-amethyst.webp" alt="">
-    <img class="d65-viewer__screen" style="--d65-n: 10" src="assets/d65-viewer/screens/11-call-incoming-evergreen.webp" alt="">
-    <img class="d65-viewer__screen" style="--d65-n: 11" src="assets/d65-viewer/screens/12-call-active-ember.webp" alt="">
-  </div>
-</figure>
+<link rel="stylesheet" href="assets/phones/viewer.css">
+
+=== "D40"
+
+    <span class="phone-viewer phone-viewer--d40">
+      <img class="phone-viewer__still" src="assets/phones/d40/phone.webp" width="759" height="620" alt="A Digium D40 desk phone running Open DPhone" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 1" src="assets/phones/d40/screens/02-apps.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 2" src="assets/phones/d40/screens/03-light-up.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 3" src="assets/phones/d40/screens/04-desk-sparrow.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 4" src="assets/phones/d40/screens/05-box-pusher.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 5" src="assets/phones/d40/screens/06-alarms.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 6" src="assets/phones/d40/screens/07-menu.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 7" src="assets/phones/d40/screens/08-call-incoming.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 8" src="assets/phones/d40/screens/09-call-active.webp" alt="" loading="lazy">
+    </span>
+
+=== "D50"
+
+    <span class="phone-viewer phone-viewer--d50">
+      <img class="phone-viewer__still" src="assets/phones/d50/phone.webp" width="759" height="620" alt="A Digium D50 desk phone running Open DPhone" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 1" src="assets/phones/d50/screens/02-apps.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 2" src="assets/phones/d50/screens/03-voicemail.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 3" src="assets/phones/d50/screens/04-light-up.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 4" src="assets/phones/d50/screens/05-desk-sparrow.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 5" src="assets/phones/d50/screens/06-box-pusher.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 6" src="assets/phones/d50/screens/07-call-log.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 7" src="assets/phones/d50/screens/08-call-incoming.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 8" src="assets/phones/d50/screens/09-call-conference.webp" alt="" loading="lazy">
+    </span>
+
+=== "D60"
+
+    <span class="phone-viewer phone-viewer--d60">
+      <img class="phone-viewer__still" src="assets/phones/d60/phone.webp" width="759" height="620" alt="A Digium D60 desk phone running Open DPhone" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 1" src="assets/phones/d60/screens/02-idle-aurora.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 2" src="assets/phones/d60/screens/03-idle-summit.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 3" src="assets/phones/d60/screens/04-apps-nebula.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 4" src="assets/phones/d60/screens/05-light-up.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 5" src="assets/phones/d60/screens/06-desk-sparrow.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 6" src="assets/phones/d60/screens/07-box-pusher.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 7" src="assets/phones/d60/screens/08-call-incoming-slate.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 8" src="assets/phones/d60/screens/09-call-two-prism.webp" alt="" loading="lazy">
+    </span>
+
+===+ "D65"
+
+    <span class="phone-viewer phone-viewer--d65">
+      <img class="phone-viewer__still" src="assets/phones/d65/phone.webp" width="759" height="620" alt="A Digium D65 desk phone running Open DPhone">
+      <img class="phone-viewer__screen" style="--n: 1" src="assets/phones/d65/screens/02-idle-dusk.webp" alt="">
+      <img class="phone-viewer__screen" style="--n: 2" src="assets/phones/d65/screens/03-idle-sunrise.webp" alt="">
+      <img class="phone-viewer__screen" style="--n: 3" src="assets/phones/d65/screens/04-idle-regatta.webp" alt="">
+      <img class="phone-viewer__screen" style="--n: 4" src="assets/phones/d65/screens/05-apps-glacier.webp" alt="">
+      <img class="phone-viewer__screen" style="--n: 5" src="assets/phones/d65/screens/06-light-up.webp" alt="">
+      <img class="phone-viewer__screen" style="--n: 6" src="assets/phones/d65/screens/07-desk-sparrow.webp" alt="">
+      <img class="phone-viewer__screen" style="--n: 7" src="assets/phones/d65/screens/08-box-pusher.webp" alt="">
+      <img class="phone-viewer__screen" style="--n: 8" src="assets/phones/d65/screens/09-alarms.webp" alt="">
+      <img class="phone-viewer__screen" style="--n: 9" src="assets/phones/d65/screens/10-menu-amethyst.webp" alt="">
+      <img class="phone-viewer__screen" style="--n: 10" src="assets/phones/d65/screens/11-call-incoming-evergreen.webp" alt="">
+      <img class="phone-viewer__screen" style="--n: 11" src="assets/phones/d65/screens/12-call-active-ember.webp" alt="">
+    </span>
+
+=== "D70"
+
+    <span class="phone-viewer phone-viewer--d70">
+      <img class="phone-viewer__still" src="assets/phones/d70/phone.webp" width="759" height="620" alt="A Digium D70 desk phone running Open DPhone" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 1" src="assets/phones/d70/screens/02-apps.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 2" src="assets/phones/d70/screens/03-light-up.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 3" src="assets/phones/d70/screens/04-desk-sparrow.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 4" src="assets/phones/d70/screens/05-box-pusher.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 5" src="assets/phones/d70/screens/06-alarms.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 6" src="assets/phones/d70/screens/07-menu.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 7" src="assets/phones/d70/screens/08-call-incoming.webp" alt="" loading="lazy">
+      <img class="phone-viewer__screen" style="--n: 8" src="assets/phones/d70/screens/09-call-conference.webp" alt="" loading="lazy">
+    </span>
 
 [Download the firmware](https://github.com/jackrosenthal/open-dphone/releases){ .md-button .md-button--primary }
 [Install Open DPMA](open-dpma/installation.md){ .md-button }
