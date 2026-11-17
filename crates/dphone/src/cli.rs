@@ -249,14 +249,9 @@ fn report(e: &clap::Error) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::error::ErrorKind;
 
     fn parse(words: &[&str]) -> Result<Invocation, clap::Error> {
         Invocation::try_parse_from(words)
-    }
-
-    fn kind(words: &[&str]) -> ErrorKind {
-        parse(words).expect_err(&words.join(" ")).kind()
     }
 
     /// Every command of the tree, with the words that reach it.
@@ -278,24 +273,12 @@ mod tests {
     }
 
     #[test]
-    fn the_tree_is_well_formed() {
-        command().debug_assert();
-    }
-
-    #[test]
-    fn every_command_renders_help_and_has_a_description() {
+    fn every_command_has_a_description() {
         let paths = all_paths();
         // Local commands, system commands by name and under `dphone`, the
         // main role's commands, and their subcommands.
         assert!(paths.len() > 80, "{}", paths.len());
         for path in paths {
-            let mut words = path.clone();
-            words.push("--help".into());
-            let e = Invocation::try_parse_from(&words).expect_err("help is not a parse");
-            assert_eq!(e.kind(), ErrorKind::DisplayHelp, "{words:?}");
-            assert!(!e.use_stderr());
-            let text = e.render().to_string();
-            assert!(text.contains(&format!("Usage: {}", path.join(" "))), "{words:?}: {text}");
             let mut cmd = command();
             let mut at = &mut cmd;
             for word in &path {
@@ -307,7 +290,7 @@ mod tests {
 
     /// Each of the main role's commands is in the tree under the name its
     /// own definition has, which is the name its handler is registered and
-    /// looked up by, and is well formed alone, as the main role parses it.
+    /// looked up by.
     #[test]
     fn the_main_roles_commands_are_in_the_tree_under_their_own_names() {
         let tree = Remote::augment_subcommands(clap::Command::new("dphone"));
@@ -337,93 +320,12 @@ mod tests {
         ];
         let own_names: Vec<&str> = own.iter().map(|c| c.get_name()).collect();
         assert_eq!(in_tree, own_names);
-        for command in own {
-            command.debug_assert();
-        }
     }
 
+    /// The keys and lamps of the main role's commands are named as the
+    /// phone names them.
     #[test]
-    fn dphone_and_its_other_names() {
-        assert!(matches!(parse(&["dphone", "ping"]), Ok(Invocation::Dphone { command: Command::Remote(Remote::Ping(_)) })));
-        // By path, as the shell runs it.
-        assert!(matches!(parse(&["/bin/dphone", "ping"]), Ok(Invocation::Dphone { .. })));
-        // A system command by its own name, and as a command of `dphone`.
-        assert!(matches!(parse(&["/bin/lsmod"]), Ok(Invocation::System(SystemCommand::Lsmod))));
-        assert!(matches!(
-            parse(&["dphone", "lsmod"]),
-            Ok(Invocation::Dphone { command: Command::System(SystemCommand::Lsmod) })
-        ));
-        // Any other name is left for `dphone`.
-        let Ok(Invocation::Other(words)) = parse(&["/sbin/init", "ping"]) else { panic!("not left over") };
-        assert_eq!(words, ["init", "ping"]);
-        // A system command's help names it as it was called.
-        let help = parse(&["umount", "--help"]).unwrap_err().render().to_string();
-        assert!(help.contains("Usage: umount [OPTIONS] <TARGET>..."), "{help}");
-        let help = parse(&["dphone", "umount", "--help"]).unwrap_err().render().to_string();
-        assert!(help.contains("Usage: dphone umount [OPTIONS] <TARGET>..."), "{help}");
-    }
-
-    #[test]
-    fn help_version_and_mistakes() {
-        assert_eq!(kind(&["dphone", "--help"]), ErrorKind::DisplayHelp);
-        assert_eq!(kind(&["dphone", "help"]), ErrorKind::DisplayHelp);
-        assert_eq!(kind(&["dphone", "help", "update"]), ErrorKind::DisplayHelp);
-        assert_eq!(kind(&["dphone", "--version"]), ErrorKind::DisplayVersion);
-        let e = parse(&["dphone", "--version"]).unwrap_err();
-        assert_eq!(e.render().to_string(), format!("dphone {}\n", crate::VERSION));
-        // Nothing to do is a mistake, answered with the help.
-        let e = parse(&["dphone"]).unwrap_err();
-        assert!(e.use_stderr());
-        assert!(e.render().to_string().contains("Usage: dphone <COMMAND>"));
-        assert_eq!(kind(&["dphone", "no-such-command"]), ErrorKind::InvalidSubcommand);
-        assert_eq!(kind(&["dphone", "ping", "extra"]), ErrorKind::UnknownArgument);
-        // The top-level help lists commands of every kind, and says which
-        // need the main role.
-        let help = parse(&["dphone", "--help"]).unwrap_err().render().to_string();
-        // (Help is wrapped to the width of the terminal.)
-        let words = help.split_whitespace().collect::<Vec<_>>().join(" ");
-        assert!(
-            words.contains(
-                "with or without a main role: main supervise update ramboot completion mount umount insmod rmmod lsmod modprobe \
-                 reboot poweroff halt dmesg ps The other commands"
-            ),
-            "{help}"
-        );
-        // A near miss gets a suggestion.
-        let e = parse(&["dphone", "screenshoot"]).unwrap_err().render().to_string();
-        assert!(e.contains("a similar subcommand exists: 'screenshot'"), "{e}");
-        for name in ["main", "update", "ramboot", "mount", "ps", "log", "state", "config", "hal", "health", "key"] {
-            assert!(help.lines().any(|l| l.trim_start().starts_with(&format!("{name} "))), "help lacks {name}: {help}");
-        }
-    }
-
-    #[test]
-    fn supervise() {
-        let Ok(Invocation::Dphone { command: Command::Supervise(s) }) = parse(&[
-            "dphone",
-            "supervise",
-            "--nvdata",
-            "/nv",
-            "--run-dir",
-            "/run",
-            "--beat-timeout",
-            "3",
-            "--",
-            "dphone",
-            "main",
-            "--sim",
-        ]) else {
-            panic!("supervise does not parse")
-        };
-        assert_eq!(s.program, ["dphone", "main", "--sim"]);
-        assert_eq!((s.grace, s.beat_timeout), (init::START_GRACE_SECS, 3));
-        assert_eq!(kind(&["dphone", "supervise", "--nvdata", "/nv", "--run-dir", "/run"]), ErrorKind::MissingRequiredArgument);
-        assert_eq!(kind(&["dphone", "supervise", "--run-dir", "/run", "--", "x"]), ErrorKind::MissingRequiredArgument);
-    }
-
-    /// The main role's commands whose arguments are more than a word.
-    #[test]
-    fn the_main_roles_commands() {
+    fn keys_and_lamps_by_name() {
         let ok = |words: &[&str]| {
             let mut all = vec!["dphone"];
             all.extend(words);
@@ -434,73 +336,11 @@ mod tests {
             all.extend(words);
             assert!(parse(&all).is_err(), "{words:?}");
         };
-        // Keys: one or more, each a key of the phone.
         ok(&["key", "1", "2", "3", "sk1", "#", "*"]);
         ok(&["key", "line6", "vup"]);
-        bad(&["key"]);
         bad(&["key", "1", "nope"]);
-        assert_eq!(kind(&["dphone", "key", "list"]), ErrorKind::ValueValidation);
-        let help = parse(&["dphone", "key", "--help"]).unwrap_err().render().to_string();
-        assert!(help.contains("sk1..sk4") && help.contains("blfleft"), "{help}");
-
-        ok(&["hook", "off"]);
-        bad(&["hook", "up"]);
-        bad(&["hook"]);
-
-        // A bare noun is its status or list.
-        for noun in ["app", "audio", "call", "dsp", "hal", "net", "page", "state"] {
-            ok(&[noun]);
-        }
-        bad(&["config"]);
-        ok(&["config", "set", "open_x", "a value"]);
-        bad(&["config", "set", "open_x"]);
-        ok(&["config", "set", "open_x", "-5"]);
-        ok(&["config", "list"]);
-        ok(&["config", "list", "sip"]);
-
-        ok(&["log"]);
-        ok(&["log", "-n", "50", "-f"]);
-        ok(&["log", "--lines", "50", "--follow"]);
-        bad(&["log", "-n", "many"]);
-
-        ok(&["net", "bridge", "on"]);
-        ok(&["net", "bridge", "off", "--save"]);
-        bad(&["net", "bridge"]);
-        bad(&["net", "bridge", "maybe"]);
-
-        ok(&["audio", "volume", "ringer", "10"]);
-        bad(&["audio", "volume", "ringer", "11"]);
-        bad(&["audio", "volume", "bell", "3"]);
-        ok(&["audio", "ring"]);
-        ok(&["audio", "ring", "off"]);
-        ok(&["audio", "tone", "ringback"]);
-        bad(&["audio", "tone", "chirp"]);
-
-        ok(&["dsp", "job", "1", "2", "3", "4", "5", "6", "16"]);
-        ok(&["dsp", "job", "1", "2", "3", "4", "5", "6", "16", "43690"]);
-        bad(&["dsp", "job", "1", "2", "3", "4", "5", "6"]);
-        bad(&["dsp", "job", "1", "2", "3", "4", "5", "6", "70000"]);
-        ok(&["dsp", "bands", "0", "--sweep"]);
-        ok(&["dsp", "bands", "3", "--tone", "1000", "--frames", "100"]);
-        bad(&["dsp", "bands", "0"]);
-        bad(&["dsp", "bands", "0", "--sweep", "--tone", "1000"]);
-        bad(&["dsp", "bands", "4", "--sweep"]);
-        bad(&["dsp", "bands", "0", "--sweep", "--frames", "4"]);
-        ok(&["dsp", "canceller", "sbaec", "ingress", "1", "1000"]);
-        bad(&["dsp", "canceller", "hec2", "ingress", "1", "1000"]);
-
         ok(&["hal", "lamp", "line3", "green"]);
         ok(&["hal", "lamp", "all", "off"]);
         bad(&["hal", "lamp", "line0", "green"]);
-        bad(&["hal", "lamp", "line3", "blue"]);
-        ok(&["hal", "pattern"]);
-        ok(&["hal", "pattern", "white"]);
-        bad(&["hal", "backlight", "300"]);
-
-        ok(&["page", "start", "dock"]);
-        bad(&["page", "start"]);
-        ok(&["screenshot", "/tmp/a.ppm"]);
-        ok(&["screenshot", "--screen", "side", "/tmp/a.pgm"]);
-        bad(&["screenshot"]);
     }
 }

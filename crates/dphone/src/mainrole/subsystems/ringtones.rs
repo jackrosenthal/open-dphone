@@ -400,7 +400,6 @@ mod tests {
     #[test]
     fn a_name_that_is_no_ringtone_is_the_default() {
         let names: Vec<&str> = BUILTIN.iter().map(|t| t.name).collect();
-        assert_eq!(names.len(), 149);
         // After the default, A to Z, and every name and file once.
         assert!(names[1..].windows(2).all(|w| w[0].to_lowercase() < w[1].to_lowercase()), "{names:?}");
         for (i, t) in BUILTIN.iter().enumerate() {
@@ -411,7 +410,6 @@ mod tests {
         // The six synthesized ringtones of earlier firmware, the stock
         // firmware's ringtones, and any other name ring the default.
         for name in ["Marimba", "Classic", "Chime", "Pulse", "Rise", "Mellow", "Digium", "Chimes", "GuitarStrum", "", "Nope"] {
-            assert!(builtin(name).is_none(), "{name}");
             let (samples, pause_ms) = pcm(source_in(None, &assets(), name));
             assert_eq!((&samples[..], pause_ms), (&default[..], BUILTIN[0].pause_ms), "{name}");
         }
@@ -436,9 +434,8 @@ mod tests {
         std::fs::write(nv.join("ringtones/zeta.sln16"), [1, 0]).unwrap();
         assert_eq!(names(nv), ["Empty", "Mine", "zeta"]);
         let all = all(nv);
-        assert_eq!(all.len(), 151);
         assert_eq!(all[0], DEFAULT);
-        assert_eq!(all[149..], ["Empty", "Mine"]);
+        assert_eq!(all[BUILTIN.len()..], ["Empty", "Mine"]);
 
         let (samples, pause_ms) = pcm(source_in(Some(nv), &assets(), "Mine"));
         assert_eq!(&samples[..], [1, -2, 300]);

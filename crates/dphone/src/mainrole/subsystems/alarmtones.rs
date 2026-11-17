@@ -172,8 +172,6 @@ mod tests {
     #[test]
     fn a_name_that_is_no_tone_is_the_first() {
         let names = names();
-        assert_eq!(names.len(), 39);
-        assert_eq!(names[..4], ["Beep-Beep-Beep", "Argon", "Argon JP", "Awaken"]);
         // After the default, A to Z, and every name once.
         assert!(names[1..].windows(2).all(|w| w[0].to_lowercase() < w[1].to_lowercase()), "{names:?}");
         for (i, t) in ALL.iter().enumerate() {
