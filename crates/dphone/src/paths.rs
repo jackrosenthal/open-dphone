@@ -44,9 +44,10 @@ impl Paths {
         self.open_dir().join("ssh_host_ed25519_key")
     }
 
-    /// Stock location, shared with stock's Dropbear.
+    /// The keys added on the phone, in `open/`: the stock firmware
+    /// overwrites the stock location with Digium's keys at every boot.
     pub fn authorized_keys(&self) -> PathBuf {
-        self.nvdata.join("root/.ssh/authorized_keys")
+        self.nvdata.join(dphone_config::nvdata::AUTHORIZED_KEYS_FILE)
     }
 
     /// Home directory for shell sessions.

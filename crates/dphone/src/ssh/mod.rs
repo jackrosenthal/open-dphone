@@ -48,9 +48,10 @@ pub const AUTH_TIMEOUT: Duration = Duration::from_secs(60);
 /// Sessions (shell, exec, SFTP) per connection.
 pub const MAX_CHANNELS: usize = 8;
 
-/// The `authorized_keys` files consulted at each login attempt: the user's
-/// own (also what stock's SSH server reads), and the keys a provisioning
-/// server supplied.  Either may be absent.
+/// The `authorized_keys` files consulted at each login attempt: the keys
+/// added on the phone (`/nvdata/open/authorized_keys`, never the stock
+/// firmware's file), and the keys a provisioning server supplied.  Either
+/// may be absent.
 pub fn authorized_key_files(paths: &crate::paths::Paths) -> Vec<PathBuf> {
     vec![paths.authorized_keys(), paths.open_dir().join("provisioned_authorized_keys")]
 }

@@ -668,8 +668,14 @@ fn ssh_exec_and_sftp_with_openssh_client() {
     let rsa = d.join("id_rsa");
     let ok = Command::new("ssh-keygen").args(["-q", "-t", "rsa", "-b", "3072", "-N", "", "-f"]).arg(&rsa).status().unwrap();
     assert!(ok.success());
-    // No key file yet: the server starts with nobody able to log in.
-    std::fs::create_dir_all(d.join("nv/root/.ssh")).unwrap();
+    // The stock firmware's key file, as on a phone that has run both
+    // firmwares: the stock firmware's key, and a key added under an earlier
+    // Open DPhone.  The first start moves the added key only.
+    let stock_file = d.join("nv/root/.ssh/authorized_keys");
+    std::fs::create_dir_all(stock_file.parent().unwrap()).unwrap();
+    let id_pub = std::fs::read_to_string(d.join("id.pub")).unwrap();
+    let release = dphone_config::nvdata::STOCK_FIRMWARE_KEYS[0];
+    std::fs::write(&stock_file, format!("ssh-dss {release} stock\n{id_pub}")).unwrap();
     std::fs::create_dir_all(d.join("nv/open")).unwrap();
     // SSH is off unless the settings turn it on.
     std::fs::write(d.join("nv/dphone_settings.txtpb"), "ssh_enabled: true\n").unwrap();
@@ -717,13 +723,21 @@ fn ssh_exec_and_sftp_with_openssh_client() {
         cmd.output().unwrap()
     };
 
-    // No key is compiled in, so with no key file nobody gets in.
+    // Moved: the added key logs in, and the stock firmware's key is left out.
+    let keys_file = d.join("nv/open/authorized_keys");
+    assert_eq!(std::fs::read_to_string(&keys_file).unwrap(), id_pub);
+    assert_eq!(ssh(&key, "root", "true").status.code(), Some(0));
+
+    // No key is compiled in, so with no key file nobody gets in, and the
+    // stock firmware's file is not read again.
+    std::fs::remove_file(&keys_file).unwrap();
     assert_eq!(ssh(&key, "root", "true").status.code(), Some(255));
+    std::fs::copy(d.join("id_rsa.pub"), &stock_file).unwrap();
     assert_eq!(ssh(&rsa, "root", "true").status.code(), Some(255));
 
-    // Keys are read at each attempt, from both files: the user's own, and
-    // the provisioned ones.  No restart in between.
-    std::fs::copy(d.join("id.pub"), d.join("nv/root/.ssh/authorized_keys")).unwrap();
+    // Keys are read at each attempt, from both files: the ones added on the
+    // phone, and the provisioned ones.  No restart in between.
+    std::fs::copy(d.join("id.pub"), &keys_file).unwrap();
     assert_eq!(ssh(&key, "root", "true").status.code(), Some(0));
     assert_eq!(ssh(&rsa, "root", "true").status.code(), Some(255));
     std::fs::copy(d.join("id_rsa.pub"), d.join("nv/open/provisioned_authorized_keys")).unwrap();

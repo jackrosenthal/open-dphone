@@ -265,7 +265,7 @@ fn nvdata_files() {
     assert_eq!(nv.open_names().unwrap(), ["ssh_host_ed25519"]);
 
     nv.write_authorized_keys(&["ssh-ed25519 AAAA dev".to_owned()]).unwrap();
-    std::fs::write(nv.path("root/.ssh/authorized_keys"), "# c\n\nssh-ed25519 AAAA dev\n").unwrap();
+    std::fs::write(nv.path("open/authorized_keys"), "# c\n\nssh-ed25519 AAAA dev\n").unwrap();
     assert_eq!(nv.authorized_keys().unwrap(), ["ssh-ed25519 AAAA dev"]);
 
     nv.write_cached_md5("config", "0123456789abcdef0123456789abcdef").unwrap();
@@ -282,7 +282,7 @@ fn factory_reset_follows_stock_whitelist() {
         "etc/enet.cfg", "etc/.passwd", "etc/passwd", "reboot_reason", "phoneservice_lockdown",
         "g729-legacy-support.xml", "g729-config.xml", "if-setup-debug", "config.xml", "ui-config.xml",
         "fetched-config.xml", "systime", "certs/a.pem", "appdata/x/y", "root/.ssh/authorized_keys",
-        "open/kv/ssh_host", "open/kv/trial", "dphone_settings.txtpb",
+        "open/authorized_keys", "open/kv/ssh_host", "open/kv/trial", "dphone_settings.txtpb",
     ] {
         nv.write(f, b"x").unwrap();
     }

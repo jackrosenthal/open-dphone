@@ -287,8 +287,8 @@ impl ConfigStore {
     }
 
     /// Every SSH public key to accept: the ones added on the phone
-    /// (`/nvdata/root/.ssh/authorized_keys`) followed by the provisioned
-    /// ones, without duplicates.
+    /// (`/nvdata/open/authorized_keys`) followed by the provisioned ones,
+    /// without duplicates.
     pub fn ssh_authorized_keys(&self) -> Result<Vec<String>, ConfigError> {
         let mut keys = self.nv.authorized_keys()?;
         for k in self.current.provisioned_ssh_keys() {

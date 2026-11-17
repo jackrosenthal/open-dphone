@@ -405,10 +405,10 @@ impl Nvdata {
         self.write("factory-reset", b"")
     }
 
-    /// Lines of `root/.ssh/authorized_keys`, without blanks and comments.
+    /// Lines of [`AUTHORIZED_KEYS_FILE`], without blanks and comments.
     pub fn authorized_keys(&self) -> io::Result<Vec<String>> {
         Ok(self
-            .read_string(AUTHORIZED_KEYS)?
+            .read_string(AUTHORIZED_KEYS_FILE)?
             .unwrap_or_default()
             .lines()
             .map(str::trim)
@@ -425,21 +425,46 @@ impl Nvdata {
         self.write_authorized_keys_text(&text)
     }
 
-    /// Writes the whole of `root/.ssh/authorized_keys` (atomically), with
-    /// the modes OpenSSH and Dropbear insist on: 0700 for the directory and
-    /// 0600 for the file.
+    /// Writes the whole of [`AUTHORIZED_KEYS_FILE`] (atomically), mode 0600.
     fn write_authorized_keys_text(&self, text: &str) -> io::Result<()> {
-        self.write(AUTHORIZED_KEYS, text.as_bytes())?;
+        self.write(AUTHORIZED_KEYS_FILE, text.as_bytes())?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(self.path("root/.ssh"), fs::Permissions::from_mode(0o700))?;
-            fs::set_permissions(self.path(AUTHORIZED_KEYS), fs::Permissions::from_mode(0o600))?;
+            fs::set_permissions(self.path(AUTHORIZED_KEYS_FILE), fs::Permissions::from_mode(0o600))?;
         }
         Ok(())
     }
 
-    /// Appends one line to `root/.ssh/authorized_keys`, leaving every
+    /// Moves the keys of [`STOCK_AUTHORIZED_KEYS_FILE`] to
+    /// [`AUTHORIZED_KEYS_FILE`], once: only while [`AUTHORIZED_KEYS_FILE`]
+    /// does not exist.  The lines holding [`STOCK_FIRMWARE_KEYS`] are left
+    /// out; every other line is copied as written.  The stock file is not
+    /// changed.  Returns the number of keys moved, or `None` when there was
+    /// nothing to move (the new file exists, or the stock file does not).
+    pub fn move_stock_authorized_keys(&self) -> io::Result<Option<usize>> {
+        if self.exists(AUTHORIZED_KEYS_FILE) {
+            return Ok(None);
+        }
+        let Some(text) = self.read_string(STOCK_AUTHORIZED_KEYS_FILE)? else { return Ok(None) };
+        let mut kept = String::with_capacity(text.len());
+        let mut moved = 0;
+        for line in text.split_inclusive('\n') {
+            match parse_authorized_key(line) {
+                Some(k) if STOCK_FIRMWARE_KEYS.contains(&k.blob) => continue,
+                Some(_) => moved += 1,
+                None => {}
+            }
+            kept.push_str(line);
+        }
+        if !kept.is_empty() && !kept.ends_with('\n') {
+            kept.push('\n');
+        }
+        self.write_authorized_keys_text(&kept)?;
+        Ok(Some(moved))
+    }
+
+    /// Appends one line to [`AUTHORIZED_KEYS_FILE`], leaving every
     /// existing line (comments, options, blank lines) exactly as it is.
     /// Returns `false`, writing nothing, when a line with the same key is
     /// already there.  `line` must be a key line
@@ -448,7 +473,7 @@ impl Nvdata {
         let line = line.trim();
         let key = parse_authorized_key(line)
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "not an authorized_keys line"))?;
-        let mut text = self.read_string(AUTHORIZED_KEYS)?.unwrap_or_default();
+        let mut text = self.read_string(AUTHORIZED_KEYS_FILE)?.unwrap_or_default();
         if text.lines().filter_map(parse_authorized_key).any(|k| k.blob == key.blob) {
             return Ok(false);
         }
@@ -461,11 +486,11 @@ impl Nvdata {
         Ok(true)
     }
 
-    /// Removes the line (or lines) of `root/.ssh/authorized_keys` holding
-    /// the key with this base64 blob; every other line is kept exactly as
-    /// it is.  Returns whether a line was removed.
+    /// Removes the line (or lines) of [`AUTHORIZED_KEYS_FILE`] holding the
+    /// key with this base64 blob; every other line is kept exactly as it
+    /// is.  Returns whether a line was removed.
     pub fn remove_authorized_key(&self, blob: &str) -> io::Result<bool> {
-        let Some(text) = self.read_string(AUTHORIZED_KEYS)? else { return Ok(false) };
+        let Some(text) = self.read_string(AUTHORIZED_KEYS_FILE)? else { return Ok(false) };
         let mut kept = String::with_capacity(text.len());
         let mut removed = false;
         for line in text.split_inclusive('\n') {
@@ -663,7 +688,26 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     result
 }
 
-const AUTHORIZED_KEYS: &str = "root/.ssh/authorized_keys";
+/// Open DPhone's SSH key file (relative to the nvdata root).  The stock
+/// firmware never writes `open/`.
+pub const AUTHORIZED_KEYS_FILE: &str = "open/authorized_keys";
+
+/// The stock firmware's SSH key file (relative to the nvdata root).  At
+/// every boot, the stock firmware overwrites the file with the release key
+/// or the dev keys of [`STOCK_FIRMWARE_KEYS`].  Open DPhone reads the file
+/// only for [`Nvdata::move_stock_authorized_keys`].
+pub const STOCK_AUTHORIZED_KEYS_FILE: &str = "root/.ssh/authorized_keys";
+
+/// The keys (base64) that the stock firmware writes into
+/// [`STOCK_AUTHORIZED_KEYS_FILE`]: the key of
+/// `/etc/release_authorized_keys.ORIG`, then the three keys of
+/// `/etc/dev_authorized_keys.ORIG` (dev and test mode).
+pub const STOCK_FIRMWARE_KEYS: [&str; 4] = [
+    "AAAAB3NzaC1kc3MAAACBALj7AbkTTu8kTiVq1EUDH3xGW8DssxZd+aJcl/3jYl0t/VcAK3e5JGcd9buPkog5Cb0VQ4JrXkbhxQBTrghFiEaQts3LT1iOVpbmUKPh4SPrvNOPZlUNb4Q5wRMVHplkAH6W58gM8qiAdtS4U32C7HFcUUr5caHVsPj3nvys8GnVAAAAFQD9NUTURY8gUO+IVUA6g1VAjkLNMwAAAIBxhdk9RdmHlLLtqjDdeHbNCdX18KdNJaCW925nFjV11IKTyUnykex4VUUGcoRc4QHRb0Ct549Bex5iXymGtz3mRk/IaeDO1ujqLrM80A6KuFR5idH7YXwJhKck07NubKs3GWKaKu5LTclcRm/9tJqdk7nfXQJ/ARQM30RbjYcutAAAAIBffhphp+s7GjZbrPuyZPl1Lwb2focQB/SFPzPDmd4E5vcL8otz69SgkK0aKRDpSGgLxEv7qMjDcoo+KENUjeG49zCdvoTReki4QEuSdnej17nRAFCVaXoV319rf8k/d/5aazFI+0tpqn4lquylkZooZ3gpLA/CE57pWDN7CaOrxQ==",
+    "AAAAB3NzaC1kc3MAAACBAKd6kwQvq8GM7LuKrylYBfUfDOLlmec//0vCOfoUr0EHm6ErRQYhcRoVlCAWhC+OALZ8XZz0J9uzbVJqL/qGY3b3mjwHVq2OgQRYArAIuse/XPVvey3lPEQRHiGFxt2iLZ6ytIKqnWKcP4tlnO69Wm+2zq1+ufW7DowjYIwgj00JAAAAFQD4bqx4/6mLU9Fz1HOiqYGUqRj21wAAAIBS0JQgUM0zbQZg8ZX+vAwjG2a6vYxPa5u7lcPKe6uSACX15yXz9Xz5nxNPk0qzXg3JvV67JSJLN5ZoLfYGBjRDKuarHPNyPNgVVTteTu+01KITXdql+OBVVQCm6X9W8RwTTi4z2yeA7PF5WUEM/b0mVxc2jfyDMSszHgEjDjTkywAAAIBUUEpbq/btg2+TUzTjahG49jPV7jLhRJKxsU4UCV8kF/JP1GNUZ6E0CS1EPN89gd4sP1Py3ftnEbFS0BQcGM1dN7g0OeeRCiOQqMA0DuTnoV5zQpuZnxtIAT7v0/5YSkgeC8BzP+JhPp2JBTG1yQE14IO1DXwMMLf04GGM7MTTxQ==",
+    "AAAAB3NzaC1yc2EAAAABIwAAAQEAxS0VvJRcO2eqQLgZEdLoC2XwKi2vdNLGXVF3HBYEKGdURI4trw2iqq3BZiDn8HcpCiuToijiM34TxpezViMgWq9u15rlrbAWfE1uswABqwu03++rLKu+hxGg5cJd9L5V2s8BjNQBjuMwweHsFJ2+8JgEYpCTv9qsjtwjMeU8vFzy7twxQqgX47bnOwL4WS/Jx2J6Rhjf5+OVSeSTaoWRrmWP2gM2IfAlBu/TZrJfBuEYyisT77BRcjGd/XVT/eqDlinPyGs5nWoHuIqVcQ9kW1tKzystQCXYM7aWph0RErcMGRNSwxs24rYsQl49dXkoi+jVoeajjHQMeIy+IdsfIw==",
+    "AAAAB3NzaC1yc2EAAAADAQABAAABAQDbBkRcwPxYZ5g3MElN+psNaD9qD7fc1hvFpp5GqTOBy4e9nK8mmYXs6mSBTUrQgcntwhhRaScCUGOB+d3FXa5ZUgWfXprIquKLi5siU73J9gao9cobr3JzT0f0ijQ9fhJgPzuAghX1jAIi3lt0sx2ILevxRVDwadrGriSKvh+hOgyFaTmTHLg4jXfbX0TNDKM0FktK9gJwzBkjULjO/1YSFWUHNn49tU5nMNe/yASgwqEmMTC2MVIx3FzVUnYt5Dh5OmudyzcGMeksNRAbJZijmFd8o+/rTQHyGmIdUyn9GcFPCs7wbwoeBDTbkS5ub7e2gc1n9IhkcDaBOdBOcDy/",
+];
 
 /// The parts of one `authorized_keys` line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -755,25 +799,73 @@ mod authorized_keys_tests {
         let _ = fs::remove_dir_all(&dir);
         let nv = Nvdata::new(&dir);
         let original = format!("# my keys\n\nfrom=\"10.0.0.1\",no-pty   {RSA}\n");
-        fs::create_dir_all(dir.join("root/.ssh")).unwrap();
-        fs::write(dir.join("root/.ssh/authorized_keys"), &original).unwrap();
+        let file = dir.join(AUTHORIZED_KEYS_FILE);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, &original).unwrap();
 
         assert!(nv.add_authorized_key(ED).unwrap());
         assert!(!nv.add_authorized_key(ED).unwrap(), "a duplicate is not added");
-        let text = fs::read_to_string(dir.join("root/.ssh/authorized_keys")).unwrap();
-        assert_eq!(text, format!("{original}{ED}\n"));
+        assert_eq!(fs::read_to_string(&file).unwrap(), format!("{original}{ED}\n"));
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mode = |p: &str| fs::metadata(dir.join(p)).unwrap().permissions().mode() & 0o777;
-            assert_eq!(mode("root/.ssh"), 0o700);
-            assert_eq!(mode("root/.ssh/authorized_keys"), 0o600);
+            assert_eq!(fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
         }
 
         let blob = parse_authorized_key(ED).unwrap().blob;
         assert!(nv.remove_authorized_key(blob).unwrap());
         assert!(!nv.remove_authorized_key(blob).unwrap());
-        assert_eq!(fs::read_to_string(dir.join("root/.ssh/authorized_keys")).unwrap(), original);
+        assert_eq!(fs::read_to_string(&file).unwrap(), original);
+        // The stock firmware's file is never written.
+        assert!(!dir.join(STOCK_AUTHORIZED_KEYS_FILE).exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The keys of the stock firmware's file move once, without the stock
+    /// firmware's keys, and the stock file stays as it was.
+    #[test]
+    fn stock_file_keys_move_once_without_the_stock_keys() {
+        let dir = std::env::temp_dir().join(format!("dphone-ak-move-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let nv = Nvdata::new(&dir);
+        let (new, stock) = (dir.join(AUTHORIZED_KEYS_FILE), dir.join(STOCK_AUTHORIZED_KEYS_FILE));
+        fs::create_dir_all(stock.parent().unwrap()).unwrap();
+
+        // No stock file: nothing to move, and no file is created.
+        assert_eq!(nv.move_stock_authorized_keys().unwrap(), None);
+        assert!(!new.exists());
+
+        // The stock file as a phone that has run both firmwares has it: a key
+        // added under an earlier Open DPhone, the stock firmware's keys (one
+        // with options), and a comment, the last line without a newline.
+        let [release, dev1, dev2, dev3] = STOCK_FIRMWARE_KEYS;
+        let stock_text = format!(
+            "ssh-dss {release} stock\n{ED}\n# mine\nno-pty ssh-dss {dev1} dev\nssh-rsa {dev2} dev\nssh-rsa {dev3} dev\n{RSA}"
+        );
+        fs::write(&stock, &stock_text).unwrap();
+        assert_eq!(nv.move_stock_authorized_keys().unwrap(), Some(2));
+        assert_eq!(fs::read_to_string(&new).unwrap(), format!("{ED}\n# mine\n{RSA}\n"));
+        assert_eq!(nv.authorized_keys().unwrap(), [ED, RSA]);
+        assert_eq!(fs::read_to_string(&stock).unwrap(), stock_text, "the stock file is not changed");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&new).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+
+        // Once only: the new file exists, so the stock file is not read again,
+        // even after every key was removed.
+        nv.remove_authorized_key(parse_authorized_key(ED).unwrap().blob).unwrap();
+        nv.remove_authorized_key(parse_authorized_key(RSA).unwrap().blob).unwrap();
+        assert_eq!(nv.move_stock_authorized_keys().unwrap(), None);
+        assert!(nv.authorized_keys().unwrap().is_empty());
+
+        // A stock file holding only the stock firmware's keys moves nothing,
+        // and leaves an empty file, so the move is not attempted again.
+        fs::remove_file(&new).unwrap();
+        fs::write(&stock, format!("ssh-dss {release} root@stock\n")).unwrap();
+        assert_eq!(nv.move_stock_authorized_keys().unwrap(), Some(0));
+        assert_eq!(fs::read_to_string(&new).unwrap(), "");
         let _ = fs::remove_dir_all(&dir);
     }
 }

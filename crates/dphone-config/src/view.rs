@@ -608,7 +608,7 @@ impl Config {
 
     /// SSH public keys supplied by the provisioning server, in
     /// `authorized_keys` line form.  They are accepted in addition to the
-    /// keys added on the phone (`/nvdata/root/.ssh/authorized_keys`) and
+    /// keys added on the phone (`/nvdata/open/authorized_keys`) and
     /// disappear when the server stops sending them.  Entries that are not
     /// plain public-key lines are left out.
     pub fn provisioned_ssh_keys(&self) -> Vec<String> {

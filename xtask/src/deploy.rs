@@ -8,7 +8,7 @@
 //!
 //! This uses the workstation's `scp` and `ssh` against the phone's built-in
 //! SSH server; the phone must have your key in
-//! `/nvdata/root/.ssh/authorized_keys`.
+//! `/nvdata/open/authorized_keys`.
 
 use std::path::PathBuf;
 use std::process::Command;

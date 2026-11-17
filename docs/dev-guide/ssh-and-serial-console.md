@@ -10,7 +10,7 @@ The SSH server accepts public keys only; the login name is `root`.  A login requ
 
 On the **System** page, the **SSH** card has the **Enabled** switch, which takes effect immediately, and the list of keys.  To add a key, paste the public key (the contents of a `.pub` file, e.g., `~/.ssh/id_ed25519.pub`) into the box, or choose the file, and click **Add Key**.
 
-The keys are stored in `/nvdata/root/.ssh/authorized_keys`, the file that the stock firmware's SSH server reads.
+The keys are stored in `/nvdata/open/authorized_keys`.  At startup, if that file does not exist, Open DPhone creates the file from the keys in `/nvdata/root/.ssh/authorized_keys`, the stock firmware's key file, leaving out the Digium keys that the stock firmware writes there at every boot.
 
 ### PBX configuration
 

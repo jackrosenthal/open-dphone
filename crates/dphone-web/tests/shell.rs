@@ -432,7 +432,7 @@ async fn session_cap_ownership_and_cleanup() {
 async fn ssh_keys() {
     let p = phone(false).await;
     let l = login(p.addr).await;
-    let file = p.dir.join("nvdata/root/.ssh/authorized_keys");
+    let file = p.dir.join("nvdata/open/authorized_keys");
     let existing = "# kept as written\n\nfrom=\"10.0.0.0/8\",no-pty   ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQC7 options kept\n";
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
     std::fs::write(&file, existing).unwrap();
@@ -456,8 +456,9 @@ async fn ssh_keys() {
     {
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
-        assert_eq!(std::fs::metadata(file.parent().unwrap()).unwrap().permissions().mode() & 0o777, 0o700);
     }
+    // The stock firmware's file is never written.
+    assert!(!p.dir.join("nvdata/root/.ssh/authorized_keys").exists());
 
     // Duplicate, malformed, wrong type, and private keys are refused, and
     // the file is unchanged.

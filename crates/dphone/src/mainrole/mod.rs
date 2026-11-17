@@ -203,6 +203,21 @@ fn resolve_model(opts: &Options) -> Model {
     Model::D60
 }
 
+/// Move the keys of the stock firmware's SSH key file to
+/// `/nvdata/open/authorized_keys`, without Digium's keys, if that has not
+/// been done (`Nvdata::move_stock_authorized_keys`).  Runs before the SSH
+/// server and the web UI read the keys.
+fn move_stock_authorized_keys(paths: &Paths) {
+    use dphone_config::nvdata::{AUTHORIZED_KEYS_FILE, STOCK_AUTHORIZED_KEYS_FILE};
+    match dphone_config::Nvdata::new(&paths.nvdata).move_stock_authorized_keys() {
+        Ok(Some(n)) => info!(
+            "ssh: moved {n} key(s) from {STOCK_AUTHORIZED_KEYS_FILE} to {AUTHORIZED_KEYS_FILE}, without the stock firmware's keys"
+        ),
+        Ok(None) => {}
+        Err(e) => warn!("ssh: cannot move the keys of {STOCK_AUTHORIZED_KEYS_FILE} to {AUTHORIZED_KEYS_FILE}: {e}"),
+    }
+}
+
 async fn run_async(opts: Options) -> i32 {
     let paths = Paths::new(
         opts.nvdata.clone().unwrap_or_else(|| PathBuf::from(crate::paths::NVDATA)),
@@ -249,6 +264,7 @@ async fn run_async(opts: Options) -> i32 {
             warn!("mkdir {}: {e}", dir.display());
         }
     }
+    move_stock_authorized_keys(&ctx.paths);
 
     // 1. Diagnostics socket, so `dphone log` works from the first moment.
     crate::diag::builtin::register(&ctx);
