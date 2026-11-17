@@ -87,7 +87,7 @@ export const AppSchema: GenMessage<App> = /*@__PURE__*/
   messageDesc(file_dphone_v1_apps, 0);
 
 /**
- * The built-in apps that are switched off (one of Open DPhone's own
+ * The built-in apps that are switched off (one of Open Desk Phone's own
  * settings).
  *
  * @generated from message dphone.v1.DisabledApps

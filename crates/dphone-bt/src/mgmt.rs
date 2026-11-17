@@ -340,12 +340,12 @@ mod tests {
 
     #[test]
     fn local_name_is_padded_and_terminated() {
-        let p = set_local_name(0, "Open DPhone D65");
+        let p = set_local_name(0, "Open Desk Phone D65");
         assert_eq!(p.len(), 6 + 260);
-        assert_eq!(&p[6..21], b"Open DPhone D65");
-        assert_eq!(p[21], 0);
+        assert_eq!(&p[6..25], b"Open Desk Phone D65");
+        assert_eq!(p[25], 0);
         // Short name: at most ten bytes and a NUL.
-        assert_eq!(&p[6 + 249..6 + 259], b"Open DPhon");
+        assert_eq!(&p[6 + 249..6 + 259], b"Open Desk ");
         assert_eq!(p[6 + 259], 0);
     }
 

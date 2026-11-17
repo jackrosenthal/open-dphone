@@ -23,7 +23,7 @@ use dphone_update::ramboot::{self, Options, Plan};
 
 use crate::sys;
 
-/// Start the kernel, devicetree, and root file system of an Open DPhone
+/// Start the kernel, devicetree, and root file system of an Open Desk Phone
 /// image from RAM
 ///
 /// Nothing is written to the kernel or root partitions or to 'ctrl': a

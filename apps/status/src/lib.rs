@@ -252,7 +252,7 @@ impl App for Status {
 dphone_app_sdk::export_app! {
     app: Status,
     name: "status",
-    id: "org.opendphone.status",
+    id: "org.opendeskphone.status",
     display_name: "Status",
     description: "Set your presence status",
     phone_icon: Some(Icon::AppStatus),

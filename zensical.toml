@@ -1,4 +1,4 @@
-# The Open DPhone documentation site, built with Zensical
+# The Open Desk Phone documentation site, built with Zensical
 # (https://zensical.org/docs/).  The pages are in docs/.
 #
 #   zensical build --strict    # writes site/; fails on a broken link
@@ -7,10 +7,10 @@
 # The configuration is written for Zensical 0.1.1.
 
 [project]
-site_name = "Open DPhone"
+site_name = "Open Desk Phone"
 site_description = "Open firmware for the Digium D-series desk phones, and Open DPMA, the module for Asterisk that provisions them."
-repo_url = "https://github.com/jackrosenthal/open-dphone"
-repo_name = "jackrosenthal/open-dphone"
+repo_url = "https://github.com/jackrosenthal/opendeskphone"
+repo_name = "jackrosenthal/opendeskphone"
 docs_dir = "docs"
 site_dir = "site"
 extra_css = ["assets/site.css"]
@@ -26,7 +26,7 @@ nav = [
     "open-dpma/index.md",
     "open-dpma/installation.md",
     "open-dpma/configuration.md",
-    "open-dpma/open-dphone-options.md",
+    "open-dpma/opendeskphone-options.md",
     "open-dpma/administration.md",
   ] },
   { "App SDK" = [

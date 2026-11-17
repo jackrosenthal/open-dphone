@@ -1,7 +1,7 @@
 //! The user's theme, kept on the PBX: it follows the user to a phone that
 //! was reset, and to another phone of theirs.
 //!
-//! The theme is a setting of the phone (`theme` in Open DPhone's settings
+//! The theme is a setting of the phone (`theme` in Open Desk Phone's settings
 //! file).  The PBX keeps a copy for the phone's user in its store of app
 //! data (Open DPMA), which the apps use through `storage` and the
 //! firmware reaches here through the same [`PbxStore`]: the user's key

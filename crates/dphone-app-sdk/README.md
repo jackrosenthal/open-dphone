@@ -1,6 +1,6 @@
 # dphone-app-sdk
 
-The SDK for writing apps for [Open DPhone](https://github.com/jackrosenthal/open-dphone), the open firmware for Digium D-series desk phones.
+The SDK for writing apps for [Open Desk Phone](https://github.com/jackrosenthal/opendeskphone), the open firmware for Digium D-series desk phones.
 
 An app is a WebAssembly component.  The phone calls it once when it starts and then once for every event (a key, a softkey, a timer, a reply from the PBX), and the app answers by calling the phone: it builds its screen from widgets, sets softkeys, starts timers, reads and writes its keys and values, and sends requests to the PBX.  Everything that takes time returns an id at once and delivers its result later as an event, so an app never blocks the phone.
 
@@ -153,7 +153,7 @@ What an app changes in its window while it handles one event appears together, w
 - `PbxPrivate`: on the PBX, one set for each user.  The user is who the phone is provisioned for, so a user's keys are the same on every phone that user has, and are there again after a phone is reset: how far a user has come in a game.
 - `PbxShared`: on the PBX, one set for the app's copies on all phones: a game's table of best times.
 
-No other app can reach any of them.  The PBX locations need a PBX with Open DPhone's module for Asterisk (Open DPMA); there is nothing to configure in the app or on the phone.  A PBX that serves several tenants keeps a store for each, and a phone reaches only its tenant's.
+No other app can reach any of them.  The PBX locations need a PBX with Open Desk Phone's module for Asterisk (Open DPMA); there is nothing to configure in the app or on the phone.  A PBX that serves several tenants keeps a store for each, and a phone reaches only its tenant's.
 
 | | `Local` | `PbxPrivate` and `PbxShared` |
 | --- | --- | --- |

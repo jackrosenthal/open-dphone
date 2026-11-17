@@ -300,7 +300,7 @@ impl App for Queues {
 dphone_app_sdk::export_app! {
     app: Queues,
     name: "queues",
-    id: "org.opendphone.queues",
+    id: "org.opendeskphone.queues",
     display_name: "Queues",
     description: "Log in to call queues and see how they are doing",
     phone_icon: Some(Icon::AppQueues),

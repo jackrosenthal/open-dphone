@@ -178,7 +178,7 @@ fn add_app_names(list: &mut Vec<Vec<u8>>, value: &[u8]) -> Res {
     Ok(())
 }
 
-/// The name of a built-in theme of Open DPhone, in lower case, as the
+/// The name of a built-in theme of Open Desk Phone, in lower case, as the
 /// firmware reads names: 1 to 32 letters, digits, `_`, and `-`.  Which
 /// names there are is the firmware's to say; a phone shows the default
 /// theme for a name that the phone does not have.

@@ -130,7 +130,7 @@ fn https_servers_are_checked_as_the_trust_policy_says() {
     // and the issuer twice.
     let mut bundle = b"# base bundle\n\nSome other CA\n".to_vec();
     bundle.extend_from_slice(OTHER_CA);
-    bundle.extend_from_slice(b"\nOpen DPhone test CA\n");
+    bundle.extend_from_slice(b"\nOpen Desk Phone test CA\n");
     bundle.extend_from_slice(CA);
     bundle.extend_from_slice(b"\n");
     bundle.extend_from_slice(CA);

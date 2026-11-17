@@ -972,7 +972,7 @@ impl App for Sparrow {
 dphone_app_sdk::export_app! {
     app: Sparrow,
     name: "desksparrow",
-    id: "org.opendphone.desksparrow",
+    id: "org.opendeskphone.desksparrow",
     display_name: "Desk Sparrow",
     description: "A one-key flying game",
     phone_icon: Some(Icon::AppDesksparrow),

@@ -13,20 +13,20 @@ A record in the `ctrl` partition selects the bank that the boot loader starts; t
 
 ## Installation from stock firmware
 
-To install Open DPhone on a phone running stock firmware, follow [Installation](../index.md#installation).  Stock firmware writes the image to the inactive bank and stays in the other bank.
+To install Open Desk Phone on a phone running stock firmware, follow [Installation](../index.md#installation).  Stock firmware writes the image to the inactive bank and stays in the other bank.
 
 !!! warning "The first boot from stock firmware has no trial"
 
-    Stock firmware records no trial boot, so nothing returns the phone to stock firmware if the installed image fails to start.  From stock firmware, install only released images.  Test development builds from a working Open DPhone installation with [`dphone ramboot`](test-builds.md#ram-boot).
+    Stock firmware records no trial boot, so nothing returns the phone to stock firmware if the installed image fails to start.  From stock firmware, install only released images.  Test development builds from a working Open Desk Phone installation with [`dphone ramboot`](test-builds.md#ram-boot).
 
 ## Provisioned firmware
 
 A phone provisioned by a DPMA server installs the firmware that the PBX offers, as stock firmware does, so the PBX's image replaces a test image at the next provisioning.  To make the phone ignore the PBX's firmware entries, either:
 
 - on the **System** page of the web interface, turn on **Ignore DPMA firmware updates** in the **Firmware** card, or
-- with [Open DPMA](../open-dpma/index.md), set [`dphone_ignore_provisioned_firmware=yes`](../open-dpma/open-dphone-options.md#dphone_ignore_provisioned_firmware) in the phone section.
+- with [Open DPMA](../open-dpma/index.md), set [`dphone_ignore_provisioned_firmware=yes`](../open-dpma/opendeskphone-options.md#dphone_ignore_provisioned_firmware) in the phone section.
 
-## Installation from Open DPhone
+## Installation from Open Desk Phone
 
 ### Web interface
 
@@ -82,7 +82,7 @@ The command rejects an image built for another model.  One update runs at a time
 
 ## Trial boot
 
-An Open DPhone image installed by `dphone update install` or the web interface starts on trial.  Before selecting the new bank, the updater writes a trial record, `/nvdata/open/trial`, which is removed only after the new image proves healthy.
+An Open Desk Phone image installed by `dphone update install` or the web interface starts on trial.  Before selecting the new bank, the updater writes a trial record, `/nvdata/open/trial`, which is removed only after the new image proves healthy.
 
 - **Each boot of the new bank counts.**  The early-boot stage in the new kernel image counts the boot before the root file system is needed.  A kernel panic, a watchdog reset, or a crash of the init role uses up one boot.  After three boots without confirmation, the stage selects the previous bank and restarts the phone.
 - **An unusable root file system ends the trial at once.**  If the root file system cannot be mounted or has no init program, the stage returns to the previous bank without using up the remaining boots.
@@ -95,7 +95,7 @@ During a trial, the **Firmware** card shows the boots left, with **Keep** to con
 
     If a kernel stops before the early-boot stage runs, the boot loader starts the same kernel at every power-on, and the phone stays down until the flash is rewritten through a JTAG adapter.  Always [boot an image with a changed kernel from RAM](test-builds.md#ram-boot) before installing the image.
 
-A stock firmware image installed from Open DPhone gets no trial, because stock firmware does not count trial boots.
+A stock firmware image installed from Open Desk Phone gets no trial, because stock firmware does not count trial boots.
 
 ## Bank management
 
@@ -148,4 +148,4 @@ dphone update abandon
 - If stock firmware is still in the other bank, [switch to that bank](#dphone-update-switch-bank).
 - Otherwise, install a stock firmware image for the phone's model through the web interface, which asks for confirmation, or with `dphone update install`.
 
-Stock firmware has no command to select the other bank, so returning from stock firmware to Open DPhone takes another [installation from stock firmware](#installation-from-stock-firmware), even with an Open DPhone image in the other bank.
+Stock firmware has no command to select the other bank, so returning from stock firmware to Open Desk Phone takes another [installation from stock firmware](#installation-from-stock-firmware), even with an Open Desk Phone image in the other bank.

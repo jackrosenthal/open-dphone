@@ -902,7 +902,7 @@ fn main() -> std::io::Result<()> {
     rt.block_on(async move {
         let bound = server.bind().await?;
         eprintln!(
-            "Open DPhone web simulator ({model}): http://{}/{}  (admin / 789), nvdata {}",
+            "Open Desk Phone web simulator ({model}): http://{}/{}  (admin / 789), nvdata {}",
             bound.http_addr().map(|a| a.to_string()).unwrap_or_default(),
             bound.https_addr().map(|a| format!("  https://{a}/")).unwrap_or_default(),
             nv_root.display(),

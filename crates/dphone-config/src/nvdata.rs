@@ -688,13 +688,13 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     result
 }
 
-/// Open DPhone's SSH key file (relative to the nvdata root).  The stock
+/// Open Desk Phone's SSH key file (relative to the nvdata root).  The stock
 /// firmware never writes `open/`.
 pub const AUTHORIZED_KEYS_FILE: &str = "open/authorized_keys";
 
 /// The stock firmware's SSH key file (relative to the nvdata root).  At
 /// every boot, the stock firmware overwrites the file with the release key
-/// or the dev keys of [`STOCK_FIRMWARE_KEYS`].  Open DPhone reads the file
+/// or the dev keys of [`STOCK_FIRMWARE_KEYS`].  Open Desk Phone reads the file
 /// only for [`Nvdata::move_stock_authorized_keys`].
 pub const STOCK_AUTHORIZED_KEYS_FILE: &str = "root/.ssh/authorized_keys";
 
@@ -836,8 +836,8 @@ mod authorized_keys_tests {
         assert!(!new.exists());
 
         // The stock file as a phone that has run both firmwares has it: a key
-        // added under an earlier Open DPhone, the stock firmware's keys (one
-        // with options), and a comment, the last line without a newline.
+        // added under an earlier Open Desk Phone, the stock firmware's keys
+        // (one with options), and a comment, the last line without a newline.
         let [release, dev1, dev2, dev3] = STOCK_FIRMWARE_KEYS;
         let stock_text = format!(
             "ssh-dss {release} stock\n{ED}\n# mine\nno-pty ssh-dss {dev1} dev\nssh-rsa {dev2} dev\nssh-rsa {dev3} dev\n{RSA}"

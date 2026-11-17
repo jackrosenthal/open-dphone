@@ -1,4 +1,4 @@
-// The manifest of an Open DPhone app.
+// The manifest of an Open Desk Phone app.
 //
 // An app is one WebAssembly file.  What the phone has to know about it
 // before running it (its name, what to call it on screen, its kind, its

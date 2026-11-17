@@ -114,10 +114,10 @@ fn fnv(data: &[u8]) -> u64 {
 }
 
 const PLACEHOLDER: &str = r#"<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Open DPhone</title>
+<html lang="en"><head><meta charset="utf-8"><title>Open Desk Phone</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:4rem auto;padding:0 1rem;color:#1f2937}</style>
-</head><body><h1>Open DPhone</h1>
+</head><body><h1>Open Desk Phone</h1>
 <p>This build does not include the web interface (it was built without
 <code>web/dist</code>).  The Connect RPC services are available.</p>
 </body></html>

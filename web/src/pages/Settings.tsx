@@ -267,7 +267,7 @@ function ThemeSelect() {
   );
 }
 
-/// True when the value of one of Open DPhone's own settings is the
+/// True when the value of one of Open Desk Phone's own settings is the
 /// provisioning server's: its control is then disabled.
 export function viaDpma(s: { locked: boolean; source: SettingSource } | undefined): boolean {
   return !!s && (s.locked || s.source === SettingSource.PROVISIONED);

@@ -16,7 +16,7 @@ use crate::view::{BlfItem, Config, parse_blf_items};
 use crate::xml::{Element, Node};
 
 /// The merge layers, in merge order.  The first ten are the stock layers in
-/// the stock order.  Settings only Open DPhone has are not a layer: see
+/// the stock order.  Settings only Open Desk Phone has are not a layer: see
 /// [`crate::settings`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Layer {
@@ -85,8 +85,9 @@ impl Layer {
 /// values are carried into the settings file once, then it is removed.
 const LEGACY_OPEN_LAYER: &str = "open/config.xml";
 /// Prefixes the generic set path refuses: the retired `open_*` IDs, and the
-/// `dphone_*` IDs a provisioning server uses for Open DPhone's own settings.
-/// Locally those are changed in the settings file, never in `ui-config.xml`.
+/// `dphone_*` IDs a provisioning server uses for Open Desk Phone's own
+/// settings.  Locally those are changed in the settings file, never in
+/// `ui-config.xml`.
 const NOT_STOCK_PREFIXES: [&str; 2] = ["open_", "dphone_"];
 /// The factory default web password (stock ships `admin` / `789` in its
 /// default digest file and as the base `login_password`).
@@ -101,7 +102,7 @@ pub enum ConfigError {
     Frozen(String),
     /// The layer is not one this crate writes.
     ReadOnlyLayer(Layer),
-    /// Not a stock setting ID.  Open DPhone's own settings are changed with
+    /// Not a stock setting ID.  Open Desk Phone's own settings are changed with
     /// [`ConfigStore::update_dphone_settings`].
     NotAStockSetting(String),
     /// More accounts than the model allows.
@@ -115,7 +116,7 @@ impl fmt::Display for ConfigError {
             ConfigError::Parse(e) => write!(f, "{e}"),
             ConfigError::Frozen(id) => write!(f, "setting {id} is frozen and cannot be changed"),
             ConfigError::NotAStockSetting(id) => {
-                write!(f, "{id} is not a stock setting; use the Open DPhone settings instead")
+                write!(f, "{id} is not a stock setting; use the Open Desk Phone settings instead")
             }
             ConfigError::ReadOnlyLayer(l) => write!(f, "layer {l:?} is read-only"),
             ConfigError::TooManyAccounts { max, given } => {
@@ -299,15 +300,15 @@ impl ConfigStore {
         Ok(keys)
     }
 
-    // ---- Open DPhone's own settings ----------------------------------------
+    // ---- Open Desk Phone's own settings ------------------------------------
 
-    /// The settings only Open DPhone has (`/nvdata/dphone_settings.txtpb`).
+    /// The settings only Open Desk Phone has (`/nvdata/dphone_settings.txtpb`).
     /// The same value is on every generation: [`Config::dphone_settings`].
     pub fn dphone_settings(&self) -> &DphoneSettings {
         &self.settings.settings
     }
 
-    /// Change Open DPhone's own settings: `change` edits the message (set a
+    /// Change Open Desk Phone's own settings: `change` edits the message (set a
     /// field to `Some(..)`, or to `None` to return it to its default), the
     /// file is written atomically, and a new generation is returned.  Fields
     /// in the file that this firmware does not know are kept.  Nothing is
@@ -383,7 +384,7 @@ impl ConfigStore {
     /// Change stock settings locally (phone menu, web UI, `dphone config
     /// set`).  Each is saved to the UI layer, as on stock, and the
     /// configuration is re-merged.  Fails without saving anything if one of
-    /// them is frozen by an earlier layer.  Open DPhone's own settings are
+    /// them is frozen by an earlier layer.  Open Desk Phone's own settings are
     /// not setting IDs; see [`ConfigStore::update_dphone_settings`].
     pub fn set_many(&mut self, changes: &[(&str, &str)]) -> Result<Arc<Config>, ConfigError> {
         for (id, _) in changes {

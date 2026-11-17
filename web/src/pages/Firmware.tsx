@@ -111,7 +111,7 @@ export function FirmwareCard() {
         {fw.trial === TrialBoot.ROLLED_BACK && <Alert tone="red" title="The last firmware update was rolled back.">{fw.rollbackReason}</Alert>}
         <KeyValue
           rows={[
-            ["Version", `Open DPhone ${fw.runningVersion}`],
+            ["Version", `Open Desk Phone ${fw.runningVersion}`],
             ["Active bank", fw.runningBank !== Bank.UNSPECIFIED ? label(bankNames, fw.runningBank, Bank[fw.runningBank]) : ""],
           ]}
         />
@@ -125,7 +125,7 @@ export function FirmwareCard() {
           <div className="space-y-4 border-t border-slate-100 pt-4 dark:border-slate-800">
             <KeyValue
               rows={[
-                ["Upload", `${up.isStock ? "Digium" : "Open DPhone"} ${version(up.version)}`],
+                ["Upload", `${up.isStock ? "Digium" : "Open Desk Phone"} ${version(up.version)}`],
                 ["Model", modelName(up.model)],
                 ["Size", bytes(up.size)],
               ]}

@@ -489,7 +489,7 @@ impl App for Contacts {
 dphone_app_sdk::export_app! {
     app: Contacts,
     name: "contacts",
-    id: "org.opendphone.contacts",
+    id: "org.opendeskphone.contacts",
     display_name: "Contacts",
     description: "Browse, search, and call your contacts",
     phone_icon: Some(Icon::AppContacts),

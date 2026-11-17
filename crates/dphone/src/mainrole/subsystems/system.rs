@@ -141,7 +141,7 @@ async fn config_domain(ctx: Context, config: Option<SharedConfig>, hub: ConfigHu
                 }
             }
             Command::SetTheme { name } => {
-                // One of Open DPhone's own settings: its file is not one
+                // One of Open Desk Phone's own settings: its file is not one
                 // of stock's, so a read-only image saves it too.
                 let locked = config.lock().unwrap().config().theme().locked;
                 if locked {
@@ -361,7 +361,7 @@ pub(super) fn install(
 ) -> Result<Reply, CommandError> {
     let stock_refusal = |version: &str| {
         CommandError::Denied(format!(
-            "{version} is stock firmware; installing it replaces Open DPhone and must be asked for explicitly"
+            "{version} is stock firmware; installing it replaces Open Desk Phone and must be asked for explicitly"
         ))
     };
     if path == STAGED_PATH {

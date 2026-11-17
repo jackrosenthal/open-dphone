@@ -1,6 +1,6 @@
 [package]
 name = "dphone-net"
-description = "Open DPhone networking: rtnetlink, switch topology, DHCP, DNS, SNTP, LLDP-MED, and mDNS"
+description = "Open Desk Phone networking: rtnetlink, switch topology, DHCP, DNS, SNTP, LLDP-MED, and mDNS"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -54,7 +54,7 @@ message SetSettingsResponse {
   uint64 generation = 1;
 }
 
-// Where the value of one of Open DPhone's own settings came from.
+// Where the value of one of Open Desk Phone's own settings came from.
 enum SettingSource {
   SETTING_SOURCE_UNSPECIFIED = 0;
   SETTING_SOURCE_DEFAULT = 1;
@@ -96,7 +96,7 @@ message SetIdleSoftkeysResponse {
   IdleSoftkeys idle_softkeys = 1;
 }
 
-// The effective value of one of Open DPhone's own on/off settings.
+// The effective value of one of Open Desk Phone's own on/off settings.
 message BoolSetting {
   bool value = 1;
   SettingSource source = 2;

@@ -1,61 +1,61 @@
 ---
-title: Open DPhone
+title: Open Desk Phone
 description: Open firmware for the Digium D-series desk phones, and Open DPMA, the module for Asterisk that provisions them.
 ---
 
-# Open DPhone
+# Open Desk Phone
 
-Open DPhone is open-source firmware for the Digium D40, D45, D50, D60, D62, D65, and D70 desk phones: a mainline Linux kernel and a phone application written in Rust.
+Open Desk Phone is open-source firmware for the Digium D40, D45, D50, D60, D62, D65, and D70 desk phones: a mainline Linux kernel and a phone application written in Rust.
 
 <link rel="stylesheet" href="assets/phones/viewer.css">
 
 <div class="phone-show">
   <span class="phone-viewer phone-viewer--d40">
-    <img class="phone-viewer__still" src="assets/phones/d40/phone.avif" width="822" height="647" alt="A Digium D40 desk phone running Open DPhone">
+    <img class="phone-viewer__still" src="assets/phones/d40/phone.avif" width="822" height="647" alt="A Digium D40 desk phone running Open Desk Phone">
     <img class="phone-viewer__screen" style="--t: 3s" src="assets/phones/d40/screens/02-apps.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 6s" src="assets/phones/d40/screens/03-box-pusher.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 9s" src="assets/phones/d40/screens/04-call-incoming.avif" alt="">
   </span>
   <span class="phone-viewer phone-viewer--d50">
-    <img class="phone-viewer__still" src="assets/phones/d50/phone.avif" width="822" height="647" alt="A Digium D50 desk phone running Open DPhone">
+    <img class="phone-viewer__still" src="assets/phones/d50/phone.avif" width="822" height="647" alt="A Digium D50 desk phone running Open Desk Phone">
     <img class="phone-viewer__screen" style="--t: 15s" src="assets/phones/d50/screens/02-voicemail.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 18s" src="assets/phones/d50/screens/03-light-up.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 21s" src="assets/phones/d50/screens/04-call-conference.avif" alt="">
   </span>
   <span class="phone-viewer phone-viewer--d60">
-    <img class="phone-viewer__still" src="assets/phones/d60/phone.avif" width="822" height="647" alt="A Digium D60 desk phone running Open DPhone">
+    <img class="phone-viewer__still" src="assets/phones/d60/phone.avif" width="822" height="647" alt="A Digium D60 desk phone running Open Desk Phone">
     <img class="phone-viewer__screen" style="--t: 27s" src="assets/phones/d60/screens/02-apps-nebula.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 30s" src="assets/phones/d60/screens/03-desk-sparrow.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 33s" src="assets/phones/d60/screens/04-call-two-prism.avif" alt="">
   </span>
   <span class="phone-viewer phone-viewer--d65">
-    <img class="phone-viewer__still" src="assets/phones/d65/phone.avif" width="822" height="647" alt="A Digium D65 desk phone running Open DPhone">
+    <img class="phone-viewer__still" src="assets/phones/d65/phone.avif" width="822" height="647" alt="A Digium D65 desk phone running Open Desk Phone">
     <img class="phone-viewer__screen" style="--t: 39s" src="assets/phones/d65/screens/02-idle-sunrise.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 42s" src="assets/phones/d65/screens/03-apps-glacier.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 45s" src="assets/phones/d65/screens/04-call-active-ember.avif" alt="">
   </span>
   <span class="phone-viewer phone-viewer--d70">
-    <img class="phone-viewer__still" src="assets/phones/d70/phone.avif" width="822" height="647" alt="A Digium D70 desk phone running Open DPhone">
+    <img class="phone-viewer__still" src="assets/phones/d70/phone.avif" width="822" height="647" alt="A Digium D70 desk phone running Open Desk Phone">
     <img class="phone-viewer__screen" style="--t: 51s" src="assets/phones/d70/screens/02-apps.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 54s" src="assets/phones/d70/screens/03-desk-sparrow.avif" alt="">
     <img class="phone-viewer__screen" style="--t: 57s" src="assets/phones/d70/screens/04-call-incoming.avif" alt="">
   </span>
 </div>
 
-Open DPhone is an independent project and is not affiliated with or endorsed by Digium or Sangoma.
+Open Desk Phone is an independent project and is not affiliated with or endorsed by Digium or Sangoma.
 
 ## Features
 
-- **Apps.**  Apps are WebAssembly components that target the phone's [app interface](app-sdk/index.md).  Each app runs in a sandbox with only the phone interfaces that the app's code calls.  With Open DPMA, apps can store data on the PBX that every phone shares.  The stock firmware's JavaScript apps do not run on Open DPhone.
+- **Apps.**  Apps are WebAssembly components that target the phone's [app interface](app-sdk/index.md).  Each app runs in a sandbox with only the phone interfaces that the app's code calls.  With Open DPMA, apps can store data on the PBX that every phone shares.  The stock firmware's JavaScript apps do not run on Open Desk Phone.
 - **Themes.**  On the D60, D62, and D65, a theme pairs a wallpaper with a color palette for every screen.  With Open DPMA, a user's theme follows the user to other phones and survives a factory reset.
 - **Web interface.**  Beyond the stock settings, the web interface manages calls, Bluetooth devices, and alarms, and mirrors the phone's screen.
 - **Shell access.**  A root shell is available over SSH, on a serial console on the EHS port, and in the web interface.
 
 ## Installation
 
-Download the image for the phone's model, `<version>_<model>_firmware.eff` (e.g., `3_0_0_D65_firmware.eff`), and the `SHA256SUMS` file from the [releases page](https://github.com/jackrosenthal/open-dphone/releases).  A phone rejects an image built for another model.
+Download the image for the phone's model, `<version>_<model>_firmware.eff` (e.g., `3_0_0_D65_firmware.eff`), and the `SHA256SUMS` file from the [releases page](https://github.com/jackrosenthal/opendeskphone/releases).  A phone rejects an image built for another model.
 
-The images use the stock firmware's image format, so stock firmware installs Open DPhone as a firmware update, from the phone's web interface or through DPMA provisioning.
+The images use the stock firmware's image format, so stock firmware installs Open Desk Phone as a firmware update, from the phone's web interface or through DPMA provisioning.
 
 ### Web interface
 
@@ -67,7 +67,7 @@ If the DPMA server provisions firmware for the phone's model, the firmware page 
 
 ### DPMA provisioning
 
-Add a firmware entry for the image to the PBX's DPMA configuration, with Open DPMA or the original `res_digium_phone`; see [Migration between stock firmware and Open DPhone](open-dpma/administration.md#firmware-migration).  The phones install the image at the next configuration fetch.
+Add a firmware entry for the image to the PBX's DPMA configuration, with Open DPMA or the original `res_digium_phone`; see [Migration between stock firmware and Open Desk Phone](open-dpma/administration.md#firmware-migration).  The phones install the image at the next configuration fetch.
 
 ### After installation
 
@@ -77,4 +77,4 @@ To return to stock firmware, upload a stock firmware image on the **System** pag
 
 ## Open DPMA
 
-While Open DPhone's firmware is compatible with the original `res_digium_phone`, we also recommend you migrate to [Open DPMA](open-dpma/index.md), which not only fixes several security issues and bugs with the original DPMA, but also adds additional configuration options for Open DPhone phones.
+While Open Desk Phone's firmware is compatible with the original `res_digium_phone`, we also recommend you migrate to [Open DPMA](open-dpma/index.md), which not only fixes several security issues and bugs with the original DPMA, but also adds additional configuration options for Open Desk Phone phones.

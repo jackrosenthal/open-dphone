@@ -1,4 +1,4 @@
-//! Settings that only Open DPhone has: `/nvdata/dphone_settings.txtpb`.
+//! Settings that only Open Desk Phone has: `/nvdata/dphone_settings.txtpb`.
 //!
 //! The file is a `dphone.settings.v1.DphoneSettings` message (see
 //! `proto/dphone/settings/v1/settings.proto`) in protobuf text format, read
@@ -37,7 +37,7 @@ pub const SETTINGS_FILE_BAD: &str = "dphone_settings.txtpb.bad";
 const KNOWN_FIELDS: &[&str] =
     &["ssh_enabled", "ignore_provisioned_firmware", "serial_console", "metrics_enabled", "idle_softkeys", "disabled_apps", "theme", "theme_sync"];
 
-const HEADER: &str = "# Open DPhone settings (dphone.settings.v1.DphoneSettings, protobuf text format).\n\
+const HEADER: &str = "# Open Desk Phone settings (dphone.settings.v1.DphoneSettings, protobuf text format).\n\
                       # A field that is absent takes its default.\n";
 
 /// Where an effective setting value came from.

@@ -11,8 +11,8 @@ that crash Asterisk.
 Open DPMA is an independent rewrite, not made or endorsed by Digium or
 Sangoma.
 
-It is part of Open DPhone, the open firmware for the Digium D-series
-phones, and has the firmware's version: each release of Open DPhone has
+It is part of Open Desk Phone, the open firmware for the Digium D-series
+phones, and has the firmware's version: each release of Open Desk Phone has
 the firmware images and the modules.
 
 ## Installation
@@ -25,15 +25,15 @@ RHEL 9).  For anything else, see "Building".
 
 | | x86_64 | aarch64 |
 |---|---|---|
-| Asterisk 22 | [res_open_dpma-asterisk22-x86_64.so](https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_open_dpma-asterisk22-x86_64.so) | [res_open_dpma-asterisk22-aarch64.so](https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_open_dpma-asterisk22-aarch64.so) |
-| Asterisk 23 | [res_open_dpma-asterisk23-x86_64.so](https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_open_dpma-asterisk23-x86_64.so) | [res_open_dpma-asterisk23-aarch64.so](https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_open_dpma-asterisk23-aarch64.so) |
-| Asterisk 24 | [res_open_dpma-asterisk24-x86_64.so](https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_open_dpma-asterisk24-x86_64.so) | [res_open_dpma-asterisk24-aarch64.so](https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_open_dpma-asterisk24-aarch64.so) |
+| Asterisk 22 | [res_open_dpma-asterisk22-x86_64.so](https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk22-x86_64.so) | [res_open_dpma-asterisk22-aarch64.so](https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk22-aarch64.so) |
+| Asterisk 23 | [res_open_dpma-asterisk23-x86_64.so](https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk23-x86_64.so) | [res_open_dpma-asterisk23-aarch64.so](https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk23-aarch64.so) |
+| Asterisk 24 | [res_open_dpma-asterisk24-x86_64.so](https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk24-x86_64.so) | [res_open_dpma-asterisk24-aarch64.so](https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk24-aarch64.so) |
 
 To download and verify, e.g., for Asterisk 24 on x86_64:
 
 ```
-curl -fLO https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_open_dpma-asterisk24-x86_64.so
-curl -fLO https://github.com/jackrosenthal/open-dphone/releases/latest/download/SHA256SUMS
+curl -fLO https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk24-x86_64.so
+curl -fLO https://github.com/jackrosenthal/opendeskphone/releases/latest/download/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
 ```
 
@@ -141,10 +141,10 @@ These `[general]` options are not in the official DPMA:
 When one of the files cannot be read, the module does not load, and a
 reload refuses every phone handshake (see above).
 
-### Additions for Open DPhone
+### Additions for Open Desk Phone
 
 These options in a phone section (`type=phone`) apply to phones running
-Open DPhone.  The module sends each as a frozen setting
+Open Desk Phone.  The module sends each as a frozen setting
 (`conflict="freeze"`): the phone uses the value of the configuration, and
 a value set on the phone, e.g., in its web configuration, has no effect
 while the option is there.  Stock firmware ignores the settings.
@@ -161,7 +161,7 @@ while the option is there.  Stock firmware ignores the settings.
 | `dphone_disabled_apps=<app>[,<app>...]` | The built-in apps the phone does not offer, e.g., `calendar,parking`.  Default is none. |
 | `dphone_idle_softkeys=<softkey>[,<softkey>...]` | The softkeys of the idle screen, in order: `call_log`, `contacts`, `status`, `menu`, `apps`, `dnd`, `forward`, `redial`, `theme` (the theme selector of the color models D60, D62, and D65; the other models leave it out), or `app:<app>` for an app, e.g., `call_log,contacts,app:parking,menu`.  Default is `call_log,contacts,status,menu,apps,dnd,forward`, and `theme` after them on the color models. |
 | `dphone_theme=<name>` | The built-in theme of a color model (D60, D62, or D65): the wallpaper and the colors of the phone's screens, e.g., `dusk`.  The phone's theme selector lists the names.  A `wallpaper_file` goes before the theme.  Default is the phone's theme. |
-| `dphone_palette_file=<file>` | The palette file for the wallpaper of `wallpaper_file`: the colors of the phone's screens, as Open DPhone's `palette.proto` describes, e.g., `lobby.txtpb`.  Default is the phone's own palette. |
+| `dphone_palette_file=<file>` | The palette file for the wallpaper of `wallpaper_file`: the colors of the phone's screens, as Open Desk Phone's `palette.proto` describes, e.g., `lobby.txtpb`.  Default is the phone's own palette. |
 | `dphone_ignore_provisioned_firmware=yes\|no` | Whether the phone ignores the firmware this configuration offers it.  Default is no. |
 | `dphone_app_data_tenant=<key>` | The tenant whose app data the phone reads and writes (see "App data"): 1 to 32 lower-case letters, digits, `.`, or `-`.  Default is none: the phone shares the app data of the phones without a key. |
 
@@ -183,7 +183,7 @@ dphone_ssh_authorized_key=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaa
 
 ### App data
 
-The apps of Open DPhone phones can keep data on the server, e.g., a
+The apps of Open Desk Phone phones can keep data on the server, e.g., a
 game's best times, which every phone then shows, or a user's progress,
 which comes back after the phone is reset.  There is nothing to turn on:
 the module answers the phones' requests (`AppDataRequest`, which the
@@ -237,7 +237,7 @@ rustdoc of `dpma_proto::appdata` describes the requests, and that of
 
 ## Development
 
-This directory, `open-dpma/`, is Open DPMA in the Open DPhone repository:
+This directory, `open-dpma/`, is Open DPMA in the Open Desk Phone repository:
 
 - `crates/`: the module (`res_open_dpma`) and its libraries.  The firmware
   uses two of them, `dpma-proto` and `dpma-bytes`.

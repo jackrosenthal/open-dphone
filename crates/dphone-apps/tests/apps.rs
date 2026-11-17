@@ -754,7 +754,7 @@ fn diagnostics_menu_tests_and_status_pages() {
     r.key(APP, Key::Digit(0));
     assert_eq!(fills(&pattern(&r)), 11, "two frames and a cross");
     r.key(APP, Key::Soft(4));
-    let texts = pattern(&r).iter().filter(|o| matches!(o, DrawOp::Text(t) if t.text.starts_with("Open DPhone"))).count();
+    let texts = pattern(&r).iter().filter(|o| matches!(o, DrawOp::Text(t) if t.text.starts_with("Open Desk Phone"))).count();
     assert_eq!(texts, 5, "a line in every font");
     r.ui.hook(APP, true);
     r.settle();

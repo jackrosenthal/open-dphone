@@ -190,7 +190,7 @@ pub fn start(
     };
     // The server always runs.  `web_ui_enabled` off leaves a page saying
     // that web configuration is disabled and refuses everything else;
-    // `metrics_enabled` (Open DPhone settings) decides whether `/metrics`
+    // `metrics_enabled` (Open Desk Phone settings) decides whether `/metrics`
     // is served, independently.  Both follow the configuration as it
     // changes.
     let switch = WebSwitch::from_config(&config.lock().unwrap().config());

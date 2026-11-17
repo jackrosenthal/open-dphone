@@ -1,6 +1,6 @@
 [package]
 name = "dphone-ctrl"
-description = "Open DPhone: the ctrl record writer, the trial-boot record, and the early-boot decisions, shared by the updater and the early-boot stage (no_std)"
+description = "Open Desk Phone: the ctrl record writer, the trial-boot record, and the early-boot decisions, shared by the updater and the early-boot stage (no_std)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,6 +1,6 @@
 # Kernel
 
-This directory holds the Open DPhone kernel: mainline Linux 7.3 with a port to the Broadcom BCMRING family of system-on-chip processors, which the Digium D40, D45, D50, D60, D62, D65, and D70 phones are built on.  The Linux source itself is not in this repository.  The build downloads the Linux 7.3 release and applies what is here.
+This directory holds the Open Desk Phone kernel: mainline Linux 7.3 with a port to the Broadcom BCMRING family of system-on-chip processors, which the Digium D40, D45, D50, D60, D62, D65, and D70 phones are built on.  The Linux source itself is not in this repository.  The build downloads the Linux 7.3 release and applies what is here.
 
 ## What is in this directory
 
@@ -58,7 +58,7 @@ nix build .#kernel
 
 ## Trying a kernel without installing it
 
-On a phone that runs Open DPhone, this command starts the kernel, the device tree, and the root file system of a firmware image from RAM and writes nothing to flash:
+On a phone that runs Open Desk Phone, this command starts the kernel, the device tree, and the root file system of a firmware image from RAM and writes nothing to flash:
 
 ```text
 dphone ramboot IMAGE.eff

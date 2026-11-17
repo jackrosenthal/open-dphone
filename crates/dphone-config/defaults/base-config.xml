@@ -1,10 +1,10 @@
 <?xml version="1.0" ?>
 <!--
-    Open DPhone model-independent defaults (merge layer 1).
+    Open Desk Phone model-independent defaults (merge layer 1).
 
     Setting IDs and value vocabularies follow the stock firmware wherever the
     meaning is the same, so that provisioned and locally saved layers written
-    for either firmware merge the same way.  Settings that only Open DPhone
+    for either firmware merge the same way.  Settings that only Open Desk Phone
     has are not here at all: they live in /nvdata/dphone_settings.txtpb, a
     file stock never reads.
 

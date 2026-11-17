@@ -443,7 +443,7 @@ impl Config {
         Config { root, generation: 0, model, selected_network, settings: DphoneSettings::default() }
     }
 
-    /// The locally stored Open DPhone settings
+    /// The locally stored Open Desk Phone settings
     /// (`/nvdata/dphone_settings.txtpb`) as of this generation: `None`
     /// means "not set locally".  For what is in effect, with provisioning
     /// and defaults applied, use [`Config::ssh_enabled`] and
@@ -485,7 +485,7 @@ impl Config {
     }
 
     /// The idle screen's softkeys.  The sources combine as for the other
-    /// Open DPhone settings: a frozen provisioned list wins, then the local
+    /// Open Desk Phone settings: a frozen provisioned list wins, then the local
     /// list, then an ordinary provisioned list; with none of those, the
     /// model's default list ([`settings::default_idle_softkeys`]).  A provisioned
     /// list that does not parse counts as not set.  The `idle` keymap
@@ -510,7 +510,7 @@ impl Config {
 
     /// The built-in apps that are switched off (default: none): such an
     /// app is not in the phone's app list and cannot be opened.  The
-    /// sources combine as for the other Open DPhone settings; a local list
+    /// sources combine as for the other Open Desk Phone settings; a local list
     /// may be empty, which switches every app on.
     pub fn disabled_apps(&self) -> Resolved<Vec<String>> {
         let id = settings::PROVISIONED_DISABLED_APPS;
@@ -523,7 +523,7 @@ impl Config {
     /// The theme of a color model.  The provisioning server can name a
     /// built-in one (`dphone_theme`) or supply a picture (stock's
     /// `wallpaper_file`, with a `url`); of the two, the picture goes
-    /// first.  Otherwise the sources combine as for the other Open DPhone
+    /// first.  Otherwise the sources combine as for the other Open Desk Phone
     /// settings: what the server froze wins, then the name chosen on the
     /// phone, then what the server supplies unfrozen, then the default.
     pub fn theme(&self) -> settings::Theme {
@@ -559,7 +559,7 @@ impl Config {
 
     /// The static IPv4 arrangement in effect, or `None` for DHCP.
     ///
-    /// The sources combine as for the other Open DPhone settings: a frozen
+    /// The sources combine as for the other Open Desk Phone settings: a frozen
     /// provisioned address wins, then a static address in stock's network
     /// settings (`network_enable_dhcp` off with an address and a mask),
     /// then an ordinary provisioned address.  Stock's settings saying DHCP
@@ -623,7 +623,7 @@ impl Config {
         keys
     }
 
-    /// The same configuration with the given Open DPhone settings (for
+    /// The same configuration with the given Open Desk Phone settings (for
     /// tests and tools).
     pub fn with_dphone_settings(mut self, settings: DphoneSettings) -> Self {
         self.settings = settings;

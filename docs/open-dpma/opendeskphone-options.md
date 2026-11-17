@@ -1,18 +1,18 @@
-# Open DPhone options
+# Open Desk Phone options
 
-The `dphone_*` options of a phone section (`type=phone`) configure features that only Open DPhone has.  Stock firmware ignores the options, so one phone section serves a phone before and after a firmware change.  The original module reports each option as invalid.
+The `dphone_*` options of a phone section (`type=phone`) configure features that only Open Desk Phone has.  Stock firmware ignores the options, so one phone section serves a phone before and after a firmware change.  The original module reports each option as invalid.
 
 Example template:
 
 ```ini title="res_digium_phone.conf"
-[open-dphone](!)
+[opendeskphone](!)
 type=phone
 dphone_ssh_enabled=yes
 dphone_ssh_authorized_key=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa alice@laptop
 dphone_disabled_apps=boxpusher,desksparrow,lightup
 dphone_app_data_tenant=north-office
 
-[phone101](open-dphone)
+[phone101](opendeskphone)
 mac=000fd3000001
 line=101
 ```
@@ -122,7 +122,7 @@ Example:
 dphone_idle_softkeys=call_log,contacts,app:parking,menu
 ```
 
-The stock firmware's idle screen options (`show_call_log`, `can_forward_calls`, `show_call_parking`, and a custom application's `idlescreen_softkey`) do not affect Open DPhone's idle softkeys.
+The stock firmware's idle screen options (`show_call_log`, `can_forward_calls`, `show_call_parking`, and a custom application's `idlescreen_softkey`) do not affect Open Desk Phone's idle softkeys.
 
 ### `dphone_disabled_apps` { #dphone_disabled_apps }
 

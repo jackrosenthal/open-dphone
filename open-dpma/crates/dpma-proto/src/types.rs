@@ -14,12 +14,12 @@ pub const CONFIG_REQUEST: &str = "ConfigRequest";
 pub const FILE_REQUEST: &str = "FileRequest";
 pub const VERIFY_REQUEST: &str = "VerifyRequest";
 pub const PING_REQUEST: &str = "PingRequest";
-/// Open DPhone's app data ([`crate::appdata`]); not a request of the
+/// Open Desk Phone's app data ([`crate::appdata`]); not a request of the
 /// official DPMA.
 pub const APP_DATA_REQUEST: &str = crate::appdata::REQUEST;
 
 /// (request type, response type, requires session), in the order
-/// the official DPMA registers them, then Open DPhone's.
+/// the official DPMA registers them, then Open Desk Phone's.
 pub const REQUESTS: &[(&str, &str, bool)] = &[
     (ECHO, "EchoResponse", false),
     (HANDSHAKE, "HandshakeResponse", false),

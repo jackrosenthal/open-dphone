@@ -151,7 +151,7 @@ several cannot share it, so each suite prepares the instance itself.
 | `request-handlers` | Every request type in every authentication mode, and the phone users' runtime over real sessions |
 | `ami` | The DPMAMessage actions, requests forwarded to AMI, and reconfigure |
 | `apps-discovery` | The dialplan applications, the mDNS responder, and unloading and loading the module |
-| `app-data` | The app data of Open DPhone phones: the store, its tenants, writers at the same time, and who hears of a change |
+| `app-data` | The app data of Open Desk Phone phones: the store, its tenants, writers at the same time, and who hears of a change |
 
 Each suite is the test target of its name, and keeps its output in
 `target/container/<release>/logs/<suite>.log`.  Each suite's rustdoc (at

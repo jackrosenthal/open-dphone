@@ -1,4 +1,4 @@
-//! App data for Open DPhone phones (`AppDataRequest`): the store of keys
+//! App data for Open Desk Phone phones (`AppDataRequest`): the store of keys
 //! and values that the phones' apps share through the server.  Not a
 //! part of the official DPMA.
 //!

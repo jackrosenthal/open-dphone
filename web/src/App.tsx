@@ -76,7 +76,7 @@ function Login({ model, hostname }: { model?: Model; hostname?: string }) {
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <Logo className="size-14" />
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Open DPhone</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Open Desk Phone</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
               {name ? `Digium ${name}` : ""}
               {hostname ? ` · ${hostname}` : ""}

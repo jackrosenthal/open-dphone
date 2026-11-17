@@ -809,10 +809,10 @@ pub fn handle_ping(tx: Arc<Transaction>) -> i32 {
 }
 
 // ---------------------------------------------------------------------------
-// AppDataRequest (Open DPhone)
+// AppDataRequest (Open Desk Phone)
 // ---------------------------------------------------------------------------
 
-/// The app data of Open DPhone phones (`crate::appdata`; not a request
+/// The app data of Open Desk Phone phones (`crate::appdata`; not a request
 /// of the official DPMA): one operation on the store, for the phone the
 /// `Config-Token` belongs to; error -192 (Invalid Token) when the token
 /// does not match, as for a ConfigRequest.  The user and the tenant are

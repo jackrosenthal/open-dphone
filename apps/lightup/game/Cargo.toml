@@ -1,6 +1,6 @@
 [package]
 name = "lightup-game"
-description = "Open DPhone: the Light Up puzzle (rules, solver, generator, and pictures), without the phone"
+description = "Open Desk Phone: the Light Up puzzle (rules, solver, generator, and pictures), without the phone"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

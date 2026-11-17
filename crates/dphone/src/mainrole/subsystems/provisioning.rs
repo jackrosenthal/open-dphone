@@ -462,7 +462,7 @@ mod tests {
         assert_eq!(ignores_firmware(off, model, &unset), Some(false));
         assert_eq!(ignores_firmware(silent, model, &unset), Some(false), "off by default");
         // The value stored on the phone outranks an ordinary provisioned
-        // one, as for every Open DPhone setting.
+        // one, as for every Open Desk Phone setting.
         let local_on = DphoneSettings { ignore_provisioned_firmware: Some(true), ..Default::default() };
         let local_off = DphoneSettings { ignore_provisioned_firmware: Some(false), ..Default::default() };
         assert_eq!(ignores_firmware(silent, model, &local_on), Some(true));

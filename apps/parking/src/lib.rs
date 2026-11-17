@@ -175,7 +175,7 @@ impl App for Parking {
 dphone_app_sdk::export_app! {
     app: Parking,
     name: "parking",
-    id: "org.opendphone.parking",
+    id: "org.opendeskphone.parking",
     display_name: "Parking",
     description: "See and retrieve parked calls",
     phone_icon: Some(Icon::AppParking),

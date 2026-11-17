@@ -104,7 +104,7 @@ in
     asterisk-modules = asterisk.modules;
     rootfs-tree = image.rootfsTree;
     inherit (image) rootfs;
-    all = pkgs.linkFarm "open-dphone-${workspace.version}" (
+    all = pkgs.linkFarm "opendeskphone-${workspace.version}" (
       lib.mapAttrsToList (m: v: {
         name = v.name;
         path = v;

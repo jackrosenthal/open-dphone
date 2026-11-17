@@ -48,7 +48,7 @@ let
     "O=build"
     "HOSTCC=cc"
     "KBUILD_BUILD_USER=dphone"
-    "KBUILD_BUILD_HOST=open-dphone"
+    "KBUILD_BUILD_HOST=opendeskphone"
     # Fixed release string (7.3.0), so the module directory has one name.
     "LOCALVERSION="
     "KBUILD_BUILD_TIMESTAMP=1970-01-01"

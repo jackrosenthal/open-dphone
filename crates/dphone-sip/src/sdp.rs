@@ -312,7 +312,7 @@ impl Sdp {
         let mut s = String::new();
         let _ = write!(
             s,
-            "v=0\r\no=- {} {} IN {fam} {}\r\ns=Open DPhone\r\nc=IN {fam} {}\r\nt=0 0\r\n",
+            "v=0\r\no=- {} {} IN {fam} {}\r\ns=Open Desk Phone\r\nc=IN {fam} {}\r\nt=0 0\r\n",
             self.session_id, self.version, self.addr, self.addr
         );
         let _ = write!(s, "m=audio {} {}", self.port, if self.secure { "RTP/SAVP" } else { "RTP/AVP" });

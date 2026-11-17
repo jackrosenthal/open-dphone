@@ -1,5 +1,5 @@
 //! App data: the store of keys and values that the server keeps for the
-//! apps of Open DPhone phones (`AppDataRequest` / `AppDataResponse`).
+//! apps of Open Desk Phone phones (`AppDataRequest` / `AppDataResponse`).
 //! The official DPMA has no such request; a phone that sends one to it
 //! gets no answer.
 //!

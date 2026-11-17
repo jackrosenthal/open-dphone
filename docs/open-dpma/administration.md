@@ -55,7 +55,7 @@ A record expires 600 seconds after the last failure.  To review the records:
 ### Web interface and SSH
 
 - `web_ui_enabled` is off by default.  When you turn the web interface on, set `login_password` in the same phone section, or the phone keeps a default password.
-- On Open DPhone, the phone's web interface cannot change a `dphone_*` option set on the server; without the option, the user decides.  To keep users from turning SSH on, set `dphone_ssh_enabled=no` or leave `web_ui_enabled` off.
+- On Open Desk Phone, the phone's web interface cannot change a `dphone_*` option set on the server; without the option, the user decides.  To keep users from turning SSH on, set `dphone_ssh_enabled=no` or leave `web_ui_enabled` off.
 
 ## Configuration changes
 
@@ -83,15 +83,15 @@ Only the first firmware entry for each model applies.
 | Phone firmware | The phone installs the image when |
 | --- | --- |
 | Stock firmware | The entry's `version` text differs from the running version. |
-| Open DPhone | The image differs from the running image.  The phone compares the checksums and sizes of the kernel and root file system, and treats `version` as a label. |
+| Open Desk Phone | The image differs from the running image.  The phone compares the checksums and sizes of the kernel and root file system, and treats `version` as a label. |
 
-The module includes the image's checksum in the entry when the image file is on the server: in `file_directory` for a `firmware` section, or in the package directory for the firmware package.  Without the checksum, an Open DPhone phone reads the first few kilobytes of the image from the URL.  Keep the images there, under the file names in the entries, so that a phone running the image needs no download.
+The module includes the image's checksum in the entry when the image file is on the server: in `file_directory` for a `firmware` section, or in the package directory for the firmware package.  Without the checksum, an Open Desk Phone phone reads the first few kilobytes of the image from the URL.  Keep the images there, under the file names in the entries, so that a phone running the image needs no download.
 
 The module does not serve the images.  A web server must serve the directory at the network's `file_url_prefix`.
 
-### Migration between stock firmware and Open DPhone { #firmware-migration }
+### Migration between stock firmware and Open Desk Phone { #firmware-migration }
 
-A firmware entry can move phones from stock firmware to Open DPhone and back.  To move a server's D65 phones to Open DPhone, add an entry for the release's Open DPhone image:
+A firmware entry can move phones from stock firmware to Open Desk Phone and back.  To move a server's D65 phones to Open Desk Phone, add an entry for the release's Open Desk Phone image:
 
 ```ini title="res_digium_phone.conf"
 [fw-d65]
@@ -100,7 +100,7 @@ model=D65
 version=3_0_0
 file=3_0_0_D65_firmware.eff
 
-[open-dphone](!)
+[opendeskphone](!)
 type=phone
 firmware=fw-d65
 ```
@@ -109,19 +109,19 @@ To move the phones back, set `version` and `file` to the stock image.  Then [rec
 
 - **Use separate templates for a mixed fleet.**  Every phone in a section follows the section's entries, whatever firmware the phone runs.  Phones that stay on stock firmware need a template whose `firmware` names the stock image, or no entry for the model.
 - **Watch the firmware package.**  The package applies to every phone section without `firmware`, so a new image in the package directory reaches all of those phones.
-- **Exempt individual phones** with [`dphone_ignore_provisioned_firmware`](open-dphone-options.md#dphone_ignore_provisioned_firmware).
+- **Exempt individual phones** with [`dphone_ignore_provisioned_firmware`](opendeskphone-options.md#dphone_ignore_provisioned_firmware).
 
-An Open DPhone phone does not retry an image that failed to install or was rolled back until the entry names a different image.  Such an image may explain a phone that still runs the previous firmware after a firmware change.  To inspect the phone's firmware banks, see [`dphone update status`](../dev-guide/firmware-updates.md#dphone-update-status).
+An Open Desk Phone phone does not retry an image that failed to install or was rolled back until the entry names a different image.  Such an image may explain a phone that still runs the previous firmware after a firmware change.  To inspect the phone's firmware banks, see [`dphone update status`](../dev-guide/firmware-updates.md#dphone-update-status).
 
 ## App data
 
-Apps on Open DPhone can store data on the server, e.g., a game's best times, shown on every phone, or a user's progress, which survives a factory reset.  App data needs no configuration: the module answers the phones' app data requests and stores the data in the `DPhoneAppData` family of the Asterisk database.
+Apps on Open Desk Phone can store data on the server, e.g., a game's best times, shown on every phone, or a user's progress, which survives a factory reset.  App data needs no configuration: the module answers the phones' app data requests and stores the data in the `DPhoneAppData` family of the Asterisk database.
 
 Each app has shared keys, which every phone in a store can access, and per-user keys.  The user is the phone section that the phone is provisioned as.  The firmware stores the user's theme as the per-user key `theme` of the reserved app name `dphone`.
 
 ### Multi-tenant servers
 
-Without [`dphone_app_data_tenant`](open-dphone-options.md#dphone_app_data_tenant), all phones on the server share one store, so one tenant's phones see the names and scores that another tenant's users wrote.  On a multi-tenant server, set a key in each tenant's template:
+Without [`dphone_app_data_tenant`](opendeskphone-options.md#dphone_app_data_tenant), all phones on the server share one store, so one tenant's phones see the names and scores that another tenant's users wrote.  On a multi-tenant server, set a key in each tenant's template:
 
 ```ini title="res_digium_phone.conf"
 [north-office](!)

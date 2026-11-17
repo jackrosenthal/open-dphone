@@ -29,11 +29,11 @@ Optional modules, used when loaded: `func_presencestate`, `app_voicemail`, `res_
 
 ## Download
 
-Each [release](https://github.com/jackrosenthal/open-dphone/releases) has a `SHA256SUMS` file and a module named `res_open_dpma-asterisk<version>-<architecture>.so` for each supported Asterisk major version and architecture (`x86_64` or `aarch64`).  `asterisk -V` shows the Asterisk version, and `uname -m` the architecture.  To download and verify the module for Asterisk 22 on x86_64:
+Each [release](https://github.com/jackrosenthal/opendeskphone/releases) has a `SHA256SUMS` file and a module named `res_open_dpma-asterisk<version>-<architecture>.so` for each supported Asterisk major version and architecture (`x86_64` or `aarch64`).  `asterisk -V` shows the Asterisk version, and `uname -m` the architecture.  To download and verify the module for Asterisk 22 on x86_64:
 
 ```sh
-curl -fLO https://github.com/jackrosenthal/open-dphone/releases/latest/download/res_open_dpma-asterisk22-x86_64.so
-curl -fLO https://github.com/jackrosenthal/open-dphone/releases/latest/download/SHA256SUMS
+curl -fLO https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk22-x86_64.so
+curl -fLO https://github.com/jackrosenthal/opendeskphone/releases/latest/download/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
 ```
 
@@ -120,8 +120,8 @@ messages.log => notice,warning,error,dpma
 Requirements: Rust 1.99 or later, libclang, and the configured headers of the target Asterisk version, i.e., an Asterisk source tree after `./configure`, named by the environment variable `ASTERISK_SOURCE_DIR`.
 
 ```sh
-git clone https://github.com/jackrosenthal/open-dphone.git
-cd open-dphone/open-dpma
+git clone https://github.com/jackrosenthal/opendeskphone.git
+cd opendeskphone/open-dpma
 export ASTERISK_SOURCE_DIR=/usr/src/asterisk-22.11.0
 cargo build --profile module -p res_open_dpma
 ```

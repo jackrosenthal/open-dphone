@@ -1,6 +1,6 @@
 [package]
 name = "dphone-update"
-description = "Open DPhone: on-device firmware updater (EFF/OTA to the spare bank, ctrl record, trial boot)"
+description = "Open Desk Phone: on-device firmware updater (EFF/OTA to the spare bank, ctrl record, trial boot)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

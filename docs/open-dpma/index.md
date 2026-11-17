@@ -32,5 +32,5 @@ Open DPMA (`res_open_dpma.so`) is an open-source Asterisk module that replaces t
 
 ### Additions
 
-- The [Open DPhone options](open-dphone-options.md) and [app data](administration.md#app-data), for phones running Open DPhone.
+- The [Open Desk Phone options](opendeskphone-options.md) and [app data](administration.md#app-data), for phones running Open Desk Phone.
 - The `[general]` options [`appserver_certificate` and `phone_ca_file`](configuration.md#general).

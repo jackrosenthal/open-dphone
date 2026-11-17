@@ -1,6 +1,6 @@
 # dphone-apps
 
-The app runtime of Open DPhone: WebAssembly components run by Wasmtime's Pulley interpreter, the host side of the app interface, app packages, and the `AppManager` the main role runs.
+The app runtime of Open Desk Phone: WebAssembly components run by Wasmtime's Pulley interpreter, the host side of the app interface, app packages, and the `AppManager` the main role runs.
 
 - The interface is defined once, in `crates/dphone-app-sdk/wit/app.wit`.  `dphone-app-sdk` is the guest crate generated from it, published to crates.io for app makers (its README tells how to write an app); this crate generates the host side from the same file.  The built-in apps are in `apps/`.
 - An app is one file: a WebAssembly component with its manifest in it (the custom section `dphone-app`, written by the SDK's `export_app!`; `src/manifest.rs` reads it).  Its data is in its code (`include_bytes!`); nothing is unpacked on the phone.

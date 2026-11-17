@@ -51,7 +51,7 @@ use crate::mainrole::subsystems::{
 #[derive(Debug, Parser)]
 #[command(multicall = true)]
 enum Invocation {
-    /// Open DPhone: the phone's one program
+    /// Open Desk Phone: the phone's one program
     #[command(version = crate::VERSION, after_help = where_commands_run())]
     Dphone {
         #[command(subcommand)]

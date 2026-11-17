@@ -541,7 +541,7 @@ impl App for Alarms {
 dphone_app_sdk::export_app! {
     app: Alarms,
     name: "alarms",
-    id: "org.opendphone.alarms",
+    id: "org.opendeskphone.alarms",
     display_name: "Alarms",
     description: "Set the alarm clock",
     phone_icon: Some(Icon::AppAlarms),

@@ -1,5 +1,5 @@
 <?xml version="1.0" ?>
-<!-- Open DPhone factory restrictions for the D45 (merge layer 2). -->
+<!-- Open Desk Phone factory restrictions for the D45 (merge layer 2). -->
 <config>
     <setting id="phone_model" value="D45" conflict="freeze"/>
     <setting id="max_accounts" value="2" conflict="freeze"/>

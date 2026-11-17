@@ -201,7 +201,7 @@ impl Rig {
             ] {
                 a.installed.push(AppInfo {
                     name: name.into(),
-                    id: format!("org.opendphone.{name}"),
+                    id: format!("org.opendeskphone.{name}"),
                     display_name: display.into(),
                     builtin: true,
                     icon: format!("app-{name}"),

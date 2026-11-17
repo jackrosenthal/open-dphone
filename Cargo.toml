@@ -49,7 +49,7 @@ version = "3.0.0"
 edition = "2024"
 license = "GPL-2.0-or-later"
 authors = ["Jack Rosenthal <jack@rosenth.al>"]
-repository = "https://github.com/jackrosenthal/open-dphone"
+repository = "https://github.com/jackrosenthal/opendeskphone"
 
 # What the crates under open-dpma/ depend on.
 [workspace.dependencies]

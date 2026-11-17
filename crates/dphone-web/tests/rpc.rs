@@ -597,7 +597,7 @@ async fn provisioned_static_address_in_the_network_form() {
 }
 
 /// The theme: the built-in ones are listed, a choice is kept with
-/// Open DPhone's own settings, and what the provisioning server fixed
+/// Open Desk Phone's own settings, and what the provisioning server fixed
 /// cannot be changed.
 #[tokio::test]
 async fn the_theme_setting() {

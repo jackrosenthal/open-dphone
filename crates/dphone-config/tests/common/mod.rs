@@ -29,7 +29,7 @@ impl Drop for TempDir {
 }
 
 /// A provisioned configuration in the shape a DPMA server sends.
-/// What a DPMA server adds to its configuration to provision Open DPhone's
+/// What a DPMA server adds to its configuration to provision Open Desk Phone's
 /// own settings and SSH keys.
 pub const DPHONE_EXTENSION: &str = r#"
   <setting id="dphone_ssh_enabled" value="1" conflict="freeze" />

@@ -1,6 +1,6 @@
 //! `SshService` (the SSH server's switch and its authorized keys), the
 //! provisioned-firmware policy of `FirmwareService`, and the serial console
-//! switch of `SystemService`: Open DPhone's own
+//! switch of `SystemService`: Open Desk Phone's own
 //! settings, which live in `/nvdata/dphone_settings.txtpb`.
 
 use super::{config_error, with_config};

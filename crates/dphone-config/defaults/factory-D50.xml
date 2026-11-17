@@ -1,5 +1,5 @@
 <?xml version="1.0" ?>
-<!-- Open DPhone factory restrictions for the D50 (merge layer 2). -->
+<!-- Open Desk Phone factory restrictions for the D50 (merge layer 2). -->
 <config>
     <setting id="phone_model" value="D50" conflict="freeze"/>
     <setting id="max_accounts" value="4" conflict="freeze"/>

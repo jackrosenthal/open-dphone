@@ -7,8 +7,8 @@
 - **A network connection for the first build.**  Nix downloads the Linux source and two stock firmware images from the vendor's server.  The voice DSP firmware is proprietary and not in the repository, so the image build extracts the DSP firmware from the stock images.
 
 ```sh
-git clone https://github.com/jackrosenthal/open-dphone.git
-cd open-dphone
+git clone https://github.com/jackrosenthal/opendeskphone.git
+cd opendeskphone
 ```
 
 ## Firmware images

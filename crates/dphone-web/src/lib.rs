@@ -1,4 +1,4 @@
-//! Open DPhone's web interface (plan section 11): an HTTP and HTTPS server,
+//! Open Desk Phone's web interface (plan section 11): an HTTP and HTTPS server,
 //! Connect RPC services, and the embedded frontend.
 //!
 //! The integrator builds a [`WebServer`] from the state store and the
@@ -248,7 +248,7 @@ pub trait SshControl: Send + Sync {
 ///   `AuthService/GetSession` (which reports the state), no upload, and so
 ///   no shell and no screen mirror.  Switching off also ends every session,
 ///   shell, and open connection.
-/// - The metrics endpoint (`metrics_enabled` in the Open DPhone settings).
+/// - The metrics endpoint (`metrics_enabled` in the Open Desk Phone settings).
 ///   Off, `GET /metrics` answers 404.
 ///
 /// The two are independent.

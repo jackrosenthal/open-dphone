@@ -1,6 +1,6 @@
 [package]
 name = "dphone-apps"
-description = "Open DPhone: WebAssembly app runtime, host API, packages, and the app manager"
+description = "Open Desk Phone: WebAssembly app runtime, host API, packages, and the app manager"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

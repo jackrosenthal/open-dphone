@@ -500,7 +500,7 @@ impl App for Voicemail {
 dphone_app_sdk::export_app! {
     app: Voicemail,
     name: "voicemail",
-    id: "org.opendphone.voicemail",
+    id: "org.opendeskphone.voicemail",
     display_name: "Voicemail",
     description: "Listen to and manage voicemail messages",
     phone_icon: Some(Icon::AppVoicemail),

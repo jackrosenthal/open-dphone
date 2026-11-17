@@ -45,7 +45,7 @@ export type UploadedFirmware = Message<"dphone.v1.UploadedFirmware"> & {
   model: Model;
 
   /**
-   * A stock Digium image: installing it leaves Open DPhone.
+   * A stock Digium image: installing it leaves Open Desk Phone.
    *
    * @generated from field: bool is_stock = 5;
    */

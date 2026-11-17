@@ -1,6 +1,6 @@
 [package]
 name = "dphone-config"
-description = "Open DPhone configuration: nvdata files, XML layers, and the stock-compatible merge"
+description = "Open Desk Phone configuration: nvdata files, XML layers, and the stock-compatible merge"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

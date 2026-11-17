@@ -378,7 +378,7 @@ async fn erase_nvdata_is_a_guarded_command() {
 }
 
 /// Built-in apps are switched on and off one at a time; the list is one of
-/// Open DPhone's own settings.
+/// Open Desk Phone's own settings.
 #[tokio::test]
 async fn built_in_apps_are_switched_off_and_on() {
     use dphone_state::{AppInfo, Apps};

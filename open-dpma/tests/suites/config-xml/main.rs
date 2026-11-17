@@ -146,7 +146,7 @@ fn config(ctx: &mut Ctx) -> Result<()> {
     Ok(())
 }
 
-/// Open DPhone's settings as `fullphone` sets them: the yes/no settings,
+/// Open Desk Phone's settings as `fullphone` sets them: the yes/no settings,
 /// the static address with its gateway and DNS servers (the values that are
 /// not addresses are left out, and a list with one is left out whole), the
 /// disabled apps (a list with something that is not an app name is left out
@@ -186,17 +186,17 @@ fn find_all(doc: &[u8], prefix: &str) -> Vec<String> {
         .collect()
 }
 
-/// The Open DPhone options: present as configured for `fullphone`, and
+/// The Open Desk Phone options: present as configured for `fullphone`, and
 /// absent from the document of a phone that does not set them.
 fn dphone_options(ctx: &mut Ctx) -> Result<()> {
     let doc = plain(document(ctx, "dpmadev config fullphone D65")?);
     ctx.c.check(
-        "fullphone: Open DPhone settings",
+        "fullphone: Open Desk Phone settings",
         doc.contains_str(plain(DPHONE_SETTINGS)),
         "",
     );
     ctx.c.check(
-        "fullphone: Open DPhone SSH keys",
+        "fullphone: Open Desk Phone SSH keys",
         doc.contains_str(plain(DPHONE_KEYS)) && !doc.contains_str("PRIVATE KEY"),
         "",
     );
@@ -204,7 +204,7 @@ fn dphone_options(ctx: &mut Ctx) -> Result<()> {
     // file directory, so from each network's file URL prefix.
     let palette = find_all(&doc, "<setting id=\"dphone_palette_file\"");
     ctx.c.check(
-        "fullphone: Open DPhone palette file",
+        "fullphone: Open Desk Phone palette file",
         !palette.is_empty()
             && palette.len() == find_all(&doc, "<setting id=\"wallpaper_file\"").len()
             && palette.iter().all(|line| {
@@ -251,7 +251,7 @@ fn dphone_options(ctx: &mut Ctx) -> Result<()> {
     for phone in ["minphone", "altphone", "nolinephone"] {
         let doc = document(ctx, &format!("dpmadev config {phone} D65"))?;
         ctx.c.check(
-            format!("{phone}: no Open DPhone options"),
+            format!("{phone}: no Open Desk Phone options"),
             !doc.contains_str("dphone_"),
             "",
         );

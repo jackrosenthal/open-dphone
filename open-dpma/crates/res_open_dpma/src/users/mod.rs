@@ -190,40 +190,40 @@ pub struct Phone {
     pub ringtones: Vec<Vec<u8>>,
     pub firmware: Vec<Vec<u8>>,
     pub alerts: Vec<Vec<u8>>,
-    /// Open DPhone: `1` or `0` when `dphone_ssh_enabled` is set (`0` for an
+    /// Open Desk Phone: `1` or `0` when `dphone_ssh_enabled` is set (`0` for an
     /// invalid value), else empty.
     pub dphone_ssh_enabled: Vec<u8>,
-    /// Open DPhone: `1` or `0` when `dphone_ignore_provisioned_firmware` is
+    /// Open Desk Phone: `1` or `0` when `dphone_ignore_provisioned_firmware` is
     /// set, else empty.
     pub dphone_ignore_provisioned_firmware: Vec<u8>,
-    /// Open DPhone: `1` or `0` when `dphone_metrics_enabled` is set (`0`
+    /// Open Desk Phone: `1` or `0` when `dphone_metrics_enabled` is set (`0`
     /// for an invalid value), else empty.
     pub dphone_metrics_enabled: Vec<u8>,
-    /// Open DPhone: `1` or `0` when `dphone_serial_console` is set (`0` for
+    /// Open Desk Phone: `1` or `0` when `dphone_serial_console` is set (`0` for
     /// an invalid value), else empty.
     pub dphone_serial_console: Vec<u8>,
-    /// Open DPhone: `dphone_static_address` as `address/prefix length`, else
-    /// empty.
+    /// Open Desk Phone: `dphone_static_address` as `address/prefix length`,
+    /// else empty.
     pub dphone_static_address: Vec<u8>,
-    /// Open DPhone: `dphone_static_gateway`.
+    /// Open Desk Phone: `dphone_static_gateway`.
     pub dphone_static_gateway: Option<std::net::Ipv4Addr>,
-    /// Open DPhone: each address of `dphone_static_dns`.
+    /// Open Desk Phone: each address of `dphone_static_dns`.
     pub dphone_static_dns: Vec<std::net::Ipv4Addr>,
-    /// Open DPhone: each app name of `dphone_disabled_apps`.
+    /// Open Desk Phone: each app name of `dphone_disabled_apps`.
     pub dphone_disabled_apps: Vec<Vec<u8>>,
-    /// Open DPhone: each softkey of `dphone_idle_softkeys`, in order.
+    /// Open Desk Phone: each softkey of `dphone_idle_softkeys`, in order.
     pub dphone_idle_softkeys: Vec<Vec<u8>>,
-    /// Open DPhone: `dphone_theme`, the name of a built-in theme, in lower
+    /// Open Desk Phone: `dphone_theme`, the name of a built-in theme, in lower
     /// case.
     pub dphone_theme: Vec<u8>,
-    /// Open DPhone: `dphone_palette_file`, the palette file for the
+    /// Open Desk Phone: `dphone_palette_file`, the palette file for the
     /// wallpaper.
     pub dphone_palette_file: Vec<u8>,
-    /// Open DPhone: `dphone_app_data_tenant`, the key of the tenant whose
+    /// Open Desk Phone: `dphone_app_data_tenant`, the key of the tenant whose
     /// app data the phone reads and writes (empty: the phones without a
     /// key), as it was written; it may not be a valid key.
     pub dphone_app_data_tenant: Vec<u8>,
-    /// Open DPhone: each `dphone_ssh_authorized_key`, a public key line.
+    /// Open Desk Phone: each `dphone_ssh_authorized_key`, a public key line.
     pub dphone_ssh_authorized_keys: Vec<Vec<u8>>,
     pub multicastpages: Vec<Vec<u8>>,
     /// (model, file) from the `<model>_logo_file` options.

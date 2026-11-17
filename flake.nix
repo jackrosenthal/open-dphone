@@ -1,5 +1,5 @@
 {
-  description = "Open DPhone: open firmware for the Digium D-series phones";
+  description = "Open Desk Phone: open firmware for the Digium D-series phones";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

@@ -1,4 +1,4 @@
-//! The Open DPhone app runtime: WebAssembly components interpreted by
+//! The Open Desk Phone app runtime: WebAssembly components interpreted by
 //! Wasmtime's Pulley interpreter, the host side of the WIT interface in
 //! `crates/dphone-app-sdk/wit/app.wit`, app files, and the [`AppManager`] the main role runs.
 //!

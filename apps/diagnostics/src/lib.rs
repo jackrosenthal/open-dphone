@@ -26,7 +26,7 @@ const REFRESH_MS: u32 = 1000;
 /// The patterns of the display test, in order.
 const PATTERNS: u8 = 6;
 /// The line of the last pattern, in every font.
-const SAMPLE: &str = "Open DPhone 0123456789 AaBbGgQq";
+const SAMPLE: &str = "Open Desk Phone 0123456789 AaBbGgQq";
 /// The key test shows this many of the newest keys.
 const KEYS_SHOWN: usize = 24;
 /// How long every lamp shows a color.
@@ -652,7 +652,7 @@ impl App for Diagnostics {
 dphone_app_sdk::export_app! {
     app: Diagnostics,
     name: "diagnostics",
-    id: "org.opendphone.diagnostics",
+    id: "org.opendeskphone.diagnostics",
     display_name: "Diagnostics",
     description: "Hardware tests, subsystems, and the log",
     phone_icon: Some(Icon::AppDiagnostics),

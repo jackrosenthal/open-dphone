@@ -85,7 +85,7 @@ function Shell() {
         <div className="flex items-center gap-3 px-5 py-4">
           <Logo className="size-9" />
           <div className="min-w-0">
-            <p className="font-semibold leading-tight">Open DPhone</p>
+            <p className="font-semibold leading-tight">Open Desk Phone</p>
             <p className="truncate text-xs text-slate-500 dark:text-slate-400">{sys ? `${modelName(sys.model)} · ${sys.version}` : " "}</p>
           </div>
         </div>

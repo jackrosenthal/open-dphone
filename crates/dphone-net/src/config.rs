@@ -335,7 +335,7 @@ impl NetConfig {
     /// LLDP system description.
     pub fn system_description(&self) -> String {
         format!(
-            "Open DPhone, Digium {}, firmware version {}",
+            "Open Desk Phone, Digium {}, firmware version {}",
             self.model, self.version
         )
     }

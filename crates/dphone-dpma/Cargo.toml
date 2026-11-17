@@ -1,6 +1,6 @@
 [package]
 name = "dphone-dpma"
-description = "Open DPhone: DPMA provisioning client and app-request transport on dpma-proto"
+description = "Open Desk Phone: DPMA provisioning client and app-request transport on dpma-proto"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

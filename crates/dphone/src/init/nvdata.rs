@@ -62,7 +62,7 @@ pub fn mount() -> NvdataState {
 /// `phoneservice_lockdown`, the two G.729 files, and `if-setup-debug`, and
 /// removes every directory but `etc`; so it removes `open/`, and so do we
 /// (host keys, authorized keys, the provisioning identity, call log, and the
-/// Open DPhone settings file all go, as stock's own equivalents do).  The
+/// Open Desk Phone settings file all go, as stock's own equivalents do).  The
 /// one addition is the trial-boot record: it is not user data, and a reset
 /// that removed it would leave an unconfirmed image installed with nothing
 /// to roll it back.  The DSP firmware is in the root file system and is

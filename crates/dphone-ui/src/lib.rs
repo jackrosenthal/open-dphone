@@ -1,4 +1,4 @@
-//! Open DPhone's phone UI: a small retained-mode toolkit with integer-only
+//! Open Desk Phone's phone UI: a small retained-mode toolkit with integer-only
 //! rendering, three skins, the native screens, and the view API that WASM
 //! apps draw through (plan section 10).
 //!

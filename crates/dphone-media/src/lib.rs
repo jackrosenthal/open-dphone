@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-//! The media path of Open DPhone: everything between the network and the
+//! The media path of Open Desk Phone: everything between the network and the
 //! audio front end that the ARM does.
 //!
 //! The DSP runs the codecs other than G.711, the echo cancellers, and (on

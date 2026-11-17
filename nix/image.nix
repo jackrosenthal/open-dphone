@@ -126,7 +126,7 @@ let
     # The interactive shells' defaults: the prompt, aliases, and the tab
     # completion of `dphone`.
     install -m 0644 ${./rootfs/etc/bash.bashrc} $out/etc/bash.bashrc
-    printf 'Open DPhone ${wireVersion}\n' > $out/etc/dphone-release
+    printf 'Open Desk Phone ${wireVersion}\n' > $out/etc/dphone-release
 
     # What the kernel starts must be there and must be a program for the
     # phone: a root without it boots to "No working init found", and only

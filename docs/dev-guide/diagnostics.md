@@ -81,4 +81,4 @@ Every subsystem publishes state to one typed store, which the user interface, th
 curl http://192.0.2.20/metrics
 ```
 
-The endpoint is on by default.  To turn the endpoint off, use the **Prometheus metrics** switch in the **Logging** card of the **System** page, or set [`dphone_metrics_enabled=no`](../open-dpma/open-dphone-options.md#dphone_metrics_enabled) on the PBX.
+The endpoint is on by default.  To turn the endpoint off, use the **Prometheus metrics** switch in the **Logging** card of the **System** page, or set [`dphone_metrics_enabled=no`](../open-dpma/opendeskphone-options.md#dphone_metrics_enabled) on the PBX.

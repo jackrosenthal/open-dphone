@@ -477,7 +477,7 @@ async fn once(
         head.push_str(&format!("{name}: {value}\r\n"));
     }
     if !has_agent {
-        head.push_str("User-Agent: Open DPhone\r\n");
+        head.push_str("User-Agent: Open Desk Phone\r\n");
     }
     if let Some(a) = authorization {
         head.push_str(&format!("Authorization: {a}\r\n"));

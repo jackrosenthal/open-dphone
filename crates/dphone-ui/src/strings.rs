@@ -1,7 +1,7 @@
 //! Every user-visible string of the native UI, in one table.  English only
 //! for now; a translation layer would replace this module.
 
-pub const PRODUCT: &str = "Open DPhone";
+pub const PRODUCT: &str = "Open Desk Phone";
 
 // Softkeys and actions.
 pub const MORE: &str = "More...";

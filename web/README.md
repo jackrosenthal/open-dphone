@@ -1,4 +1,4 @@
-# Open DPhone web frontend
+# Open Desk Phone web frontend
 
 TypeScript, React, Tailwind CSS, and Vite; RPC through `@connectrpc/connect-web`
 and `@connectrpc/connect-query`, with code generated from `../proto` by buf.

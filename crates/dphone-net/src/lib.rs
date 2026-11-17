@@ -1,4 +1,4 @@
-//! Open DPhone networking.
+//! Open Desk Phone networking.
 //!
 //! One crate for everything between the kernel's network devices and the
 //! phone's SIP, provisioning, and web code:

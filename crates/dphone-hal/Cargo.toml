@@ -1,6 +1,6 @@
 [package]
 name = "dphone-hal"
-description = "Open DPhone: hardware abstraction (phone and sim backends)"
+description = "Open Desk Phone: hardware abstraction (phone and sim backends)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

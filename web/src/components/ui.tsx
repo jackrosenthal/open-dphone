@@ -67,9 +67,9 @@ export function Card({ title, actions, children, className }: { title?: ReactNod
 /// buttons, if any, form a right-aligned row.
 export function PageHeader({ title, actions }: { title: string; actions?: ReactNode }) {
   useEffect(() => {
-    document.title = `${title} · Open DPhone`;
+    document.title = `${title} · Open Desk Phone`;
     return () => {
-      document.title = "Open DPhone";
+      document.title = "Open Desk Phone";
     };
   }, [title]);
   return (

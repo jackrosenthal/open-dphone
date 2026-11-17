@@ -14,7 +14,7 @@ description: |
   through two FIFOs serviced by the SoC DesignWare DMA controller.
 
 maintainers:
-  - Open DPhone contributors
+  - Open Desk Phone contributors
 
 allOf:
   - $ref: dai-common.yaml#

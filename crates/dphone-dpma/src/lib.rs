@@ -1,4 +1,4 @@
-//! Open DPhone DPMA client: the provisioning state machine and the
+//! Open Desk Phone DPMA client: the provisioning state machine and the
 //! application-request transport, on `dpma-proto`.
 //!
 //! The stock firmware ran this as the `bootconfig` JavaScript app plus

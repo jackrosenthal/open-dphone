@@ -83,7 +83,7 @@ The built-in certificates are the original module's, which D-series phones trust
 
 A phone section describes one phone, or, when `config_auth` does not include `mac`, one user: any phone can take the section's configuration when the user picks the section from the user list.
 
-A "Repeatable" option may appear more than once; each occurrence adds to a list.  The `dphone_*` options are in [Open DPhone options](open-dphone-options.md).
+A "Repeatable" option may appear more than once; each occurrence adds to a list.  The `dphone_*` options are in [Open Desk Phone options](opendeskphone-options.md).
 
 ### Identity and access
 
@@ -352,7 +352,7 @@ Adds one presence state to the Status app.  A phone with status sections offers 
 
 ### `application=custom`
 
-A custom section loads an app package onto phones running stock firmware.  Open DPhone skips the package, because Open DPhone apps use another format; see the [App SDK](../app-sdk/index.md).
+A custom section loads an app package onto phones running stock firmware.  Open Desk Phone skips the package, because Open Desk Phone apps use another format; see the [App SDK](../app-sdk/index.md).
 
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |

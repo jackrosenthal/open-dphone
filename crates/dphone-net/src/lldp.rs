@@ -587,7 +587,7 @@ mod tests {
             mac: MacAddr([0x00, 0x0f, 0xd3, 0x01, 0x02, 0x03]),
             port_description: "lan".into(),
             system_name: "d60-000FD3010203".into(),
-            system_description: "Open DPhone D60, firmware version 3_0_0".into(),
+            system_description: "Open Desk Phone D60, firmware version 3_0_0".into(),
             management_address: Some(Ipv4Addr::new(10, 0, 0, 5)),
             ifindex: 3,
             power_mw: 6400,
@@ -702,7 +702,7 @@ mod tests {
         assert_eq!(n.ttl, 121);
         assert_eq!(
             n.system_description.as_deref(),
-            Some("Open DPhone D60, firmware version 3_0_0")
+            Some("Open Desk Phone D60, firmware version 3_0_0")
         );
         assert_eq!(n.med_device_class, Some(MED_CLASS_ENDPOINT_III));
         assert_eq!(n.management_address, Some(Ipv4Addr::new(10, 0, 0, 5)));

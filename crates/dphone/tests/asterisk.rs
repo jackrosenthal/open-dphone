@@ -13,7 +13,7 @@
 //! configuration verifies its token, gets the configuration's digest in
 //! the answer, and does not fetch what it already has.
 //!
-//! The phone's section also sets the Open DPhone options the server has
+//! The phone's section also sets the Open Desk Phone options the server has
 //! for the phone's own behavior (`dphone_*`): each arrives as a setting of
 //! the fetched configuration and reads back from the merged one.
 //!
@@ -117,7 +117,7 @@ fn write(path: &Path, text: &str) {
     std::fs::write(path, text).unwrap();
 }
 
-/// The Open DPhone options of the phone's section: the option and its value
+/// The Open Desk Phone options of the phone's section: the option and its value
 /// in `res_digium_phone.conf`, and the value of the setting of the same
 /// name in the configuration the server builds.  None of them acts on the
 /// machine the simulator runs on: the simulator leaves the host's network
@@ -377,7 +377,7 @@ fn provisions_and_registers_against_asterisk() {
     assert!(provisioning.contains(&format!("127.0.0.1:{SIP_PORT}")), "{provisioning}");
 
     // What the server sent is on disk in stock's files, with the Open
-    // DPhone setting the phone section carries.
+    // Desk Phone setting the phone section carries.
     let fetched = std::fs::read_to_string(nv.join("fetched-config.xml")).expect("fetched-config.xml");
     assert!(fetched.contains("username=\"1001\""), "{fetched}");
     for (option, _, value) in DPHONE_OPTIONS {
@@ -614,7 +614,7 @@ fn an_app_writes_a_value_that_an_app_on_another_phone_reads() {
     ]);
     let asterisk = start_asterisk(&server, &conf);
     let phone = cli(&server, &conf, "digium_phones show phone alice").unwrap();
-    assert!(phone.contains("Open DPhone app data tenant: office"), "{phone}");
+    assert!(phone.contains("Open Desk Phone app data tenant: office"), "{phone}");
 
     // Bob's phone first: its app reads, finds nothing, and watches.
     let bob = AppPhone::start(&dir.path().join("bob"), MAC_BOB, "reader", &staged, &log("bob"));

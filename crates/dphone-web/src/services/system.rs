@@ -156,7 +156,7 @@ pub async fn install_firmware(
         if info.is_stock && !req.allow_stock {
             return Err(ConnectError::new(
                 Code::PermissionDenied,
-                "this is a stock Digium image; installing it replaces Open DPhone. Confirm to proceed.",
+                "this is a stock Digium image; installing it replaces Open Desk Phone. Confirm to proceed.",
             ));
         }
         (u.path.to_string_lossy().into_owned(), info.is_stock)
@@ -164,7 +164,7 @@ pub async fn install_firmware(
     log::warn!(
         "firmware install requested from {} ({})",
         ctx.peer,
-        if is_stock { "stock image" } else { "Open DPhone image" }
+        if is_stock { "stock image" } else { "Open Desk Phone image" }
     );
     let sent = ctx.app.store.send(Command::InstallFirmware { path, allow_stock: req.allow_stock });
     // The updater may answer only when the flash is written, which takes
@@ -513,7 +513,7 @@ pub async fn create_backup(ctx: Ctx, _req: pb::CreateBackupRequest) -> Result<pb
     let sys = ctx.app.store.get::<st::System>();
     let mac: String = sys.mac_string().replace(':', "");
     let filename = format!(
-        "open-dphone-{}{}{}-backup.tar.gz",
+        "opendeskphone-{}{}{}-backup.tar.gz",
         sys.model.name().to_lowercase(),
         if mac.is_empty() { "" } else { "-" },
         mac

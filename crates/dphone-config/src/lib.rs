@@ -1,4 +1,4 @@
-//! Open DPhone configuration: the `nvdata` file layer, the stock-compatible
+//! Open Desk Phone configuration: the `nvdata` file layer, the stock-compatible
 //! ten-layer XML merge, and a typed view of the merged result.
 //!
 //! Typical use:

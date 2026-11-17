@@ -1,4 +1,4 @@
-//! On-device firmware update for Open DPhone (plan section 12): install an
+//! On-device firmware update for Open Desk Phone (plan section 12): install an
 //! EFF into the spare bank, maintain boot2's `ctrl` record, and support
 //! trial boots with rollback.
 //!

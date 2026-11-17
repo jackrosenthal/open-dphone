@@ -104,7 +104,7 @@ pub fn open<R: Read>(reader: R, phone: Model) -> Result<Opened<R>> {
     }
     if is_stock_version(&header.version) {
         return refused(format!(
-            "version {} is stock firmware; only an Open DPhone image can be started from RAM \
+            "version {} is stock firmware; only an Open Desk Phone image can be started from RAM \
              (its kernel must mount a root file system held in RAM)",
             header.version.trim()
         ));
@@ -183,7 +183,7 @@ impl<R: Read> Opened<R> {
         // What boot2 would copy, and so what runs: nothing past the span.
         kernel.truncate(span.len() as usize);
         let Some(bootargs) = appended_dtb_bootargs(&kernel) else {
-            return bad("the kernel carries no devicetree at its end (not an Open DPhone kernel image)");
+            return bad("the kernel carries no devicetree at its end (not an Open Desk Phone kernel image)");
         };
 
         // 0xff to the end of the last erase block, as erased flash reads.

@@ -500,7 +500,7 @@ fn file_exists(dir: &[u8], name: &[u8]) -> bool {
     .is_ok()
 }
 
-/// A user image setting (`logo_file`, `wallpaper_file`, and Open DPhone's
+/// A user image setting (`logo_file`, `wallpaper_file`, and Open Desk Phone's
 /// `dphone_palette_file`): served from the
 /// file directory when the file is there, otherwise from every network's
 /// file URL prefix.
@@ -973,9 +973,9 @@ fn build_config(
             val(&p.login_password)
         );
     }
-    // Open DPhone's own settings: only when set, so that the document for a
+    // Open Desk Phone's own settings: only when set, so that the document for a
     // phone without them is what the official DPMA builds.  Stock firmware
-    // ignores them.  Each is frozen: Open DPhone puts a value set on the
+    // ignores them.  Each is frozen: Open Desk Phone puts a value set on the
     // phone ahead of a provisioned one that is not, and what the server's
     // configuration says is not for the phone's user to change, e.g.,
     // `dphone_ssh_enabled=no`.
@@ -1618,7 +1618,7 @@ fn build_config(
             "/user_wallpaper.png",
         );
     }
-    // Open DPhone: the palette file that goes with the wallpaper.
+    // Open Desk Phone: the palette file that goes with the wallpaper.
     if !p.dphone_palette_file.is_empty() {
         user_image(
             &mut o,
@@ -1717,7 +1717,7 @@ fn build_config(
     }
     ap!(o, "</smart_blf>\n");
 
-    // Open DPhone: SSH public keys, only when there are any.
+    // Open Desk Phone: SSH public keys, only when there are any.
     if !p.dphone_ssh_authorized_keys.is_empty() {
         ap!(o, "<dphone_ssh_authorized_keys>\n");
         for (i, key) in p.dphone_ssh_authorized_keys.iter().enumerate() {

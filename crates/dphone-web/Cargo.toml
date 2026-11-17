@@ -1,6 +1,6 @@
 [package]
 name = "dphone-web"
-description = "Open DPhone: web server, Connect RPC services, and the embedded frontend"
+description = "Open Desk Phone: web server, Connect RPC services, and the embedded frontend"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

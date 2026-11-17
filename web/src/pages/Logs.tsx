@@ -61,7 +61,7 @@ export function Logs() {
     const url = URL.createObjectURL(new Blob([shown.map(line).join("\n") + "\n"], { type: "text/plain" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = "open-dphone.log";
+    a.download = "opendeskphone.log";
     a.click();
     URL.revokeObjectURL(url);
   }

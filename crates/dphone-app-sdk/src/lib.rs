@@ -1,4 +1,4 @@
-//! The SDK for Open DPhone apps (the README tells how to build, package,
+//! The SDK for Open Desk Phone apps (the README tells how to build, package,
 //! and install one).
 //!
 //! An app is a `cdylib` built for `wasm32-unknown-unknown` that implements

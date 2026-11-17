@@ -77,7 +77,7 @@ fn self_signed(key: &SigningKey, hostname: &str) -> io::Result<Vec<u8>> {
         .take(60)
         .collect();
     let cn = if cn.is_empty() { "dphone".to_owned() } else { cn };
-    let subject = Name::from_str(&format!("CN={cn},O=Open DPhone")).map_err(err)?;
+    let subject = Name::from_str(&format!("CN={cn},O=Open Desk Phone")).map_err(err)?;
     let mut serial = [0u8; 16];
     getrandom::fill(&mut serial).map_err(err)?;
     serial[0] &= 0x7f;

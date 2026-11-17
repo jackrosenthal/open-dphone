@@ -1,4 +1,4 @@
-//! Open DPhone's state store, event bus, and command bus.
+//! Open Desk Phone's state store, event bus, and command bus.
 //!
 //! This crate is the contract between the subsystems of the `dphone`
 //! binary.  It replaces the stock firmware's D-Bus signals; none of those

@@ -1,6 +1,6 @@
 [package]
 name = "dphone-sip"
-description = "Open DPhone: SIP user agent (registration, calls, subscriptions, MESSAGE) on rsipstack"
+description = "Open Desk Phone: SIP user agent (registration, calls, subscriptions, MESSAGE) on rsipstack"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

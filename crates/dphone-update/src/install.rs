@@ -136,7 +136,7 @@ pub fn check_eff<R: Read>(reader: R, model: Model) -> Result<String> {
 }
 
 /// Whether a version string (`2_9_28`, `3_0_0`, `3.0.0`) is a stock
-/// release: stock stopped at 2.x, Open DPhone starts at 3.
+/// release: stock stopped at 2.x, Open Desk Phone starts at 3.
 pub fn is_stock_version(version: &str) -> bool {
     let major: String = version.trim().chars().take_while(char::is_ascii_digit).collect();
     major.parse::<u32>().map_or(true, |m| m < 3)
@@ -480,7 +480,7 @@ impl<'a> Updater<'a> {
         }
         if staged.is_stock {
             // Stock does not know the record; one left behind would be
-            // counted against whatever Open DPhone image comes next.
+            // counted against whatever Open Desk Phone image comes next.
             let _ = trial::clear(&self.open_dir);
         }
         log::info!("firmware update: bank {target:?} written and selected ({})", staged.version);

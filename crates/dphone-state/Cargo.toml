@@ -1,6 +1,6 @@
 [package]
 name = "dphone-state"
-description = "Open DPhone: typed state store, event bus, command bus, and log ring"
+description = "Open Desk Phone: typed state store, event bus, command bus, and log ring"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

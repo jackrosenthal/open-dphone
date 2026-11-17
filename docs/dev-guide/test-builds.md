@@ -1,6 +1,6 @@
 # Test builds
 
-Two ways run new code on a phone without writing to flash.  Both require a phone running Open DPhone with [SSH](ssh-and-serial-console.md#ssh) on.
+Two ways run new code on a phone without writing to flash.  Both require a phone running Open Desk Phone with [SSH](ssh-and-serial-console.md#ssh) on.
 
 | | Binary deploy | RAM boot |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ A pushed binary does not update:
 
 `dphone ramboot` boots an image's kernel, device tree, and root file system from RAM, without writing to the firmware banks or the `ctrl` partition: to test a kernel before flashing, or a whole image without a flash write.
 
-The command accepts only an Open DPhone EFF image for the phone's model, as built by `nix build` and installed by `dphone update install`.  Loading briefly takes free memory for two copies of the image, so a copy in `/tmp` would exhaust the memory.  Pipe the image over SSH instead:
+The command accepts only an Open Desk Phone EFF image for the phone's model, as built by `nix build` and installed by `dphone update install`.  Loading briefly takes free memory for two copies of the image, so a copy in `/tmp` would exhaust the memory.  Pipe the image over SSH instead:
 
 ```sh
 ssh root@192.0.2.20 dphone ramboot - < result

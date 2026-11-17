@@ -614,7 +614,7 @@ impl App for BoxPusher {
 dphone_app_sdk::export_app! {
     app: BoxPusher,
     name: "boxpusher",
-    id: "org.opendphone.boxpusher",
+    id: "org.opendeskphone.boxpusher",
     display_name: "Box Pusher",
     description: "Push every box onto a target",
     phone_icon: Some(Icon::AppBoxpusher),

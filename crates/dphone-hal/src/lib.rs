@@ -1,4 +1,4 @@
-//! Hardware abstraction for Open DPhone (plan section 6).
+//! Hardware abstraction for Open Desk Phone (plan section 6).
 //!
 //! Traits for each hardware function, with two backends:
 //!

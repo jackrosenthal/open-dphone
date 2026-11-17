@@ -1,4 +1,4 @@
-//! The app-data suite: the app data of Open DPhone phones
+//! The app-data suite: the app data of Open Desk Phone phones
 //! (`AppDataRequest`) end to end with the phone simulator.
 //!
 //! ```text

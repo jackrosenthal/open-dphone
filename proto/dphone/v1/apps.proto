@@ -45,7 +45,7 @@ message App {
   bool disabled = 11;
 }
 
-// The built-in apps that are switched off (one of Open DPhone's own
+// The built-in apps that are switched off (one of Open Desk Phone's own
 // settings).
 message DisabledApps {
   repeated dphone.settings.v1.App apps = 1;

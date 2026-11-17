@@ -1,4 +1,4 @@
-//! Open DPhone userspace.
+//! Open Desk Phone userspace.
 //!
 //! One executable with several roles, chosen in [`cli`]:
 //!
@@ -37,7 +37,7 @@ pub mod update_cli;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Product name, shown where nothing parses it.
-pub const PRODUCT: &str = "Open DPhone";
+pub const PRODUCT: &str = "Open Desk Phone";
 
 /// Version in the stock style (`3_0_0`), for places where stock puts a version.
 pub fn stock_version() -> String {

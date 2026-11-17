@@ -171,7 +171,7 @@ pub enum Command {
     /// Write settings to the user layer (`id`, `value` pairs), then merge.
     SetSettings { settings: Vec<(String, String)> },
     /// Choose a built-in theme by its configuration name (one of Open
-    /// DPhone's own settings, kept with them, and on the PBX for the
+    /// Desk Phone's own settings, kept with them, and on the PBX for the
     /// phone's user); an empty name drops the choice made on the phone.
     SetTheme { name: String },
     /// Contact lists changed on disk.

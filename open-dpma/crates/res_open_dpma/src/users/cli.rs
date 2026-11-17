@@ -332,64 +332,64 @@ fn show_phone(a: &CliArgs) -> CliResult {
     bwriteln!(o, "Login Password: {}", set_or_not(&p.login_password));
     bwriteln!(
         o,
-        "Open DPhone SSH enabled: {}",
+        "Open Desk Phone SSH enabled: {}",
         tristate(&p.dphone_ssh_enabled)
     );
     bwriteln!(
         o,
-        "Open DPhone ignore provisioned firmware: {}",
+        "Open Desk Phone ignore provisioned firmware: {}",
         tristate(&p.dphone_ignore_provisioned_firmware)
     );
     bwriteln!(
         o,
-        "Open DPhone metrics enabled: {}",
+        "Open Desk Phone metrics enabled: {}",
         tristate(&p.dphone_metrics_enabled)
     );
     bwriteln!(
         o,
-        "Open DPhone serial console: {}",
+        "Open Desk Phone serial console: {}",
         tristate(&p.dphone_serial_console)
     );
     bwriteln!(
         o,
-        "Open DPhone static address: {}",
+        "Open Desk Phone static address: {}",
         or(&p.dphone_static_address, "<Not Set>")
     );
     bwriteln!(
         o,
-        "Open DPhone static gateway: {}",
+        "Open Desk Phone static gateway: {}",
         p.dphone_static_gateway
             .map_or("<Not Set>".to_string(), |a| a.to_string())
     );
     bwriteln!(
         o,
-        "Open DPhone static DNS servers: {}",
+        "Open Desk Phone static DNS servers: {}",
         p.dphone_static_dns.len()
     );
     bwriteln!(
         o,
-        "Open DPhone disabled apps: {}",
+        "Open Desk Phone disabled apps: {}",
         p.dphone_disabled_apps.len()
     );
     bwriteln!(
         o,
-        "Open DPhone idle softkeys: {}",
+        "Open Desk Phone idle softkeys: {}",
         p.dphone_idle_softkeys.len()
     );
-    bwriteln!(o, "Open DPhone theme: {}", or(&p.dphone_theme, "None"));
+    bwriteln!(o, "Open Desk Phone theme: {}", or(&p.dphone_theme, "None"));
     bwriteln!(
         o,
-        "Open DPhone palette file: {}",
+        "Open Desk Phone palette file: {}",
         or(&p.dphone_palette_file, "None")
     );
     bwriteln!(
         o,
-        "Open DPhone app data tenant: {}",
+        "Open Desk Phone app data tenant: {}",
         or(&p.dphone_app_data_tenant, "<Not Set>")
     );
     bwriteln!(
         o,
-        "Open DPhone SSH authorized keys: {}",
+        "Open Desk Phone SSH authorized keys: {}",
         p.dphone_ssh_authorized_keys.len()
     );
     bwriteln!(o, "Logout enabled: {}", yes_no(p.logout_enabled));

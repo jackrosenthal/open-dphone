@@ -111,7 +111,7 @@ fn diag_commands_and_restart() {
 
     let (code, out, _) = diag(&socket, &["version"]);
     assert_eq!(code, 0);
-    assert!(out.contains("Open DPhone") && out.contains("model D40"), "{out}");
+    assert!(out.contains("Open Desk Phone") && out.contains("model D40"), "{out}");
 
     // The subsystems wired into the main role answer.
     let (code, out, _) = diag(&socket, &["state", "system"]);
@@ -646,7 +646,7 @@ fn ssh_exec_and_sftp_with_openssh_client() {
     assert!(ok.success());
     // The stock firmware's key file, as on a phone that has run both
     // firmwares: the stock firmware's key, and a key added under an earlier
-    // Open DPhone.  The first start moves the added key only.
+    // Open Desk Phone.  The first start moves the added key only.
     let stock_file = d.join("nv/root/.ssh/authorized_keys");
     std::fs::create_dir_all(stock_file.parent().unwrap()).unwrap();
     let id_pub = std::fs::read_to_string(d.join("id.pub")).unwrap();

@@ -1,6 +1,6 @@
 [package]
 name = "dphone-ui"
-description = "Open DPhone: UI toolkit, skins, native screens, and the app view API"
+description = "Open Desk Phone: UI toolkit, skins, native screens, and the app view API"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

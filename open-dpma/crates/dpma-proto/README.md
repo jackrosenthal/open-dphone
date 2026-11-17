@@ -5,7 +5,7 @@ Digium Phone Module for Asterisk, DPMA), as a Rust library with no Asterisk
 dependency.
 
 It is the protocol half of
-[Open DPMA](https://github.com/jackrosenthal/open-dphone/tree/main/open-dpma),
+[Open DPMA](https://github.com/jackrosenthal/opendeskphone/tree/main/open-dpma),
 an open source replacement for the official DPMA.  The code follows the
 official module's behavior closely, including its error texts and limits, so
 that what it produces and accepts is what phones expect.  It is written from
@@ -27,7 +27,7 @@ framing, and URI parsing) can also serve a phone-side client.
   request and response types, and error codes with their texts.
 - `xml` and `json`: escaping and serialization that match what Asterisk
   produces.
-- `appdata`: the app data of Open DPhone phones, which the official DPMA
+- `appdata`: the app data of Open Desk Phone phones, which the official DPMA
   does not have: the requests and responses, and what a server does with
   them.
 
@@ -55,11 +55,11 @@ Two runnable examples use `message` over a real SIP stack,
 lives (`examples/common/mod.rs`); everything about the protocol is the
 crate's.
 
-- [`examples/server.rs`](https://github.com/jackrosenthal/open-dphone/blob/main/open-dpma/crates/dpma-proto/examples/server.rs)
+- [`examples/server.rs`](https://github.com/jackrosenthal/opendeskphone/blob/main/open-dpma/crates/dpma-proto/examples/server.rs)
   is a server.  It verifies a phone's certificates, answers the Handshake with
   the session's password, and answers requests.  It trusts the CA certificates
   built into the official DPMA unless you pass others.
-- [`examples/phone.rs`](https://github.com/jackrosenthal/open-dphone/blob/main/open-dpma/crates/dpma-proto/examples/phone.rs)
+- [`examples/phone.rs`](https://github.com/jackrosenthal/opendeskphone/blob/main/open-dpma/crates/dpma-proto/examples/phone.rs)
   is a phone.  It handshakes with the certificates and key you give it, then
   sends a PingRequest and reads the reply.
 

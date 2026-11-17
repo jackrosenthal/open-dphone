@@ -1,4 +1,4 @@
-//! Open DPhone SIP user agent.
+//! Open Desk Phone SIP user agent.
 //!
 //! Built on `rsipstack`: its transports, transactions, and dialog layer
 //! (`Registration`, INVITE dialogs, client subscription dialogs) do the

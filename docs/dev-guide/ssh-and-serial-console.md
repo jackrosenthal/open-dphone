@@ -10,7 +10,7 @@ The SSH server accepts public keys only; the login name is `root`.  A login requ
 
 On the **System** page, the **SSH** card has the **Enabled** switch, which takes effect immediately, and the list of keys.  To add a key, paste the public key (the contents of a `.pub` file, e.g., `~/.ssh/id_ed25519.pub`) into the box, or choose the file, and click **Add Key**.
 
-The keys are stored in `/nvdata/open/authorized_keys`.  At startup, if that file does not exist, Open DPhone creates the file from the keys in `/nvdata/root/.ssh/authorized_keys`, the stock firmware's key file, leaving out the Digium keys that the stock firmware writes there at every boot.
+The keys are stored in `/nvdata/open/authorized_keys`.  At startup, if that file does not exist, Open Desk Phone creates the file from the keys in `/nvdata/root/.ssh/authorized_keys`, the stock firmware's key file, leaving out the Digium keys that the stock firmware writes there at every boot.
 
 ### PBX configuration
 
@@ -23,7 +23,7 @@ dphone_ssh_enabled=yes
 dphone_ssh_authorized_key=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa alice@laptop
 ```
 
-See [Open DPhone options](../open-dpma/open-dphone-options.md#dphone_ssh_enabled).
+See [Open Desk Phone options](../open-dpma/opendeskphone-options.md#dphone_ssh_enabled).
 
 ### Settings file
 
@@ -59,7 +59,7 @@ The phone's serial port is the EHS port, the connector for an electronic hook sw
 
 ### Console mode
 
-On the **System** page of the web interface, set **EHS Port** to **Serial Console (115200 8N1)**; the change takes effect immediately.  From the PBX, set [`dphone_serial_console`](../open-dpma/open-dphone-options.md#dphone_serial_console) in the phone section:
+On the **System** page of the web interface, set **EHS Port** to **Serial Console (115200 8N1)**; the change takes effect immediately.  From the PBX, set [`dphone_serial_console`](../open-dpma/opendeskphone-options.md#dphone_serial_console) in the phone section:
 
 ```ini
 dphone_serial_console=yes

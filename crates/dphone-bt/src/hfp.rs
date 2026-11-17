@@ -267,7 +267,7 @@ impl Gateway {
             // Settings with nothing to act on here: accepted.
             self.ok();
         } else if body == "+COPS?" {
-            self.send("+COPS: 0,0,\"Open DPhone\"");
+            self.send("+COPS: 0,0,\"Open Desk Phone\"");
             self.ok();
         } else if body == "+CLCC" {
             let line = match &self.state {

@@ -1,4 +1,4 @@
-/// The Open DPhone application interface.
+/// The Open Desk Phone application interface.
 ///
 /// An app is a WebAssembly component targeting the `app` world.  The host
 /// calls `guest.start` once and then `guest.handle` for every event; all

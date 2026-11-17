@@ -61,7 +61,7 @@ message UploadedFirmware {
   // a model this firmware does not know (`model_matches` tells the two
   // apart).
   Model model = 4;
-  // A stock Digium image: installing it leaves Open DPhone.
+  // A stock Digium image: installing it leaves Open Desk Phone.
   bool is_stock = 5;
   // The image is for this phone's model.
   bool model_matches = 6;

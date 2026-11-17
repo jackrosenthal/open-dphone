@@ -1,6 +1,6 @@
 [package]
 name = "dphone"
-description = "Open DPhone: the one userspace binary (init role, main role, diagnostics)"
+description = "Open Desk Phone: the one userspace binary (init role, main role, diagnostics)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

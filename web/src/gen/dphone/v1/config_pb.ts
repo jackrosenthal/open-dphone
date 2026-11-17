@@ -285,7 +285,7 @@ export const SetIdleSoftkeysResponseSchema: GenMessage<SetIdleSoftkeysResponse> 
   messageDesc(file_dphone_v1_config, 11);
 
 /**
- * The effective value of one of Open DPhone's own on/off settings.
+ * The effective value of one of Open Desk Phone's own on/off settings.
  *
  * @generated from message dphone.v1.BoolSetting
  */
@@ -465,7 +465,7 @@ export const SetThemeResponseSchema: GenMessage<SetThemeResponse> = /*@__PURE__*
   messageDesc(file_dphone_v1_config, 18);
 
 /**
- * Where the value of one of Open DPhone's own settings came from.
+ * Where the value of one of Open Desk Phone's own settings came from.
  *
  * @generated from enum dphone.v1.SettingSource
  */

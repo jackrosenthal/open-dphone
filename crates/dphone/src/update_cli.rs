@@ -46,7 +46,7 @@ pub enum UpdateCommand {
     Status,
     /// Install an image into the bank that is not running, and select it
     ///
-    /// The image (Open DPhone or stock) is written, read back and compared,
+    /// The image (Open Desk Phone or stock) is written, read back and compared,
     /// and selected for the next boot; reboot afterwards with 'dphone
     /// reboot'.  A file is read and checked in full before anything is
     /// written.  An image from standard input or a URL goes straight into
@@ -86,7 +86,7 @@ pub enum UpdateCommand {
     ///
     /// For an image installed and selected by other means (e.g., by the
     /// stock updater, or with switch-bank, which must come first because it
-    /// removes a trial record): Open DPhone returns to the other bank by
+    /// removes a trial record): Open Desk Phone returns to the other bank by
     /// itself if the image does not come up healthy within a few boots.
     ArmTrial {
         /// The bank to return to [default: the running one]

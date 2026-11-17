@@ -134,7 +134,7 @@ fn common_headers(resp: &mut Response<Body>) {
     h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
     h.insert("x-frame-options", HeaderValue::from_static("DENY"));
     h.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
-    h.insert(header::SERVER, HeaderValue::from_static("Open DPhone"));
+    h.insert(header::SERVER, HeaderValue::from_static("Open Desk Phone"));
 }
 
 async fn handle(app: Arc<App>, peer: IpAddr, secure: bool, req: Request<Incoming>) -> Response<Body> {

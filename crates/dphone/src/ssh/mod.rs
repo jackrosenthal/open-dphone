@@ -95,7 +95,7 @@ fn server_config(host_key: russh::keys::PrivateKey) -> Config {
     let mut methods = MethodSet::empty();
     methods.push(MethodKind::PublicKey);
     Config {
-        server_id: SshId::Standard(format!("SSH-2.0-OpenDPhone_{}", crate::VERSION)),
+        server_id: SshId::Standard(format!("SSH-2.0-OpenDeskPhone_{}", crate::VERSION)),
         methods,
         auth_rejection_time: Duration::from_secs(1),
         auth_rejection_time_initial: Some(Duration::ZERO),

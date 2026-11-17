@@ -6,7 +6,7 @@ package dphone.settings.v1;
 // message type (never of a scalar, and never a delimited string), so that
 // an item can gain fields later.
 
-// Settings that only Open DPhone has.  Stored on the phone in protobuf text
+// Settings that only Open Desk Phone has.  Stored on the phone in protobuf text
 // format as /nvdata/dphone_settings.txtpb, a file the stock firmware never
 // reads.  Settings stock also knows stay in the stock XML layers.
 //

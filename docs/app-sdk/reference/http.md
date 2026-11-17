@@ -12,7 +12,7 @@ The result arrives as [`Event::Http((id, result))`](app-events.md#http): `Ok(Htt
 | --- | --- |
 | `method` | Letters only.  `""` means `GET`. |
 | `url` | Starts with `http://` or `https://`.  A `user:password@` part supplies credentials, which the phone sends only on a Basic or Digest challenge. |
-| `headers` | Added to the request.  A name is not empty and has no spaces, colons, or line breaks; a value has no line breaks.  The phone writes `Host`, `Connection: close`, and `Content-Length`, and drops headers with those names and `Transfer-Encoding`.  Without a `User-Agent`, the phone sends `User-Agent: Open DPhone`. |
+| `headers` | Added to the request.  A name is not empty and has no spaces, colons, or line breaks; a value has no line breaks.  The phone writes `Host`, `Connection: close`, and `Content-Length`, and drops headers with those names and `Transfer-Encoding`.  Without a `User-Agent`, the phone sends `User-Agent: Open Desk Phone`. |
 
 - Each request uses a new HTTP/1.1 connection.
 - For HTTPS, the phone verifies the server's certificate against the phone's trust bundle, unless the configuration sets `allow_insecure_ssl`.

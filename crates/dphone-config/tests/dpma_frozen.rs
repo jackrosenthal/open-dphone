@@ -1,4 +1,4 @@
-//! The Open DPhone settings as Open DPMA provisions them: every one is
+//! The Open Desk Phone settings as Open DPMA provisions them: every one is
 //! sent with `conflict="freeze"`, so a value set on the phone does not go
 //! before the server's.
 
