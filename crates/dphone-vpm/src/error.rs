@@ -30,8 +30,6 @@ pub enum Error {
     Unsupported(&'static str),
     /// Any other errno from the driver or the file system.
     Os(i32),
-    /// Malformed replay text.
-    Replay { line: u32, what: &'static str },
 }
 
 impl Error {
@@ -81,7 +79,6 @@ impl fmt::Display for Error {
             Error::NotOnThisFamily => f.write_str("not available on this DSP family"),
             Error::Unsupported(what) => write!(f, "unsupported: {what}"),
             Error::Os(e) => write!(f, "{}", std::io::Error::from_raw_os_error(*e)),
-            Error::Replay { line, what } => write!(f, "replay text line {line}: {what}"),
         }
     }
 }

@@ -1,21 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 //! One-time DSP jobs observed on a stock D60 (new family) and D40 (old
-//! family), compiled in from `data/*.json` by `build.rs`, and a reader and
-//! writer for the line format the earlier tools used (`rpl.c`).
-//!
-//! Line format, one record per line (numbers decimal, body words hex):
-//!
-//! ```text
-//! F <family>                          "new" or "old"
-//! S <sequence name>
-//! J <t_us> <client> <channel> <instance> <codec> <op> <arg1> <arg2> <frame_words> <nbody> <w0> <w1> ...
-//! ```
-
-use std::fmt::Write as _;
+//! family), compiled in from `data/*.json` by `build.rs`.
 
 use crate::transport::{Reply, Transport};
 use crate::vpm::{Call, Vpm, words_to_bytes};
-use crate::{Error, Family, Result, abi};
+use crate::{Family, Result, abi};
 
 #[derive(Debug)]
 pub struct ReplayJob {
@@ -162,7 +151,7 @@ pub fn send<T: Transport>(vpm: &mut Vpm<T>, job: &dyn JobLike, reply: &mut [u8])
     )
 }
 
-/// A job read from replay text.
+/// A job to send, with the name of the sequence it comes from.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OwnedJob {
     pub seq: String,
@@ -176,104 +165,6 @@ pub struct OwnedJob {
     pub arg2: u16,
     pub frame_words: u32,
     pub body: Vec<u16>,
-}
-
-/// Replay text, parsed.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ReplayText {
-    pub family: Option<Family>,
-    pub jobs: Vec<OwnedJob>,
-}
-
-impl ReplayText {
-    pub fn parse(text: &str) -> Result<Self> {
-        let mut out = ReplayText::default();
-        let mut seq = String::new();
-        for (i, line) in text.lines().enumerate() {
-            let bad = |what| Error::Replay { line: i as u32 + 1, what };
-            let line = line.trim_end_matches(['\r', '\n']);
-            let mut it = line.split_ascii_whitespace();
-            match line.as_bytes().first() {
-                None | Some(b'#') => continue,
-                Some(b'F') => {
-                    it.next();
-                    out.family = Some(match it.next() {
-                        Some("new") => Family::New,
-                        Some("old") => Family::Old,
-                        _ => return Err(bad("bad family line")),
-                    });
-                }
-                Some(b'S') => {
-                    it.next();
-                    seq = it.next().ok_or(bad("bad sequence line"))?.to_string();
-                }
-                Some(b'J') => {
-                    it.next();
-                    let mut num = || -> Result<u64> { it.next().and_then(|s| s.parse().ok()).ok_or(bad("bad job line")) };
-                    let t_us = num()?;
-                    let mut f = [0u64; 9];
-                    for v in &mut f {
-                        *v = num()?;
-                    }
-                    let [client, channel, instance, codec, op, arg1, arg2, frame_words, nbody] = f;
-                    if nbody > 0x8000 || [client, channel, instance, codec, op, arg1, arg2].iter().any(|&v| v > 0xffff) {
-                        return Err(bad("value out of range"));
-                    }
-                    let body: Vec<u16> = it
-                        .map(|w| u16::from_str_radix(w, 16))
-                        .collect::<std::result::Result<_, _>>()
-                        .map_err(|_| bad("bad body word"))?;
-                    if body.len() as u64 != nbody {
-                        return Err(bad("body words do not match the announced count"));
-                    }
-                    out.jobs.push(OwnedJob {
-                        seq: seq.clone(),
-                        t_us,
-                        client: client as u16,
-                        channel: channel as u16,
-                        instance: instance as u16,
-                        codec: codec as u16,
-                        op: op as u16,
-                        arg1: arg1 as u16,
-                        arg2: arg2 as u16,
-                        frame_words: frame_words as u32,
-                        body,
-                    });
-                }
-                _ => return Err(bad("unknown record")),
-            }
-        }
-        Ok(out)
-    }
-}
-
-/// The compiled-in table in the text format.
-pub fn to_text(table: &ReplayTable) -> String {
-    let mut s = String::new();
-    let _ = writeln!(s, "F {}", if table.family == Family::New { "new" } else { "old" });
-    for seq in table.sequences {
-        let _ = writeln!(s, "S {}", seq.name);
-        for j in seq.jobs {
-            let _ = write!(
-                s,
-                "J {} {} {} {} {} {} {} {} {} {}",
-                j.t_us, j.client, j.channel, j.instance, j.codec, j.op, j.arg1, j.arg2, j.frame_words, j.body.len()
-            );
-            for w in j.body {
-                let _ = write!(s, " {w:04x}");
-            }
-            s.push('\n');
-        }
-    }
-    s
-}
-
-/// `list` is comma separated; an entry ending in `*` is a prefix.
-pub fn seq_selected(list: &str, seq: &str) -> bool {
-    list.split(',').any(|p| match p.strip_suffix('*') {
-        Some(prefix) => seq.starts_with(prefix),
-        None => p == seq,
-    })
 }
 
 #[cfg(test)]
@@ -309,23 +200,5 @@ mod tests {
         assert!(old.derived_static);
         assert_eq!(old.jobs.len(), 3);
         assert_eq!((old.jobs[2].arg1, old.jobs[2].body.len(), old.jobs[2].body[0]), (2, 931, 0x04d3));
-    }
-
-    #[test]
-    fn text_round_trip() {
-        for t in [&NEW_FAMILY, &OLD_FAMILY] {
-            let text = to_text(t);
-            let parsed = ReplayText::parse(&text).unwrap();
-            assert_eq!(parsed.family, Some(t.family));
-            let n: usize = t.sequences.iter().map(|s| s.jobs.len()).sum();
-            assert_eq!(parsed.jobs.len(), n);
-            let first = &t.sequences[0].jobs[0];
-            assert_eq!(parsed.jobs[0].describe(), first.describe());
-        }
-        assert!(ReplayText::parse("X nope\n").is_err());
-        assert!(ReplayText::parse("J 0 1 1 0 0 7 0 0 10 1\n").is_err());
-        assert!(seq_selected("boot*", "boot_part2"));
-        assert!(seq_selected("a,app_stop_start", "app_stop_start"));
-        assert!(!seq_selected("boot*", "g722_handset_setup"));
     }
 }

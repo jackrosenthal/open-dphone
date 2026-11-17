@@ -4,9 +4,9 @@
 //! of the cancellers and the filter bank.
 
 use crate::codec::{Codec, swap_pairs};
-use crate::replay::{self, JobLike, OwnedJob};
+use crate::replay::{self, JobLike};
 use crate::startup::{self, StartupOptions};
-use crate::transport::{MockTransport, Reply, Transport};
+use crate::transport::{MockTransport, Transport};
 use crate::vpm::{Vpm, hec, pve, sbaec};
 use crate::{ChannelMap, Error, Family, Result, abi};
 
@@ -209,44 +209,6 @@ pub fn g722_loop<T: Transport>(vpm: &mut Vpm<T>, input: &[i16], opts: &G722LoopO
         res.frames += 1;
     }
     Ok(res)
-}
-
-/// Sends replay jobs: the compiled-in sequences selected by `seqs` (see
-/// [`replay::seq_selected`]), or jobs parsed from text.
-pub fn replay_jobs<T: Transport>(
-    vpm: &mut Vpm<T>,
-    jobs: &[OwnedJob],
-    skip_queries: bool,
-    keep_going: bool,
-    mut observe: impl FnMut(&OwnedJob, &Result<Reply>, &[u8]),
-) -> Result<(u32, u32)> {
-    let (mut sent, mut failed) = (0, 0);
-    let mut reply = vec![0u8; 16384];
-    for job in jobs {
-        if skip_queries && job.is_query() {
-            continue;
-        }
-        let r = replay::send(vpm, job, &mut reply);
-        let n = r.as_ref().map(|r| r.stored(reply.len())).unwrap_or(0);
-        observe(job, &r, &reply[..n]);
-        match r {
-            Ok(_) => sent += 1,
-            Err(e) => {
-                failed += 1;
-                if !keep_going || e.is_fatal() {
-                    return Err(e);
-                }
-            }
-        }
-    }
-    Ok((sent, failed))
-}
-
-/// The compiled-in jobs of the sequences selected by `seqs`.
-pub fn table_jobs(family: Family, seqs: &str) -> Vec<OwnedJob> {
-    replay::ReplayText::parse(&replay::to_text(replay::table(family)))
-        .map(|t| t.jobs.into_iter().filter(|j| replay::seq_selected(seqs, &j.seq)).collect())
-        .unwrap_or_default()
 }
 
 /// Which canceller a probe addresses.
@@ -670,13 +632,5 @@ mod tests {
         // The old family's DSP has no filter bank.
         let mut vpm = Vpm::new(MockTransport::new(Family::Old)).unwrap();
         assert_eq!(band_experiment(&mut vpm, 2, Signal::Tone(12000), 10), Err(Error::NotOnThisFamily));
-    }
-
-    #[test]
-    fn table_selection() {
-        let jobs = table_jobs(Family::New, "boot_part3");
-        assert_eq!(jobs.len(), 3);
-        let mut vpm = Vpm::new(MockTransport::new(Family::New)).unwrap();
-        assert_eq!(replay_jobs(&mut vpm, &jobs, false, false, |_, _, _| {}).unwrap(), (3, 0));
     }
 }

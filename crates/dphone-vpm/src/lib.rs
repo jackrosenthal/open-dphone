@@ -5,7 +5,7 @@
 //! codec frame, an echo-canceller frame, a band split, a configuration
 //! block) and gets the result back.  One ioctl on `/dev/bcmring-vpm` carries
 //! one job.  This crate is a Rust port of the earlier C library
-//! (`libbcmvpm`: `vpm.c`, `rpl.c`) and its tools.
+//! (`libbcmvpm`: `vpm.c`).
 //!
 //! What has run on hardware (through the C library this is a port of): the
 //! vocoder query, init, encode, and decode jobs on both families, and the
