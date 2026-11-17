@@ -303,7 +303,7 @@ fn model_keys(model: st::Model) -> Vec<pb::Key> {
         st::Model::D70 => {
             keys.extend([Key::BlfPageLeft, Key::BlfPageRight, Key::Status, Key::Contacts, Key::Apps, Key::Menu])
         }
-        st::Model::D65 => keys.push(Key::BlfPageRight),
+        st::Model::D65 => keys.extend([Key::BlfPageLeft, Key::BlfPageRight]),
         _ => {}
     }
     keys.into_iter().map(|key| pb::Key { name: key.name() }).collect()
