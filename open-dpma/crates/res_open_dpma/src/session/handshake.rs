@@ -6,7 +6,9 @@
 //! a HandshakeResponse: the common password RSA-encrypted to the phone's
 //! key in `X-Digium-AppServer-Password`, the AppServer certificate in the
 //! body, and the authentication requirement headers.  A failed
-//! verification gets no answer, only an auth incident.
+//! verification gets no answer, only an auth incident.  While the last
+//! reload could not read a certificate file, every Handshake gets no
+//! answer (deviation; see [`super::store::reload`]).
 
 use super::store::{self, alloc, NewSession};
 use super::{user_agent_of, Outgoing, Session, Transaction};
@@ -113,6 +115,14 @@ pub fn handle_handshake(tx: Arc<Transaction>) -> i32 {
     let contact = dpma_proto::uri::get_in_brackets(&contact);
     if let Some(mac) = mac.as_deref().filter(|m| !m.is_empty()) {
         prune_session_by_mac(mac);
+    }
+    // Deviation: while the last reload could not read phone_ca_file or
+    // appserver_certificate, the handshake is refused as a failed
+    // verification is, with no answer, but without an auth incident: the
+    // phone did nothing wrong.
+    if let Some(why) = store::handshake_refusal() {
+        dpma_log!("Handshake from '{}' refused: {}", contact, why);
+        return 0;
     }
 
     // Deviation: Asterisk 24 strips the trailing CR/LF of every MESSAGE

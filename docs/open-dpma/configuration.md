@@ -54,7 +54,11 @@ line=101
 | `appserver_certificate` | Path to a PEM file | A certificate built into the module | The server certificate sent to phones in the handshake.  Open DPMA only. |
 | `phone_ca_file` | Path to a PEM file with one or more CA certificates | The CA certificates built into the module | The CA certificates that verify a phone's certificate in the handshake.  Open DPMA only. |
 
-The built-in certificates are the original module's, which D-series phones trust.  If the file named by `appserver_certificate` or `phone_ca_file` is unreadable, the module does not load at startup, and keeps the previous certificates on a reload.
+The built-in certificates are the original module's, which D-series phones trust.  If the file named by `appserver_certificate` or `phone_ca_file` is unreadable, the module does not load at startup.
+
+!!! warning "An unreadable certificate file refuses handshakes"
+
+    After a reload that cannot read the file named by `appserver_certificate` or `phone_ca_file`, the module answers no phone handshake until a reload reads the file.  Phones keep established sessions; a phone that handshakes, e.g., after a restart, gets no configuration.  The module logs an error, e.g., `Cannot read phone_ca_file '<file>': No such file or directory (os error 2): every phone handshake is refused until a reload reads the file`.
 
 ### `config_auth` { #config_auth }
 

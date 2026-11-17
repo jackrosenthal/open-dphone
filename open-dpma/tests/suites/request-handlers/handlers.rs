@@ -1637,3 +1637,82 @@ fn invalid_auth_checks(ctx: &mut Ctx) -> Result<()> {
     );
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Unreadable certificate files
+
+pub fn unreadable_certificates(ctx: &mut Ctx) -> Result<()> {
+    clear_incidents(ctx)?;
+    let res = unreadable_certificates_checks(ctx);
+    clear_incidents(ctx)?;
+    res
+}
+
+fn unreadable_certificates_checks(ctx: &mut Ctx) -> Result<()> {
+    ctx.c
+        .say("-- A reload that cannot read a certificate file refuses handshakes");
+    // The built-in certificates as files, a file without a certificate,
+    // and a path with no file.
+    let dir = files_dir(ctx);
+    let path = |name: &str| dir.join(name).to_string_lossy().into_owned();
+    let (ca, appserver, garbage, missing) = (
+        path("phone-ca.pem"),
+        path("appserver.pem"),
+        path("no-certificate.pem"),
+        path("missing.pem"),
+    );
+    std::fs::write(&ca, dpma_proto::cert::DEFAULT_PHONE_CA)?;
+    std::fs::write(&appserver, dpma_proto::cert::DEFAULT_APPSERVER_CERTIFICATE)?;
+    std::fs::write(&garbage, "not a certificate\n")?;
+    let _ = std::fs::remove_file(&missing);
+    let no_file = "No such file or directory (os error 2)";
+
+    // phonea's session is from before the reloads.
+    let early = phone(ctx, MAC_A)?;
+    let late = Phone::start(ctx.sim_options().mac("000fd3001202"))?;
+    for (option, file, reason, readable) in [
+        ("phone_ca_file", &missing, no_file, &ca),
+        ("phone_ca_file", &garbage, "No CA certificates found", &ca),
+        ("appserver_certificate", &missing, no_file, &appserver),
+    ] {
+        let name = format!("{option}={file}");
+        let mark = log_mark(ctx);
+        set_general(ctx, &[(option, Some(file))])?;
+        logged_error(
+            ctx,
+            &format!("{name}: an error"),
+            mark,
+            &regex::escape(&format!(
+                "Cannot read {option} '{file}': {reason}: every phone handshake is refused until a reload reads the file\n"
+            )),
+        );
+        let last = format!("' refused: {option} '{file}' could not be read at the last reload\n");
+        let ex = failed_handshake(ctx, &late, &last)?;
+        ctx.c.check(
+            format!("{name}: handshake refused"),
+            ex.reply.is_none(),
+            ex.describe(0),
+        );
+        no_incident(ctx, &name)?;
+        let ex = early.ping().send()?;
+        expect(
+            ctx,
+            &format!("{name}: the earlier session"),
+            &ex,
+            "PingResponse",
+            None,
+            Body::Is(b"empty body"),
+        );
+
+        // A reload that reads the file restores the handshake.
+        set_general(ctx, &[(option, Some(readable))])?;
+        let ex = late.handshake().send()?;
+        ctx.c.check(
+            format!("{option}={readable}: handshake answered"),
+            ex.ok() && ex.reply().and_then(|r| r.appserver_ok) == Some(true),
+            ex.describe(0),
+        );
+        set_general(ctx, &[(option, None)])?;
+    }
+    Ok(())
+}

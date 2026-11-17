@@ -87,6 +87,15 @@ These differ from the official DPMA:
   started while the value was invalid is checked with the corrected
   value.  The official DPMA ignores such a value without a message, which
   leaves authentication disabled.
+- A reload that cannot read the file named by `phone_ca_file` or
+  `appserver_certificate` (see "Additions"), or finds no CA certificate
+  in the `phone_ca_file`, makes the module answer no phone handshake
+  until a reload reads the file, as for a phone certificate that fails
+  verification but without an authentication incident.  The module logs
+  an error that names the option and the file.  Existing sessions are
+  kept; a phone that handshakes, e.g., after a restart, is refused.
+  Keeping the previous certificates would keep trusting a phone CA that
+  the new file was meant to drop.  The official DPMA reads no such files.
 - A configuration token is keyed: its two numbers are part of an HMAC
   of the phone section's name and the phone's MAC address, under a
   random key that the module keeps in AstDB (family `OpenDPMATokens`),
@@ -129,8 +138,8 @@ These `[general]` options are not in the official DPMA:
 | `appserver_certificate=<file>` | A PEM file with the server certificate that the module sends to a phone in the handshake.  Default is the certificate of the official DPMA, which is built in. |
 | `phone_ca_file=<file>` | A PEM file with the CA certificates against which the module verifies a phone's certificate.  Default is the CA certificates of the official DPMA, which are built in. |
 
-When one of the files cannot be read, the module does not load; at a
-reload, the previous certificates stay in use.
+When one of the files cannot be read, the module does not load, and a
+reload refuses every phone handshake (see above).
 
 ### Additions for Open DPhone
 

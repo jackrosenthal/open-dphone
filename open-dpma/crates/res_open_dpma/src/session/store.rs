@@ -4,12 +4,14 @@
 //! certificate is sent in every HandshakeResponse.  Both default to the
 //! certificates embedded in the official DPMA; `phone_ca_file` and
 //! `appserver_certificate` override them with a file (read at load and
-//! reload).
+//! reload).  While the last reload could not read such a file, every
+//! Handshake is refused ([`reload`]).
 
 use super::{now, Session, DB_FAMILY};
 use crate::util::NamedMap;
 use dpma_ast::cli::CliGroup;
-use dpma_ast::{bformat, db, dpma_log};
+use dpma_ast::log::LOG_ERROR;
+use dpma_ast::{ast_log, bformat, db, dpma_log};
 use dpma_proto::cert::{CaStore, ClientInfo};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -34,6 +36,20 @@ pub(crate) struct Trust {
     pub ca: Option<CaStore>,
     /// `appserver_certificate`: appended to every HandshakeResponse.
     pub appserver_pem: Vec<u8>,
+    /// Not in the official DPMA: the file that the last reload could not
+    /// read.  While set, `ca` is None, `appserver_pem` is empty, and every
+    /// Handshake is refused.
+    pub unreadable: Option<Unreadable>,
+}
+
+/// A configured certificate file that cannot be read, or, for
+/// `phone_ca_file`, that has no readable CA certificate.
+pub(crate) struct Unreadable {
+    /// The option that names the file.
+    pub option: &'static str,
+    pub file: Vec<u8>,
+    /// The system's error, or what is wrong with the contents.
+    pub reason: String,
 }
 
 static TRUST: RwLock<Option<Trust>> = RwLock::new(None);
@@ -44,49 +60,62 @@ pub(crate) fn with_trust<R>(f: impl FnOnce(Option<&Trust>) -> R) -> R {
     f(g.as_ref())
 }
 
+/// Not in the official DPMA: why every Handshake is refused, while the
+/// last reload could not read a certificate file.
+pub(crate) fn handshake_refusal() -> Option<Vec<u8>> {
+    with_trust(|t| {
+        let u = t?.unreadable.as_ref()?;
+        Some(bformat!(
+            "{} '{}' could not be read at the last reload",
+            u.option,
+            u.file
+        ))
+    })
+}
+
 /// Read `phone_ca_file` and `appserver_certificate`, or the embedded
-/// defaults when unset.  A configured file that cannot be read is an error.
-fn load_trust() -> Result<Trust, ()> {
+/// defaults when unset.
+fn load_trust() -> Result<Trust, Unreadable> {
     let g = crate::config::get();
+    let unreadable = |option, file: &[u8], reason: String| Unreadable {
+        option,
+        file: file.to_vec(),
+        reason,
+    };
     let ca_pem = if g.phone_ca_file.is_empty() {
         crate::config::DEFAULT_PHONE_CA.to_vec()
     } else {
-        std::fs::read(crate::util::path(&g.phone_ca_file)).map_err(|e| {
-            dpma_log!(
-                "Error creating castore: cannot read phone_ca_file '{}': {}",
-                g.phone_ca_file,
-                e
-            );
-        })?
+        std::fs::read(crate::util::path(&g.phone_ca_file))
+            .map_err(|e| unreadable("phone_ca_file", &g.phone_ca_file, e.to_string()))?
     };
-    let ca = CaStore::from_pem(&ca_pem).map_err(|e| {
-        dpma_log!(
-            "Error creating castore from '{}': {}",
-            g.phone_ca_file,
-            e.message()
-        );
-    })?;
+    let ca = CaStore::from_pem(&ca_pem)
+        .map_err(|e| unreadable("phone_ca_file", &g.phone_ca_file, e.message().into()))?;
     let appserver_pem = if g.appserver_certificate.is_empty() {
         crate::config::DEFAULT_APPSERVER_CERTIFICATE.to_vec()
     } else {
         std::fs::read(crate::util::path(&g.appserver_certificate)).map_err(|e| {
-            dpma_log!(
-                "Cannot read appserver_certificate '{}': {}",
-                g.appserver_certificate,
-                e
-            );
+            unreadable(
+                "appserver_certificate",
+                &g.appserver_certificate,
+                e.to_string(),
+            )
         })?
     };
     Ok(Trust {
         ca: Some(ca),
         appserver_pem,
+        unreadable: None,
     })
 }
 
-/// `phone_msg_load` (FUN_00150440).
+/// `phone_msg_load` (FUN_00150440).  A certificate file that cannot be
+/// read fails the load.
 pub fn load(_config_file: &[u8]) -> Result<(), ()> {
     let g = crate::config::get();
-    *TRUST.write().unwrap_or_else(|e| e.into_inner()) = Some(load_trust()?);
+    let trust = load_trust().map_err(|u| {
+        dpma_log!("Cannot read {} '{}': {}", u.option, u.file, u.reason);
+    })?;
+    *TRUST.write().unwrap_or_else(|e| e.into_inner()) = Some(trust);
     super::incoming::reset();
     *SESSIONS.lock().unwrap_or_else(|e| e.into_inner()) = Some(NamedMap::new(BUCKETS));
     set_global_auth_flags(g.auth_flags);
@@ -97,18 +126,35 @@ pub fn load(_config_file: &[u8]) -> Result<(), ()> {
 }
 
 /// `phone_msg_reload` (FUN_00150420): refresh the global auth flags.  The
-/// trust material is read again too (the official DPMA's is built in); what
-/// cannot be read keeps its previous value.
+/// trust material is read again too (the official DPMA's is built in).
+///
+/// Deviation (the official DPMA has no such files): a certificate file
+/// that cannot be read is logged as an error, and every Handshake is
+/// refused until a reload reads the file.  Keeping the previous
+/// certificates would keep trusting a phone CA that the new file was meant
+/// to drop.  Sessions that exist are kept.
 pub fn reload(_config_file: &[u8]) -> Result<(), ()> {
     set_global_auth_flags(crate::config::get().auth_flags);
-    if TRUST.read().unwrap_or_else(|e| e.into_inner()).is_some() {
-        if let Ok(new) = load_trust() {
-            let mut g = TRUST.write().unwrap_or_else(|e| e.into_inner());
-            if let Some(old) = g.as_mut() {
-                old.ca = new.ca;
-                old.appserver_pem = new.appserver_pem;
-            }
+    if TRUST.read().unwrap_or_else(|e| e.into_inner()).is_none() {
+        return Ok(());
+    }
+    let new = load_trust().unwrap_or_else(|u| {
+        ast_log!(
+            LOG_ERROR,
+            "Cannot read {} '{}': {}: every phone handshake is refused until a reload reads the file",
+            u.option,
+            u.file,
+            u.reason
+        );
+        Trust {
+            ca: None,
+            appserver_pem: Vec::new(),
+            unreadable: Some(u),
         }
+    });
+    let mut g = TRUST.write().unwrap_or_else(|e| e.into_inner());
+    if g.is_some() {
+        *g = Some(new);
     }
     Ok(())
 }
