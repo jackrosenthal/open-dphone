@@ -1,9 +1,6 @@
 //! Kernel images for the k0/k1 slots: a zImage with an appended DTB whose
 //! header words 0x28 (start) and 0x2c (end) tell the stock boot2 where to
 //! copy the image and how long it is.  boot2 enters the image at `start`.
-//!
-//! Format knowledge from static analysis of boot2 (kernel-re/boot/NOTES.md
-//! in the reverse-engineering tree).
 
 use std::fmt;
 

@@ -1,10 +1,8 @@
 //! The dial plan (stock "digit map"): decides when the digits entered in an
 //! off-hook dialer are dialed without the user pressing Dial.
 //!
-//! This is stock's compiler and matcher (the `phone` program, 2_9_28:
-//! `0x30280` compiles, `0x2fdc4` matches one alternative, `0x303dc`
-//! decides), reproduced with its results, including the ones that look
-//! odd:
+//! This is stock's compiler and matcher, reproduced with its results,
+//! including the ones that look odd:
 //!
 //! - Alternatives are separated by `|`.  An alternative is a sequence of
 //!   `0`-`9`, `#`, `*`, and `+` (that character), `x` or `X` (any digit),

@@ -1,10 +1,8 @@
 //! Where BLF and rapid-dial items go: stock's assignment of configured
 //! `<blf_item>`s to line keys and to the rapid-dial strip.
 //!
-//! The rules are those of stock's `LineManager` loaders, read from the
-//! D70 `phone` binary (old family: main loader at 0x81ef4 with placement
-//! at 0x81bfc, side loader at 0x2023c with placement at 0x1fb98) and the
-//! D65 one (new family: item loader at 0x871f4, placement at 0x86e54):
+//! The rules are those of stock's `phone` program, on the old family (D70)
+//! and on the new family (D65):
 //!
 //! - There are `pages x line keys` line-key slots.  On every page the
 //!   first N keys are the accounts, N being the number of accounts in use

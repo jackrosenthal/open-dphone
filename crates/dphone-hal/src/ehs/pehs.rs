@@ -3,9 +3,9 @@
 //! [`super::plantronics`]; this is what the packets mean and when they are
 //! sent.
 //!
-//! Recovered from the stock daemon's detection routine (`0xdaa4`), event
-//! loop (`0xde84`), and phone-signal handler (`0xf124`).  A packet is a type
-//! byte, a code byte, and a text payload:
+//! The detection, the event loop, and the reactions to the phone state
+//! follow the stock daemon.  A packet is a type byte, a code byte, and a
+//! text payload:
 //!
 //! | Type | Meaning |
 //! | --- | --- |
@@ -75,8 +75,8 @@ fn read_packet(port: &mut dyn EhsPort, parser: &mut Parser, pending: &mut VecDeq
     }
 }
 
-/// Probes for a Plantronics adapter (`0xdaa4`): `?P`, answered by `+P`,
-/// up to three times.
+/// Probes for a Plantronics adapter: `?P`, answered by `+P`, up to three
+/// times.
 pub fn detect(port: &mut dyn EhsPort, timing: &Timing, host: &mut dyn EhsHost) -> Result<bool> {
     let mut parser = Parser::new();
     let mut pending = VecDeque::new();
@@ -108,7 +108,7 @@ enum Item {
 }
 
 /// Runs the protocol with a detected adapter until two resets in a row
-/// fail, or the host asks to stop (`0xde84`).
+/// fail, or the host asks to stop.
 pub fn event_loop(port: &mut dyn EhsPort, timing: &Timing, host: &mut dyn EhsHost) -> Result<()> {
     let mut parser = Parser::new();
     let mut received = VecDeque::new();
@@ -148,7 +148,7 @@ pub fn event_loop(port: &mut dyn EhsPort, timing: &Timing, host: &mut dyn EhsHos
             resets += 1;
         }
 
-        // Phone state changes (stock `0xf124`).
+        // Phone state changes.
         let now = host.status();
         let old = std::mem::replace(&mut seen, now);
         if now.bluetooth_headset && !old.bluetooth_headset {

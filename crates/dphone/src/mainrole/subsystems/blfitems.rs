@@ -2,15 +2,14 @@
 //! each `<blf_item>` with its contact looked up in the contact lists on
 //! disk.  Where the items go on the keys is `dphone_sip::keys`.
 //!
-//! What follows stock (its `phone` binary; see `dphone_sip::keys` for the
-//! loaders): an item needs `blank` or an id; a contact that is in no
-//! contact list leaves a blank; with no items at all and
-//! `enable_blf_on_unused_line_keys`, the contacts of the BLF contact group
-//! (`blf_contact_group`) fill the free keys in order; a contact is watched
-//! (one `presence` subscription) when it has `subscribe_to`, on the first
-//! account, and at most `contacts_max_subscriptions` different targets are
-//! watched; a contact with `can_pickup_ringing="1"` is picked up, not
-//! dialed, by a press while it rings.
+//! What follows stock's `phone` binary: an item needs `blank` or an id; a
+//! contact that is in no contact list leaves a blank; with no items at all
+//! and `enable_blf_on_unused_line_keys`, the contacts of the BLF contact
+//! group (`blf_contact_group`) fill the free keys in order; a contact is
+//! watched (one `presence` subscription) when it has `subscribe_to`, on the
+//! first account, and at most `contacts_max_subscriptions` different
+//! targets are watched; a contact with `can_pickup_ringing="1"` is picked
+//! up, not dialed, by a press while it rings.
 //!
 //! Not done: application keys (`app_id`; the key is left reserved), the
 //! old family's dataset autofill (`datasets.xml`), and provisioned

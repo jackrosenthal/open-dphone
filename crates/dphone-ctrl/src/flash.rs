@@ -1,11 +1,10 @@
 //! Reading `ctrl` the way boot2 does, and rewriting it so that boot2 finds
 //! a whole record at every instant.
 //!
-//! What reads the partition (from the boot2 disassembly of both families
-//! and from stock `libota`): boot2 walks it one erase block at a time,
-//! skips blocks marked bad, reads the **first page** of each good block,
-//! and takes the first copy whose record CRC is right.  Stock
-//! `ota_GetCtrlBlock` does the same walk.
+//! What reads the partition: boot2 (both families) walks it one erase block
+//! at a time, skips blocks marked bad, reads the **first page** of each good
+//! block, and takes the first copy whose record CRC is right.  Stock
+//! `libota` does the same walk.
 //!
 //! What writes it differs by family; both layouts satisfy both readers:
 //! one copy at the start of every good block (old family), or a copy in

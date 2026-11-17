@@ -76,7 +76,7 @@ pub fn active(record: &[u8]) -> u32 {
     word(record)
 }
 
-/// The side boot2 boots for this record (boot2 `main`, 0x4404..0x44b0).
+/// The side boot2 boots for this record.
 pub fn boot_side(record: &[u8]) -> u32 {
     let (h0, h1) = (side_valid(record, 0), side_valid(record, 1));
     if h0 && active(record) == 0 {

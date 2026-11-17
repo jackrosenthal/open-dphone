@@ -1,11 +1,9 @@
 //! What the EHS protocol engines share: the phone-side inputs and outputs,
 //! timing, and the detection loop that picks an adapter.
 //!
-//! Everything here is recovered from the stock `ehs` daemon (new-family
-//! build; function addresses in the comments are ELF virtual addresses in
-//! that binary).  The daemon listened to four audio-bridge signals and sent
-//! four requests to the phone UI; [`PhoneStatus`] and [`HeadsetAction`] are
-//! those, without the bus.
+//! Everything here follows the stock `ehs` daemon.  The daemon listened to
+//! four audio-bridge signals and sent four requests to the phone UI;
+//! [`PhoneStatus`] and [`HeadsetAction`] are those, without the bus.
 
 use std::time::{Duration, Instant};
 
@@ -158,8 +156,8 @@ pub(super) fn drain(port: &mut dyn EhsPort) {
     while matches!(port.read(&mut buf, Duration::ZERO), Ok(n) if n > 0) {}
 }
 
-/// Runs EHS on an open port until the host asks to stop: the stock main
-/// loop (`0xaa50`).  Each round sets the line for one protocol, waits,
+/// Runs EHS on an open port until the host asks to stop, as the stock main
+/// loop does.  Each round sets the line for one protocol, waits,
 /// probes for the adapter, and runs that protocol's event loop for as long
 /// as the adapter answers; then the next protocol; then a pause.
 pub fn run(port: &mut dyn EhsPort, mode: EhsMode, identity: Identity, timing: &Timing, host: &mut dyn EhsHost) -> Result<()> {

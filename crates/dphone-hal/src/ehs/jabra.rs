@@ -1,12 +1,9 @@
 //! The Jabra EHS protocol ("jehs" in the stock daemon's log): single bytes
 //! at 2400 baud, 8 data bits, two stop bits.
 //!
-//! Recovered from the stock daemon: command names and values from its two
-//! name tables (`0xae38`, `0xb0bc`), the send-and-wait routine (`0xbcbc`),
-//! the ping (`0xbb8c`), the capability exchange (`0xc92c`), the initializer
-//! (`0xcd84`), the phone-signal handler (`0xbfbc`), and the event loop
-//! (`0xd088`).  The capability payloads are the bytes at `0x26390` in its
-//! data section.  None of this has been run against a real adapter.
+//! The command names and values, the exchanges, and the capability payloads
+//! are the stock daemon's.  None of this has been run against a real
+//! adapter.
 
 use std::time::{Duration, Instant};
 
@@ -78,8 +75,8 @@ pub enum State {
     ConnectedMuted = 4,
 }
 
-/// Events the daemon accepts from a headset (`0xb37c`); anything else forces
-/// a new initialization.
+/// Events the daemon accepts from a headset; anything else forces a new
+/// initialization.
 fn known_event(b: u8) -> bool {
     matches!(b, EV_REJECT_CALL | EV_MUTE_OFF | TEST | INIT | EV_MUTE_ON | EV_REDIAL | EV_GO_OFF_HOOK | EV_GO_ON_HOOK)
 }
@@ -202,8 +199,7 @@ impl Line<'_> {
         }
     }
 
-    /// Waits up to `timeout` for one of `wanted`, skipping other bytes
-    /// (`0xba14`).
+    /// Waits up to `timeout` for one of `wanted`, skipping other bytes.
     fn response(&mut self, wanted: &[u8], timeout: Duration) -> Result<Option<u8>> {
         let end = Instant::now() + timeout;
         loop {
@@ -217,7 +213,7 @@ impl Line<'_> {
     }
 
     /// Sends a command byte and waits for its acknowledgement, up to four
-    /// times (`0xbcbc`).  `INIT` is acknowledged with `INIT_ACK`.
+    /// times.  `INIT` is acknowledged with `INIT_ACK`.
     fn send(&mut self, cmd: u8) -> Result<bool> {
         for _ in 0..ATTEMPTS {
             self.put(cmd)?;
@@ -231,7 +227,7 @@ impl Line<'_> {
         Ok(false)
     }
 
-    /// The ping: `TEST`, answered by `ACK` or `NACK` (`0xbb8c`).
+    /// The ping: `TEST`, answered by `ACK` or `NACK`.
     fn ping(&mut self, timeout: Duration) -> Result<bool> {
         for _ in 0..ATTEMPTS {
             self.put(TEST)?;
@@ -242,7 +238,7 @@ impl Line<'_> {
         Ok(false)
     }
 
-    /// One capability exchange (`0xc92c`): the command byte, then
+    /// One capability exchange: the command byte, then
     /// `STX payload ETX` from us, then `STX`, as many bytes, and `ETX` from
     /// the headset, which we acknowledge.  The headset's bytes are not
     /// interpreted (stock only logs them).
@@ -273,7 +269,7 @@ impl Line<'_> {
     }
 }
 
-/// Probes for a Jabra adapter: a ping with the detection timeout (`0xbc5c`).
+/// Probes for a Jabra adapter: a ping with the detection timeout.
 pub fn detect(port: &mut dyn EhsPort, timing: &Timing) -> Result<bool> {
     Line { port, response: timing.jabra_response, last_rx: Instant::now() }.ping(timing.jabra_detect)
 }
@@ -350,8 +346,8 @@ impl Engine<'_> {
         Ok(())
     }
 
-    /// `INIT` and the capability exchanges (`0xcd84`).  `Ok(false)` when the
-    /// adapter does not answer `INIT`, or the host asked to stop.
+    /// `INIT` and the capability exchanges.  `Ok(false)` when the adapter
+    /// does not answer `INIT`, or the host asked to stop.
     fn init(&mut self, identity: Identity, timing: &Timing, host: &mut dyn EhsHost) -> Result<bool> {
         loop {
             if host.stop() || !self.line.send(INIT)? {
@@ -374,7 +370,7 @@ impl Engine<'_> {
 }
 
 /// Runs the protocol with a detected adapter until it stops answering or
-/// the host asks to stop (`0xd088`).
+/// the host asks to stop.
 pub fn event_loop(port: &mut dyn EhsPort, identity: Identity, timing: &Timing, host: &mut dyn EhsHost) -> Result<()> {
     let line = Line { port, response: timing.jabra_response, last_rx: Instant::now() };
     let mut e = Engine { line, state: State::Disconnected, seen: PhoneStatus::default() };

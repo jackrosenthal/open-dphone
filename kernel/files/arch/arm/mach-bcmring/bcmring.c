@@ -10,15 +10,14 @@
  *     their interrupts are delivered through the secure interrupt
  *     controller (SINTC) as FIQs.  Every vendor kernel first enables the SPU
  *     bus-interface clock and then writes two "set unsecure" masks, before
- *     registering any device (bcmring_amba_init: D60 0xc03a9f1c, D40
- *     0xc000c490).  The values below are the vendor's, plus the Ethernet
- *     switch bit that the vendor Ethernet code sets later.
+ *     registering any device.  The values below are the vendor's, plus the
+ *     Ethernet switch bit that the vendor Ethernet code sets later.
  *
- *  2. Restart.  The vendor chipcHw_reset() (D60 0xc001cd38) copies a small
- *     routine into the on-chip ARAM and runs it from there, because the
- *     routine switches the ARM clock to the crystal before it asserts the
- *     chip reset and must not be executing from DDR while it does so.  The
- *     MMU stays on (the vendor routine uses virtual addresses).
+ *  2. Restart.  The vendor chipcHw_reset() copies a small routine into the
+ *     on-chip ARAM and runs it from there, because the routine switches the
+ *     ARM clock to the crystal before it asserts the chip reset and must not
+ *     be executing from DDR while it does so.  The MMU stays on (the vendor
+ *     routine uses virtual addresses).
  *     The SP805 watchdog restart handler (with the 2 KiB decode patch) is
  *     the simpler alternative and is registered at a lower priority.
  *

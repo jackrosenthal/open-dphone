@@ -19,11 +19,10 @@
 //! Volume keys: they adjust the volume of the path in use, and the
 //! ringer's when the phone is idle or ringing.  When they adjust the
 //! ringer's on an idle phone, the ringer sounds so that the user hears
-//! the new volume, as on stock (2_9_28 `phone`: the key handler at
-//! 0x7b310 and the volume observer at 0x7df40, which plays the active
-//! ringtone once on the ringer's output unless something is already
-//! playing; the volume popup's end at 0x7aa84 stops it, two seconds after
-//! the last volume key, or at any other key, the hookswitch, or a call).
+//! the new volume, as on stock: the active ringtone plays once on the
+//! ringer's output unless something is already playing, and stops when the
+//! volume popup ends, two seconds after the last volume key, or at any
+//! other key, the hookswitch, or a call.
 //! Further key presses change the volume of the ring that is sounding
 //! and do not start it again; so do they for a real ring.
 

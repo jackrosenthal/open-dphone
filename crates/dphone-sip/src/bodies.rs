@@ -197,10 +197,10 @@ pub struct PresenceDoc {
 }
 
 /// The line state a presence document stands for, the way stock's `core`
-/// reduces it (2_9_28, `impl_dus_send_presence` at 0x8d9a0).  The note is
-/// the state when it is one of stock's six names or four aliases, compared
-/// exactly as stock does; any other note starting with `Hold` or `Ring`
-/// counts as that; then the RPID activity `on-the-phone`; then `<basic>`.
+/// reduces it.  The note is the state when it is one of stock's six names
+/// or four aliases, compared exactly as stock does; any other note starting
+/// with `Hold` or `Ring` counts as that; then the RPID activity
+/// `on-the-phone`; then `<basic>`.
 /// Asterisk's notes are `Ready`, `Ringing`, `On the phone`, `On hold`, and
 /// `Unavailable` (with `<basic>closed</basic>`).
 ///

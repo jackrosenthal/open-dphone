@@ -20,7 +20,7 @@
  * Copyright 2003 - 2008 Broadcom Corporation), restructured for the common
  * clock framework.  The clock-ID-to-register table and the bus-interface
  * gate handling were checked against the vendor 3.4.74 kernel shipped on the
- * Digium D60 (__clk_enable at 0xc0013724).
+ * Digium D60.
  *
  * Model:
  *   xtal (25 MHz, from DT)

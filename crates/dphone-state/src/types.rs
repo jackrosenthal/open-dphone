@@ -643,12 +643,11 @@ impl LampState {
 }
 
 /// The speaker, headset, and mute lamps, in that order, as stock's `phone`
-/// drives them (2_9_28, the observers at 0x319b0 and 0x31d48): the speaker
-/// or headset lamp is solid green while that path carries a call, dialing,
-/// ringback, or the tone of a failed call, and off when the phone is idle
-/// or only ringing (even though the ringer uses the speaker); headset mode
-/// alone lights nothing.  The mute lamp is solid red while the microphone
-/// is muted.  None of them blinks.
+/// drives them: the speaker or headset lamp is solid green while that path
+/// carries a call, dialing, ringback, or the tone of a failed call, and off
+/// when the phone is idle or only ringing (even though the ringer uses the
+/// speaker); headset mode alone lights nothing.  The mute lamp is solid red
+/// while the microphone is muted.  None of them blinks.
 pub fn audio_lamps(audio: &Audio, calls: &Calls) -> (LampState, LampState, LampState) {
     // The path is open for the ringer only: nothing but alerting calls,
     // and no tone of ours.
@@ -1103,11 +1102,10 @@ pub enum BlfState {
 
 impl BlfState {
     /// The lamp of a BLF or rapid-dial key, by stock's default behavior
-    /// table (`phone` 2_9_28, 0x80dc8, key type 2; the same for the
-    /// expansion modules): nothing for an idle, unknown, or unavailable
-    /// contact, fast green while it rings, solid green while it is on the
-    /// phone, slow red while it holds a call, and fast red while it holds
-    /// one call and another rings.
+    /// table (the same for the expansion modules): nothing for an idle,
+    /// unknown, or unavailable contact, fast green while it rings, solid
+    /// green while it is on the phone, slow red while it holds a call, and
+    /// fast red while it holds one call and another rings.
     pub fn lamp(self) -> LampState {
         match self {
             BlfState::Ringing => LampState::blinking(LampColor::Green, Blink::Fast),

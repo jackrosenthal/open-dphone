@@ -137,9 +137,9 @@ pub fn write(part: &mut dyn MtdPartition, record: &CtrlRecord, repl: Replication
     }
 }
 
-/// Which side boot2 boots given what a scan found (boot2 `main`,
-/// 0x4404..0x44b0 in both families).  With no valid copy boot2 applies the
-/// same rule to the unchecked buffer.
+/// Which side boot2 boots given what a scan found (the same in both
+/// families).  With no valid copy boot2 applies the same rule to the
+/// unchecked buffer.
 pub fn boot_side(scan: &CtrlScan) -> u32 {
     scan.effective().map_or(0, CtrlRecord::boot_side)
 }

@@ -23,8 +23,7 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 
 /// What a presence SUBSCRIBE accepts and the expiry it asks for, both as
-/// stock's `core` sends them (2_9_28, 0xf3c20).  Asterisk answers this
-/// `Accept` with PIDF.
+/// stock's `core` sends them.  Asterisk answers this `Accept` with PIDF.
 const PRESENCE_ACCEPT: &str = "application/pidf+xml, application/xpidf+xml";
 const PRESENCE_EXPIRES_SECS: u32 = 600;
 

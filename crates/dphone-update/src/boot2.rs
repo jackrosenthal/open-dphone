@@ -2,11 +2,11 @@
 //! check images before they are committed, to report the next boot in
 //! `inspect`, and as the judge in the power-cut tests.
 //!
-//! From the boot2 disassembly (both families; `kernel-re/boot/NOTES.md`):
-//! read `ctrl` (see [`crate::ctrl::scan`]), choose a side, read the first
-//! 0x30 bytes of that side's kernel partition, require the zImage magic at
-//! 0x24, take the load span from words 0x28 (start) and 0x2c (end), and
-//! copy `end - start` bytes from the partition's good blocks to `start`.
+//! What boot2 does (both families): read `ctrl` (see [`crate::ctrl::scan`]),
+//! choose a side, read the first 0x30 bytes of that side's kernel
+//! partition, require the zImage magic at 0x24, take the load span from
+//! words 0x28 (start) and 0x2c (end), and copy `end - start` bytes from the
+//! partition's good blocks to `start`.
 //! The sizes and CRCs in the `ctrl` headers are printed and otherwise
 //! unused.  boot2 hangs (it does not fall back) when the span is empty or
 //! the partition runs out.

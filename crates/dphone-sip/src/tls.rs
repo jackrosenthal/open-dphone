@@ -77,9 +77,9 @@ impl ServerCertVerifier for NoVerify {
 /// The usual checks, and then stock's wildcard rule: the server's name
 /// must be one of the certificate's names as written, not the match of a
 /// wildcard name.  Stock's SIP stack makes the same decision after the
-/// handshake (`core` 0x10b934): with `tls_allow_wildcard_certs` off, a
-/// certificate whose name is `*.domain` is refused with a note that RFC
-/// 5922 section 7.2 does not allow it.
+/// handshake: with `tls_allow_wildcard_certs` off, a certificate whose
+/// name is `*.domain` is refused with a note that RFC 5922 section 7.2 does
+/// not allow it.
 #[derive(Debug)]
 struct NoWildcards(Arc<dyn ServerCertVerifier>);
 

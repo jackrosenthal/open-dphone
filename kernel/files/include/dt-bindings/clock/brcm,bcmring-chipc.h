@@ -3,8 +3,8 @@
  * Clock and reset IDs for the Broadcom BCMRING chip-control block ("chipc").
  *
  * IDs 0..21 are the vendor's chipcHw_CLOCK_e values (the first argument of
- * chipcHw_setClockFrequency() and the csp_id field of the vendor struct clk),
- * so register writes seen in vendor disassembly translate directly.
+ * chipcHw_setClockFrequency() and the csp_id field of the vendor struct
+ * clk).
  */
 #ifndef _DT_BINDINGS_CLOCK_BRCM_BCMRING_CHIPC_H
 #define _DT_BINDINGS_CLOCK_BRCM_BCMRING_CHIPC_H

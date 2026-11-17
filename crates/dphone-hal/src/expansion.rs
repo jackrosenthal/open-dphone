@@ -1,11 +1,10 @@
 //! The EXP100/EXP150 expansion module protocol (new family).
 //!
 //! A module hangs off the PC Ethernet port and talks plain text over UDP on
-//! a private tagged VLAN.  Everything here is recovered from the stock
-//! `phone` binary of the D60 (ELF addresses in the comments): message
-//! names, their exact text, and what the phone answers.  It is the wire
-//! format only: no sockets, no state.  Nothing here has been run against a
-//! real module.
+//! a private tagged VLAN.  Everything here follows the stock `phone` binary
+//! of the D60: message names, their exact text, and what the phone
+//! answers.  It is the wire format only: no sockets, no state.  Nothing
+//! here has been run against a real module.
 //!
 //! The network, as stock sets it up:
 //!
@@ -40,7 +39,7 @@ pub const ANNOUNCE_PORT: u16 = 10026;
 pub const NODE_PORT: u16 = 10025;
 pub const MAX_DATAGRAM: usize = 2048;
 
-/// Modules in a chain (`exp_Manager::load`, `0x902dc`).
+/// Modules in a chain.
 pub const MAX_NODES: usize = 6;
 /// Key pages on each module.
 pub const PAGES: usize = 2;
@@ -58,7 +57,7 @@ pub const TITLE_BG: u32 = 0x01579b;
 pub const TITLE_FG: u32 = 0xffffff;
 
 /// The phone's address on the expansion VLAN: `172.20.<MAC byte 4>.<MAC
-/// byte 5>`, with a 16-bit prefix (`0x8caac`).
+/// byte 5>`, with a 16-bit prefix.
 pub fn private_address(mac: [u8; 6]) -> Ipv4Addr {
     Ipv4Addr::new(172, 20, mac[4], mac[5])
 }
@@ -68,9 +67,9 @@ pub fn default_key_bg(index: usize) -> u32 {
     if matches!(index & 3, 0 | 3) { KEY_BG_OUTER } else { KEY_BG_INNER }
 }
 
-/// Splits a message into its lines the way stock does (`exp_pull_field`,
-/// `0x8ca18`): LF ends a field, NUL ends the message, and a byte with the
-/// high bit set makes the rest unusable.
+/// Splits a message into its lines the way stock does: LF ends a field,
+/// NUL ends the message, and a byte with the high bit set makes the rest
+/// unusable.
 pub fn fields(data: &[u8]) -> Vec<&str> {
     let mut out = Vec::new();
     let mut rest = data;
@@ -196,8 +195,8 @@ pub fn parse(data: &[u8]) -> Option<Request> {
 
 // ------------------------------------------------------------- phone side
 
-/// Answer to discovery, sent to the announce group (`0x8e8dc`).  The node
-/// number is one character.
+/// Answer to discovery, sent to the announce group.  The node number is
+/// one character.
 pub fn notify_ack(node: u8) -> String {
     format!("EXP_NOTIFY_ACK\nEXP_NO:{node}")
 }
@@ -230,7 +229,7 @@ pub fn backlight_status(level: u8) -> String {
     format!("NOTIFY_BACKLIGHT\nEXP_BACKLIGHT_LEVEL:{level}\n")
 }
 
-/// Tells a module the backlight level (`exp_backlight_wakeup`, `0x8df14`).
+/// Tells a module the backlight level.
 pub fn backlight_notify(level: u8) -> String {
     format!("NOTIFY_BACKLIGHT\nBACKLIGHT_LEVEL:{level}\n")
 }
@@ -242,7 +241,7 @@ pub fn check_version_ack(has_version: bool, node: u8) -> String {
 }
 
 /// Acknowledges a key press: the header, then two lines of the request
-/// run together, exactly as stock builds it (`0x8f3b0`).
+/// run together, exactly as stock builds it.
 pub fn key_ack(echo: &(String, String)) -> String {
     format!("EXP_KEYEVENT_ACK\n{}{}", echo.0, echo.1)
 }
@@ -279,7 +278,7 @@ fn one_line(text: &str) -> String {
     text.chars().filter(|c| !c.is_control()).take(80).collect()
 }
 
-/// The configuration for one module (`0x8d058`): [`PAGES`] pages of
+/// The configuration for one module: [`PAGES`] pages of
 /// [`KEYS_PER_PAGE`] keys, then the module settings.  `pages` may be
 /// shorter than that; missing keys are empty.  As the answer to
 /// `CFG_GET_EVENT` it follows an `EXP_CFG_GET_ACK` line (`answer`); pushed
@@ -321,9 +320,8 @@ pub fn config(answer: bool, event_id: u32, node: u8, pages: &[Vec<KeyConfig>], s
 /// recovered, so this is the only one used.
 pub const BLF_STATUS_DEFAULT: u8 = 8;
 
-/// The `BLF_LED_STATUS` number for a lamp (`exp_presence_cb`, `0x9151c`):
-/// off and amber are 0; red is 1 solid, 4 slow, 5 otherwise; green is 2
-/// solid, 8 slow, 9 otherwise.
+/// The `BLF_LED_STATUS` number for a lamp: off and amber are 0; red is 1
+/// solid, 4 slow, 5 otherwise; green is 2 solid, 8 slow, 9 otherwise.
 pub fn led_status(lamp: LampState) -> u8 {
     let red = match lamp.color {
         LampColor::Off | LampColor::Amber => return 0,
@@ -340,7 +338,7 @@ pub fn led_status(lamp: LampState) -> u8 {
     }
 }
 
-/// Updates one key's state on a module (`0x8e5d4`).
+/// Updates one key's state on a module.
 #[allow(clippy::too_many_arguments)]
 pub fn blf_status(event_id: u32, node: u8, page: u8, key: u8, status: u8, led: u8, bg: Option<u32>, fg: Option<u32>) -> String {
     format!(
@@ -350,18 +348,18 @@ pub fn blf_status(event_id: u32, node: u8, page: u8, key: u8, status: u8, led: u
     )
 }
 
-/// Sets the text of a module's title bar (`0x8e0a4`).  Stock shows the
-/// page, as "Page 1/2".
+/// Sets the text of a module's title bar.  Stock shows the page, as
+/// "Page 1/2".
 pub fn set_title(text: &str) -> String {
     format!("EXP_SET_TITLE\nTITLE_TEXT:{}\nTITLE_BG_COLOR:{TITLE_BG}\nTITLE_FG_COLOR:{TITLE_FG}\n", one_line(text))
 }
 
-/// Sends a module back to its first key page (`0x8e2b4`).
+/// Sends a module back to its first key page.
 pub fn set_first_page(node: u8) -> String {
     format!("EXP_SET_PAGE_EVENT\nEXP_NO:{node}\nEXP_PAGE:0\n")
 }
 
-/// Restarts a module (`0x8e500`).
+/// Restarts a module.
 pub fn reboot(node: u8) -> String {
     format!("EXP_REBOOT\nEXP_NO:{node}\n")
 }

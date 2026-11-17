@@ -4,9 +4,7 @@
 //! configuration is applied and kept where stock keeps them, so stock
 //! finds them after a flash back and this firmware finds stock's.
 //!
-//! What stock does (its `core`, the routines that log "Updating contact
-//! lists", "Updating ringtones", "Updating BLF items file", and "Updating
-//! datasets file"):
+//! What stock does:
 //!
 //! | Configuration | File under `/nvdata` | Digest name |
 //! | --- | --- | --- |

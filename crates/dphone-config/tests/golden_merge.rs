@@ -1,6 +1,5 @@
-//! The 22 fixtures that were run through every model's stock `configmerge`
-//! (`docs/evidence/platform-configmerge-allmodels.json` in the notes); the
-//! expected text is the stock binary's standard output.
+//! The 22 fixtures that were run through every model's stock
+//! `configmerge`; the expected text is the stock binary's standard output.
 
 use dphone_config::merge::{NetContext, merge_layers};
 use dphone_config::xml::Element;

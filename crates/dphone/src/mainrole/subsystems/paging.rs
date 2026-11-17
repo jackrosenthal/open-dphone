@@ -2,8 +2,7 @@
 //!
 //! The configuration is the stock `<multicastpage>` element: `<listener>`
 //! children are groups to listen to, `<broadcast>` children are groups this
-//! phone can page.  What follows is what the stock firmware does, recovered
-//! from its `core` (`src/multicast.cpp`) and `phone` binaries:
+//! phone can page.  What follows is what the stock firmware does:
 //!
 //! - A page is plain RTP sent to the group address and port, with payload
 //!   type 0 (PCMU), 8 (PCMA), or 9 (G.722).  A stream is known by its SSRC.

@@ -2,8 +2,7 @@
 //! client certificates and keys under `clientcerts/`, kept the way stock
 //! keeps them.
 //!
-//! The configuration carries them inline (stock `core`, `updateTrustedCerts`,
-//! D60 2_9_28 at `0xb6ab4`):
+//! The configuration carries them inline:
 //!
 //! ```xml
 //! <config>
@@ -15,10 +14,10 @@
 //! </config>
 //! ```
 //!
-//! The element and attribute names are the ones that function reads; no
-//! captured provisioning carries a `<certs>` section.  The merge tells
-//! siblings apart by `id` (not by `label`), so several entries of one kind
-//! survive it only when each has its own `id`.
+//! The element and attribute names are the ones stock reads; no captured
+//! provisioning carries a `<certs>` section.  The merge tells siblings
+//! apart by `id` (not by `label`), so several entries of one kind survive
+//! it only when each has its own `id`.
 //!
 //! - `certs/certs.crt` is the base bundle of the root file system
 //!   ([`BASE_BUNDLE_PATH`]) followed by every `<cert>`, each wrapped in PEM
@@ -27,12 +26,12 @@
 //!   HTTPS downloads of provisioned files.
 //!
 //!   Stock rebuilds the file from those two sources at every configuration
-//!   merge (the merge routine at `0xbdc74` calls `updateTrustedCerts`
-//!   unconditionally), through `certs.crt.tmp` and a rename; what the file
-//!   held before plays no part.  Its start-up script copies the base bundle
-//!   there when the file is missing (after a factory reset, which removes
-//!   `certs/`).  A certificate that is also in the base bundle, or that is
-//!   provisioned twice, is in the file twice: stock does not compare them.
+//!   merge, unconditionally, through `certs.crt.tmp` and a rename; what the
+//!   file held before plays no part.  Its start-up script copies the base
+//!   bundle there when the file is missing (after a factory reset, which
+//!   removes `certs/`).  A certificate that is also in the base bundle, or
+//!   that is provisioned twice, is in the file twice: stock does not
+//!   compare them.
 //!
 //!   The image's base bundle is the Mozilla CA bundle of nixpkgs (`cacert`);
 //!   stock's is the same list from curl's `mk-ca-bundle`, as of its build.

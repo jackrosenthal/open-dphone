@@ -1,9 +1,8 @@
 //! The three skins: metrics, colors, fonts, and icons per screen class.
 //!
-//! The geometry here is measured from stock firmware screenshots (the
-//! owner's D60 captures in `screenshots/` and the per-model renders in
-//! `docs/assets/` of the reverse-engineering notes), so that line-key
-//! labels sit beside their physical keys and softkey labels above theirs:
+//! The geometry here is measured from stock firmware screenshots, so that
+//! line-key labels sit beside their physical keys and softkey labels above
+//! theirs:
 //!
 //! | | D40/D45/D50 | D70 | D60/D62/D65 |
 //! | --- | --- | --- | --- |

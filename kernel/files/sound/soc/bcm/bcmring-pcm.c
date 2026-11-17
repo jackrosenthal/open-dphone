@@ -3,8 +3,8 @@
  * Broadcom BCMRING (BCM11107 family) PCM/TDM interface, as a mono ASoC DAI
  * for Bluetooth voice (SCO) on the Digium D65.
  *
- * Everything here is taken from the vendor 3.4.74 kernel of the D65 (PcmHw_*
- * at 0xc001e450 and up, the DMA device table entries "pcm0_rx" and
+ * Everything here is taken from the vendor 3.4.74 kernel of the D65 (its
+ * PcmHw_* functions and the DMA device table entries "pcm0_rx" and
  * "pcm0_tx") and its halaudio_pcm.ko.
  *
  * What the vendor code establishes:

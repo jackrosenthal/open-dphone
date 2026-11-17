@@ -109,7 +109,7 @@ impl CtrlRecord {
         out
     }
 
-    /// The side boot2 boots for this record (boot2 main, 0x4404..0x44b0).
+    /// The side boot2 boots for this record.
     pub fn boot_side(&self) -> u32 {
         let (h0, h1) = (self.sides[0].is_valid(), self.sides[1].is_valid());
         if h0 && self.active == 0 {
