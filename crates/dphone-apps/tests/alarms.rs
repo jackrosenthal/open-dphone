@@ -293,10 +293,20 @@ fn a_refusal_of_the_alarm_clock_is_shown() {
     assert_eq!(rows(&r).len(), Alarms::MAX);
 }
 
+/// The phone's alarm tones, in its order.
+const TONES: [&str; 39] = [
+    "Beep-Beep-Beep", "Argon", "Argon JP", "Awaken", "Barium", "BeeBeep", "Bounce", "Buzzer", "Carbon", "Carbon JP",
+    "Cesium", "Copernicium", "Curium", "Drip", "Fermium", "Gallop", "Hassium", "Helium", "Helium JP", "Krypton",
+    "Neon", "Neptunium", "Nobelium", "Nudge", "Orbit", "Osmium", "Osmium Classic", "Oxygen", "Piezo", "Platinum",
+    "Plutonium", "Promethium", "Rise", "Rooster 1", "Rooster 2", "Scandium", "Sway", "Timer", "Wag",
+];
+
 /// A simulated phone with the app on screen, drawn by the phone UI.
 struct Phone {
     model: Model,
     ui: Ui,
+    /// The commands to the audio side.
+    audio: Arc<Mutex<Vec<Command>>>,
     sim: dphone_hal::sim::SimHandle,
     mgr: AppManager,
     _dir: common::TempDir,
@@ -314,8 +324,10 @@ impl Phone {
             s.time_synced = true;
         });
         alarm_clock(&store);
-        // The tones the phone has.
-        store.update::<Alarms, _>(|a| a.tones = ["Beep", "Buzzer", "Classic", "Osmium", "Rooster", "Argon"].map(String::from).to_vec());
+        // The tones the phone has (`alarmtones::ALL` in the main role).
+        store.update::<Alarms, _>(|a| a.tones = TONES.map(String::from).to_vec());
+        let audio = Arc::new(Mutex::new(Vec::new()));
+        common::answer_commands(&store, Domain::Audio, audio.clone(), |_| Ok(Reply::Done));
         for a in [
             alarm(6, 30, WEEKDAYS, "Osmium"),
             alarm(8, 0, 0b0000010, "Beep"),
@@ -334,7 +346,7 @@ impl Phone {
         )
         .expect("engine");
         mgr.scan();
-        let mut phone = Phone { model, ui, sim, mgr, _dir: dir };
+        let mut phone = Phone { model, ui, audio, sim, mgr, _dir: dir };
         phone.settle();
         phone.mgr.launch(APP).unwrap();
         phone.settle();
@@ -355,6 +367,23 @@ impl Phone {
             self.sim.tap(*key);
             self.settle();
         }
+    }
+
+    /// The tones played so far, once `n` have been.
+    fn previews(&self, n: usize) -> Vec<String> {
+        let played = || -> Vec<String> {
+            let log = self.audio.lock().unwrap();
+            log.iter()
+                .filter_map(|c| if let Command::PlayAlarmTone { name } = c { Some(name.clone()) } else { None })
+                .collect()
+        };
+        for _ in 0..200 {
+            if played().len() >= n {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        played()
     }
 
     /// Writes the frame as a PNG (the gray ones doubled in size), and
@@ -417,8 +446,21 @@ fn the_screens_on_every_kind_of_display() {
         assert!(days != edited, "{model:?}");
         assert_eq!(days[..width * 12], edit[..width * 12], "{model:?}");
         p.tap(&[Key::Cancel, Key::Down, Key::Select]);
+        // The tones, a list longer than the dialog: it opens on the
+        // alarm's, far down the list and marked, and scrolls both ways.
+        // Play (the second softkey) sounds the highlighted tone.
         let tones = p.shot("7-tone");
         assert!(tones != days, "{model:?}");
+        assert_eq!(tones[..width * 12], edit[..width * 12], "{model:?}");
+        p.tap(&[Key::Soft(2)]);
+        p.tap(&[Key::Down; 13]);
+        let last = p.shot("7-tone-last");
+        p.tap(&[Key::Soft(2)]);
+        p.tap(&[Key::Up; 38]);
+        let first = p.shot("7-tone-first");
+        p.tap(&[Key::Soft(2)]);
+        assert!(last != tones && first != tones && first != last, "{model:?}");
+        assert_eq!(p.previews(3), ["Osmium", "Wag", "Beep-Beep-Beep"], "{model:?}");
         p.tap(&[Key::Cancel]);
         assert_eq!(p.shot("8-closed")[..width * 12], edit[..width * 12], "{model:?}");
         assert_eq!(p.ui.screen_name(), "app:alarms");

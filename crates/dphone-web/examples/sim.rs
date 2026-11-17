@@ -314,11 +314,19 @@ fn fabricate(store: &Store, model: Model) {
         let alarm = |id, hour, minute, days, tone: &str, enabled| st::Alarm { id, hour, minute, days, tone: tone.into(), enabled };
         a.alarms = vec![
             alarm(1, 6, 30, 0b0111110, "Osmium", true),
-            alarm(2, 8, 0, 0b0000010, "Beep", true),
+            alarm(2, 8, 0, 0b0000010, "Beep-Beep-Beep", true),
             alarm(3, 9, 30, 0b1000001, "Buzzer", false),
-            alarm(4, 14, 45, 0, "Beep", true),
+            alarm(4, 14, 45, 0, "Beep-Beep-Beep", true),
         ];
-        a.tones = ["Beep", "Buzzer", "Classic", "Osmium", "Rooster", "Argon"].map(String::from).to_vec();
+        // The phone's alarm tones (`alarmtones::ALL` in the main role).
+        a.tones = [
+            "Beep-Beep-Beep", "Argon", "Argon JP", "Awaken", "Barium", "BeeBeep", "Bounce", "Buzzer", "Carbon", "Carbon JP",
+            "Cesium", "Copernicium", "Curium", "Drip", "Fermium", "Gallop", "Hassium", "Helium", "Helium JP", "Krypton",
+            "Neon", "Neptunium", "Nobelium", "Nudge", "Orbit", "Osmium", "Osmium Classic", "Oxygen", "Piezo", "Platinum",
+            "Plutonium", "Promethium", "Rise", "Rooster 1", "Rooster 2", "Scandium", "Sway", "Timer", "Wag",
+        ]
+        .map(String::from)
+        .to_vec();
         a.icon = true;
         a.snooze_secs = 600;
         a.next = Some((4, st::clock::unix_secs() + 2 * 3600));

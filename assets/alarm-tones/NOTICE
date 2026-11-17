@@ -1,6 +1,5 @@
-The alarm tones beside this file (argon.wav, beep.wav, buzzer.wav,
-classic.wav, osmium.wav, and rooster.wav) are derived from the alarm
-sounds of the Android Open Source Project:
+The alarm tones beside this file (the 39 .wav files listed below) are
+derived from the alarm sounds of the Android Open Source Project:
 
   Copyright (C) The Android Open Source Project
 
@@ -14,18 +13,52 @@ sounds of the Android Open Source Project:
   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 The files are changed from the originals: each was converted from Ogg
-Vorbis to a 16 kHz mono mu-law WAV file, cut to one period of the sound
-(Argon to the first of its two phrases, with a fade at the end), and
+Vorbis to a 16 kHz mono mu-law WAV file, cut to the sound of one pass
+of the original (without the silence before and after it, and, where
+the original holds two or three equal passes, to one of them), and
 changed in level.  The originals are in the repository
 https://android.googlesource.com/platform/frameworks/base, directory
 data/sounds, at commit 1cdfff555f4a21f71ccc978290e2e212e2f8b168:
 
-  beep.wav     Alarm_Beep_03.ogg
-  buzzer.wav   Alarm_Buzzer.ogg
-  classic.wav  Alarm_Classic.ogg
-  osmium.wav   alarms/ogg/Osmium.ogg
-  rooster.wav  Alarm_Rooster_02.ogg
-  argon.wav    alarms/ogg/Argon.ogg
+  beep-beep-beep.wav  Alarm_Beep_03.ogg
+  argon.wav           alarms/material/ogg/Argon.ogg
+  argon-jp.wav        alarms/ogg-jp/Argon.ogg
+  awaken.wav          alarms/material/ogg/Awaken_OG7_1ch_48k.ogg
+  barium.wav          alarms/ogg/Barium.ogg
+  beebeep.wav         Alarm_Beep_02.ogg
+  bounce.wav          alarms/material/ogg/Bounce_OG7_1ch_48k.ogg
+  buzzer.wav          Alarm_Buzzer.ogg
+  carbon.wav          alarms/material/ogg/Carbon.ogg
+  carbon-jp.wav       alarms/ogg-jp/Carbon.ogg
+  cesium.wav          Alarm_Classic.ogg
+  copernicium.wav     alarms/ogg/Copernicium.ogg
+  curium.wav          alarms/ogg/Curium.ogg
+  drip.wav            alarms/material/ogg/Drip_OG7_1ch_48k.ogg
+  fermium.wav         alarms/ogg/Fermium.ogg
+  gallop.wav          alarms/material/ogg/Gallop_OG7_1ch_48k.ogg
+  hassium.wav         alarms/ogg/Hassium.ogg
+  helium.wav          alarms/material/ogg/Helium.ogg
+  helium-jp.wav       alarms/ogg-jp/Helium.ogg
+  krypton.wav         alarms/material/ogg/Krypton.ogg
+  neon.wav            alarms/material/ogg/Neon.ogg
+  neptunium.wav       alarms/ogg/Neptunium.ogg
+  nobelium.wav        alarms/ogg/Nobelium.ogg
+  nudge.wav           alarms/material/ogg/Nudge_OG7_1ch_48k.ogg
+  orbit.wav           alarms/material/ogg/Orbit_OG7_1ch_48k.ogg
+  osmium.wav          alarms/material/ogg/Osmium.ogg
+  osmium-classic.wav  alarms/ogg/Osmium.ogg
+  oxygen.wav          alarms/material/ogg/Oxygen.ogg
+  piezo.wav           Alarm_Beep_01.ogg
+  platinum.wav        alarms/material/ogg/Platinum.ogg
+  plutonium.wav       alarms/ogg/Plutonium.ogg
+  promethium.wav      alarms/ogg/Promethium.ogg
+  rise.wav            alarms/material/ogg/Rise_OG7_1ch_48k.ogg
+  rooster-1.wav       Alarm_Rooster_01.ogg
+  rooster-2.wav       Alarm_Rooster_02.ogg
+  scandium.wav        alarms/ogg/Scandium.ogg
+  sway.wav            alarms/material/ogg/Sway_OG7_1ch_48k.ogg
+  timer.wav           alarms/material/ogg/Timer.ogg
+  wag.wav             alarms/material/ogg/Wag_OG7_1ch_48k.ogg
 
 From the NOTICE file of that repository:
 

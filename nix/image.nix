@@ -100,10 +100,9 @@ let
 
     # The alarm clock's tones, with their notice and license, which must go
     # wherever the tones go (assets/alarm-tones/README.md).
-    for f in beep buzzer classic osmium rooster argon; do
-      install -D -m 0644 ${../assets/alarm-tones}/$f.wav $out/usr/share/dphone/alarm-tones/$f.wav
-    done
-    install -m 0644 ${../assets/alarm-tones}/NOTICE ${../assets/alarm-tones}/LICENSE-Apache-2.0.txt $out/usr/share/dphone/alarm-tones/
+    install -d $out/usr/share/dphone/alarm-tones
+    install -m 0644 ${../assets/alarm-tones}/*.wav ${../assets/alarm-tones}/NOTICE \
+      ${../assets/alarm-tones}/LICENSE-Apache-2.0.txt $out/usr/share/dphone/alarm-tones/
 
     # The base trust bundle (Mozilla's certificate authorities for TLS
     # servers), at the path stock keeps its own.  `dphone` builds
