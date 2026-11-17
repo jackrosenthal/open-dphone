@@ -2,7 +2,7 @@
 
 Read-only access to the app's provisioned configuration, the phone's accounts, and some of the phone's settings.
 
-The phone's configuration, which the PBX provisions, can contain an element for an app:
+The phone's configuration can hold an element for the app, whose `id` is the app's manifest `name`:
 
 ```xml
 <appconfig>
@@ -13,11 +13,7 @@ The phone's configuration, which the PBX provisions, can contain an element for 
 </appconfig>
 ```
 
-The `id` of `<application>` is the `name` in the app's manifest.
-
-Credentials stay with the phone.  The phone adds them to the app's PBX requests, and no function in this interface returns them.
-
-Every running app that uses `config` receives [`Event::NewConfig`](app-events.md#newconfig) when the phone applies a new configuration.
+The phone adds the credentials to the app's PBX requests; no function returns them.  Every running app that uses `config` receives [`Event::NewConfig`](app-events.md#newconfig) when the phone applies a new configuration.
 
 ## `app_config`
 
@@ -25,9 +21,7 @@ Every running app that uses `config` receives [`Event::NewConfig`](app-events.md
 pub fn app_config() -> String
 ```
 
-Returns the app's `<application>` element as XML text, or `""` if the configuration has no element for the app.  The SDK's [`xml::parse`](helpers.md#xml) can read the text.
-
-The text includes every attribute and child element except credentials: the `password` and `secret` attributes of `<application>` and of each `<account>`, and any child `<setting>` whose `id` is `password` or `secret`.
+The app's `<application>` element as XML text, or `""` if the configuration has none.  [`xml::parse`](helpers.md#xml) reads the text.  The text omits the credentials: the `password` and `secret` attributes of `<application>` and of each `<account>`, and each child `<setting>` whose `id` is `password` or `secret`.
 
 ## `app_setting`
 
@@ -35,14 +29,14 @@ The text includes every attribute and child element except credentials: the `pas
 pub fn app_setting(name: &str) -> Option<String>
 ```
 
-Returns one value from the app's configuration.  The lookup uses the first of these rules that applies:
+One value of the app's configuration, by the first rule that applies:
 
-1. `password` and `secret` always return `None`.
-2. `account_id` returns the `id` attribute of the app's `<account>`, if there is one.
-3. The attribute of `<application>` whose name is `name`.
+1. `password` and `secret` return `None`.
+2. `account_id` returns the `id` attribute of the app's `<account>`, if any.
+3. The attribute of `<application>` named `name`.
 4. The `value` attribute of the child `<setting>` whose `id` is `name`.
 
-Returns `None` if nothing matches or the app has no `<application>` element.  In the example above, `app_setting("units")` is `Some("metric")`, `app_setting("city")` is `Some("Huntsville")`, and `app_setting("account_id")` is `Some("101")`.
+`None` if nothing matches or the app has no `<application>`.  In the example, `app_setting("units")` is `Some("metric")`, `app_setting("city")` is `Some("Huntsville")`, and `app_setting("account_id")` is `Some("101")`.
 
 ## `setting`
 
@@ -50,7 +44,7 @@ Returns `None` if nothing matches or the app has no `<application>` element.  In
 pub fn setting(id: &str) -> Option<String>
 ```
 
-Returns one of the phone's settings.  Only the identifiers in this table are available.  Any other identifier returns `None`, and so does a setting that the configuration doesn't set.
+One of the phone's settings, exactly as written in the configuration.  Only these identifiers are available; others, and settings that the configuration doesn't set, return `None`.
 
 | `id` | Setting in the phone's configuration |
 | --- | --- |
@@ -64,15 +58,13 @@ Returns one of the phone's settings.  Only the identifiers in this table are ava
 | `name_format` | `name_format` |
 | `brightness` | `brightness` |
 
-Values are returned exactly as written in the configuration.
-
 ## `accounts`
 
 ```rust
 pub fn accounts() -> Vec<AccountInfo>
 ```
 
-Returns the phone's SIP accounts.  See [`AccountInfo`](types.md#calls) for the fields.
+The phone's SIP accounts ([`AccountInfo`](types.md#calls)).
 
 ## `model`
 
@@ -80,7 +72,7 @@ Returns the phone's SIP accounts.  See [`AccountInfo`](types.md#calls) for the f
 pub fn model() -> String
 ```
 
-Returns the phone's model: `D40`, `D45`, `D50`, `D60`, `D62`, `D65`, or `D70`.
+`D40`, `D45`, `D50`, `D60`, `D62`, `D65`, or `D70`.
 
 ## `firmware_version`
 
@@ -88,7 +80,7 @@ Returns the phone's model: `D40`, `D45`, `D50`, `D60`, `D62`, `D65`, or `D70`.
 pub fn firmware_version() -> String
 ```
 
-Returns the firmware version, with underscores as separators: `3_0_0`, for example.
+The firmware version, with underscores as separators, e.g., `3_0_0`.
 
 ## `mac_address`
 
@@ -96,7 +88,7 @@ Returns the firmware version, with underscores as separators: `3_0_0`, for examp
 pub fn mac_address() -> String
 ```
 
-Returns the phone's MAC address as 12 lowercase hexadecimal digits with no separators: `000fd3a1b2c3`, for example.
+The MAC address as 12 lowercase hexadecimal digits without separators, e.g., `000fd3a1b2c3`.
 
 ## `contact_lists`
 
@@ -104,4 +96,4 @@ Returns the phone's MAC address as 12 lowercase hexadecimal digits with no separ
 pub fn contact_lists() -> Vec<(String, String)>
 ```
 
-Returns the contact list files provisioned to the phone, as pairs of file name and XML text.  Files that aren't valid UTF-8 are omitted.
+The provisioned contact list files, as pairs of file name and XML text.  Files that aren't valid UTF-8 are omitted.

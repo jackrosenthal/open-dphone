@@ -1,6 +1,6 @@
 # SDK helpers
 
-Helpers run inside the app and call the functions on the other pages, so using a helper gives the app the capability of each interface that the helper calls.
+Helpers call the interfaces on the other pages, and give the app the capabilities of those interfaces.
 
 ## Prelude
 
@@ -18,9 +18,9 @@ Helpers run inside the app and call the functions on the other pages, so using a
 pub fn screen(title: &str) -> Rect
 ```
 
-Starts a new screen and returns the rectangle below the title.  `screen` clears the window with `ui::clear(ROOT)`, which also removes the window's softkeys and key claims.  The function then claims `cancel` for the window and creates a `Text` across the top of the window, `title_height` tall, in `Font::Title`.
+Clears the window with `ui::clear(ROOT)`, which also removes the window's softkeys and key claims; claims `cancel` for the window; creates a `Text` in `Font::Title`, `title_height` tall, across the top; and returns the rectangle below the title.
 
-Because the window claims `cancel`, that key no longer takes the app off the screen.  The app receives `Event::Key("cancel")` instead, and should call `runtime::background` or go back one screen.
+`cancel` then arrives as `Event::Key("cancel")` instead of taking the app off the screen.  The app should call `runtime::background` or go back one screen.
 
 ### `content_rect`
 
@@ -28,7 +28,7 @@ Because the window claims `cancel`, that key no longer takes the app off the scr
 pub fn content_rect() -> Rect
 ```
 
-Returns the whole window as a rectangle at the origin: `Rect::new(0, 0, metrics.width, metrics.height)`.
+Returns the whole window: `Rect::new(0, 0, metrics.width, metrics.height)`.
 
 ### `row_height`
 
@@ -48,7 +48,7 @@ impl Message {
 }
 ```
 
-A screen with a title and one block of wrapped text.  `show` calls `screen`, creates the text widget, sets `keys` as the window's softkeys, and focuses the text.
+A screen with a title and wrapped text.  `show` calls `screen`, creates the text widget, sets `keys` as the window's softkeys, and focuses the text.
 
 ### `Form`
 
@@ -62,11 +62,11 @@ impl Form {
 }
 ```
 
-A screen with a title and one labeled input for each entry in `fields`.  Each entry gives the label, the input mode, and the initial value.
+A screen with a title and a labeled input for each entry of `fields`: label, input mode, and initial value.
 
 - `show` sets `keys` as the window's softkeys and focuses the first input.
-- `value(index)` returns the text of an input, or `""` if `index` is out of range.
-- `focus_next(current)` moves the focus to the input after `current`.  The function returns `false` when `current` is the last input or isn't part of the form.  Call `focus_next` on `WidgetEvent::Submitted` to either advance to the next field or, on `false`, submit the form.
+- `value(index)` returns an input's text, or `""` for an `index` out of range.
+- `focus_next(current)` focuses the input after `current`, and returns `false` if `current` is the last input or not in the form.  On `WidgetEvent::Submitted`, call `focus_next`, and submit the form on `false`.
 
 ## Logging and storage
 
@@ -78,9 +78,9 @@ pub fn log_debug(msg: &str)
 pub fn read_string(key: &str) -> Option<String>
 ```
 
-The four log functions call [`runtime::log`](runtime.md#log) with levels 0 through 3.
+The log functions call [`runtime::log`](runtime.md#log) with levels 0 to 3.
 
-`read_string` calls [`storage::get`](storage.md#get) and returns the value as a `String`.  A value that isn't valid UTF-8 returns `None`.
+`read_string` returns the value from [`storage::get`](storage.md#get) as a `String`, or `None` for a value that isn't valid UTF-8.
 
 ## PBX requests
 
@@ -90,7 +90,7 @@ The four log functions call [`runtime::log`](runtime.md#log) with levels 0 throu
 pub fn pbx_request(method: &str, parameters: Json) -> u32
 ```
 
-Calls [`pbx::request`](pbx.md#request) with `parameters` serialized as JSON.  If the parameters have no `account_id` member and [`config::app_setting("account_id")`](config.md#app_setting) is not empty, the helper adds that member.  If `parameters` is not an object, the helper sends an empty object.
+Calls [`pbx::request`](pbx.md#request) with `parameters` as JSON.  Adds an `account_id` member from [`config::app_setting("account_id")`](config.md#app_setting) if `parameters` has none and the setting isn't empty.  Sends an empty object if `parameters` isn't an object.
 
 ### `pbx_error_text`
 
@@ -98,7 +98,7 @@ Calls [`pbx::request`](pbx.md#request) with `parameters` serialized as JSON.  If
 pub fn pbx_error_text(outcome: &PbxOutcome) -> String
 ```
 
-Returns a message suitable for an error screen:
+Returns text for an error screen:
 
 - For `Errors`, the `message` of the first error in the server's reply, or `The server reported an error.` if the reply has none.
 - For `Transport`, `Could not reach the server.`, with the transport's error text on a second line.
@@ -117,22 +117,22 @@ pub enum Json {
 }
 ```
 
-A JSON value type with a parser and a serializer, in the `json` module.  Numbers are stored as text.
+A JSON value with a parser and a serializer, in the `json` module.  Numbers are stored as text.
 
 | Function | Result |
 | --- | --- |
-| `Json::parse(text: &str) -> Option<Json>` | The parsed value, or `None` if `text` is not exactly one complete JSON value. |
-| `get(&self, key: &str) -> &Json` | A member of an object.  `Null` if the member is missing or the value is not an object. |
-| `path(&self, keys: &[&str]) -> &Json` | The result of applying `get` for each key in turn. |
-| `text(&self) -> String` | The text of a string, number, or boolean.  `""` for anything else. |
+| `Json::parse(text: &str) -> Option<Json>` | The value, or `None` unless `text` is exactly one JSON value. |
+| `get(&self, key: &str) -> &Json` | An object's member; `Null` if missing or not an object. |
+| `path(&self, keys: &[&str]) -> &Json` | `get` applied for each key in turn. |
+| `text(&self) -> String` | The text of a string, number, or boolean; otherwise `""`. |
 | `as_str(&self) -> Option<&str>` | The text of a string or number. |
-| `int(&self) -> Option<i64>` | The integer value of a number or numeric string, with any fraction truncated, or 0 or 1 for a boolean. |
-| `truthy(&self) -> bool` | `true` for `true` and for the strings `1`, `true`, `yes`, and `on`, ignoring case. |
+| `int(&self) -> Option<i64>` | A number or numeric string as an integer, fraction truncated; 0 or 1 for a boolean. |
+| `truthy(&self) -> bool` | `true` for `true` and the strings `1`, `true`, `yes`, and `on`, in any case. |
 | `is_null(&self) -> bool` | Whether the value is `Null`. |
-| `items(&self) -> Vec<&Json>` | The elements of an array.  `Null` has no elements.  Any other value is treated as a list of one, because the PBX collapses single-element lists in some replies. |
+| `items(&self) -> Vec<&Json>` | An array's elements; none for `Null`; any other value as a list of one, because the PBX collapses some one-element lists. |
 | `Json::obj([(key, value), ...]) -> Json` | An object. |
-| `Json::str(s) -> Json`, `Json::num(n: i64) -> Json` | A string and a number. |
-| `write(&self, out: &mut String)`, `to_string()` | The value serialized as JSON. |
+| `Json::str(s) -> Json`, `Json::num(n: i64) -> Json` | A string; a number. |
+| `write(&self, out: &mut String)`, `to_string()` | The value as JSON text. |
 
 ## `xml`
 
@@ -152,9 +152,9 @@ impl Element {
 }
 ```
 
-A minimal XML reader in the `xml` module, meant for the output of [`config::app_config`](config.md#app_config) and [`config::contact_lists`](config.md#contact_lists).  The reader keeps elements, attributes, and nesting, and skips text content, comments, and declarations.
+An XML reader in the `xml` module, for the output of [`config::app_config`](config.md#app_config) and [`config::contact_lists`](config.md#contact_lists).  Keeps elements, attributes, and nesting; skips text content, comments, and declarations.
 
-- `parse` returns an unnamed root element whose children are the top-level elements of the text.  For malformed text, the result contains everything read up to the error.
-- `attr` returns the value of an attribute, or `""` if the attribute is missing.
-- `children_named` iterates over the direct children with the given name.
-- `find_all` appends every descendant with the given name to `out`, depth first.
+- `parse` returns an unnamed root whose children are the top-level elements.  For malformed text, the result holds everything read before the error.
+- `attr` returns an attribute's value, or `""` if missing.
+- `children_named` iterates over the direct children with the name.
+- `find_all` appends every descendant with the name to `out`, depth first.

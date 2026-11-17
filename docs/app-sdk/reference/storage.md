@@ -1,10 +1,11 @@
 # `storage`
 
-The app's private key-value store on the phone.
+The app's private key-value store on the phone.  The store survives restarts of the app and the phone, firmware updates, and newer versions of the app.  The store belongs to the app's `name`; no other app can access the store, and removing the app deletes the store.
 
-The store survives restarts of the app and of the phone, firmware updates, and installation of a newer version of the app.  The store is tied to the app's `name`, and no other app can access the data.  Removing the app deletes the store.
+- Key: 1 to 64 bytes of UTF-8, not starting with `.`, without `/`, `\`, or NUL.
+- Value: any bytes, up to 1 MiB.
 
-A key is a name of 1 to 64 bytes that doesn't start with `.` and contains no `/`, `\`, or NUL character.  The limit counts UTF-8 bytes, not characters.  A value is any sequence of bytes, up to 1 MiB.  Each key is stored as a file on the phone's flash, and writes count against the flash's free space, of which the phone always keeps 2 MiB in reserve.
+Each key is a file on the flash.  Writes use free flash, of which the phone reserves 2 MiB.
 
 ## `get`
 
@@ -12,9 +13,7 @@ A key is a name of 1 to 64 bytes that doesn't start with `.` and contains no `/`
 pub fn get(key: &str) -> Option<Vec<u8>>
 ```
 
-Returns the value of a key, or `None` if the key isn't set.  An invalid key also returns `None`.
-
-For a value that is UTF-8 text, the SDK helper [`read_string`](helpers.md#logging-and-storage) returns a `String` instead.
+The key's value, or `None` if the key isn't set or is invalid.  For UTF-8 text, the helper [`read_string`](helpers.md#logging-and-storage) returns a `String`.
 
 ## `set`
 
@@ -22,13 +21,13 @@ For a value that is UTF-8 text, the SDK helper [`read_string`](helpers.md#loggin
 pub fn set(key: &str, value: &[u8]) -> Result<(), Error>
 ```
 
-The write is atomic: the phone writes the new value to the flash and then swaps the value into place in one step, so after a power loss the key has either the old value or the new one, never a partial value.
+The write is atomic: after a power loss, the key has the old value or the new one, never part of a value.
 
 | Error | Cause |
 | --- | --- |
 | `Invalid(text)` | The key is empty, is longer than 64 bytes, starts with `.`, or contains `/`, `\`, or NUL; or the value is larger than 1 MiB. |
 | `NoSpace` | The value needs more space than the flash has free beyond the 2 MiB reserve.  Replacing a value counts only the growth. |
-| `Failed(text)` | The write failed, and `text` gives the system's reason. |
+| `Failed(text)` | The write failed; `text` gives the system's reason. |
 
 ## `remove`
 
@@ -36,7 +35,7 @@ The write is atomic: the phone writes the new value to the flash and then swaps 
 pub fn remove(key: &str) -> Result<(), Error>
 ```
 
-Removing a key that isn't set succeeds.  Returns `Invalid` under the same conditions as `set`, and `Failed(text)` when the file can't be deleted.
+Removing a key that isn't set succeeds.  Returns `Invalid` under the same conditions as `set`, and `Failed(text)` if the file can't be deleted.
 
 ## `keys`
 
@@ -44,4 +43,4 @@ Removing a key that isn't set succeeds.  Returns `Invalid` under the same condit
 pub fn keys() -> Vec<String>
 ```
 
-Returns the keys that are set, sorted in byte order.
+The keys that are set, in byte order.

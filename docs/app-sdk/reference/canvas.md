@@ -1,6 +1,6 @@
 # `canvas`
 
-A canvas is a widget that displays a list of drawing operations, which [`draw`](#draw) replaces in one call.  The phone repaints from the list whenever the screen needs repainting.  The [`ui`](ui.md) functions move, hide, and destroy a canvas like any other widget.  To animate, call `draw` from a repeating [timer](timers.md), which can fire up to 20 times per second.
+A canvas is a widget that shows a list of drawing operations.  [`draw`](#draw) replaces the list in one call, and the phone repaints from the list as needed.  The [`ui`](ui.md) functions move, hide, and destroy a canvas.  To animate, call `draw` from a repeating [timer](timers.md), at most 20 times per second.
 
 ## Types
 
@@ -36,15 +36,15 @@ pub enum Op {
 }
 ```
 
-The grayscale skins map each color to the nearest of four shades (black, dark gray, light gray, and white) by brightness.
+The grayscale skins map each `Color` to the nearest of four shades (black, dark gray, light gray, and white) by brightness.
 
-Operations are painted in list order, with later operations on top of earlier ones.  Coordinates are relative to the top-left corner of the canvas, and drawing is clipped to the canvas.
+Operations paint in list order, later on top.  Coordinates are relative to the canvas's top-left corner, and drawing is clipped to the canvas.
 
 | Operation | Draws |
 | --- | --- |
 | `Op::Fill((rect, color))` | A filled rectangle. |
-| `Op::Bitmap(bitmap)` | A one-color image.  `bits` holds one bit per pixel, in rows from the top.  Each row is padded to a whole number of bytes, with the leftmost pixel in the high bit, so `bits.len()` must equal `width.div_ceil(8) * height`.  Each set bit is painted in `color` as a square `scale` pixels on a side (1 to 8), and clear bits are transparent.  `x` and `y` position the top-left corner, and `width` and `height` (1 to 256 each) are the image's dimensions before scaling. |
-| `Op::Text(text)` | A single line of text, at most 64 bytes, in one color and in one of the skin's fonts (the same fonts as [`ui::set_font`](ui.md#set_font)).  The text is positioned so that the pixels that the glyphs actually paint are centered in `box_`, both horizontally and vertically, which puts a digit in the middle of a square.  Drawing is clipped to `box_`. |
+| `Op::Bitmap(bitmap)` | A one-color image.  `bits` holds one bit per pixel, rows from the top, each row padded to whole bytes, the leftmost pixel in the high bit: `bits.len()` must be `width.div_ceil(8) * height`.  A set bit paints a `color` square `scale` pixels on a side (1 to 8); a clear bit is transparent.  `x` and `y` place the top-left corner; `width` and `height` (1 to 256) are the unscaled size. |
+| `Op::Text(text)` | One line of text, at most 64 bytes, in one color and a skin font (as for [`ui::set_font`](ui.md#set_font)).  The painted pixels of the glyphs are centered in `box_`, horizontally and vertically, so a digit sits in the middle of a square.  Drawing is clipped to `box_`. |
 
 ## `theme_color`
 
@@ -52,7 +52,7 @@ Operations are painted in list order, with later operations on top of earlier on
 pub fn theme_color(role: Role) -> Color
 ```
 
-Returns one of the current skin's colors.
+The skin's current color for `role`:
 
 | `Role` | Color |
 | --- | --- |
@@ -62,7 +62,7 @@ Returns one of the current skin's colors.
 | `Secondary` | Secondary text. |
 | `Border` | Separators and borders. |
 
-On a color model, these are the colors of the user's chosen theme, and they change while the app is running if the user switches themes.  The app on screen then receives [`Event::Foreground`](app-events.md#foreground) again.
+On a color model, the colors come from the user's theme and change when the user switches themes; the app on screen then receives [`Event::Foreground`](app-events.md#foreground).
 
 ## `text_size`
 
@@ -70,7 +70,7 @@ On a color model, these are the colors of the user's chosen theme, and they chan
 pub fn text_size(font: Font, text: &str) -> Size
 ```
 
-Returns the width and height of the pixels that the glyphs of `text` paint in one of the skin's fonts, without any line spacing.  `Op::Text` centers text by the same measurement.  Only the first 64 bytes of `text` are measured.
+The size of the pixels that the glyphs of `text` paint in `font`, without line spacing.  `Op::Text` centers by this measure.  Only the first 64 bytes are measured.
 
 ## `create`
 
@@ -78,7 +78,7 @@ Returns the width and height of the pixels that the glyphs of `text` paint in on
 pub fn create(parent: Widget, bounds: Rect) -> Widget
 ```
 
-The canvas is empty until the first `draw`.  `parent` and `bounds` work the same way as in [`ui::create`](ui.md#create), including the result of 0 for a parent in an idle window that the app doesn't have.
+Creates an empty canvas.  `parent` and `bounds` work as in [`ui::create`](ui.md#create), including the result 0 for a parent in an idle window that the app doesn't have.
 
 ## `draw`
 
@@ -86,16 +86,16 @@ The canvas is empty until the first `draw`.  `parent` and `bounds` work the same
 pub fn draw(w: Widget, ops: &[Op]) -> Result<(), String>
 ```
 
-Replaces the contents of the canvas.  An empty list clears the canvas.
+Replaces the canvas's list.  An empty list clears the canvas.
 
-`draw` rejects the entire list, and leaves the canvas unchanged, in any of these cases:
+`draw` rejects the whole list, leaving the canvas unchanged, if:
 
-- The list has more than 512 operations.
-- A `Text` is longer than 64 bytes.
-- A `Bitmap` has a `width` or `height` of 0 or more than 256, or a `scale` outside 1 to 8.
-- A `Bitmap` has a `bits.len()` other than `width.div_ceil(8) * height`.
-- The `bits` of all bitmaps in the list total more than 64 KiB.
+- the list has more than 512 operations,
+- a `Text` is longer than 64 bytes,
+- a `Bitmap` has a `width` or `height` of 0 or over 256, or a `scale` outside 1 to 8,
+- a `Bitmap`'s `bits.len()` isn't `width.div_ceil(8) * height`, or
+- the `bits` of all bitmaps total more than 64 KiB.
 
-The `Err` value is a message that names the limit.
+The `Err` text names the limit.
 
-`draw` checks the list before the widget.  Given a valid list, `draw` returns `Err("not a canvas")` and changes nothing when the handle doesn't exist, is the root, or refers to another kind of widget.
+`draw` checks the list before the handle.  For a valid list and a handle that doesn't exist, is `ROOT`, or isn't a canvas, `draw` returns `Err("not a canvas")` and changes nothing.

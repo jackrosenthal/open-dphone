@@ -1,12 +1,12 @@
 # Persistent storage
 
-By default, the phone stops an app when the app's window leaves the screen.  That happens after `runtime::exit`, and also when the user leaves the app by pressing line key 1.  Opening the app again starts a new instance with a new `FreshPot::default()`, where `brewed` is `None`.
+By default, the phone stops an app when the app's window leaves the screen: after `runtime::exit`, or when the user presses line key 1.  Opening the app again starts a new instance from `FreshPot::default()`, where `brewed` is `None`.
 
 ## Key-value storage
 
-The [`storage`](../reference/storage.md) interface gives each app a private key-value store on the phone, which survives app exits, phone restarts, and installing a newer build of the app.
+[`storage`](../reference/storage.md) is each app's private key-value store on the phone.  The store survives app exits, phone restarts, and newer builds of the app.
 
-Define the key at the top of the file:
+At the top of the file, define the key:
 
 ```rust
 /// The storage key for the time the pot was brewed.
@@ -33,10 +33,10 @@ fn save(&self) {
 }
 ```
 
-- `load` uses the SDK helper `read_string`, which returns a key's value as text, or `None` if the key isn't set.
-- In `save`, [`storage::set`](../reference/storage.md#set) and [`storage::remove`](../reference/storage.md#remove) return a `Result`, because a write fails when the phone's flash is full.
+- `read_string`, an SDK helper, returns a key's value as text, or `None` if the key isn't set.
+- [`storage::set`](../reference/storage.md#set) and [`storage::remove`](../reference/storage.md#remove) return a `Result` because a write fails when the flash is full.
 
-Add the two new helpers to the imports:
+Add the helpers to the imports:
 
 ```rust
 use dphone_app_sdk::prelude::*;
@@ -53,7 +53,7 @@ self.load();
 self.show();
 ```
 
-In `handle`, save after every state change:
+In `handle`, save after each state change:
 
 ```rust
 Event::Softkey(SK_BREWED) => {
@@ -67,11 +67,11 @@ Event::Softkey(SK_EMPTY) => {
 }
 ```
 
-Save when the state changes, not when the app exits.  The phone does send `Event::Exit` before an orderly stop, but an app that is stopped after a fault gets no event, and neither does an app on a phone that loses power.
+Save on each change, not on exit: the phone sends `Event::Exit` before an orderly stop, but not after a fault or a power loss.
 
 ## Build and run
 
-[Build and install](first-app.md#build) the app as before.  Open the app, press **Brewed**, press **Exit**, and open the app again.  The time is still there, and the age has advanced.  The time also survives a reboot, which you can trigger with the **Reboot** button in the web interface.
+[Build and install](first-app.md#build) the app, press **Brewed**, press **Exit**, and open the app again.  The time remains, and the age has advanced.  The time also survives a reboot (**Reboot** in the web interface).
 
 ??? example "Complete `src/lib.rs` for this chapter"
 

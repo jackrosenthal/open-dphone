@@ -1,6 +1,6 @@
 # Drawing with the canvas
 
-Below the text, the app draws a mug, and a bar that starts full and empties over an hour as the coffee goes stale.
+Below the text, the app draws a mug and a bar that empties over an hour as the coffee goes stale.
 
 <figure markdown="span">
   ![Fresh Pot with the mug and the bar, on a color display and on a grayscale display](../../assets/app-sdk/gauge.png){ width="656" }
@@ -8,9 +8,9 @@ Below the text, the app draws a mug, and a bar that starts full and empties over
 
 ## Canvas basics
 
-A [`canvas`](../reference/canvas.md) is a widget that shows a list of drawing operations from the app, and the phone paints from that list whenever the display needs repainting.  Each call to [`canvas::draw`](../reference/canvas.md#draw) replaces the entire list.
+A [`canvas`](../reference/canvas.md) is a widget that shows a list of drawing operations, and the phone repaints from the list as needed.  Each [`canvas::draw`](../reference/canvas.md#draw) call replaces the list.
 
-Import the module and the types:
+Import the module and types:
 
 ```rust
 use dphone_app_sdk::canvas::{self, Bitmap, Op, Role};
@@ -18,7 +18,7 @@ use dphone_app_sdk::canvas::{self, Bitmap, Op, Role};
 
 ## Bitmap data
 
-A bitmap has one bit per pixel, and each row is padded to a whole number of bytes.  Add the mug, along with the number of minutes that a pot stays fresh, below the other constants:
+A bitmap has one bit per pixel, and each row is padded to whole bytes.  Below the other constants, add the mug and the minutes that a pot stays fresh:
 
 ```rust
 /// A pot is stale after this many minutes.
@@ -52,7 +52,7 @@ gauge_width: u16,
 gauge_height: u16,
 ```
 
-In `start`, after the two text widgets, create the canvas:
+In `start`, after the text widgets, create the canvas:
 
 ```rust
 // The canvas is half the width of the window, centered, and two
@@ -70,7 +70,7 @@ self.gauge = canvas::create(ROOT, bounds);
 
 ## Drawing operations
 
-Add a function to `impl FreshPot` that builds the list of operations:
+Add a function to `impl FreshPot` that builds the operations:
 
 ```rust
 /// The drawing operations for the canvas: a mug, and a bar that empties
@@ -119,13 +119,13 @@ fn gauge_ops(&self) -> Vec<Op> {
 }
 ```
 
-Coordinates are relative to the top-left corner of the canvas, and the phone clips everything to the canvas.
+Coordinates are relative to the canvas's top-left corner, and the phone clips drawing to the canvas.
 
-- The mug's `scale` paints each bit as a square of that many pixels, so that the 10 rows fill the height of the canvas on every display.
-- [`canvas::theme_color`](../reference/canvas.md#theme_color) returns the color that the phone uses for a given role: `Role::Foreground` for text, `Role::Border` for lines, and `Role::Highlight` for a selection.  On a color display, these are the colors of the theme that the user chose.
-- Only the foreground is painted.  The frame is four rectangles, each one pixel thick, and the only other paint inside the frame is the filled portion, so the window's background shows through everywhere else.
+- `scale` paints each bit as a square of `scale` pixels, so the mug's 10 rows fill the canvas height on every display.
+- [`canvas::theme_color`](../reference/canvas.md#theme_color) returns the phone's color for a role: `Role::Foreground` for text, `Role::Border` for lines, and `Role::Highlight` for a selection.  On a color display, the colors come from the user's theme.
+- Only the foreground is painted: the frame is four one-pixel rectangles, and inside the frame only the filled part is painted.  The window's background shows everywhere else.
 
-Finally, draw whenever the state is rendered.  At the end of `show`, add:
+At the end of `show`, draw:
 
 ```rust
 if let Err(e) = canvas::draw(self.gauge, &self.gauge_ops()) {
@@ -135,9 +135,9 @@ if let Err(e) = canvas::draw(self.gauge, &self.gauge_ops()) {
 
 ## Theme changes
 
-The operations contain the colors that `theme_color` returned at the time of the call.  If the user picks another theme, the phone restyles text widgets automatically, but a canvas keeps the old colors until the app draws again.
+The operations hold the colors that `theme_color` returned when called.  After a theme change, the phone restyles text widgets, but a canvas keeps the old colors until the next `draw`.
 
-`Event::Foreground` arrives whenever the app's window comes to the front, and again when the theme changes while the app is on screen.  In `handle`, add `Event::Foreground` to the timer's arm so that both fall through to `show`:
+`Event::Foreground` arrives when the window comes to the front, and when the theme changes while the window is on screen.  In `handle`, add `Event::Foreground` to the timer's arm, so that both fall through to `show`:
 
 ```rust
 // On a timer tick, or when the window returns to the screen
@@ -147,7 +147,7 @@ Event::Timer(_) | Event::Foreground => {}
 
 ## Build and run
 
-[Build and install](first-app.md#build) the app as before, and open the app.  The pot from the previous chapter is still there, and the bar shows how much of the pot's hour remains.
+[Build and install](first-app.md#build) the app, and open the app.  The pot from the previous chapter remains, and the bar shows the part of the pot's hour that is left.
 
 ??? example "Complete `src/lib.rs` for this chapter"
 

@@ -1,6 +1,6 @@
 # Softkeys and state
 
-The **Brewed** softkey records the current time, the screen shows that time and the age of the pot, **Empty** clears both, and a timer keeps the age up to date.
+**Brewed** records the current time, the screen shows that time and the pot's age, **Empty** clears both, and a timer updates the age.
 
 <figure markdown="span">
   ![Fresh Pot with no pot recorded, and 25 minutes after the softkey Brewed](../../assets/app-sdk/softkeys.png){ width="656" }
@@ -24,7 +24,7 @@ struct FreshPot {
 
 ## Screen layout
 
-The same app file runs on color and grayscale displays of different sizes, so never hard-code a size.  Ask the phone instead: `screen` returns the rectangle below the title, and [`ui::get_metrics`](../reference/ui.md#get_metrics) returns, among other dimensions, the height of a line of text in the normal font.
+Display sizes differ by model, so take every size from the phone: `screen` returns the rectangle below the title, and [`ui::get_metrics`](../reference/ui.md#get_metrics) returns, among other values, the line height of the normal font.
 
 Replace `start` with:
 
@@ -61,7 +61,7 @@ fn start(&mut self) {
 }
 ```
 
-`Font` and `Align` aren't in the SDK's prelude, so change the imports at the top of the file to:
+`Font` and `Align` aren't in the prelude.  Change the imports to:
 
 ```rust
 use dphone_app_sdk::prelude::*;
@@ -70,7 +70,7 @@ use dphone_app_sdk::{Align, Font, log_info};
 
 ## Softkeys
 
-Near the end of `start`, [`ui::set_softkeys`](../reference/ui.md#set_softkeys) labels the keys below the display, from left to right.  Each softkey has an ID that you choose, and a press arrives as `Event::Softkey` with that ID.  Define the IDs, along with the refresh interval for the timer, at the top of the file:
+[`ui::set_softkeys`](../reference/ui.md#set_softkeys), near the end of `start`, labels the keys below the display, left to right.  A press arrives as `Event::Softkey` with the softkey's ID.  At the top of the file, define the IDs and the timer interval:
 
 ```rust
 const SK_BREWED: u32 = 1;
@@ -83,7 +83,7 @@ const REFRESH_MS: u32 = 30_000;
 
 ## Rendering
 
-Below the app type, add a function that renders the state to the screen, and a function that formats the age:
+Below the app type, add a function that renders the state and a function that formats the age:
 
 ```rust
 impl FreshPot {
@@ -116,7 +116,7 @@ fn age_text(minutes: u64) -> String {
 }
 ```
 
-[`timers::wall_time`](../reference/timers.md#wall_time) returns the current time in seconds since the Unix epoch, and [`l10n::format_time`](../reference/l10n.md#format_time) formats a timestamp in the phone's time zone, in 12-hour or 24-hour form depending on the phone's settings.
+[`timers::wall_time`](../reference/timers.md#wall_time) returns seconds since the Unix epoch.  [`l10n::format_time`](../reference/l10n.md#format_time) formats a time in the phone's time zone and 12-hour or 24-hour setting.
 
 ## Event handling
 
@@ -139,11 +139,11 @@ fn handle(&mut self, event: Event) {
 }
 ```
 
-In `start`, [`timers::set(REFRESH_MS, true)`](../reference/timers.md#set) asked for an `Event::Timer` every 30 seconds.  The arm for that event is empty and falls through to `show`, which recomputes the age.
+[`timers::set(REFRESH_MS, true)`](../reference/timers.md#set), in `start`, requests an `Event::Timer` every 30 seconds.  The empty arm falls through to `show`, which recomputes the age.
 
 ## Build and run
 
-[Build and install](first-app.md#build) the app as before.  Open the app and press **Brewed**.  The screen shows the time and "Just now", and after a minute the second line starts counting.
+[Build and install](first-app.md#build) the app, open the app, and press **Brewed**.  The screen shows the time and "Just now"; after a minute, the age starts counting.
 
 ??? example "Complete `src/lib.rs` for this chapter"
 

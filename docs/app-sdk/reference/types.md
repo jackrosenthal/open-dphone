@@ -1,6 +1,6 @@
 # Shared types
 
-The crate exports each of these types at the root, e.g., `dphone_app_sdk::Rect`.
+The crate exports these types at the root, e.g., `dphone_app_sdk::Rect`.
 
 ## Handles and identifiers
 
@@ -9,9 +9,9 @@ pub type Widget = u32;
 pub const ROOT: Widget = 0;
 ```
 
-`ROOT` is the app's [window](ui.md#window).  Handles of widgets in the [idle window](ui.md#idle-window) have the high bit set.  The phone never reuses a handle within one instance of an app.
+`ROOT` is the app's [window](ui.md#window).  Handles of widgets in the [idle window](ui.md#idle-window) have the high bit set.  Handles aren't reused within an instance.
 
-Timer and request IDs are never 0.  `pbx::request`, `http::request`, and the `pbx_storage` requests draw IDs from a single counter, so no two pending requests in an app share an ID.
+Timer and request IDs are never 0.  `pbx::request`, `http::request`, and the `pbx_storage` requests share one ID counter, so pending requests have distinct IDs.
 
 ## Geometry
 
@@ -44,7 +44,7 @@ pub struct Metrics {
 }
 ```
 
-The values that [`ui::get_metrics`](ui.md#get_metrics) returns depend on the skin:
+[`ui::get_metrics`](ui.md#get_metrics) returns, by skin:
 
 | Field | `SmallGray` (D40, D45, D50) | `LargeGray` (D70) | `Color` (D60, D62, D65) |
 | --- | --- | --- | --- |
@@ -58,7 +58,7 @@ The values that [`ui::get_metrics`](ui.md#get_metrics) returns depend on the ski
 | `scroll_bar_width` | 4 | 4 | 8 |
 | `color` | `false` | `false` | `true` |
 
-`width` and `height` are the dimensions of the app's window, and `row_height` is the height of one row in a list.
+`width` and `height` are the window's size.  `row_height` is the height of a list row.
 
 ## Widgets
 
@@ -87,7 +87,7 @@ impl Softkey {
 }
 ```
 
-See [`ui`](ui.md) for the widget kinds, fonts, input modes, list items, and softkeys.
+See [`ui`](ui.md).
 
 ## `Error`
 
@@ -103,9 +103,9 @@ pub enum Error {
 | Variant | Meaning |
 | --- | --- |
 | `NotFound` | The named item doesn't exist. |
-| `Invalid(text)` | An argument is invalid.  The text says which one and why. |
+| `Invalid(text)` | An argument is invalid; the text says which and why. |
 | `NoSpace` | The flash is full. |
-| `Failed(text)` | The phone tried and failed, or refused.  The text gives the reason. |
+| `Failed(text)` | The phone failed or refused; the text says why. |
 
 ## HTTP
 
@@ -184,9 +184,9 @@ pub struct Mwi { pub account: u8, pub new_messages: u32, pub old_messages: u32 }
 
 | Field | Contents |
 | --- | --- |
-| `CallInfo::account`, `Mwi::account`, `AccountInfo::slot` | The account's slot, starting at 0. |
-| `CallInfo::state` | `Dialing`, `Proceeding`, and `Ringback` describe an outgoing call that hasn't been answered.  `Ringing` is an incoming call that hasn't been answered.  `Held` is a call on hold, by either side.  `Ended` is a call that is over but still listed for a few seconds. |
-| `CallInfo::duration` | Seconds since the call was answered, computed when the `CallInfo` is created.  0 before the call is answered. |
+| `CallInfo::account`, `Mwi::account`, `AccountInfo::slot` | The account's slot, from 0. |
+| `CallInfo::state` | `Dialing`, `Proceeding`, `Ringback`: outgoing, unanswered.  `Ringing`: incoming, unanswered.  `Held`: on hold, by either side.  `Ended`: over, and still listed for a few seconds. |
+| `CallInfo::duration` | Seconds since the answer, as of the `CallInfo`'s creation; 0 before the answer. |
 | `AccountInfo::id` | The account's `id` attribute in the phone's configuration. |
 
 ## Presence
@@ -202,10 +202,10 @@ pub struct Presence {
 
 | Field | Contents |
 | --- | --- |
-| `target` | The target string that the app passed in. |
+| `target` | The target string that the app passed. |
 | `status` | `available`, `chat`, `away`, `dnd`, `xa` (extended away), `unavailable`, or `unknown`. |
-| `text` | The contact's status message, which may be empty. |
-| `line_state` | The state of the contact's line: `idle`, `ringing`, `busy`, `hold`, `hold-ringing` (one call held and another ringing), `unavailable` (no device registered), or `unknown`. |
+| `text` | The status message; may be empty. |
+| `line_state` | The contact's line: `idle`, `ringing`, `busy`, `hold`, `hold-ringing` (one call held and another ringing), `unavailable` (no device registered), or `unknown`. |
 
 ## `Push`
 

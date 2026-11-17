@@ -1,6 +1,6 @@
 # Shared data
 
-The brew time moves to the PBX, so that pressing **Brewed** on any phone updates every phone, which also shows the name of the person who pressed the key.
+The brew time moves to the PBX.  Pressing **Brewed** on any phone updates every phone, with the name of the person who pressed the key.
 
 <figure markdown="span">
   ![Fresh Pot showing a pot that Alice brewed twelve minutes ago](../../assets/app-sdk/shared.png){ width="480" }
@@ -8,27 +8,27 @@ The brew time moves to the PBX, so that pressing **Brewed** on any phone updates
 
 ## PBX storage
 
-The [`pbx_storage`](../reference/pbx-storage.md) interface is a second key-value store, hosted by the PBX.  The store requires a PBX running [Open DPMA](../../open-dpma/index.md), and needs no configuration in the app or on the phone.  Fresh Pot keeps the pot in the app's `PbxScope::Shared` keys, which every phone on the PBX that runs the app shares.
+[`pbx_storage`](../reference/pbx-storage.md) is a key-value store on the PBX.  The store requires a PBX running [Open DPMA](../../open-dpma/index.md) and no configuration.  Fresh Pot uses the `PbxScope::Shared` keys, which every phone running the app shares.
 
-PBX storage differs from the phone's store in two ways:
+Unlike `storage`:
 
-- **Requests are asynchronous.**  `get`, `set`, and `remove` immediately return a request ID, and the result arrives later as an `Event::PbxStorage` with the same ID.
-- **The PBX records the author of every entry.**  The PBX fills in the author from the user that the writing phone is provisioned for, so Fresh Pot can show who brewed the pot without ever asking for a name.
+- **Requests are asynchronous.**  `get`, `set`, and `remove` return a request ID, and the result arrives later as an `Event::PbxStorage` with that ID.
+- **The PBX records the author of each entry**, from the user that the writing phone is provisioned for.
 
 ## Design
 
-The phone's store stays, as a cache between answers from the PBX:
+The phone's store remains, as a cache:
 
-1. On startup, the app shows what the phone's store holds and queries the PBX.
-2. Every answer from the PBX replaces the app's state and is saved to the phone's store.
-3. **Brewed** and **Empty** update the state immediately, save, and send the change to the PBX.
-4. When another phone changes the pot, the PBX notifies this phone, and the app queries the PBX again.
+1. At startup, the app shows what the phone's store holds and queries the PBX.
+2. Each answer from the PBX replaces the state and is saved to the phone's store.
+3. **Brewed** and **Empty** update the state, save, and send the change to the PBX.
+4. When another phone changes the pot, the PBX notifies this phone, and the app queries the PBX.
 
-On a phone whose PBX has no store, every request ends in `Unreachable`, and the app behaves as in the previous chapter.
+Without a PBX store, every request ends in `Unreachable`, and the app behaves as in the previous chapter.
 
 ## New state
 
-Both stores use the same key name.  Update the comment on the constant to say so:
+Both stores use the same key.  Update the constant's comment:
 
 ```rust
 /// The storage key for the time the pot was brewed, used both on the
@@ -66,9 +66,9 @@ fn take(&mut self, entry: Option<PbxEntry>) {
 }
 ```
 
-The [`PbxEntry`](../reference/pbx-storage.md#requests-and-outcomes) that `take` receives holds in `value` the bytes that a phone wrote (here, the time as text), and in `author_name` the name that the PBX recorded for the writer.
+A [`PbxEntry`](../reference/pbx-storage.md#requests-and-outcomes) holds the bytes that a phone wrote in `value` (here, the time as text), and the writer's name, as recorded by the PBX, in `author_name`.
 
-In `show`, add the name to the second line.  Replace the line that sets the text of `self.age` with:
+In `show`, replace the line that sets the text of `self.age` with:
 
 ```rust
 let mut age = age_text(minutes);
@@ -80,7 +80,7 @@ ui::set_text(self.age, &age);
 
 ## Startup
 
-At the end of `start`, after rendering what the phone's store holds, subscribe to change notifications and query the PBX:
+At the end of `start`, after rendering what the phone's store holds, subscribe to changes and query the PBX:
 
 ```rust
 self.load();
@@ -90,7 +90,7 @@ pbx_storage::watch(true);
 self.ask();
 ```
 
-After [`pbx_storage::watch(true)`](../reference/pbx-storage.md#watch), the app receives an `Event::PbxStorageChanged` whenever another phone sets or removes one of the app's shared keys, for as long as the app runs.
+After [`pbx_storage::watch(true)`](../reference/pbx-storage.md#watch), the app receives `Event::PbxStorageChanged` whenever another phone sets or removes one of the app's shared keys, while the app runs.
 
 ## Event handling
 
@@ -136,23 +136,23 @@ fn handle(&mut self, event: Event) {
 }
 ```
 
-The softkeys now also write to the PBX.  On **Brewed**, [`pbx_storage::user`](../reference/pbx-storage.md#user) returns the phone's user as known to the PBX, so the name appears immediately, before the PBX answers.  The last argument to `set`, `None`, makes the write unconditional: for a pot of coffee, the latest press wins.
+The softkeys also write to the PBX.  For **Brewed**, [`pbx_storage::user`](../reference/pbx-storage.md#user) supplies the user's name before the PBX answers.  The last argument of `set`, `None`, makes the write unconditional: the latest press wins.
 
-Three new arms handle what comes back:
+The new arms:
 
-- **`Event::PbxStorage`** is the answer to a request.  The guard `id == self.asked` ignores answers to all but the latest request.  `Entry` answers a `get`, `Stored` answers a `set` with the entry as now stored on the PBX, and `Removed` answers a `remove`.  `Unreachable` means that the request never reached the PBX or that the PBX didn't answer.  Of the remaining outcomes, only `Refused` can follow these requests, and the app logs a warning.
-- **`Event::PbxStorageChanged`** carries no value, so the app queries the PBX.
-- **`Event::PbxStorageOnline`** means that the store has become reachable, for the first time or again.  Anything the app read earlier may be stale, so the app queries the PBX.
+- `Event::PbxStorage` answers a request.  The guard `id == self.asked` ignores all but the latest request.  `Entry` answers `get`, `Stored` answers `set` with the entry as stored, and `Removed` answers `remove`.  `Unreachable` means that the request didn't reach the PBX or the PBX didn't answer.  Of the other outcomes, only `Refused` can follow these requests; the app logs a warning.
+- `Event::PbxStorageChanged` carries no value, so the app queries the PBX.
+- `Event::PbxStorageOnline` means that the store is reachable, for the first time or again.  Earlier reads may be stale, so the app queries the PBX.
 
 !!! note "Pressing Brewed while the PBX is unreachable"
 
-    The phone doesn't queue failed writes for later.  In Fresh Pot, pressing **Brewed** while the PBX is unreachable therefore shows up only on that phone, and the PBX's value takes over again once the PBX is back.
+    The phone doesn't queue failed writes.  The press shows only on that phone, and the PBX's value returns when the PBX is back.
 
 ## Build and run
 
-[Build the app](first-app.md#build) as before, and install the app file on two phones on the same PBX.  Open the app on both phones and press **Brewed** on one.  A moment later, the other phone shows the same time, with the name of the first phone's user.  Press **Empty** on either phone, and both go back to "No pot".
+[Build](first-app.md#build) the app, and install the app on two phones on the same PBX.  Open the app on both, and press **Brewed** on one.  The other shows the same time and the first phone's user.  **Empty** on either phone returns both to "No pot".
 
-If you have only one phone, the second line shows the name of that phone's user after you press **Brewed**.  If the phone has no PBX store to reach, the **Logs** page shows `not shared:` followed by the reason.
+With one phone, the second line shows that phone's user after **Brewed**.  Without a PBX store, the **Logs** page shows `not shared:` and the reason.
 
 ??? example "Complete `src/lib.rs` for this chapter"
 

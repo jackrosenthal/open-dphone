@@ -32,27 +32,21 @@ pub enum Event {
 
 ## `Foreground`
 
-The app's window became the top screen: either the app was opened, or a screen that covered the window (a call, a menu, another app) went away.
-
-On a color model, the phone also sends `Foreground` to the app on screen when the user switches themes, so that an app that draws with [`canvas::theme_color`](canvas.md#theme_color) can redraw with the new colors.  Treat `Foreground` as "draw the screen," not as "the app was just opened."
+The app's window became the top screen: the app was opened, or a covering screen (a call, a menu, another app) closed.  On a color model, the app on screen also receives `Foreground` when the user switches themes, to redraw with new [`canvas::theme_color`](canvas.md#theme_color) colors.  Treat `Foreground` as "draw the screen," not as "the app was opened."
 
 ## `Background`
 
-The app's window stopped being the top screen: another screen covers the window, the user pressed line key 1 or an unclaimed `cancel`, or the app called `runtime::background`.
-
-After `handle` returns, the phone stops a `Foreground` app that has no idle window, unless the app called `runtime::set_exit_after_background(false)`.  The app then receives `Exit`.
+The app's window stopped being the top screen: another screen covers the window, the user pressed line key 1 or an unclaimed `cancel`, or the app called `runtime::background`.  After `handle` returns, the phone stops a `Foreground` app that has no idle window, unless the app called `runtime::set_exit_after_background(false)`; the app then receives `Exit`.
 
 ## `Exit`
 
-The last event that an instance receives.  The phone sends `Exit` before discarding the instance for any of these reasons: `runtime::exit`, `runtime::restart`, the stop that follows `Background`, removal or replacement of the app, a configuration that disables a built-in app, or shutdown.  The handler gets the usual 2 seconds and can call any function, but a result that would arrive later is never delivered.
-
-An app stopped by a [fault](index.md#faults-and-restarts) receives no `Exit`.
+The last event of an instance.  The phone sends `Exit` before discarding the instance for `runtime::exit`, `runtime::restart`, the stop after `Background`, removal or replacement of the app, a configuration that disables a built-in app, or shutdown.  The handler has the usual 2 seconds and can call any function, but later results are never delivered.  After a [fault](index.md#faults-and-restarts), no `Exit` arrives.
 
 ## `IdleScreenShow` and `IdleScreenHide`
 
-`IdleScreenShow` means that the app's [idle window](ui.md#idle-window) appeared on screen.  That happens when the idle screen is the top screen and the app has the current turn among the apps with idle windows.
+`IdleScreenShow`: the app's [idle window](ui.md#idle-window) appeared, because the idle screen is the top screen and the app has the turn among the apps with idle windows.
 
-`IdleScreenHide` means that the idle window left the screen, either because another screen (a call, a menu, an app) covers the idle screen or because the turn passed to another app.
+`IdleScreenHide`: the idle window left the screen, because another screen (a call, a menu, an app) covers the idle screen, or the turn passed to another app.
 
 ## `Key`
 
@@ -60,24 +54,24 @@ An app stopped by a [fault](index.md#faults-and-restarts) receives no `Exit`.
 Event::Key(name)
 ```
 
-The user pressed a key that the window or one of the app's widgets claimed with [`ui::claim_keys`](ui.md#claim_keys), or pressed any key while [`input::capture`](input.md) is on.  The phone doesn't report key releases or repeats, and the event doesn't say which widget claimed the key.
+A key claimed with [`ui::claim_keys`](ui.md#claim_keys) by the window or one of the app's widgets was pressed, or any key while [`input::capture`](input.md) is on.  Releases and repeats aren't reported, and the event doesn't name the claiming widget.
 
 | Names | Keys |
 | --- | --- |
 | `0` to `9`, `*`, `#` | The dial pad. |
 | `up`, `down`, `left`, `right`, `select`, `cancel` | The navigation keys. |
-| `sk1` to `sk4` | The four keys below the display, from left to right. |
-| `line1` to `line6` | The line keys, from top to bottom. |
-| `blf1` to `blf10` | The rapid-dial keys, from top to bottom. |
+| `sk1` to `sk4` | The four keys below the display, left to right. |
+| `line1` to `line6` | The line keys, top to bottom. |
+| `blf1` to `blf10` | The rapid-dial keys, top to bottom. |
 | `vup`, `vdn` | Volume up and down. |
 | `mute`, `spkr`, `hdst` | Mute, speaker, and headset. |
 | `hold`, `xfer`, `conf`, `redial`, `msgs` | Hold, transfer, conference, redial, and messages. |
 | `info`, `status`, `dir`, `apps`, `menu` | Information, status, contacts, applications, and menu. |
-| `blfleft`, `blfright` | The page keys for the rapid-dial keys. |
+| `blfleft`, `blfright` | The page keys of the rapid-dial keys. |
 | `expM.K` | Key `K` on expansion module `M`. |
-| `keyN` | A key that the phone has no name for, identified by key code `N`. |
+| `keyN` | A key without a name, by key code `N`. |
 
-No model has every key in the table.
+No model has every key.
 
 ## `Hook`
 
@@ -85,7 +79,7 @@ No model has every key in the table.
 Event::Hook(off_hook)
 ```
 
-The handset was lifted (`true`) or replaced (`false`) while the app's window was on screen with [`input::capture`](input.md) on.  Without capture, the phone handles the hookswitch and doesn't notify the app.
+The handset was lifted (`true`) or replaced (`false`) while the app's window was on screen with [`input::capture`](input.md) on.  Without capture, the app isn't notified.
 
 ## `Softkey`
 
@@ -93,7 +87,7 @@ The handset was lifted (`true`) or replaced (`false`) while the app's window was
 Event::Softkey(id)
 ```
 
-`id` is the `id` of the `Softkey` passed to [`ui::set_softkeys`](ui.md#set_softkeys).  The "More" key that pages through more than four softkeys and the "Delete" key of an input don't produce `Softkey` events.
+`id` is the `id` of the pressed `Softkey` from [`ui::set_softkeys`](ui.md#set_softkeys).  The "More" key and the "Delete" key of an input send no `Softkey`.
 
 ## `Widget`
 
@@ -103,9 +97,9 @@ Event::Widget((widget, widget_event))
 
 | `WidgetEvent` | Sent when |
 | --- | --- |
-| `Highlighted(row)` | The user moved a list's selection with `up` or `down`.  `ui::set_selected` and `ui::set_items` don't send this event. |
+| `Highlighted(row)` | The user moved a list's selection with `up` or `down`.  Not sent for `ui::set_selected` or `ui::set_items`. |
 | `Activated(row)` | The user pressed `select` on a list with at least one row. |
-| `Changed(text)` | The user changed an input's text by typing or deleting.  `ui::set_value` doesn't send this event. |
+| `Changed(text)` | The user typed into or deleted from an input.  Not sent for `ui::set_value`. |
 | `Submitted(text)` | The user pressed `select` in an input. |
 
 ## `Timer`
@@ -114,7 +108,7 @@ Event::Widget((widget, widget_event))
 Event::Timer(id)
 ```
 
-A timer set with [`timers::set`](timers.md#set) fired.
+A timer from [`timers::set`](timers.md#set) fired.
 
 ## `Pbx`
 
@@ -122,7 +116,7 @@ A timer set with [`timers::set`](timers.md#set) fired.
 Event::Pbx((id, outcome))
 ```
 
-The result of a [`pbx::request`](pbx.md#request).  Every request ends with exactly one `Pbx` event, unless the app canceled the request.
+The result of a [`pbx::request`](pbx.md#request): exactly one for each request that the app didn't cancel.
 
 ## `Http`
 
@@ -138,7 +132,7 @@ The result of an [`http::request`](http.md#request).
 Event::Call(info)
 ```
 
-A call appeared, or a call's state, remote name, or remote number changed.  ([`CallInfo`](types.md#calls) describes the fields.)  The seconds counting up in `duration` don't cause events.  Apps that called [`calls::observe(true)`](calls.md#observe) receive the event for every call on the phone, not only for calls that the app placed.  The end of a call arrives as a single event with the state `CallState::Ended`.
+A call appeared, or a call's state, remote name, or remote number changed ([`CallInfo`](types.md#calls)).  The `duration` count doesn't send events.  After [`calls::observe(true)`](calls.md#observe), the app receives events for every call on the phone.  A call's end is one event with `CallState::Ended`.
 
 ## `Push`
 
@@ -146,21 +140,21 @@ A call appeared, or a call's state, remote name, or remote number changed.  ([`C
 Event::Push(push)
 ```
 
-The PBX sent the phone an event whose name the app observes with [`events::observe`](events.md#observe).
+The PBX pushed an event whose name the app observes with [`events::observe`](events.md#observe).
 
 | Field | Contents |
 | --- | --- |
 | `name` | The event's name. |
-| `kind` | For an event that arrived with a call, the value of the `X-Event-Type` header; otherwise `""`. |
-| `data` | The event's data as text.  For an event sent through the DPMA session, the payload.  For an event that arrived in an `INVITE` or `INFO`, the `X-Event-Data` header, or the body if there is no such header and the body isn't SDP. |
-| `method` | `"MESSAGE"` for an event sent through the DPMA session; `"INVITE"` or `"INFO"` for an event that arrived with a call. |
-| `call` | For `INVITE` and `INFO`, the call that the event arrived with. |
+| `kind` | For an event with a call, the `X-Event-Type` header; otherwise `""`. |
+| `data` | The event's data as text: for an event through the DPMA session, the payload; for an `INVITE` or `INFO`, the `X-Event-Data` header, or else the body unless the body is SDP. |
+| `method` | `"MESSAGE"` for an event through the DPMA session; `"INVITE"` or `"INFO"` for an event with a call. |
+| `call` | For `INVITE` and `INFO`, the call. |
 
-For an event carried by an `INVITE` or `INFO`, the name is taken from the last of the `X-Digium-Event-Name`, `X-Event-Name`, and `X-Event-Type` headers in the request.
+For an `INVITE` or `INFO`, the name is the last of the `X-Digium-Event-Name`, `X-Event-Name`, and `X-Event-Type` headers.
 
-An incoming call whose event name the phone's configuration assigns to apps (by default, `digium.incomingCall.voicemail`) doesn't ring and has no call screen.  The app answers or rejects the call with [`calls::answer`](calls.md#answer) or [`calls::reject`](calls.md#reject), using `push.call`.  If such an event names no call, the phone fills in `call` with the newest ringing call and sets `method` to `"INVITE"`, for every name that starts with `digium.incomingCall.`.
+An incoming call whose event name the configuration assigns to apps (by default, `digium.incomingCall.voicemail`) doesn't ring and has no call screen.  The app answers or rejects the call with [`calls::answer`](calls.md#answer) or [`calls::reject`](calls.md#reject) and `push.call`.  If an event whose name starts with `digium.incomingCall.` names no call, the phone sets `call` to the newest ringing call and `method` to `"INVITE"`.
 
-A call like this belongs to the apps that received the push.  Because the call has no screen where the user could hang up, the phone ends the call when the last of those apps has left the screen or stopped.  An app that isn't on screen when the push arrives keeps the call until the app has been on screen and left, or until the app stops.  A call whose event no running app observes ends when the app on screen leaves the screen.
+Such a call belongs to the apps that received the push, and ends when the last of those apps has left the screen or stopped.  An app off screen when the push arrives keeps the call until the app has been on screen and left, or stops.  A call whose event no running app observes ends when the app on screen leaves the screen.
 
 ## `Mwi`
 
@@ -168,7 +162,7 @@ A call like this belongs to the apps that received the push.  Because the call h
 Event::Mwi(mwi)
 ```
 
-An account's counts of new and old messages changed.  Every running app that uses the `calls` interface receives this event without subscribing.
+An account's count of new or old messages changed.  Every running app that uses `calls` receives the event.
 
 ## `Presence`
 
@@ -176,15 +170,15 @@ An account's counts of new and old messages changed.  Every running app that use
 Event::Presence(presence)
 ```
 
-A contact that the phone watches changed, and the app observes a matching target with [`presence::observe`](presence.md#observe).
+A watched contact's presence changed, and the app observes a matching target with [`presence::observe`](presence.md#observe).
 
 ## `NewConfig`
 
-The phone applied a new merged configuration.  Values read earlier from [`config`](config.md) may have changed.  Every running app that uses `config` receives the event.
+The phone applied a new merged configuration, so [`config`](config.md) values may have changed.  Every running app that uses `config` receives the event.
 
 ## `ServerChange`
 
-An account registered with a different host: the phone either failed over to the alternate host or returned to the primary.  The event has no payload; [`config::accounts`](config.md#accounts) shows the current registrations.  Every running app that uses `events` receives the event.  The push named `digium.phone.server_change` never arrives as `Event::Push`.
+An account registered with a different host: the alternate host, or the primary again.  No payload; [`config::accounts`](config.md#accounts) shows the registrations.  Every running app that uses `events` receives the event.  The push `digium.phone.server_change` never arrives as `Event::Push`.
 
 ## `PlaybackStopped`
 
@@ -192,7 +186,7 @@ An account registered with a different host: the phone either failed over to the
 Event::PlaybackStopped(position_secs)
 ```
 
-The sound that the app started with [`audio::play`](audio.md#play) is no longer playing.  Either the sound reached the end, the app called `audio::stop`, another sound replaced the app's sound, or the ringer cut the sound off.  The value is the position in the sound, in seconds.
+The sound from the app's [`audio::play`](audio.md#play) stopped: the sound ended, the app called `audio::stop`, another sound replaced the sound, or the ringer cut the sound off.  The value is the position in seconds.
 
 ## `Message`
 
@@ -200,7 +194,7 @@ The sound that the app started with [`audio::play`](audio.md#play) is no longer 
 Event::Message((name, payload))
 ```
 
-An app called [`events::send`](events.md#send) with this app's name.  An app can send a message to any app by name, including the sending app.  The event doesn't identify the sender, and the receiving app needs no capability.
+An app, possibly this app, called [`events::send`](events.md#send) with this app's name.  The event doesn't identify the sender.  Receiving needs no capability.
 
 ## `PbxStorage`
 
@@ -216,15 +210,15 @@ The result of a [`pbx_storage`](pbx-storage.md) request.
 Event::PbxStorageChanged(change)
 ```
 
-Another phone set or removed the app's shared key `change.key`.  The app receives this event after calling [`pbx_storage::watch(true)`](pbx-storage.md#watch).
+Another phone set or removed the app's shared key `change.key`.  Sent after [`pbx_storage::watch(true)`](pbx-storage.md#watch).
 
 ## `PbxStorageOnline`
 
-The app's store on the PBX became reachable, for the first time or again.  Requests that ended in `Unreachable` are worth retrying, and anything the app read earlier may have changed.  Every running app that uses `pbx_storage` receives the event.
+The app's store on the PBX became reachable, for the first time or again.  Requests that ended in `Unreachable` can be retried, and earlier reads may be stale.  Every running app that uses `pbx_storage` receives the event.
 
 ## `AlarmsChanged`
 
-The phone's alarm clock changed: an alarm was added, changed, or removed (by any app or by the web interface), an alarm rang, or an alarm was snoozed or dismissed.  Every running app that uses [`alarms`](alarms.md) receives the event.
+An alarm was added, changed, or removed (by any app or the web interface), rang, or was snoozed or dismissed.  Every running app that uses [`alarms`](alarms.md) receives the event.
 
 ## `HotdeskDone`
 
@@ -232,4 +226,4 @@ The phone's alarm clock changed: an alarm was added, changed, or removed (by any
 Event::HotdeskDone(result)
 ```
 
-The outcome of a [`hotdesk::login`](hotdesk.md#login) or [`hotdesk::logout`](hotdesk.md#logout) that this app made and that returned `Ok`, once for each such call.
+The outcome of this app's [`hotdesk::login`](hotdesk.md#login) or [`hotdesk::logout`](hotdesk.md#logout) call that returned `Ok`, once per such call.
