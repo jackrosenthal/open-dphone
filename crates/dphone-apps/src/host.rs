@@ -123,29 +123,50 @@ pub(crate) struct Timer {
     pub repeat_ms: Option<u32>,
 }
 
-/// The time limit of the guest call in progress (`start` or one
-/// `handle`).  The limit counts the time since the call began, less the
-/// time host functions spent waiting for the phone's answer.
+/// The time limits of the guest call in progress (`start` or one
+/// `handle`).  `limit` counts the time since the call began, less the
+/// time host functions spent waiting for the phone's answer; `whole`
+/// counts all of the time since the call began.
 pub(crate) struct Budget {
     limit: Duration,
+    whole: Duration,
     since: Instant,
     waited: Duration,
 }
 
 impl Budget {
-    pub fn new(limit: Duration) -> Budget {
+    pub fn new(limit: Duration, whole: Duration) -> Budget {
         Budget {
             limit,
+            whole,
             since: Instant::now(),
             waited: Duration::ZERO,
         }
     }
 
-    /// What is left of the limit; zero when the app's code has run for
-    /// all of the limit.
+    /// What is left until the first of the two limits; zero when the app's
+    /// code has run for all of `limit`, or the call has taken all of
+    /// `whole`.
     pub fn left(&self) -> Duration {
-        let ran = self.since.elapsed().saturating_sub(self.waited);
-        self.limit.saturating_sub(ran)
+        let elapsed = self.since.elapsed();
+        let ran = elapsed.saturating_sub(self.waited);
+        self.limit.saturating_sub(ran).min(self.whole.saturating_sub(elapsed))
+    }
+
+    /// What is left of `whole`.
+    pub fn whole_left(&self) -> Duration {
+        self.whole.saturating_sub(self.since.elapsed())
+    }
+
+    /// An error once the call has taken all of `whole`: the app is stopped.
+    pub fn in_time(&self) -> wasmtime::Result<()> {
+        if self.whole_left().is_zero() {
+            wasmtime::bail!(
+                "the call took {} s in all, waits for the phone's answer included",
+                self.whole.as_secs_f32()
+            );
+        }
+        Ok(())
     }
 }
 
@@ -429,9 +450,15 @@ impl AppCtx {
         }
     }
 
-    /// Sends a command and waits up to `timeout` for the phone's answer.
-    /// The wait does not count toward the app's time limit.
+    /// Sends a command and waits up to `timeout` for the phone's answer,
+    /// and no longer than the guest call has left of the budget's `whole`.
+    /// The wait does not count toward the budget's `limit`.
     fn wait_for(&mut self, c: Command, timeout: Duration) -> Result<Reply, Error> {
+        let timeout = timeout.min(self.budget.whole_left());
+        if timeout.is_zero() {
+            // The app is stopped before the call ends; nothing is sent.
+            return Err(Error::Failed("the app ran out of time".into()));
+        }
         let since = Instant::now();
         let answer = self.store.send(c).wait_timeout(timeout);
         self.budget.waited += since.elapsed();

@@ -142,7 +142,7 @@ Each interface of the phone except `runtime` is a capability, and each is a modu
 
 `runtime` (logging, leaving the screen, exiting, random numbers) is not a capability: every app has it.
 
-The phone stops an app whose code runs for more than two seconds to handle one event (waiting for the phone's answer, as in `calls::dial`, does not count), that asks for more memory than its limit, or that panics.  A panic's message, with the file and the line, is in the phone's log (`export_app!` sees to that).  An app that starts with the phone (`AppKind::Background`, or `has_idle`) is started again after such a fault: after 10 seconds, and after twice as long for each further fault in a row, up to an hour.  The count starts over when the user opens the app, and when the app has run for an hour without a fault.
+The phone stops an app whose code runs for more than two seconds to handle one event (waiting for the phone's answer, as in `calls::dial`, does not count), that takes more than ten seconds in all to handle one event, that asks for more memory than its limit, or that panics.  A panic's message, with the file and the line, is in the phone's log (`export_app!` sees to that).  An app that starts with the phone (`AppKind::Background`, or `has_idle`) is started again after such a fault: after 10 seconds, and after twice as long for each further fault in a row, up to an hour.  The count starts over when the user opens the app, and when the app has run for an hour without a fault.
 
 What an app changes in its window while it handles one event appears together, when `handle` returns.
 

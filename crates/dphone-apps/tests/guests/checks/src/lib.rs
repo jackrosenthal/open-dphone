@@ -199,6 +199,10 @@ impl Checks {
             // One function that waits for the phone's answer, or "all".
             "wait" if arg == "all" => WAITS.map(wait).join(" "),
             "wait" => wait(arg),
+            // Waits without end.
+            "wait-forever" => loop {
+                let _ = wait(arg);
+            },
             // A wait, then the app's code runs without end.
             "wait-then-spin" => {
                 let _ = wait(arg);

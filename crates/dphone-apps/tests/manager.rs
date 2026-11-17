@@ -268,6 +268,35 @@ fn an_app_that_runs_past_the_time_limit_after_a_wait_is_stopped() {
 }
 
 #[test]
+fn an_app_that_waits_without_end_is_stopped() {
+    let ms = std::time::Duration::from_millis;
+    let mut r = Rig::with_manager(|c| c.whole_budget = ms(1000));
+    r.launch("checks");
+    // The app's code runs for a few microseconds between two answers: far
+    // from its limit of 300 ms.
+    answer_slowly(&r, ms(50));
+    let t = std::time::Instant::now();
+    ask_checks(&mut r, "wait-forever", "hangup");
+    assert!(t.elapsed() >= ms(1000), "{:?}", t.elapsed());
+    assert!(t.elapsed() < ms(3000), "{:?}", t.elapsed());
+    assert!(!r.mgr.is_running("checks"));
+}
+
+#[test]
+fn a_wait_ends_when_the_call_has_taken_the_whole_budget() {
+    let ms = std::time::Duration::from_millis;
+    let mut r = Rig::with_manager(|c| c.whole_budget = ms(1000));
+    r.launch("checks");
+    // `audio::play` waits up to 5 seconds for an answer.
+    answer_slowly(&r, ms(6000));
+    let t = std::time::Instant::now();
+    ask_checks(&mut r, "wait", "play");
+    assert!(t.elapsed() >= ms(1000), "{:?}", t.elapsed());
+    assert!(t.elapsed() < ms(3000), "{:?}", t.elapsed());
+    assert!(!r.mgr.is_running("checks"));
+}
+
+#[test]
 fn a_memory_hog_is_stopped() {
     let mut r = rig();
     r.launch("faulty");

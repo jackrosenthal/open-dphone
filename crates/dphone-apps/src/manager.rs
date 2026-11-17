@@ -48,6 +48,10 @@ pub struct ManagerConfig {
     pub call_budget: Duration,
     /// Longest the app's code may run in `start`, counted the same way.
     pub start_budget: Duration,
+    /// Longest one call of `start` or of an event handler may take in
+    /// all, waits for the phone's answer included, before the app is
+    /// stopped: while one app's call runs, no other app receives events.
+    pub whole_budget: Duration,
     /// How long after a fault an app that starts with the phone is
     /// started again: this long after the first fault, and twice as long
     /// after each further one, up to `restart_delay_max`.
@@ -71,6 +75,7 @@ impl ManagerConfig {
             memory_hard_cap: 16 << 20,
             call_budget: Duration::from_secs(2),
             start_budget: Duration::from_secs(5),
+            whole_budget: Duration::from_secs(10),
             restart_delay: Duration::from_secs(10),
             restart_delay_max: Duration::from_secs(3600),
             restart_forgiven: Duration::from_secs(3600),
@@ -591,16 +596,17 @@ impl AppManager {
                 .table_elements(50_000)
                 .instances(8)
                 .build(),
-            budget: Budget::new(self.cfg.start_budget),
+            budget: Budget::new(self.cfg.start_budget, self.cfg.whole_budget),
             manifest,
         };
         let mut store = wasmtime::Store::new(self.engine.wasmtime(), ctx);
         store.limiter(|c| &mut c.limits);
-        store.epoch_deadline_callback(|s| Ok(at_deadline(&s.data().budget)));
-        arm(&mut store, self.cfg.start_budget);
+        store.epoch_deadline_callback(|s| at_deadline(&s.data().budget));
+        arm(&mut store, self.cfg.start_budget, self.cfg.whole_budget);
         hold_changes(store.data_mut(), true);
         let started = App::instantiate(&mut store, &component, &linker).and_then(|app| {
             app.dphone_app_guest().call_start(&mut store)?;
+            store.data().budget.in_time()?;
             Ok(app)
         });
         match started {
@@ -812,18 +818,22 @@ impl AppManager {
         }
     }
 
-    /// Calls the app's event handler.  A trap (including running over the
+    /// Calls the app's event handler.  A trap (including running over a
     /// time budget or the memory cap) stops the app.
     fn call(&mut self, name: &str, event: &wit::Event) -> bool {
-        let budget = self.cfg.call_budget;
+        let (budget, whole) = (self.cfg.call_budget, self.cfg.whole_budget);
         let Some(r) = self.running.get_mut(name) else {
             return false;
         };
-        arm(&mut r.store, budget);
+        arm(&mut r.store, budget, whole);
         // What the handler changes in the app's windows is shown when the
         // handler has returned, together.
         hold_changes(r.store.data_mut(), true);
-        let result = r.app.dphone_app_guest().call_handle(&mut r.store, event);
+        let result = r
+            .app
+            .dphone_app_guest()
+            .call_handle(&mut r.store, event)
+            .and_then(|()| r.store.data().budget.in_time());
         hold_changes(r.store.data_mut(), false);
         match result {
             Ok(()) => true,
@@ -1411,21 +1421,23 @@ fn hold_changes(c: &mut AppCtx, on: bool) {
     }
 }
 
-/// Gives the guest call that follows `limit` of the app's code running.
-fn arm(store: &mut wasmtime::Store<AppCtx>, limit: Duration) {
-    store.data_mut().budget = Budget::new(limit);
-    store.set_epoch_deadline(ticks(limit));
+/// Gives the guest call that follows `limit` of the app's code running,
+/// and `whole` in all.
+fn arm(store: &mut wasmtime::Store<AppCtx>, limit: Duration, whole: Duration) {
+    store.data_mut().budget = Budget::new(limit, whole);
+    store.set_epoch_deadline(ticks(limit.min(whole)));
 }
 
 /// What happens when a guest call reaches the epoch deadline: the app
-/// stops if the app's code has run for the whole limit.  Otherwise (after
-/// a wait for the phone's answer, for one) the deadline moves to when the
-/// rest of the limit runs out.
-fn at_deadline(budget: &Budget) -> UpdateDeadline {
-    match budget.left() {
+/// stops if the app's code has run for the whole limit, or the call has
+/// taken all of `whole`.  Otherwise (after a wait for the phone's answer,
+/// for one) the deadline moves to when the first of the two runs out.
+fn at_deadline(budget: &Budget) -> wasmtime::Result<UpdateDeadline> {
+    budget.in_time()?;
+    Ok(match budget.left() {
         left if left.is_zero() => UpdateDeadline::Interrupt,
         left => UpdateDeadline::Continue(ticks(left)),
-    }
+    })
 }
 
 /// Epoch ticks in `d`, rounded up, and at least one.
