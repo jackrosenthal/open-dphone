@@ -126,7 +126,16 @@ let
     # The interactive shells' defaults: the prompt, aliases, and the tab
     # completion of `dphone`.
     install -m 0644 ${./rootfs/etc/bash.bashrc} $out/etc/bash.bashrc
-    printf 'Open Desk Phone ${wireVersion}\n' > $out/etc/dphone-release
+    # The operating system's name and version, as os-release(5) has them:
+    # the file under /usr/lib, and /etc/os-release a relative link to it.
+    mkdir -p $out/usr/lib
+    printf '%s\n' \
+      'NAME="Open Desk Phone"' \
+      'ID=opendeskphone' \
+      'VERSION_ID=${version}' \
+      'PRETTY_NAME="Open Desk Phone ${version}"' \
+      > $out/usr/lib/os-release
+    ln -s ../usr/lib/os-release $out/etc/os-release
 
     # What the kernel starts must be there and must be a program for the
     # phone: a root without it boots to "No working init found", and only
