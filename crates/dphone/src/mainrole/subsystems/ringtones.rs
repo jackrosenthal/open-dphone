@@ -39,27 +39,43 @@ pub struct Ringtone {
 /// when nothing else is chosen, and for a name that is no ringtone), then
 /// the others in alphabetical order.  A ringtone without a pause runs into
 /// its next pass, as its upstream file does when it loops.
-pub const BUILTIN: [Ringtone; 90] = [
+pub const BUILTIN: [Ringtone; 149] = [
     Ringtone { name: "Flutey Phone", file: "flutey-phone.wav", pause_ms: 1973 },
     Ringtone { name: "Acheron", file: "acheron.wav", pause_ms: 634 },
     Ringtone { name: "Andromeda", file: "andromeda.wav", pause_ms: 1350 },
     Ringtone { name: "Aquila", file: "aquila.wav", pause_ms: 1750 },
     Ringtone { name: "Argo Navis", file: "argo-navis.wav", pause_ms: 1328 },
     Ringtone { name: "Atria", file: "atria.wav", pause_ms: 0 },
+    Ringtone { name: "Backroad", file: "backroad.wav", pause_ms: 0 },
+    Ringtone { name: "Beat Plucker", file: "beat-plucker.wav", pause_ms: 0 },
     Ringtone { name: "Bell Phone", file: "bell-phone.wav", pause_ms: 1454 },
+    Ringtone { name: "Bentley Dubs", file: "bentley-dubs.wav", pause_ms: 44 },
+    Ringtone { name: "Big Easy", file: "big-easy.wav", pause_ms: 0 },
+    Ringtone { name: "Bird Loop", file: "bird-loop.wav", pause_ms: 0 },
+    Ringtone { name: "Bollywood", file: "bollywood.wav", pause_ms: 0 },
     Ringtone { name: "Boötes", file: "bootes.wav", pause_ms: 0 },
+    Ringtone { name: "Bus' a Move", file: "bus-a-move.wav", pause_ms: 0 },
+    Ringtone { name: "Cairo", file: "cairo.wav", pause_ms: 0 },
     Ringtone { name: "Callisto", file: "callisto.wav", pause_ms: 0 },
     Ringtone { name: "Callisto Classic", file: "callisto-classic.wav", pause_ms: 0 },
+    Ringtone { name: "Calypso Steel", file: "calypso-steel.wav", pause_ms: 0 },
     Ringtone { name: "Canis Major", file: "canis-major.wav", pause_ms: 0 },
+    Ringtone { name: "Caribbean Ice", file: "caribbean-ice.wav", pause_ms: 0 },
     Ringtone { name: "Carina", file: "carina.wav", pause_ms: 1501 },
     Ringtone { name: "Cassiopeia", file: "cassiopeia.wav", pause_ms: 760 },
     Ringtone { name: "Centaurus", file: "centaurus.wav", pause_ms: 290 },
+    Ringtone { name: "Champagne Edition", file: "champagne-edition.wav", pause_ms: 0 },
     Ringtone { name: "Chimey Phone", file: "chimey-phone.wav", pause_ms: 1514 },
     Ringtone { name: "Classic 1", file: "classic-1.wav", pause_ms: 662 },
     Ringtone { name: "Classic 3", file: "classic-3.wav", pause_ms: 1437 },
     Ringtone { name: "Classic 4", file: "classic-4.wav", pause_ms: 1374 },
     Ringtone { name: "Classic 5", file: "classic-5.wav", pause_ms: 2061 },
+    Ringtone { name: "Club Cubano", file: "club-cubano.wav", pause_ms: 0 },
+    Ringtone { name: "Crayon Rock", file: "crayon-rock.wav", pause_ms: 0 },
+    Ringtone { name: "Crazy Dream", file: "crazy-dream.wav", pause_ms: 0 },
+    Ringtone { name: "Curve Ball Blend", file: "curve-ball-blend.wav", pause_ms: 0 },
     Ringtone { name: "Cygnus", file: "cygnus.wav", pause_ms: 740 },
+    Ringtone { name: "Dancin' Fool", file: "dancin-fool.wav", pause_ms: 0 },
     Ringtone { name: "Digital 1", file: "digital-1.wav", pause_ms: 2381 },
     Ringtone { name: "Digital 3", file: "digital-3.wav", pause_ms: 2461 },
     Ringtone { name: "Digital 4", file: "digital-4.wav", pause_ms: 2481 },
@@ -67,30 +83,55 @@ pub const BUILTIN: [Ringtone; 90] = [
     Ringtone { name: "Digital Phone", file: "digital-phone.wav", pause_ms: 2499 },
     Ringtone { name: "Dione", file: "dione.wav", pause_ms: 620 },
     Ringtone { name: "Dione Classic", file: "dione-classic.wav", pause_ms: 680 },
+    Ringtone { name: "Don' Mess Wiv It", file: "don-mess-wiv-it.wav", pause_ms: 0 },
     Ringtone { name: "Draco", file: "draco.wav", pause_ms: 2150 },
+    Ringtone { name: "Dream Theme", file: "dream-theme.wav", pause_ms: 0 },
+    Ringtone { name: "Eastern Sky", file: "eastern-sky.wav", pause_ms: 0 },
+    Ringtone { name: "Enter the Nexus", file: "enter-the-nexus.wav", pause_ms: 0 },
     Ringtone { name: "Eridani", file: "eridani.wav", pause_ms: 1000 },
+    Ringtone { name: "Ether Shake", file: "ether-shake.wav", pause_ms: 0 },
     Ringtone { name: "Free Flight", file: "free-flight.wav", pause_ms: 0 },
+    Ringtone { name: "Friendly Ghost", file: "friendly-ghost.wav", pause_ms: 0 },
+    Ringtone { name: "Funk Y'all", file: "funk-yall.wav", pause_ms: 0 },
+    Ringtone { name: "Game Over Guitar", file: "game-over-guitar.wav", pause_ms: 0 },
     Ringtone { name: "Ganymede", file: "ganymede.wav", pause_ms: 61 },
     Ringtone { name: "Ganymede Classic", file: "ganymede-classic.wav", pause_ms: 259 },
+    Ringtone { name: "Gimme Mo' Town", file: "gimme-mo-town.wav", pause_ms: 0 },
     Ringtone { name: "Girtab", file: "girtab.wav", pause_ms: 930 },
+    Ringtone { name: "Glacial Groove", file: "glacial-groove.wav", pause_ms: 0 },
+    Ringtone { name: "Growl", file: "growl.wav", pause_ms: 0 },
+    Ringtone { name: "Halfway Home", file: "halfway-home.wav", pause_ms: 0 },
     Ringtone { name: "Hydra", file: "hydra.wav", pause_ms: 2050 },
+    Ringtone { name: "Insert Coin", file: "insert-coin.wav", pause_ms: 250 },
     Ringtone { name: "Iridium", file: "iridium.wav", pause_ms: 500 },
     Ringtone { name: "Kuma", file: "kuma.wav", pause_ms: 0 },
+    Ringtone { name: "Loopy Lounge", file: "loopy-lounge.wav", pause_ms: 0 },
+    Ringtone { name: "Love Flute", file: "love-flute.wav", pause_ms: 0 },
     Ringtone { name: "Luna", file: "luna.wav", pause_ms: 1556 },
     Ringtone { name: "Luna Classic", file: "luna-classic.wav", pause_ms: 0 },
     Ringtone { name: "Lyra", file: "lyra.wav", pause_ms: 1210 },
     Ringtone { name: "Lyra Classic", file: "lyra-classic.wav", pause_ms: 526 },
     Ringtone { name: "Machina", file: "machina.wav", pause_ms: 1005 },
+    Ringtone { name: "Medieval Jaunt", file: "medieval-jaunt.wav", pause_ms: 0 },
+    Ringtone { name: "Nairobi", file: "nairobi.wav", pause_ms: 0 },
     Ringtone { name: "Nasqueron", file: "nasqueron.wav", pause_ms: 1100 },
+    Ringtone { name: "Nassau", file: "nassau.wav", pause_ms: 0 },
+    Ringtone { name: "New Player", file: "new-player.wav", pause_ms: 350 },
+    Ringtone { name: "No Limits", file: "no-limits.wav", pause_ms: 0 },
+    Ringtone { name: "Noisey One", file: "noisey-one.wav", pause_ms: 0 },
     Ringtone { name: "Oberon", file: "oberon.wav", pause_ms: 70 },
     Ringtone { name: "Oberon Classic", file: "oberon-classic.wav", pause_ms: 107 },
+    Ringtone { name: "Organ Dub", file: "organ-dub.wav", pause_ms: 0 },
     Ringtone { name: "Orion", file: "orion.wav", pause_ms: 0 },
+    Ringtone { name: "Paradise Island", file: "paradise-island.wav", pause_ms: 0 },
     Ringtone { name: "Pegasus", file: "pegasus.wav", pause_ms: 0 },
     Ringtone { name: "Perseus", file: "perseus.wav", pause_ms: 0 },
     Ringtone { name: "Phobos", file: "phobos.wav", pause_ms: 1845 },
     Ringtone { name: "Phobos Classic", file: "phobos-classic.wav", pause_ms: 0 },
+    Ringtone { name: "Playa", file: "playa.wav", pause_ms: 0 },
     Ringtone { name: "Pyxis", file: "pyxis.wav", pause_ms: 0 },
     Ringtone { name: "Rasalas", file: "rasalas.wav", pause_ms: 235 },
+    Ringtone { name: "Revelation", file: "revelation.wav", pause_ms: 0 },
     Ringtone { name: "Rigel", file: "rigel.wav", pause_ms: 304 },
     Ringtone { name: "Ringtone 18", file: "ringtone-18.wav", pause_ms: 557 },
     Ringtone { name: "Ringtone 19", file: "ringtone-19.wav", pause_ms: 1130 },
@@ -111,24 +152,42 @@ pub const BUILTIN: [Ringtone; 90] = [
     Ringtone { name: "Ringtone 36", file: "ringtone-36.wav", pause_ms: 0 },
     Ringtone { name: "Ringtone 37", file: "ringtone-37.wav", pause_ms: 697 },
     Ringtone { name: "Ringtone 38", file: "ringtone-38.wav", pause_ms: 940 },
+    Ringtone { name: "Road Trip", file: "road-trip.wav", pause_ms: 0 },
+    Ringtone { name: "Romancing The Tone", file: "romancing-the-tone.wav", pause_ms: 0 },
+    Ringtone { name: "Safari", file: "safari.wav", pause_ms: 0 },
+    Ringtone { name: "Savannah", file: "savannah.wav", pause_ms: 0 },
     Ringtone { name: "Scarabaeus", file: "scarabaeus.wav", pause_ms: 531 },
     Ringtone { name: "Sceptrum", file: "sceptrum.wav", pause_ms: 300 },
     Ringtone { name: "Sceptrum Classic", file: "sceptrum-classic.wav", pause_ms: 708 },
     Ringtone { name: "Sedna", file: "sedna.wav", pause_ms: 117 },
+    Ringtone { name: "Seville", file: "seville.wav", pause_ms: 0 },
+    Ringtone { name: "She's All That", file: "shes-all-that.wav", pause_ms: 0 },
+    Ringtone { name: "Silky Way", file: "silky-way.wav", pause_ms: 0 },
+    Ringtone { name: "Sitar Versus Sitar", file: "sitar-versus-sitar.wav", pause_ms: 0 },
     Ringtone { name: "Solarium", file: "solarium.wav", pause_ms: 804 },
     Ringtone { name: "Solarium Classic", file: "solarium-classic.wav", pause_ms: 1075 },
+    Ringtone { name: "Springy Jalopy", file: "springy-jalopy.wav", pause_ms: 0 },
+    Ringtone { name: "Steppin' Out", file: "steppin-out.wav", pause_ms: 0 },
     Ringtone { name: "Synth 1", file: "synth-1.wav", pause_ms: 1292 },
     Ringtone { name: "Synth 3", file: "synth-3.wav", pause_ms: 2155 },
     Ringtone { name: "Synth 5", file: "synth-5.wav", pause_ms: 51 },
+    Ringtone { name: "Terminated", file: "terminated.wav", pause_ms: 0 },
+    Ringtone { name: "Terrible Twos", file: "terrible-twos.wav", pause_ms: 0 },
     Ringtone { name: "Testudo", file: "testudo.wav", pause_ms: 416 },
+    Ringtone { name: "Third Eye", file: "third-eye.wav", pause_ms: 0 },
+    Ringtone { name: "Thriller Three", file: "thriller-three.wav", pause_ms: 0 },
+    Ringtone { name: "Thunderfoot", file: "thunderfoot.wav", pause_ms: 0 },
     Ringtone { name: "Titania", file: "titania.wav", pause_ms: 0 },
     Ringtone { name: "Triton", file: "triton.wav", pause_ms: 533 },
     Ringtone { name: "Triton Classic", file: "triton-classic.wav", pause_ms: 0 },
+    Ringtone { name: "Twirl Away", file: "twirl-away.wav", pause_ms: 0 },
     Ringtone { name: "Umbriel", file: "umbriel.wav", pause_ms: 1117 },
     Ringtone { name: "Umbriel Classic", file: "umbriel-classic.wav", pause_ms: 0 },
     Ringtone { name: "Ursa Minor", file: "ursa-minor.wav", pause_ms: 50 },
     Ringtone { name: "Ursa Minor Classic", file: "ursa-minor-classic.wav", pause_ms: 0 },
+    Ringtone { name: "Very Alarmed", file: "very-alarmed.wav", pause_ms: 0 },
     Ringtone { name: "Vespa", file: "vespa.wav", pause_ms: 2117 },
+    Ringtone { name: "World", file: "world.wav", pause_ms: 0 },
     Ringtone { name: "Zeta", file: "zeta.wav", pause_ms: 1190 },
 ];
 
@@ -309,9 +368,12 @@ mod tests {
             if tone.pause_ms > 0 {
                 // A pass ends as quietly as the pause.
                 assert!(samples[len - 16..].iter().all(|s| s.abs() < 400), "{}", tone.name);
-            } else {
+            } else if !["Love Flute", "Revelation"].contains(&tone.name) {
                 // A pass runs into the next without a step that the sound
-                // does not have anyway.
+                // does not have anyway.  (Love Flute and Revelation step
+                // where they loop as their upstream files do: decoded at
+                // 44.1 kHz, by 12,490 and 13,437, against a largest step
+                // inside the sound of 4,186 and 5,376.)
                 let largest = samples.windows(2).map(|w| (w[1] as i32 - w[0] as i32).abs()).max().unwrap();
                 let seam = (samples[0] as i32 - samples[len - 1] as i32).abs();
                 assert!(seam <= largest, "{}: {seam} > {largest}", tone.name);
@@ -320,7 +382,7 @@ mod tests {
             assert!(notice.lines().any(|l| l.split_whitespace().next() == Some(tone.file)), "{}", tone.file);
         }
         // What the ringtones cost in the image, before its compression.
-        assert!(total < 11_000_000, "{total}");
+        assert!(total < 16_000_000, "{total}");
         // The image installs every .wav of the directory: each is one of
         // these.
         for entry in std::fs::read_dir(assets()).unwrap() {
@@ -338,7 +400,7 @@ mod tests {
     #[test]
     fn a_name_that_is_no_ringtone_is_the_default() {
         let names: Vec<&str> = BUILTIN.iter().map(|t| t.name).collect();
-        assert_eq!(names.len(), 90);
+        assert_eq!(names.len(), 149);
         assert_eq!(DEFAULT, "Flutey Phone");
         assert_eq!(names[..4], ["Flutey Phone", "Acheron", "Andromeda", "Aquila"]);
         // After the default, A to Z, and every name and file once.
@@ -376,9 +438,9 @@ mod tests {
         std::fs::write(nv.join("ringtones/zeta.sln16"), [1, 0]).unwrap();
         assert_eq!(names(nv), ["Empty", "Mine", "zeta"]);
         let all = all(nv);
-        assert_eq!(all.len(), 92);
+        assert_eq!(all.len(), 151);
         assert_eq!(all[0], DEFAULT);
-        assert_eq!(all[90..], ["Empty", "Mine"]);
+        assert_eq!(all[149..], ["Empty", "Mine"]);
 
         let (samples, pause_ms) = pcm(source_in(Some(nv), &assets(), "Mine"));
         assert_eq!(&samples[..], [1, -2, 300]);

@@ -166,20 +166,36 @@
             <tone id="Aquila" display="Aquila" type="phone"/>
             <tone id="Argo Navis" display="Argo Navis" type="phone"/>
             <tone id="Atria" display="Atria" type="phone"/>
+            <tone id="Backroad" display="Backroad" type="phone"/>
+            <tone id="Beat Plucker" display="Beat Plucker" type="phone"/>
             <tone id="Bell Phone" display="Bell Phone" type="phone"/>
+            <tone id="Bentley Dubs" display="Bentley Dubs" type="phone"/>
+            <tone id="Big Easy" display="Big Easy" type="phone"/>
+            <tone id="Bird Loop" display="Bird Loop" type="phone"/>
+            <tone id="Bollywood" display="Bollywood" type="phone"/>
             <tone id="Boötes" display="Boötes" type="phone"/>
+            <tone id="Bus' a Move" display="Bus' a Move" type="phone"/>
+            <tone id="Cairo" display="Cairo" type="phone"/>
             <tone id="Callisto" display="Callisto" type="phone"/>
             <tone id="Callisto Classic" display="Callisto Classic" type="phone"/>
+            <tone id="Calypso Steel" display="Calypso Steel" type="phone"/>
             <tone id="Canis Major" display="Canis Major" type="phone"/>
+            <tone id="Caribbean Ice" display="Caribbean Ice" type="phone"/>
             <tone id="Carina" display="Carina" type="phone"/>
             <tone id="Cassiopeia" display="Cassiopeia" type="phone"/>
             <tone id="Centaurus" display="Centaurus" type="phone"/>
+            <tone id="Champagne Edition" display="Champagne Edition" type="phone"/>
             <tone id="Chimey Phone" display="Chimey Phone" type="phone"/>
             <tone id="Classic 1" display="Classic 1" type="phone"/>
             <tone id="Classic 3" display="Classic 3" type="phone"/>
             <tone id="Classic 4" display="Classic 4" type="phone"/>
             <tone id="Classic 5" display="Classic 5" type="phone"/>
+            <tone id="Club Cubano" display="Club Cubano" type="phone"/>
+            <tone id="Crayon Rock" display="Crayon Rock" type="phone"/>
+            <tone id="Crazy Dream" display="Crazy Dream" type="phone"/>
+            <tone id="Curve Ball Blend" display="Curve Ball Blend" type="phone"/>
             <tone id="Cygnus" display="Cygnus" type="phone"/>
+            <tone id="Dancin' Fool" display="Dancin' Fool" type="phone"/>
             <tone id="Digital 1" display="Digital 1" type="phone"/>
             <tone id="Digital 3" display="Digital 3" type="phone"/>
             <tone id="Digital 4" display="Digital 4" type="phone"/>
@@ -187,30 +203,55 @@
             <tone id="Digital Phone" display="Digital Phone" type="phone"/>
             <tone id="Dione" display="Dione" type="phone"/>
             <tone id="Dione Classic" display="Dione Classic" type="phone"/>
+            <tone id="Don' Mess Wiv It" display="Don' Mess Wiv It" type="phone"/>
             <tone id="Draco" display="Draco" type="phone"/>
+            <tone id="Dream Theme" display="Dream Theme" type="phone"/>
+            <tone id="Eastern Sky" display="Eastern Sky" type="phone"/>
+            <tone id="Enter the Nexus" display="Enter the Nexus" type="phone"/>
             <tone id="Eridani" display="Eridani" type="phone"/>
+            <tone id="Ether Shake" display="Ether Shake" type="phone"/>
             <tone id="Free Flight" display="Free Flight" type="phone"/>
+            <tone id="Friendly Ghost" display="Friendly Ghost" type="phone"/>
+            <tone id="Funk Y'all" display="Funk Y'all" type="phone"/>
+            <tone id="Game Over Guitar" display="Game Over Guitar" type="phone"/>
             <tone id="Ganymede" display="Ganymede" type="phone"/>
             <tone id="Ganymede Classic" display="Ganymede Classic" type="phone"/>
+            <tone id="Gimme Mo' Town" display="Gimme Mo' Town" type="phone"/>
             <tone id="Girtab" display="Girtab" type="phone"/>
+            <tone id="Glacial Groove" display="Glacial Groove" type="phone"/>
+            <tone id="Growl" display="Growl" type="phone"/>
+            <tone id="Halfway Home" display="Halfway Home" type="phone"/>
             <tone id="Hydra" display="Hydra" type="phone"/>
+            <tone id="Insert Coin" display="Insert Coin" type="phone"/>
             <tone id="Iridium" display="Iridium" type="phone"/>
             <tone id="Kuma" display="Kuma" type="phone"/>
+            <tone id="Loopy Lounge" display="Loopy Lounge" type="phone"/>
+            <tone id="Love Flute" display="Love Flute" type="phone"/>
             <tone id="Luna" display="Luna" type="phone"/>
             <tone id="Luna Classic" display="Luna Classic" type="phone"/>
             <tone id="Lyra" display="Lyra" type="phone"/>
             <tone id="Lyra Classic" display="Lyra Classic" type="phone"/>
             <tone id="Machina" display="Machina" type="phone"/>
+            <tone id="Medieval Jaunt" display="Medieval Jaunt" type="phone"/>
+            <tone id="Nairobi" display="Nairobi" type="phone"/>
             <tone id="Nasqueron" display="Nasqueron" type="phone"/>
+            <tone id="Nassau" display="Nassau" type="phone"/>
+            <tone id="New Player" display="New Player" type="phone"/>
+            <tone id="No Limits" display="No Limits" type="phone"/>
+            <tone id="Noisey One" display="Noisey One" type="phone"/>
             <tone id="Oberon" display="Oberon" type="phone"/>
             <tone id="Oberon Classic" display="Oberon Classic" type="phone"/>
+            <tone id="Organ Dub" display="Organ Dub" type="phone"/>
             <tone id="Orion" display="Orion" type="phone"/>
+            <tone id="Paradise Island" display="Paradise Island" type="phone"/>
             <tone id="Pegasus" display="Pegasus" type="phone"/>
             <tone id="Perseus" display="Perseus" type="phone"/>
             <tone id="Phobos" display="Phobos" type="phone"/>
             <tone id="Phobos Classic" display="Phobos Classic" type="phone"/>
+            <tone id="Playa" display="Playa" type="phone"/>
             <tone id="Pyxis" display="Pyxis" type="phone"/>
             <tone id="Rasalas" display="Rasalas" type="phone"/>
+            <tone id="Revelation" display="Revelation" type="phone"/>
             <tone id="Rigel" display="Rigel" type="phone"/>
             <tone id="Ringtone 18" display="Ringtone 18" type="phone"/>
             <tone id="Ringtone 19" display="Ringtone 19" type="phone"/>
@@ -231,24 +272,42 @@
             <tone id="Ringtone 36" display="Ringtone 36" type="phone"/>
             <tone id="Ringtone 37" display="Ringtone 37" type="phone"/>
             <tone id="Ringtone 38" display="Ringtone 38" type="phone"/>
+            <tone id="Road Trip" display="Road Trip" type="phone"/>
+            <tone id="Romancing The Tone" display="Romancing The Tone" type="phone"/>
+            <tone id="Safari" display="Safari" type="phone"/>
+            <tone id="Savannah" display="Savannah" type="phone"/>
             <tone id="Scarabaeus" display="Scarabaeus" type="phone"/>
             <tone id="Sceptrum" display="Sceptrum" type="phone"/>
             <tone id="Sceptrum Classic" display="Sceptrum Classic" type="phone"/>
             <tone id="Sedna" display="Sedna" type="phone"/>
+            <tone id="Seville" display="Seville" type="phone"/>
+            <tone id="She's All That" display="She's All That" type="phone"/>
+            <tone id="Silky Way" display="Silky Way" type="phone"/>
+            <tone id="Sitar Versus Sitar" display="Sitar Versus Sitar" type="phone"/>
             <tone id="Solarium" display="Solarium" type="phone"/>
             <tone id="Solarium Classic" display="Solarium Classic" type="phone"/>
+            <tone id="Springy Jalopy" display="Springy Jalopy" type="phone"/>
+            <tone id="Steppin' Out" display="Steppin' Out" type="phone"/>
             <tone id="Synth 1" display="Synth 1" type="phone"/>
             <tone id="Synth 3" display="Synth 3" type="phone"/>
             <tone id="Synth 5" display="Synth 5" type="phone"/>
+            <tone id="Terminated" display="Terminated" type="phone"/>
+            <tone id="Terrible Twos" display="Terrible Twos" type="phone"/>
             <tone id="Testudo" display="Testudo" type="phone"/>
+            <tone id="Third Eye" display="Third Eye" type="phone"/>
+            <tone id="Thriller Three" display="Thriller Three" type="phone"/>
+            <tone id="Thunderfoot" display="Thunderfoot" type="phone"/>
             <tone id="Titania" display="Titania" type="phone"/>
             <tone id="Triton" display="Triton" type="phone"/>
             <tone id="Triton Classic" display="Triton Classic" type="phone"/>
+            <tone id="Twirl Away" display="Twirl Away" type="phone"/>
             <tone id="Umbriel" display="Umbriel" type="phone"/>
             <tone id="Umbriel Classic" display="Umbriel Classic" type="phone"/>
             <tone id="Ursa Minor" display="Ursa Minor" type="phone"/>
             <tone id="Ursa Minor Classic" display="Ursa Minor Classic" type="phone"/>
+            <tone id="Very Alarmed" display="Very Alarmed" type="phone"/>
             <tone id="Vespa" display="Vespa" type="phone"/>
+            <tone id="World" display="World" type="phone"/>
             <tone id="Zeta" display="Zeta" type="phone"/>
         </tones>
     </ringtones>

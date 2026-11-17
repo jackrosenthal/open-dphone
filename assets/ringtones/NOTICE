@@ -1,4 +1,4 @@
-The ringtones beside this file (the 90 .wav files listed below) are
+The ringtones beside this file (the 149 .wav files listed below) are
 derived from the ringtones of the Android Open Source Project:
 
   Copyright (C) The Android Open Source Project
@@ -26,20 +26,36 @@ data/sounds, at commit 1cdfff555f4a21f71ccc978290e2e212e2f8b168:
   aquila.wav              ringtones/ogg/Aquila.ogg
   argo-navis.wav          ringtones/ogg/ArgoNavis.ogg
   atria.wav               ringtones/material/ogg/Atria.ogg
+  backroad.wav            newwavelabs/Backroad.ogg
+  beat-plucker.wav        newwavelabs/BeatPlucker.ogg
   bell-phone.wav          Ring_Classic_02.ogg
+  bentley-dubs.wav        newwavelabs/BentleyDubs.ogg
+  big-easy.wav            newwavelabs/Big_Easy.ogg
+  bird-loop.wav           newwavelabs/BirdLoop.ogg
+  bollywood.wav           newwavelabs/Bollywood.ogg
   bootes.wav              ringtones/ogg/Bootes.ogg
+  bus-a-move.wav          newwavelabs/BussaMove.ogg
+  cairo.wav               newwavelabs/Cairo.ogg
   callisto.wav            ringtones/material/ogg/Callisto.ogg
   callisto-classic.wav    ringtones/ogg/Callisto.ogg
+  calypso-steel.wav       newwavelabs/Calypso_Steel.ogg
   canis-major.wav         ringtones/ogg/CanisMajor.ogg
+  caribbean-ice.wav       newwavelabs/CaribbeanIce.ogg
   carina.wav              ringtones/ogg/Carina.ogg
   cassiopeia.wav          ringtones/CASSIOPEIA.ogg
   centaurus.wav           ringtones/ogg/Centaurus.ogg
+  champagne-edition.wav   newwavelabs/Champagne_Edition.ogg
   chimey-phone.wav        Ring_Synth_02.ogg
   classic-1.wav           Ring_Classic_01.ogg
   classic-3.wav           Ring_Classic_03.ogg
   classic-4.wav           Ring_Classic_04.ogg
   classic-5.wav           Ring_Classic_05.ogg
+  club-cubano.wav         newwavelabs/Club_Cubano.ogg
+  crayon-rock.wav         newwavelabs/CrayonRock.ogg
+  crazy-dream.wav         newwavelabs/CrazyDream.ogg
+  curve-ball-blend.wav    newwavelabs/CurveBall.ogg
   cygnus.wav              ringtones/ogg/Cygnus.ogg
+  dancin-fool.wav         newwavelabs/DancinFool.ogg
   digital-1.wav           Ring_Digital_01.ogg
   digital-3.wav           Ring_Digital_03.ogg
   digital-4.wav           Ring_Digital_04.ogg
@@ -47,30 +63,55 @@ data/sounds, at commit 1cdfff555f4a21f71ccc978290e2e212e2f8b168:
   digital-phone.wav       Ring_Digital_02.ogg
   dione.wav               ringtones/material/ogg/Dione.ogg
   dione-classic.wav       ringtones/ogg/Dione.ogg
+  don-mess-wiv-it.wav     newwavelabs/DonMessWivIt.ogg
   draco.wav               ringtones/ogg/Draco.ogg
+  dream-theme.wav         newwavelabs/DreamTheme.ogg
+  eastern-sky.wav         newwavelabs/Eastern_Sky.ogg
+  enter-the-nexus.wav     newwavelabs/Enter_the_Nexus.ogg
   eridani.wav             ringtones/ogg/Eridani.ogg
+  ether-shake.wav         newwavelabs/EtherShake.ogg
   free-flight.wav         ringtones/FreeFlight.ogg
+  friendly-ghost.wav      newwavelabs/FriendlyGhost.ogg
+  funk-yall.wav           newwavelabs/Funk_Yall.ogg
+  game-over-guitar.wav    newwavelabs/GameOverGuitar.ogg
   ganymede.wav            ringtones/material/ogg/Ganymede.ogg
   ganymede-classic.wav    ringtones/ogg/Ganymede.ogg
+  gimme-mo-town.wav       newwavelabs/Gimme_Mo_Town.ogg
   girtab.wav              ringtones/ogg/Girtab.ogg
+  glacial-groove.wav      newwavelabs/Glacial_Groove.ogg
+  growl.wav               newwavelabs/Growl.ogg
+  halfway-home.wav        newwavelabs/HalfwayHome.ogg
   hydra.wav               ringtones/ogg/Hydra.ogg
+  insert-coin.wav         newwavelabs/InsertCoin.ogg
   iridium.wav             ringtones/ogg/Iridium.ogg
   kuma.wav                ringtones/ogg/Kuma.ogg
+  loopy-lounge.wav        newwavelabs/LoopyLounge.ogg
+  love-flute.wav          newwavelabs/LoveFlute.ogg
   luna.wav                ringtones/material/ogg/Luna.ogg
   luna-classic.wav        ringtones/ogg/Luna.ogg
   lyra.wav                ringtones/ogg/Lyra.ogg
   lyra-classic.wav        ringtones/Lyra.ogg
   machina.wav             ringtones/ogg/Machina.ogg
+  medieval-jaunt.wav      newwavelabs/MidEvilJaunt.ogg
+  nairobi.wav             newwavelabs/Nairobi.ogg
   nasqueron.wav           ringtones/ogg/Nasqueron.ogg
+  nassau.wav              newwavelabs/Nassau.ogg
+  new-player.wav          newwavelabs/NewPlayer.ogg
+  no-limits.wav           newwavelabs/No_Limits.ogg
+  noisey-one.wav          newwavelabs/Noises1.ogg
   oberon.wav              ringtones/material/ogg/Oberon.ogg
   oberon-classic.wav      ringtones/ogg/Oberon.ogg
+  organ-dub.wav           newwavelabs/OrganDub.ogg
   orion.wav               ringtones/ogg/Orion.ogg
+  paradise-island.wav     newwavelabs/Paradise_Island.ogg
   pegasus.wav             ringtones/ogg/Pegasus.ogg
   perseus.wav             ringtones/ogg/Perseus.ogg
   phobos.wav              ringtones/material/ogg/Phobos.ogg
   phobos-classic.wav      ringtones/ogg/Phobos.ogg
+  playa.wav               newwavelabs/Playa.ogg
   pyxis.wav               ringtones/material/ogg/Pyxis.ogg
   rasalas.wav             ringtones/ogg/Rasalas.ogg
+  revelation.wav          newwavelabs/Revelation.ogg
   rigel.wav               ringtones/ogg/Rigel.ogg
   ringtone-18.wav         ringtones/ringtone18.ogg
   ringtone-19.wav         ringtones/ringtone19.ogg
@@ -91,24 +132,42 @@ data/sounds, at commit 1cdfff555f4a21f71ccc978290e2e212e2f8b168:
   ringtone-36.wav         ringtones/ringtone36.ogg
   ringtone-37.wav         ringtones/ringtone37.ogg
   ringtone-38.wav         ringtones/ringtone38.ogg
+  road-trip.wav           newwavelabs/Road_Trip.ogg
+  romancing-the-tone.wav  newwavelabs/RomancingTheTone.ogg
+  safari.wav              newwavelabs/Safari.ogg
+  savannah.wav            newwavelabs/Savannah.ogg
   scarabaeus.wav          ringtones/ogg/Scarabaeus.ogg
   sceptrum.wav            ringtones/ogg/Sceptrum.ogg
   sceptrum-classic.wav    ringtones/Sceptrum.ogg
   sedna.wav               ringtones/material/ogg/Sedna.ogg
+  seville.wav             newwavelabs/Seville.ogg
+  shes-all-that.wav       newwavelabs/Shes_All_That.ogg
+  silky-way.wav           newwavelabs/SilkyWay.ogg
+  sitar-versus-sitar.wav  newwavelabs/SitarVsSitar.ogg
   solarium.wav            ringtones/ogg/Solarium.ogg
   solarium-classic.wav    ringtones/Solarium.ogg
+  springy-jalopy.wav      newwavelabs/SpringyJalopy.ogg
+  steppin-out.wav         newwavelabs/Steppin_Out.ogg
   synth-1.wav             Ring_Synth_01.ogg
   synth-3.wav             Ring_Synth_03.ogg
   synth-5.wav             Ring_Synth_05.ogg
+  terminated.wav          newwavelabs/Terminated.ogg
+  terrible-twos.wav       newwavelabs/Noises2.ogg
   testudo.wav             ringtones/ogg/Testudo.ogg
+  third-eye.wav           newwavelabs/Third_Eye.ogg
+  thriller-three.wav      newwavelabs/Noises3.ogg
+  thunderfoot.wav         newwavelabs/Thunderfoot.ogg
   titania.wav             ringtones/material/ogg/Titania.ogg
   triton.wav              ringtones/material/ogg/Triton.ogg
   triton-classic.wav      ringtones/ogg/Triton.ogg
+  twirl-away.wav          newwavelabs/TwirlAway.ogg
   umbriel.wav             ringtones/material/ogg/Umbriel.ogg
   umbriel-classic.wav     ringtones/ogg/Umbriel.ogg
   ursa-minor.wav          ringtones/ogg/UrsaMinor.ogg
   ursa-minor-classic.wav  ringtones/URSAMINOR.ogg
+  very-alarmed.wav        newwavelabs/VeryAlarmed.ogg
   vespa.wav               ringtones/Vespa.ogg
+  world.wav               newwavelabs/World.ogg
   zeta.wav                ringtones/ogg/Zeta.ogg
 
 From the NOTICE file of that repository:
