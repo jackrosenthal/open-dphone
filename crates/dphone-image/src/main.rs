@@ -26,7 +26,6 @@
 
 mod date;
 mod kernel;
-mod replay;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use eff::envelope::{self, EffHeader};
@@ -67,9 +66,6 @@ enum Cmd {
     /// Whole firmware images
     #[command(subcommand)]
     Image(ImageCmd),
-    /// DSP replay tables from shared-RAM traces
-    #[command(subcommand)]
-    Replay(ReplayCmd),
 }
 
 #[derive(Subcommand)]
@@ -210,25 +206,6 @@ enum ImageCmd {
         date: Option<String>,
         #[command(flatten)]
         tree: TreeOpts,
-    },
-}
-
-#[derive(Subcommand)]
-enum ReplayCmd {
-    /// List the configuration jobs in traces: FAMILY OUT.json NAME=TRACE...
-    Json {
-        family: String,
-        out: PathBuf,
-        #[arg(required = true, value_name = "NAME=TRACE")]
-        traces: Vec<String>,
-    },
-    /// Replay JSON -> `.rpl` line format
-    Convert {
-        json: PathBuf,
-        out: PathBuf,
-        /// Do not apply the clean-up heuristics
-        #[arg(long)]
-        raw: bool,
     },
 }
 
@@ -561,45 +538,6 @@ fn image_cmd(cmd: ImageCmd) -> Res<()> {
     Ok(())
 }
 
-fn replay_cmd(cmd: ReplayCmd) -> Res<()> {
-    match cmd {
-        ReplayCmd::Json {
-            family,
-            out,
-            traces,
-        } => {
-            let mut pairs = Vec::new();
-            for t in &traces {
-                let (name, path) = t
-                    .split_once('=')
-                    .ok_or_else(|| format!("bad argument {t:?} (expected NAME=TRACE)"))?;
-                pairs.push((name.to_owned(), PathBuf::from(path)));
-            }
-            let (text, counts) = replay::make_json(&family, &pairs)?;
-            write(&out, text.as_bytes())?;
-            for (n, c) in counts {
-                println!("{n} {c} jobs");
-            }
-        }
-        ReplayCmd::Convert { json, out, raw } => {
-            let text = String::from_utf8(read(&json)?).map_err(s)?;
-            let name = json
-                .file_name()
-                .map(|f| f.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let (rpl, stats) = replay::convert(&name, &text, raw)?;
-            write(&out, rpl.as_bytes())?;
-            eprintln!("queries zeroed: {}", stats.queries_zeroed);
-            eprintln!("time-0 repeats dropped: {}", stats.time0_repeats_dropped);
-            eprintln!(
-                "rewritten states dropped: {}",
-                stats.rewritten_states_dropped
-            );
-        }
-    }
-    Ok(())
-}
-
 fn main() {
     let res = match Cli::parse().cmd {
         Cmd::Eff(c) => eff_cmd(c),
@@ -607,7 +545,6 @@ fn main() {
         Cmd::Jffs2(c) => jffs2_cmd(c),
         Cmd::KernelImage(k) => kernel_image(k),
         Cmd::Image(c) => image_cmd(c),
-        Cmd::Replay(c) => replay_cmd(c),
     };
     if let Err(e) = res {
         eprintln!("error: {e}");

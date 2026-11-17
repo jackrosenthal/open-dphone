@@ -2,11 +2,21 @@
 //! Turns the committed replay JSON files (one-time DSP jobs observed on a
 //! D60 and a D40) into static tables.
 //!
+//! The files hold what `startup` uses: the new family's start-up sequence
+//! (`boot_part1` to `boot_part3`), the old family's Init jobs
+//! (`boot_module_load_static`, derived from the vendor's modules rather
+//! than captured, so its times are placeholders), and the canceller
+//! register files the tuning takes (`boot_static_images` and
+//! `app_stop_start`).  On the new family, the speakerphone canceller's
+//! registers are the ones a D60 running stock reads back at idle (the boot
+//! capture had caught the untuned defaults), and the handset canceller's
+//! register file (channel 12) is the headset's, which stock reads back
+//! identical.
+//!
 //! The JSON lists submissions as they were seen in the shared RAM, and the
 //! DSP rewrites a submission's header in place with its reply values while
 //! the frame is still there.  So some argument values in the JSON are
-//! replies, and some jobs appear twice.  Three clean-ups are applied (the
-//! same ones the earlier `replay-convert.py` applied):
+//! replies, and some jobs appear twice.  Three clean-ups are applied:
 //!
 //!  1. Query jobs (PVE op 6 and op 7) take no arguments: arg1 and arg2 are
 //!     written as 0.

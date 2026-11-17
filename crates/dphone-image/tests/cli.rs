@@ -281,44 +281,6 @@ fn refusals() {
 }
 
 #[test]
-fn replay_convert_heuristics() {
-    let s = Scratch::new("replay");
-    let job = |t: u32, cid: u32, op: u32, a1: u32, body: &str| {
-        let codec = if cid == 1 { ", \"codec\": 9" } else { "" };
-        let h = if cid == 1 || cid == 3 { 10 } else { 9 };
-        let n = if body.is_empty() {
-            0
-        } else {
-            body.split(',').count()
-        };
-        format!(
-            "{{\"t_us\": {t}, \"client_id\": {cid}, \"channel\": 1, \"instance\": 0, \"op\": {op}, \"arg1\": {a1}, \"arg2\": 0, \
-             \"frame_words\": {}, \"header_words\": {h}, \"body\": [{body}]{codec}}}",
-            h + n
-        )
-    };
-    let doc = format!(
-        "{{\"family\": \"new\", \"sequences\": {{\"boot_part1\": {{\"jobs\": [{}, {}, {}, {}]}}, \"boot_part2\": {{\"jobs\": [{}, {}]}}}}}}",
-        job(5, 1, 6, 3, ""), // query: arguments zeroed
-        job(6, 3, 5, 1, "\"0001\",\"00ff\""),
-        job(7, 3, 5, 2, "\"0001\",\"00ff\""), // rewritten state of the previous job: dropped
-        job(8, 3, 4, 2, "\"0001\""),
-        job(0, 3, 5, 1, "\"0001\",\"00ff\""), // time 0 in a later part: dropped
-        job(9, 4, 6, 7, "\"0002\""),
-    );
-    std::fs::write(s.path("in.json"), doc).unwrap();
-    let text = ok(&["replay", "convert", &s.path("in.json"), &s.path("out.rpl")]);
-    assert!(text.contains("queries zeroed: 1"), "{text}");
-    assert!(text.contains("time-0 repeats dropped: 1"), "{text}");
-    assert!(text.contains("rewritten states dropped: 1"), "{text}");
-    assert_eq!(
-        std::fs::read_to_string(s.path("out.rpl")).unwrap(),
-        "# derived from in.json by replay-convert.py\nF new\nS boot_part1\nJ 5 1 1 0 9 6 0 0 10 0\n\
-         J 6 3 1 0 0 5 1 0 12 2 0001 00ff\nJ 8 3 1 0 0 4 2 0 11 1 0001\nS boot_part2\nJ 9 4 1 0 0 6 7 0 10 1 0002\n"
-    );
-}
-
-#[test]
 fn vendor_references() {
     let Some(dir) = std::env::var_os("DPHONE_VENDOR_DIR").map(PathBuf::from) else {
         assert!(
@@ -393,24 +355,4 @@ fn vendor_references() {
         "350421cf0597008e",
     ]);
     assert!(std::fs::read(s.path("re.eff")).unwrap() == std::fs::read(&vendor).unwrap());
-    // Replay conversion of the committed tables is stable.
-    for f in ["replay-new-family-d60", "replay-old-family-d40"] {
-        // Captured traces, in the reverse-engineering tree only.
-        if !dir.join(format!("dsp/{f}.json")).exists() {
-            eprintln!("SKIPPED {f}: no replay table");
-            continue;
-        }
-        let text = ok(&[
-            "replay",
-            "convert",
-            &p(&format!("dsp/{f}.json")),
-            &s.path("x.rpl"),
-        ]);
-        assert!(text.contains("queries zeroed"), "{text}");
-        assert!(
-            std::fs::read_to_string(s.path("x.rpl"))
-                .unwrap()
-                .starts_with(&format!("# derived from {f}.json"))
-        );
-    }
 }

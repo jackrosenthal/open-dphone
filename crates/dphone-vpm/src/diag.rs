@@ -590,7 +590,7 @@ mod tests {
     fn selftest_passes() {
         let r = selftest();
         assert!(r.passed(), "{:#?}", r.failures);
-        assert!(r.checks > 300);
+        assert!(r.checks > 200);
     }
 
     #[test]
@@ -674,9 +674,9 @@ mod tests {
 
     #[test]
     fn table_selection() {
-        let jobs = table_jobs(Family::New, "g722_handset_setup");
-        assert_eq!(jobs.len(), 5);
+        let jobs = table_jobs(Family::New, "boot_part3");
+        assert_eq!(jobs.len(), 3);
         let mut vpm = Vpm::new(MockTransport::new(Family::New)).unwrap();
-        assert_eq!(replay_jobs(&mut vpm, &jobs, false, false, |_, _, _| {}).unwrap(), (5, 0));
+        assert_eq!(replay_jobs(&mut vpm, &jobs, false, false, |_, _, _| {}).unwrap(), (3, 0));
     }
 }
