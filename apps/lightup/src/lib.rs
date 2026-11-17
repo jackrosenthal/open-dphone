@@ -24,7 +24,8 @@
 //! its kind (its size and difficulty), which the phones of a PBX share:
 //! the app's store on the PBX has a key for each kind (see
 //! `lightup_game::scores`).  "Scores" shows a table; there, "Size" and
-//! "Level" (or left and right) go to the tables of the other kinds.  A
+//! "Level" (or left and right) go to the tables of the other kinds.
+//! Each row has the player, when the puzzle was solved, and the time.  A
 //! time that cannot be written, because the PBX is out of reach or keeps
 //! no such store, is kept on the phone and written when the store comes
 //! into reach; until then the table shows it on this phone only.
@@ -44,7 +45,7 @@ use lightup_game::draw::{
 };
 use lightup_game::generate::{Difficulty, Generator, Params, Progress, SIZES};
 use lightup_game::help::PAGES;
-use lightup_game::scores::{Kind, Pending, Table, clock};
+use lightup_game::scores::{Kind, Pending, Table, Win, clock};
 use lightup_game::{Act, Game, Grid};
 
 const SK_NEW: u32 = 1;
@@ -110,6 +111,133 @@ struct Board {
     time: Widget,
 }
 
+/// The rows of a table on the screen, a line for each in a scroll, as a
+/// list shows its rows, but with a column more than a list has room for
+/// on the gray displays.
+struct Lines {
+    /// The widgets of each line: the whole line, which has the focus when
+    /// the line is selected (the scroll follows the focus), and what the
+    /// selection's colors go on: one under it all, which they fill, and a
+    /// text for each of [`COLUMNS`].
+    lines: Vec<(Widget, [Widget; 4])>,
+    /// The line in the selection's colors, which Up and Down move.
+    selected: usize,
+}
+
+/// The space at either end of a line, as a list leaves it.
+const INSET: u16 = 4;
+
+/// The columns of a line: the place and the name, when the puzzle was
+/// solved, and the time.  When is in the small font, beside the others.
+const COLUMNS: [(Font, Align); 3] = [
+    (Font::Normal, Align::Left),
+    (Font::Small, Align::Left),
+    (Font::Normal, Align::Right),
+];
+
+impl Lines {
+    /// The rows of a table in `area`, the line of row `selected` in the
+    /// selection's colors.
+    fn new(area: Rect, table: &Table, selected: usize) -> Lines {
+        let m = ui::get_metrics();
+        let texts: Vec<[String; 3]> = table
+            .rows()
+            .iter()
+            .enumerate()
+            .map(|(n, row)| {
+                [
+                    format!("{}. {}", n + 1, row.name),
+                    l10n::format_time(row.when, TimeStyle::DateAndTime),
+                    clock(row.ms),
+                ]
+            })
+            .collect();
+        // Whole lines, as a list shows them, and room for the scroll bar
+        // if they do not all fit.
+        let row_h = m.row_height.max(1);
+        let height = area.height / row_h * row_h;
+        let bar = if texts.len() as u16 * row_h > height {
+            m.scroll_bar_width
+        } else {
+            0
+        };
+        let width = area.width.saturating_sub(bar);
+        // When and the time are as wide as the widest of them, with a
+        // digit's width to spare; the place and the name have the rest,
+        // but for a digit's width before when.
+        let digit = canvas::text_size(Font::Normal, "0").width;
+        let need = |column: usize| {
+            let font = COLUMNS[column].0;
+            let widths = texts.iter().map(|t| canvas::text_size(font, &t[column]).width);
+            widths.max().unwrap_or(0) + digit
+        };
+        let (when_w, time_w) = (need(1), need(2));
+        let name_w = width.saturating_sub(2 * INSET + digit + when_w + time_w);
+        let columns = [
+            (INSET, name_w),
+            (INSET + name_w + digit, when_w),
+            (width.saturating_sub(INSET + time_w), time_w),
+        ];
+        let scroll = ui::create(
+            WidgetKind::Scroll,
+            ROOT,
+            Rect::new(area.x, area.y, area.width, height),
+        );
+        // On the color displays a hairline is under each line, as under
+        // the rows of a list, and the selection's colors leave it be.
+        let hairline = m.color.then(|| canvas::theme_color(canvas::Role::Border));
+        let line_h = row_h - u16::from(hairline.is_some());
+        let lines = texts
+            .iter()
+            .enumerate()
+            .map(|(n, texts)| {
+                let y = (n as u16 * row_h) as i16;
+                if let Some(color) = hairline {
+                    let length = width.saturating_sub(24);
+                    let rule = canvas::create(scroll, Rect::new(16, y + line_h as i16, length, 1));
+                    let fill = canvas::Op::Fill((Rect::new(0, 0, length, 1), color));
+                    if let Err(e) = canvas::draw(rule, &[fill]) {
+                        dphone_app_sdk::log_error(&format!("draw: {e}"));
+                    }
+                }
+                let whole = ui::create(WidgetKind::Group, scroll, Rect::new(0, y, width, row_h));
+                let under = ui::create(WidgetKind::Text, scroll, Rect::new(0, y, width, line_h));
+                let mut colored = [under; 4];
+                for (column, text) in texts.iter().enumerate() {
+                    let ((x, w), (font, align)) = (columns[column], COLUMNS[column]);
+                    let bounds = Rect::new(x as i16, y, w, line_h);
+                    colored[column + 1] = text_in(scroll, bounds, font, align, text);
+                }
+                (whole, colored)
+            })
+            .collect();
+        let lines = Lines { lines, selected };
+        lines.show(true);
+        lines
+    }
+
+    /// Puts the selection's colors on the selected line, or takes them
+    /// off.  The scroll follows the focus, which goes with them.
+    fn show(&self, on: bool) {
+        if let Some((whole, colored)) = self.lines.get(self.selected) {
+            for w in colored {
+                ui::set_highlight(*w, on);
+            }
+            if on {
+                ui::set_focus(*whole);
+            }
+        }
+    }
+
+    /// Moves the selection up or down a line, around the ends.
+    fn step(&mut self, by: isize) {
+        let len = self.lines.len().max(1) as isize;
+        self.show(false);
+        self.selected = (self.selected as isize + by).rem_euclid(len) as usize;
+        self.show(true);
+    }
+}
+
 /// A puzzle being made.
 struct Making {
     generator: Generator,
@@ -139,6 +267,8 @@ struct LightUp {
     made: u64,
     board: Option<Board>,
     list: Option<Widget>,
+    /// The table on the screen.
+    lines: Option<Lines>,
     /// The page of the help on show, and whether it was opened from the
     /// list of sizes (else from the puzzle).
     page: usize,
@@ -153,9 +283,9 @@ struct LightUp {
     /// The kinds of puzzle whose table the PBX would not write; they are
     /// tried again when the app next starts.
     refused: Vec<Kind>,
-    /// The time being written to its table: the kind, the time, and the
+    /// The win being written to its table: the kind, the win, and the
     /// request to the PBX under way (reading the table, or writing it).
-    writing: Option<(Kind, u64, u32)>,
+    writing: Option<(Kind, Win, u32)>,
     /// The table on show, and the request reading it.
     shown: Kind,
     reading: Option<u32>,
@@ -183,6 +313,7 @@ impl Default for LightUp {
             made: 0,
             board: None,
             list: None,
+            lines: None,
             page: 0,
             help_from_list: false,
             saved: String::new(),
@@ -290,7 +421,11 @@ fn paint(w: Widget, ops: Vec<Op>) {
 }
 
 fn text(bounds: Rect, font: Font, align: Align, content: &str) -> Widget {
-    let w = ui::create(WidgetKind::Text, ROOT, bounds);
+    text_in(ROOT, bounds, font, align, content)
+}
+
+fn text_in(parent: Widget, bounds: Rect, font: Font, align: Align, content: &str) -> Widget {
+    let w = ui::create(WidgetKind::Text, parent, bounds);
     ui::set_font(w, font);
     ui::set_align(w, align);
     ui::set_text(w, content);
@@ -463,6 +598,7 @@ impl LightUp {
         }
         self.board = None;
         self.list = None;
+        self.lines = None;
         if let Some(timer) = self.making.as_mut().and_then(|m| m.timer.take()) {
             timers::cancel(timer);
         }
@@ -846,12 +982,15 @@ impl LightUp {
             _ => format!("Best times: {}", kind.title()),
         };
         let area = screen(&title);
-        ui::claim_keys(ROOT, &["left", "right", "cancel"].map(String::from));
-        self.list = None;
+        ui::claim_keys(
+            ROOT,
+            &["up", "down", "left", "right", "cancel"].map(String::from),
+        );
+        self.lines = None;
         let (id, name) = player().unwrap_or((String::new(), "You".to_string()));
         let mut table = self.tables[kind.index()].clone().unwrap_or_default();
-        for ms in self.pending.of(kind) {
-            table.add(ms, &id, &name);
+        for win in self.pending.of(kind) {
+            table.add(win, &id, &name);
         }
         if table.rows().is_empty() {
             centered(
@@ -863,24 +1002,9 @@ impl LightUp {
                 }],
             );
         } else {
-            let list = ui::create(WidgetKind::TextList, ROOT, area);
-            let items: Vec<ListItem> = table
-                .rows()
-                .iter()
-                .enumerate()
-                .map(|(n, row)| {
-                    let mut item = ListItem::new(format!("{}. {}", n + 1, row.name));
-                    item.detail = clock(row.ms);
-                    item
-                })
-                .collect();
-            ui::set_items(list, &items);
-            // The player's best row, if the table has one.
-            if let Some(at) = table.place(&id) {
-                ui::set_selected(list, at as u32);
-            }
-            ui::set_focus(list);
-            self.list = Some(list);
+            // The player's best row selected, if the table has one.
+            let at = table.place(&id).unwrap_or(0);
+            self.lines = Some(Lines::new(area, &table, at));
         }
         ui::set_softkeys(
             ROOT,
@@ -919,7 +1043,11 @@ impl LightUp {
         self.run_clock(false);
         self.update();
         self.save();
-        if self.pending.add(self.kind(), self.elapsed) {
+        let win = Win {
+            ms: self.elapsed,
+            when: timers::wall_time(),
+        };
+        if self.pending.add(self.kind(), win) {
             self.keep_pending();
         }
         self.sync();
@@ -937,10 +1065,10 @@ impl LightUp {
             .times()
             .iter()
             .find(|(kind, _)| !self.refused.contains(kind));
-        if let Some(&(kind, ms)) = next
+        if let Some(&(kind, win)) = next
             && let StorageReply::Pending(id) = storage::get(PbxShared, &kind.key())
         {
-            self.writing = Some((kind, ms, id));
+            self.writing = Some((kind, win, id));
         }
     }
 
@@ -965,7 +1093,7 @@ impl LightUp {
             }
             return;
         }
-        let Some((kind, ms, asked)) = self.writing else {
+        let Some((kind, win, asked)) = self.writing else {
             return;
         };
         if asked != id {
@@ -986,22 +1114,22 @@ impl LightUp {
                     dphone_app_sdk::log_warn("the PBX has not said who the user is");
                     return;
                 };
-                if table.add(ms, &player, &name) {
+                if table.add(win, &player, &name) {
                     let reply = storage::set(PbxShared, &kind.key(), &table.to_bytes(), Some(version));
                     if let StorageReply::Pending(id) = reply {
-                        self.writing = Some((kind, ms, id));
+                        self.writing = Some((kind, win, id));
                     }
                     return;
                 }
-                // The table has ten times as good, or has this one (it
+                // The table has ten times as good, or has this win (it
                 // was written, and the answer did not come): there is
                 // nothing to write.
-                if self.pending.done(kind, ms) {
+                if self.pending.done(kind, win) {
                     self.keep_pending();
                 }
             }
             StorageOutcome::Stored(entry) => {
-                if self.pending.done(kind, ms) {
+                if self.pending.done(kind, win) {
                     self.keep_pending();
                 }
                 self.learn(kind, Table::parse(&entry.value));
@@ -1160,6 +1288,11 @@ impl App for LightUp {
                 ("left" | "up", Screen::Help) => self.show_help(self.page + PAGES.len() - 1),
                 ("cancel", Screen::Help | Screen::Scores) => self.back(),
                 ("left", Screen::Scores) => self.show_scores(self.shown.step(-1)),
+                ("up" | "down", Screen::Scores) => {
+                    if let Some(lines) = &mut self.lines {
+                        lines.step(if key == "up" { -1 } else { 1 });
+                    }
+                }
                 ("right", Screen::Scores) => self.show_scores(self.shown.step(1)),
                 ("cancel", Screen::Choose) if self.game.is_some() => self.show_play(),
                 ("cancel", _) => self.leave(),

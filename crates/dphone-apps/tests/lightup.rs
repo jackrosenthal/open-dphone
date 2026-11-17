@@ -28,10 +28,12 @@ use dphone_state::{
 use dphone_ui::{Ui, UiConfig};
 use lightup_game::draw::{FontSize, Fonts, Layout, Op, Painter, Palette, Rgb, TextFont};
 use lightup_game::generate::{Difficulty, Generator, Params, Progress, SIZES, generate};
-use lightup_game::scores::{Kind, Table};
+use lightup_game::scores::{Kind, Table, Win};
 use lightup_game::solver::{Outcome, Solve, Techniques};
 use lightup_game::{Act, Game, Grid};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::time::{Duration, Instant};
 
 const APP: &str = "lightup";
@@ -1127,8 +1129,8 @@ fn every_size_is_made_and_drawn_on_every_kind_of_display() {
 fn it_is_a_built_in_app_that_can_be_switched_off() {
     assert_eq!(
         common::capabilities(APP),
-        ["ui", "timers", "storage", "canvas"],
-        "no sound, no calls, no network but the store on the PBX"
+        ["ui", "timers", "storage", "l10n", "canvas"],
+        "no sound, no calls, no network but the store on the PBX; dates as the phone writes them"
     );
     let config = FakeConfig::default();
     let disabled = config.disabled.clone();
@@ -1875,13 +1877,29 @@ fn put_puzzle(r: &Rig, puzzle: &str) {
     std::fs::write(storage(&r.nvdata).join("puzzle"), puzzle).unwrap();
 }
 
+/// Nov 13, 2026, 2:15 PM UTC: what the wall clock of the phones of the
+/// tests of the best times says, unless a test moves it.
+const T: u64 = 1_794_579_300;
+/// `T` as the phones show it.
+const T_SHOWN: &str = "Nov 13, 2026 2:15 PM";
+
+/// A configuration whose wall clock says `T`, and the clock.
+fn clock_at_t() -> (FakeConfig, Arc<AtomicU64>) {
+    let clock = Arc::new(AtomicU64::new(T));
+    let config = FakeConfig {
+        wall_time: Some(clock.clone()),
+        ..FakeConfig::default()
+    };
+    (config, clock)
+}
+
 /// A phone of a PBX (`FakeStore::phone`) on which the app finds this
 /// puzzle file.
 fn rig_on(app_data: FakeStore, puzzle: &str) -> Rig {
     listen();
     let r = Rig::with_app_data(
         staged(),
-        FakeConfig::default(),
+        clock_at_t().0,
         Model::D60,
         Duration::from_secs(2),
         app_data,
@@ -1909,6 +1927,30 @@ fn rows(table: &Table) -> Vec<(&str, &str, u64)> {
         .rows()
         .iter()
         .map(|r| (r.id.as_str(), r.name.as_str(), r.ms / 1000))
+        .collect()
+}
+
+/// The lines of the table on the screen, each the place and the name,
+/// when the puzzle was solved, and the time; none if it says something
+/// in place of them.
+fn lines(r: &Rig) -> Vec<[String; 3]> {
+    // After the title, four texts a line: under it all (empty), and the
+    // three.
+    let texts = r.ui.texts(APP);
+    let rest = &texts[1..];
+    if rest.len() % 4 != 0 || rest.iter().step_by(4).any(|t| !t.is_empty()) {
+        return Vec::new();
+    }
+    rest.chunks(4)
+        .map(|c| [c[1].clone(), c[2].clone(), c[3].clone()])
+        .collect()
+}
+
+/// The place and the name, and the time, of each line on the screen.
+fn listed(r: &Rig) -> Vec<(String, String)> {
+    lines(r)
+        .into_iter()
+        .map(|[name, _, time]| (name, time))
         .collect()
 }
 
@@ -2011,10 +2053,11 @@ fn a_solved_puzzles_time_is_on_every_phones_table_with_who_solved_it() {
     assert_eq!(bob.ui.softkeys(APP), ["Size", "Level", "Back"]);
     assert_eq!(bob.app_data.watched(), [APP]);
 
-    // Alice solves hers.
+    // Alice solves hers, at T.
     solve(&mut alice);
     let ms = table(&pbx, easy).rows()[0].ms;
     assert_eq!(rows(&table(&pbx, easy)), [("101", "Alice", 83)]);
+    assert_eq!(table(&pbx, easy).rows()[0].when, T);
     let time = lightup_game::scores::clock(ms);
     assert_eq!(alice.ui.texts(APP), ["Solved!", &format!("Time {time}")]);
     assert_eq!(waiting(&alice), "", "nothing waits");
@@ -2023,17 +2066,18 @@ fn a_solved_puzzles_time_is_on_every_phones_table_with_who_solved_it() {
         assert!(table(&pbx, kind).rows().is_empty());
     }
 
-    // Bob's phone, with the table on its screen, is told, and shows it.
+    // Bob's phone, with the table on its screen, is told, and shows it:
+    // who, when, and the time.
     let first = [("1. Alice".to_string(), time.clone())];
     bob.settle();
-    assert_eq!(bob.ui.texts(APP), ["Best times: 7x7 Easy"]);
-    assert_eq!(bob.ui.items(APP), first);
+    assert_eq!(bob.ui.texts(APP)[0], "Best times: 7x7 Easy");
+    assert_eq!(lines(&bob), [["1. Alice", T_SHOWN, time.as_str()]]);
 
     // The fourth softkey of the solved puzzle: the table of its kind.
     assert_eq!(alice.ui.softkeys(APP), ["New", "Help", "Exit", "Scores"]);
     alice.softkey(APP, "Scores");
-    assert_eq!(alice.ui.texts(APP), ["Best times: 7x7 Easy"]);
-    assert_eq!(alice.ui.items(APP), first);
+    assert_eq!(alice.ui.texts(APP)[0], "Best times: 7x7 Easy");
+    assert_eq!(listed(&alice), first);
     // The other kinds: the next size, the next difficulty, and left and
     // right through all of them.
     alice.softkey(APP, "Size");
@@ -2055,8 +2099,8 @@ fn a_solved_puzzles_time_is_on_every_phones_table_with_who_solved_it() {
     for _ in 0..7 {
         alice.key(APP, Key::Right);
     }
-    assert_eq!(alice.ui.texts(APP), ["Best times: 7x7 Easy"]);
-    assert_eq!(alice.ui.items(APP), first);
+    assert_eq!(alice.ui.texts(APP)[0], "Best times: 7x7 Easy");
+    assert_eq!(listed(&alice), first);
     alice.key(APP, Key::Left);
     assert_eq!(alice.ui.texts(APP)[0], "Best times: 14x14 Hard");
     // Back, the softkey or Cancel, is the solved puzzle.
@@ -2075,7 +2119,7 @@ fn a_solved_puzzles_time_is_on_every_phones_table_with_who_solved_it() {
     assert_eq!(bob.ui.texts(APP), ["New puzzle"]);
     assert!(bob.app_data.watched().is_empty());
     bob.softkey(APP, "Scores");
-    assert_eq!(bob.ui.texts(APP), ["Best times: 7x7 Easy"]);
+    assert_eq!(bob.ui.texts(APP)[0], "Best times: 7x7 Easy");
     bob.softkey(APP, "Back");
     bob.softkey(APP, "Exit");
 
@@ -2085,7 +2129,7 @@ fn a_solved_puzzles_time_is_on_every_phones_table_with_who_solved_it() {
     bob.launch(APP);
     assert_eq!(bob.ui.softkeys(APP), SOFTKEYS);
     bob.softkey(APP, "Scores");
-    assert_eq!(bob.ui.items(APP), first);
+    assert_eq!(listed(&bob), first);
     bob.softkey(APP, "Back");
     assert_eq!(beside(&bob), PLAYING);
     assert_eq!(bob.ui.softkeys(APP), SOFTKEYS);
@@ -2098,7 +2142,7 @@ fn a_solved_puzzles_time_is_on_every_phones_table_with_who_solved_it() {
     );
     alice.softkey(APP, "Scores");
     assert_eq!(
-        alice.ui.items(APP),
+        listed(&alice),
         [first[0].clone(), ("2. Bob".to_string(), "2:05".to_string())]
     );
     alice.softkey(APP, "Back");
@@ -2129,9 +2173,23 @@ fn a_solved_puzzles_time_is_on_every_phones_table_with_who_solved_it() {
     );
     alice.softkey(APP, "Scores");
     assert_eq!(
-        alice.ui.items(APP).iter().map(|i| i.0.as_str()).collect::<Vec<_>>(),
+        listed(&alice).iter().map(|i| i.0.as_str()).collect::<Vec<_>>(),
         ["1. Alice", "2. Alice", "3. Bob", "4. Alice"]
     );
+    // Her best line is in the selection's colors; up and down move them,
+    // around the ends.
+    let selected = |r: &Rig| r.ui.highlighted(APP).get(1).cloned().unwrap_or_default();
+    assert_eq!(selected(&alice), "1. Alice");
+    assert_eq!(alice.ui.highlighted(APP).len(), 4, "the line and its three texts");
+    alice.key(APP, Key::Down);
+    alice.key(APP, Key::Down);
+    assert_eq!(selected(&alice), "3. Bob");
+    for _ in 0..3 {
+        alice.key(APP, Key::Up);
+    }
+    assert_eq!(selected(&alice), "4. Alice");
+    alice.key(APP, Key::Down);
+    assert_eq!(selected(&alice), "1. Alice");
     alice.softkey(APP, "Back");
     // Bob's time on another size is in another table.
     bob.softkey(APP, "Exit");
@@ -2162,7 +2220,7 @@ fn two_phones_that_finish_at_once_are_both_on_the_table() {
                 && !self.raced.swap(true, Ordering::SeqCst)
             {
                 let mut table = Table::default();
-                table.add(90_000, "102", "Bob");
+                table.add(Win { ms: 90_000, when: 1_794_579_300 }, "102", "Bob");
                 let wrote = self.other.run(StoreOp::Set {
                     app: APP.into(),
                     scope: StoreScope::Shared,
@@ -2221,7 +2279,7 @@ fn two_phones_that_finish_at_once_are_both_on_the_table() {
     assert!(writes[1].is_some_and(|v| v > 0));
     assert_eq!(waiting(&alice), "");
     alice.softkey(APP, "Scores");
-    assert_eq!(alice.ui.items(APP).len(), 2);
+    assert_eq!(listed(&alice).len(), 2);
 
     // The same from both sides, with two phones and their apps: each
     // solves, and each table has both, in the order of the times.
@@ -2289,22 +2347,31 @@ fn a_time_written_without_an_answer_is_on_the_table_once() {
         inner: alice_side.clone(),
         lost: false.into(),
     };
+    let (config, clock) = clock_at_t();
     let mut alice = Rig::with_services(|mut services| {
         services.store = std::sync::Arc::new(store);
+        services.config = std::sync::Arc::new(config);
         services
     });
     put_puzzle(&alice, &almost(7, Difficulty::Easy, 5, 83_000));
     solve(&mut alice);
     let easy = Kind::new(7, Difficulty::Easy);
     assert_eq!(rows(&table(&pbx, easy)), [("101", "Alice", 83)]);
-    // The time waits, as one the PBX does not have.
-    assert!(waiting(&alice).starts_with("7x7-easy 83"));
-    // When the app next starts, the table has it already: nothing is
+    // The row has when the puzzle was solved.
+    let first = table(&pbx, easy).rows()[0].clone();
+    assert_eq!(first.when, T);
+    // The win waits, as one the PBX does not have, with when it was
+    // solved.
+    assert_eq!(waiting(&alice), format!("7x7-easy {} {T}\n", first.ms));
+    // When the app next starts, an hour later, the table has that win
+    // already (the same time, solved at the same moment): nothing is
     // written, and nothing waits.
     alice.softkey(APP, "Exit");
     assert!(!alice.mgr.is_running(APP));
+    clock.store(T + 3600, Ordering::Relaxed);
     alice.launch(APP);
     assert_eq!(rows(&table(&pbx, easy)), [("101", "Alice", 83)]);
+    assert_eq!(table(&pbx, easy).rows()[0], first);
     // (As the PBX has it, not as a table reads it.)
     let value = pbx.value(APP, StoreScope::Shared, &easy.key()).unwrap();
     assert_eq!(String::from_utf8(value).unwrap().lines().count(), 1);
@@ -2314,7 +2381,8 @@ fn a_time_written_without_an_answer_is_on_the_table_once() {
         ops.iter().filter(|op| matches!(op, StoreOp::Set { .. })).count()
     };
     assert_eq!(writes(&alice_side), 1);
-    // Her next time of that kind is a row of its own.
+    // Her next win of that kind is a row of its own, with when it was
+    // solved.
     alice.softkey(APP, "Exit");
     put_puzzle(&alice, &almost(7, Difficulty::Easy, 6, 90_000));
     solve(&mut alice);
@@ -2322,8 +2390,49 @@ fn a_time_written_without_an_answer_is_on_the_table_once() {
         rows(&table(&pbx, easy)),
         [("101", "Alice", 83), ("101", "Alice", 90)]
     );
+    assert_eq!(table(&pbx, easy).rows()[1].when, T + 3600);
     assert_eq!(writes(&alice_side), 2);
     assert_eq!(waiting(&alice), "");
+}
+
+#[test]
+fn two_wins_in_the_very_same_time_are_two_rows() {
+    // Two wins of Alice's of one kind, in the very same time, an hour
+    // apart, wait on her phone.  The PBX has the first already: it was
+    // written, and the answer did not come.
+    let pbx = FakeStore::default();
+    let easy = Kind::new(7, Difficulty::Easy);
+    let mut first = Table::default();
+    first.add(Win { ms: 83_000, when: T }, "101", "Alice");
+    pbx.phone("101", "Alice").run(dphone_apps::StoreOp::Set {
+        app: APP.into(),
+        scope: StoreScope::Shared,
+        key: easy.key(),
+        value: first.to_bytes(),
+        expect: None,
+    });
+    let mut alice = rig_on(pbx.phone("101", "Alice"), "");
+    let times = format!("7x7-easy 83000 {T}\n7x7-easy 83000 {}\n", T + 3600);
+    std::fs::write(storage(&alice.nvdata).join("times"), times).unwrap();
+    // The app starts: the first is not written again, and the second is
+    // a row of its own.
+    alice.launch(APP);
+    assert_eq!(
+        rows(&table(&pbx, easy)),
+        [("101", "Alice", 83), ("101", "Alice", 83)]
+    );
+    let when: Vec<u64> = table(&pbx, easy).rows().iter().map(|r| r.when).collect();
+    assert_eq!(when, [T, T + 3600]);
+    assert_eq!(waiting(&alice), "");
+    // Each line says when.
+    alice.softkey(APP, "Scores");
+    assert_eq!(
+        lines(&alice),
+        [
+            ["1. Alice", T_SHOWN, "1:23"],
+            ["2. Alice", "Nov 13, 2026 3:15 PM", "1:23"]
+        ]
+    );
 }
 
 #[test]
@@ -2336,7 +2445,7 @@ fn a_time_set_out_of_reach_is_kept_and_written_when_the_store_is_in_reach() {
     );
     // Bob's time is on the PBX, which Alice's phone cannot reach.
     let mut theirs = Table::default();
-    theirs.add(70_000, "102", "Bob");
+    theirs.add(Win { ms: 70_000, when: 1_794_579_300 }, "102", "Bob");
     pbx.phone("102", "Bob").run(dphone_apps::StoreOp::Set {
         app: APP.into(),
         scope: StoreScope::Shared,
@@ -2354,8 +2463,8 @@ fn a_time_set_out_of_reach_is_kept_and_written_when_the_store_is_in_reach() {
     assert!(kept.starts_with("7x7-easy 83") && kept.ends_with('\n'), "{kept}");
     // The table says so, and has the time on this phone.
     alice.softkey(APP, "Scores");
-    assert_eq!(alice.ui.texts(APP), ["Offline: 7x7 Easy"]);
-    assert_eq!(alice.ui.items(APP), [("1. Alice".to_string(), time.clone())]);
+    assert_eq!(alice.ui.texts(APP)[0], "Offline: 7x7 Easy");
+    assert_eq!(lines(&alice), [["1. Alice", T_SHOWN, time.as_str()]]);
     alice.softkey(APP, "Size");
     assert_eq!(
         alice.ui.texts(APP),
@@ -2375,9 +2484,9 @@ fn a_time_set_out_of_reach_is_kept_and_written_when_the_store_is_in_reach() {
     );
     assert_eq!(waiting(&alice), "");
     assert!(!storage(&alice.nvdata).join("times").exists());
-    assert_eq!(alice.ui.texts(APP), ["Best times: 7x7 Easy"]);
+    assert_eq!(alice.ui.texts(APP)[0], "Best times: 7x7 Easy");
     assert_eq!(
-        alice.ui.items(APP),
+        listed(&alice),
         [
             ("1. Bob".to_string(), "1:10".to_string()),
             ("2. Alice".to_string(), time.clone())
@@ -2398,9 +2507,9 @@ fn a_time_set_out_of_reach_is_kept_and_written_when_the_store_is_in_reach() {
         if seed == 7 {
             // The table on this phone has both times that wait.
             alice.softkey(APP, "Scores");
-            assert_eq!(alice.ui.texts(APP), ["Offline: 7x7 Easy"]);
+            assert_eq!(alice.ui.texts(APP)[0], "Offline: 7x7 Easy");
             assert_eq!(
-                alice.ui.items(APP),
+                listed(&alice),
                 [
                     ("1. Alice".to_string(), times[0].clone()),
                     ("2. Alice".to_string(), times[1].clone())
@@ -2462,8 +2571,8 @@ fn a_phone_without_a_pbx_store_plays_as_ever_and_keeps_its_times() {
     assert!(waiting(&r).starts_with("7x7-easy 83"));
     // The table of this phone's times; it does not know its user's name.
     r.softkey(APP, "Scores");
-    assert_eq!(r.ui.texts(APP), ["Offline: 7x7 Easy"]);
-    assert_eq!(r.ui.items(APP), [("1. You".to_string(), "1:23".to_string())]);
+    assert_eq!(r.ui.texts(APP)[0], "Offline: 7x7 Easy");
+    assert_eq!(listed(&r), [("1. You".to_string(), "1:23".to_string())]);
     r.softkey(APP, "Level");
     assert_eq!(
         r.ui.texts(APP),
@@ -2482,7 +2591,7 @@ fn a_phone_without_a_pbx_store_plays_as_ever_and_keeps_its_times() {
     assert!(lines[0].starts_with("7x7-easy 83") && lines[1].starts_with("7x7-easy 50"));
     r.softkey(APP, "Scores");
     assert_eq!(
-        r.ui.items(APP),
+        listed(&r),
         [
             ("1. You".to_string(), "0:50".to_string()),
             ("2. You".to_string(), "1:23".to_string())
@@ -2513,7 +2622,9 @@ fn the_time_and_the_best_times_are_drawn_on_every_kind_of_display() {
         let pbx = FakeStore::default();
         let mut table = Table::default();
         for (n, (id, name)) in players.iter().enumerate() {
-            table.add(71_000 + 43_210 * (n * n) as u64, id, name);
+            // Solved on days and at hours of all widths.
+            let ms = 71_000 + 43_210 * (n * n) as u64;
+            table.add(Win { ms, when: 1_794_579_300 - 190_000 * n as u64 }, id, name);
         }
         pbx.run(dphone_apps::StoreOp::Set {
             app: APP.into(),

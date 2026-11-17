@@ -5,12 +5,14 @@
 //! A table is the value of one key of the app's store on the PBX,
 //! [`Kind::key`] (e.g., `best/7x7-easy`).  It is text, a line for each
 //! row, the best first: the time in milliseconds, the player's id at
-//! the PBX, and the player's name, with a tab between them.  Each solved
+//! the PBX, the player's name, and when the puzzle was solved (seconds
+//! since the Unix epoch), with a tab between them.  Each solved
 //! puzzle's time is a row of its own, so a player can have several, and
 //! a table has at most [`ROWS`] rows.
 //!
 //! The times to write are text as well, a line for each time: the kind
-//! of puzzle (`7x7-easy`), a space, and the milliseconds.
+//! of puzzle (`7x7-easy`), the milliseconds, and when the puzzle was
+//! solved, with a space between them.
 
 use crate::generate::{Difficulty, SIZES};
 
@@ -114,15 +116,39 @@ pub fn clock(ms: u64) -> String {
     }
 }
 
-/// A row of a table: a player and one of their times.
+/// A solved puzzle: the time it took, and when it was solved.  When
+/// tells two wins apart: written again (e.g., after a write whose answer
+/// did not come), a win is the same win, and two wins of the very same
+/// time are two.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Win {
+    /// Milliseconds.
+    pub ms: u64,
+    /// When the puzzle was solved: seconds since the Unix epoch, by the
+    /// clock of the phone it was solved on.
+    pub when: u64,
+}
+
+/// A row of a table: a player and one of their wins.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Row {
     /// Milliseconds.
     pub ms: u64,
+    /// When the puzzle was solved: seconds since the Unix epoch.
+    pub when: u64,
     /// Identifies the player at the PBX.
     pub id: String,
     /// The player's name, to show.
     pub name: String,
+}
+
+impl Row {
+    pub fn win(&self) -> Win {
+        Win {
+            ms: self.ms,
+            when: self.when,
+        }
+    }
 }
 
 /// The best times of a kind of puzzle, the best first.
@@ -144,18 +170,18 @@ fn field(text: &str, chars: usize) -> String {
 impl Table {
     /// The table a value of the store holds.  What is not a row is left
     /// out, and so is what a table cannot hold: a row that is another
-    /// row again (the same player and the same time), and rows beyond
-    /// [`ROWS`].
+    /// row again (the same player's same win), and rows beyond [`ROWS`].
     pub fn parse(value: &[u8]) -> Table {
         let mut table = Table::default();
         for line in String::from_utf8_lossy(value).lines() {
             let mut fields = line.split('\t');
-            let (Some(ms), Some(id), Some(name)) = (fields.next(), fields.next(), fields.next())
+            let (Some(ms), Some(id), Some(name), Some(when)) =
+                (fields.next(), fields.next(), fields.next(), fields.next())
             else {
                 continue;
             };
-            if let Ok(ms) = ms.parse() {
-                table.add(ms, id, name);
+            if let (Ok(ms), Ok(when)) = (ms.parse(), when.parse()) {
+                table.add(Win { ms, when }, id, name);
             }
         }
         table
@@ -165,7 +191,10 @@ impl Table {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut text = String::new();
         for row in &self.rows {
-            text.push_str(&format!("{}\t{}\t{}\n", row.ms, row.id, row.name));
+            text.push_str(&format!(
+                "{}\t{}\t{}\t{}\n",
+                row.ms, row.id, row.name, row.when
+            ));
         }
         text.into_bytes()
     }
@@ -179,20 +208,22 @@ impl Table {
         self.rows.iter().position(|r| r.id == id)
     }
 
-    /// Puts a time of a player in the table, as a row of its own beside
+    /// Puts a win of a player in the table, as a row of its own beside
     /// the player's other rows: after the times that are as good (who
     /// was first stays first).  False if the table is as it was: the time
-    /// is not among the best [`ROWS`], or the player has a row with this
-    /// very time, to the millisecond, which is this time written before
-    /// (e.g., by a write whose answer did not come).
-    pub fn add(&mut self, ms: u64, id: &str, name: &str) -> bool {
+    /// is not among the best [`ROWS`], or the player has a row of this
+    /// very win (the same time, solved at the same moment), which is
+    /// this win written before (e.g., by a write whose answer did not
+    /// come).
+    pub fn add(&mut self, win: Win, id: &str, name: &str) -> bool {
         let id = field(id, usize::MAX);
-        let at = self.rows.iter().take_while(|r| r.ms <= ms).count();
-        if at >= ROWS || self.rows.iter().any(|r| r.ms == ms && r.id == id) {
+        let at = self.rows.iter().take_while(|r| r.ms <= win.ms).count();
+        if at >= ROWS || self.rows.iter().any(|r| r.win() == win && r.id == id) {
             return false;
         }
         let name = field(name, NAME_CHARS);
-        self.rows.insert(at, Row { ms, id, name });
+        let Win { ms, when } = win;
+        self.rows.insert(at, Row { ms, when, id, name });
         self.rows.truncate(ROWS);
         true
     }
@@ -203,7 +234,7 @@ impl Table {
 /// table once they are written.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Pending {
-    times: Vec<(Kind, u64)>,
+    times: Vec<(Kind, Win)>,
 }
 
 impl Pending {
@@ -211,10 +242,13 @@ impl Pending {
     pub fn parse(text: &str) -> Pending {
         let mut pending = Pending::default();
         for line in text.lines() {
-            if let Some((kind, ms)) = line.split_once(' ')
-                && let (Some(kind), Ok(ms)) = (Kind::named(kind), ms.parse())
+            let mut fields = line.split(' ');
+            if let (Some(kind), Some(ms), Some(when)) =
+                (fields.next(), fields.next(), fields.next())
+                && let (Some(kind), Ok(ms), Ok(when)) =
+                    (Kind::named(kind), ms.parse(), when.parse())
             {
-                pending.add(kind, ms);
+                pending.add(kind, Win { ms, when });
             }
         }
         pending
@@ -223,7 +257,7 @@ impl Pending {
     pub fn to_text(&self) -> String {
         self.times
             .iter()
-            .map(|(kind, ms)| format!("{} {ms}\n", kind.name()))
+            .map(|(kind, win)| format!("{} {} {}\n", kind.name(), win.ms, win.when))
             .collect()
     }
 
@@ -232,39 +266,39 @@ impl Pending {
     }
 
     /// The times, the one that has waited longest first.
-    pub fn times(&self) -> &[(Kind, u64)] {
+    pub fn times(&self) -> &[(Kind, Win)] {
         &self.times
     }
 
     /// The times to write for a kind of puzzle, the one that has waited
     /// longest first.
-    pub fn of(&self, kind: Kind) -> impl Iterator<Item = u64> + '_ {
+    pub fn of(&self, kind: Kind) -> impl Iterator<Item = Win> + '_ {
         self.times.iter().filter(move |t| t.0 == kind).map(|t| t.1)
     }
 
     /// A time to write.  If [`ROWS`] times of its kind wait already, it
     /// takes the place of the worst of them (of equals, the one that has
     /// waited least), and false if each of them is as good.
-    pub fn add(&mut self, kind: Kind, ms: u64) -> bool {
+    pub fn add(&mut self, kind: Kind, win: Win) -> bool {
         let of_kind = self.times.iter().enumerate().filter(|(_, t)| t.0 == kind);
         if of_kind.clone().count() >= ROWS
             && let Some((n, most)) = of_kind
-                .map(|(n, t)| (n, t.1))
+                .map(|(n, t)| (n, t.1.ms))
                 .max_by_key(|&(n, time)| (time, n))
         {
-            if most <= ms {
+            if most <= win.ms {
                 return false;
             }
             self.times.remove(n);
         }
-        self.times.push((kind, ms));
+        self.times.push((kind, win));
         true
     }
 
-    /// The time was written (or need not be): it waits no longer.  The
+    /// The win was written (or need not be): it waits no longer.  The
     /// other times of its kind still do.  False if it did not wait.
-    pub fn done(&mut self, kind: Kind, ms: u64) -> bool {
-        match self.times.iter().position(|t| *t == (kind, ms)) {
+    pub fn done(&mut self, kind: Kind, win: Win) -> bool {
+        match self.times.iter().position(|t| *t == (kind, win)) {
             Some(n) => {
                 self.times.remove(n);
                 true
