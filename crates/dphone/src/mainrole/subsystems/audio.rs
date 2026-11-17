@@ -399,9 +399,9 @@ impl AudioService {
         self.refresh();
     }
 
-    /// Start or stop the ringer.  `name` picks a built-in ring or a user
-    /// ringtone from `/nvdata/ringtones`.  The ringer takes the place of
-    /// an app's sound file.
+    /// Start or stop the ringer.  `name` picks a built-in ringtone or a
+    /// user ringtone from `/nvdata/ringtones`.  The ringer takes the
+    /// place of an app's sound file.
     pub fn ring(&self, name: Option<&str>) {
         self.ring_with(name.map(super::ringtones::source));
     }
@@ -1448,7 +1448,7 @@ fn register_diag(ctx: &Context, service: AudioService) {
                     Ok(String::new())
                 }
                 AudioAction::Ring { name } => svc.available().map(|()| {
-                    svc.ring(Some(name.as_deref().unwrap_or(dphone_media::ring::BuiltinRing::DEFAULT.name())));
+                    svc.ring(Some(name.as_deref().unwrap_or(super::ringtones::DEFAULT)));
                     String::new()
                 }),
                 AudioAction::Volume { target, level } => {
@@ -1773,7 +1773,7 @@ mod volume_key_tests {
     async fn not_while_ringing_for_a_call() {
         let svc = service();
         add_call(&svc, CallState::Ringing);
-        svc.ring(Some("Classic"));
+        svc.ring(Some("Bell Phone"));
         key(&svc, 1);
         // The ringer's volume changed, and the ring is the call's still:
         // nothing ends it but call control.
@@ -1836,7 +1836,7 @@ mod volume_key_tests {
         let call = add_call(&svc, CallState::Ringing);
         let _ = svc.open(call);
         assert_eq!((sounding(&svc), preview(&svc)), ((false, AudioPath::None), None));
-        svc.ring(Some("Classic"));
+        svc.ring(Some("Bell Phone"));
         // The preview's time coming up, or another key, does not stop
         // the call's ring.
         svc.end_volume_preview(Some(mine));
@@ -1847,7 +1847,7 @@ mod volume_key_tests {
         let svc = service();
         key(&svc, 1);
         let mine = preview(&svc).unwrap();
-        svc.ring(Some("Classic"));
+        svc.ring(Some("Bell Phone"));
         assert_eq!(preview(&svc), None);
         svc.end_volume_preview(Some(mine));
         tokio::time::sleep(VOLUME_PREVIEW + Duration::from_millis(200)).await;
@@ -1857,7 +1857,7 @@ mod volume_key_tests {
     #[tokio::test]
     async fn a_ringtone_tried_in_the_settings_is_left_alone() {
         let svc = service();
-        svc.command(Command::PlaySound { name: "Classic".into() }).unwrap();
+        svc.command(Command::PlaySound { name: "Bell Phone".into() }).unwrap();
         assert!(sounding(&svc).0);
         key(&svc, 1);
         // Its volume changes; it stays the settings' preview, which

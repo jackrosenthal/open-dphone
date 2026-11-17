@@ -104,6 +104,11 @@ let
     install -m 0644 ${../assets/alarm-tones}/*.wav ${../assets/alarm-tones}/NOTICE \
       ${../assets/alarm-tones}/LICENSE-Apache-2.0.txt $out/usr/share/dphone/alarm-tones/
 
+    # The built-in ringtones, likewise (assets/ringtones/README.md).
+    install -d $out/usr/share/dphone/ringtones
+    install -m 0644 ${../assets/ringtones}/*.wav ${../assets/ringtones}/NOTICE \
+      ${../assets/ringtones}/LICENSE-Apache-2.0.txt $out/usr/share/dphone/ringtones/
+
     # The base trust bundle (Mozilla's certificate authorities for TLS
     # servers), at the path stock keeps its own.  `dphone` builds
     # `/nvdata/certs/certs.crt` from it and the provisioned certificates.

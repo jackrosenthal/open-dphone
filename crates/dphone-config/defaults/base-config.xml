@@ -121,7 +121,7 @@
     <setting id="display_mc_notification" value="1"/>
     <setting id="display_mc_notifications" value="1"/>
     <setting id="use_call_photos" value="0" url=""/>
-    <setting id="default_ringtone" value="Marimba" conflict="freeze"/>
+    <setting id="default_ringtone" value="Flutey Phone" conflict="freeze"/>
 
     <!-- Display -->
     <setting id="brightness" value="5"/>
@@ -160,12 +160,96 @@
 
     <ringtones>
         <tones>
-            <tone id="Marimba" display="Marimba" type="phone"/>
-            <tone id="Classic" display="Classic" type="phone"/>
-            <tone id="Chime" display="Chime" type="phone"/>
-            <tone id="Pulse" display="Pulse" type="phone"/>
-            <tone id="Rise" display="Rise" type="phone"/>
-            <tone id="Mellow" display="Mellow" type="phone"/>
+            <tone id="Flutey Phone" display="Flutey Phone" type="phone"/>
+            <tone id="Acheron" display="Acheron" type="phone"/>
+            <tone id="Andromeda" display="Andromeda" type="phone"/>
+            <tone id="Aquila" display="Aquila" type="phone"/>
+            <tone id="Argo Navis" display="Argo Navis" type="phone"/>
+            <tone id="Atria" display="Atria" type="phone"/>
+            <tone id="Bell Phone" display="Bell Phone" type="phone"/>
+            <tone id="Boötes" display="Boötes" type="phone"/>
+            <tone id="Callisto" display="Callisto" type="phone"/>
+            <tone id="Callisto Classic" display="Callisto Classic" type="phone"/>
+            <tone id="Canis Major" display="Canis Major" type="phone"/>
+            <tone id="Carina" display="Carina" type="phone"/>
+            <tone id="Cassiopeia" display="Cassiopeia" type="phone"/>
+            <tone id="Centaurus" display="Centaurus" type="phone"/>
+            <tone id="Chimey Phone" display="Chimey Phone" type="phone"/>
+            <tone id="Classic 1" display="Classic 1" type="phone"/>
+            <tone id="Classic 3" display="Classic 3" type="phone"/>
+            <tone id="Classic 4" display="Classic 4" type="phone"/>
+            <tone id="Classic 5" display="Classic 5" type="phone"/>
+            <tone id="Cygnus" display="Cygnus" type="phone"/>
+            <tone id="Digital 1" display="Digital 1" type="phone"/>
+            <tone id="Digital 3" display="Digital 3" type="phone"/>
+            <tone id="Digital 4" display="Digital 4" type="phone"/>
+            <tone id="Digital 5" display="Digital 5" type="phone"/>
+            <tone id="Digital Phone" display="Digital Phone" type="phone"/>
+            <tone id="Dione" display="Dione" type="phone"/>
+            <tone id="Dione Classic" display="Dione Classic" type="phone"/>
+            <tone id="Draco" display="Draco" type="phone"/>
+            <tone id="Eridani" display="Eridani" type="phone"/>
+            <tone id="Free Flight" display="Free Flight" type="phone"/>
+            <tone id="Ganymede" display="Ganymede" type="phone"/>
+            <tone id="Ganymede Classic" display="Ganymede Classic" type="phone"/>
+            <tone id="Girtab" display="Girtab" type="phone"/>
+            <tone id="Hydra" display="Hydra" type="phone"/>
+            <tone id="Iridium" display="Iridium" type="phone"/>
+            <tone id="Kuma" display="Kuma" type="phone"/>
+            <tone id="Luna" display="Luna" type="phone"/>
+            <tone id="Luna Classic" display="Luna Classic" type="phone"/>
+            <tone id="Lyra" display="Lyra" type="phone"/>
+            <tone id="Lyra Classic" display="Lyra Classic" type="phone"/>
+            <tone id="Machina" display="Machina" type="phone"/>
+            <tone id="Nasqueron" display="Nasqueron" type="phone"/>
+            <tone id="Oberon" display="Oberon" type="phone"/>
+            <tone id="Oberon Classic" display="Oberon Classic" type="phone"/>
+            <tone id="Orion" display="Orion" type="phone"/>
+            <tone id="Pegasus" display="Pegasus" type="phone"/>
+            <tone id="Perseus" display="Perseus" type="phone"/>
+            <tone id="Phobos" display="Phobos" type="phone"/>
+            <tone id="Phobos Classic" display="Phobos Classic" type="phone"/>
+            <tone id="Pyxis" display="Pyxis" type="phone"/>
+            <tone id="Rasalas" display="Rasalas" type="phone"/>
+            <tone id="Rigel" display="Rigel" type="phone"/>
+            <tone id="Ringtone 18" display="Ringtone 18" type="phone"/>
+            <tone id="Ringtone 19" display="Ringtone 19" type="phone"/>
+            <tone id="Ringtone 20" display="Ringtone 20" type="phone"/>
+            <tone id="Ringtone 21" display="Ringtone 21" type="phone"/>
+            <tone id="Ringtone 23" display="Ringtone 23" type="phone"/>
+            <tone id="Ringtone 24" display="Ringtone 24" type="phone"/>
+            <tone id="Ringtone 25" display="Ringtone 25" type="phone"/>
+            <tone id="Ringtone 26" display="Ringtone 26" type="phone"/>
+            <tone id="Ringtone 28" display="Ringtone 28" type="phone"/>
+            <tone id="Ringtone 29" display="Ringtone 29" type="phone"/>
+            <tone id="Ringtone 30" display="Ringtone 30" type="phone"/>
+            <tone id="Ringtone 31" display="Ringtone 31" type="phone"/>
+            <tone id="Ringtone 32" display="Ringtone 32" type="phone"/>
+            <tone id="Ringtone 33" display="Ringtone 33" type="phone"/>
+            <tone id="Ringtone 34" display="Ringtone 34" type="phone"/>
+            <tone id="Ringtone 35" display="Ringtone 35" type="phone"/>
+            <tone id="Ringtone 36" display="Ringtone 36" type="phone"/>
+            <tone id="Ringtone 37" display="Ringtone 37" type="phone"/>
+            <tone id="Ringtone 38" display="Ringtone 38" type="phone"/>
+            <tone id="Scarabaeus" display="Scarabaeus" type="phone"/>
+            <tone id="Sceptrum" display="Sceptrum" type="phone"/>
+            <tone id="Sceptrum Classic" display="Sceptrum Classic" type="phone"/>
+            <tone id="Sedna" display="Sedna" type="phone"/>
+            <tone id="Solarium" display="Solarium" type="phone"/>
+            <tone id="Solarium Classic" display="Solarium Classic" type="phone"/>
+            <tone id="Synth 1" display="Synth 1" type="phone"/>
+            <tone id="Synth 3" display="Synth 3" type="phone"/>
+            <tone id="Synth 5" display="Synth 5" type="phone"/>
+            <tone id="Testudo" display="Testudo" type="phone"/>
+            <tone id="Titania" display="Titania" type="phone"/>
+            <tone id="Triton" display="Triton" type="phone"/>
+            <tone id="Triton Classic" display="Triton Classic" type="phone"/>
+            <tone id="Umbriel" display="Umbriel" type="phone"/>
+            <tone id="Umbriel Classic" display="Umbriel Classic" type="phone"/>
+            <tone id="Ursa Minor" display="Ursa Minor" type="phone"/>
+            <tone id="Ursa Minor Classic" display="Ursa Minor Classic" type="phone"/>
+            <tone id="Vespa" display="Vespa" type="phone"/>
+            <tone id="Zeta" display="Zeta" type="phone"/>
         </tones>
     </ringtones>
 

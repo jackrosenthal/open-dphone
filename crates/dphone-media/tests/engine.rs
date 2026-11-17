@@ -10,7 +10,7 @@ use std::time::Duration;
 use dphone_media::dtmf::{DtmfEdge, EventPayload};
 use dphone_media::fake::{FakeAudio, FakeAudioState};
 use dphone_media::g711::Law;
-use dphone_media::ring::{BuiltinRing, RingSource};
+use dphone_media::ring::RingSource;
 use dphone_media::rtp::{self, RtpHeader};
 use dphone_media::srtp::{MasterKey, SrtpContext, Suite};
 use dphone_media::tone::{Osc, ToneSpec};
@@ -460,7 +460,9 @@ fn tones_ring_and_volume() {
         assert!(r.events.try_iter().any(|e| e == Event::ToneEnded));
         r.audio.lock().unwrap().played.clear();
 
-        r.core.handle(Command::PlayRing(Some(RingSource::Builtin(BuiltinRing::Pulse)), 4096));
+        let ring: std::sync::Arc<[i16]> =
+            (0..4800).map(|i| ((i as f64 * 988.0 * std::f64::consts::TAU / 16_000.0).sin() * 8000.0) as i16).collect();
+        r.core.handle(Command::PlayRing(Some(RingSource::Pcm { samples: ring, pause_ms: 2000 }), 4096));
         for _ in 0..30 {
             r.core.tick();
         }

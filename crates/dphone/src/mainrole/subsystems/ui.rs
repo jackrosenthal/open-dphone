@@ -122,14 +122,8 @@ impl Display for TapDisplay {
 }
 
 fn ui_config(ctx: &Context, cfg: Option<&Config>) -> UiConfig {
-    let mut ringtones: Vec<String> = dphone_media::ring::BuiltinRing::ALL.iter().map(|r| r.name().to_string()).collect();
-    // The user's own ringtones in `/nvdata/ringtones`, after the built-in
-    // ones (a file named like a built-in ring is not offered twice).
-    for name in super::ringtones::names(&ctx.paths.nvdata) {
-        if !ringtones.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
-            ringtones.push(name);
-        }
-    }
+    // The built-in ringtones, and then the user's own in `/nvdata/ringtones`.
+    let ringtones = super::ringtones::all(&ctx.paths.nvdata);
     let mut out = UiConfig { ringtones, ..UiConfig::default() };
     out.ringtone = out.ringtones.first().cloned().unwrap_or_default();
     let Some(cfg) = cfg else { return out };

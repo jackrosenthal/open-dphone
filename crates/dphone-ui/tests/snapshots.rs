@@ -57,8 +57,8 @@ impl Rig {
         let store = Store::new(model);
         let cfg = UiConfig {
             utc_offset_secs: -7 * 3600,
-            ringtone: "Chime".into(),
-            ringtones: vec!["Chime".into(), "Classic".into(), "Pulse".into()],
+            ringtone: "Flutey Phone".into(),
+            ringtones: vec!["Flutey Phone".into(), "Acheron".into(), "Andromeda".into()],
             ..Default::default()
         };
         let mut ui = Ui::from_hal(&mut hal, store.clone(), cfg);

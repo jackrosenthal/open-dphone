@@ -1,0 +1,120 @@
+The ringtones beside this file (the 90 .wav files listed below) are
+derived from the ringtones of the Android Open Source Project:
+
+  Copyright (C) The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License"); you may
+  not use these files except in compliance with the License.  A copy of
+  the License is in the file LICENSE-Apache-2.0.txt beside this file, and
+  at http://www.apache.org/licenses/LICENSE-2.0.
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
+The files are changed from the originals: each was converted from Ogg
+Vorbis to a 16 kHz mono mu-law WAV file, cut to the sound of one pass
+of the original (without the silence before and after it, and, where
+the original holds two equal passes, to one of them), and changed in
+level.  The originals are in the repository
+https://android.googlesource.com/platform/frameworks/base, directory
+data/sounds, at commit 1cdfff555f4a21f71ccc978290e2e212e2f8b168:
+
+  flutey-phone.wav        Ring_Synth_04.ogg
+  acheron.wav             ringtones/ogg/Acheron.ogg
+  andromeda.wav           ringtones/ogg/Andromeda.ogg
+  aquila.wav              ringtones/ogg/Aquila.ogg
+  argo-navis.wav          ringtones/ogg/ArgoNavis.ogg
+  atria.wav               ringtones/material/ogg/Atria.ogg
+  bell-phone.wav          Ring_Classic_02.ogg
+  bootes.wav              ringtones/ogg/Bootes.ogg
+  callisto.wav            ringtones/material/ogg/Callisto.ogg
+  callisto-classic.wav    ringtones/ogg/Callisto.ogg
+  canis-major.wav         ringtones/ogg/CanisMajor.ogg
+  carina.wav              ringtones/ogg/Carina.ogg
+  cassiopeia.wav          ringtones/CASSIOPEIA.ogg
+  centaurus.wav           ringtones/ogg/Centaurus.ogg
+  chimey-phone.wav        Ring_Synth_02.ogg
+  classic-1.wav           Ring_Classic_01.ogg
+  classic-3.wav           Ring_Classic_03.ogg
+  classic-4.wav           Ring_Classic_04.ogg
+  classic-5.wav           Ring_Classic_05.ogg
+  cygnus.wav              ringtones/ogg/Cygnus.ogg
+  digital-1.wav           Ring_Digital_01.ogg
+  digital-3.wav           Ring_Digital_03.ogg
+  digital-4.wav           Ring_Digital_04.ogg
+  digital-5.wav           Ring_Digital_05.ogg
+  digital-phone.wav       Ring_Digital_02.ogg
+  dione.wav               ringtones/material/ogg/Dione.ogg
+  dione-classic.wav       ringtones/ogg/Dione.ogg
+  draco.wav               ringtones/ogg/Draco.ogg
+  eridani.wav             ringtones/ogg/Eridani.ogg
+  free-flight.wav         ringtones/FreeFlight.ogg
+  ganymede.wav            ringtones/material/ogg/Ganymede.ogg
+  ganymede-classic.wav    ringtones/ogg/Ganymede.ogg
+  girtab.wav              ringtones/ogg/Girtab.ogg
+  hydra.wav               ringtones/ogg/Hydra.ogg
+  iridium.wav             ringtones/ogg/Iridium.ogg
+  kuma.wav                ringtones/ogg/Kuma.ogg
+  luna.wav                ringtones/material/ogg/Luna.ogg
+  luna-classic.wav        ringtones/ogg/Luna.ogg
+  lyra.wav                ringtones/ogg/Lyra.ogg
+  lyra-classic.wav        ringtones/Lyra.ogg
+  machina.wav             ringtones/ogg/Machina.ogg
+  nasqueron.wav           ringtones/ogg/Nasqueron.ogg
+  oberon.wav              ringtones/material/ogg/Oberon.ogg
+  oberon-classic.wav      ringtones/ogg/Oberon.ogg
+  orion.wav               ringtones/ogg/Orion.ogg
+  pegasus.wav             ringtones/ogg/Pegasus.ogg
+  perseus.wav             ringtones/ogg/Perseus.ogg
+  phobos.wav              ringtones/material/ogg/Phobos.ogg
+  phobos-classic.wav      ringtones/ogg/Phobos.ogg
+  pyxis.wav               ringtones/material/ogg/Pyxis.ogg
+  rasalas.wav             ringtones/ogg/Rasalas.ogg
+  rigel.wav               ringtones/ogg/Rigel.ogg
+  ringtone-18.wav         ringtones/ringtone18.ogg
+  ringtone-19.wav         ringtones/ringtone19.ogg
+  ringtone-20.wav         ringtones/ringtone20.ogg
+  ringtone-21.wav         ringtones/ringtone21.ogg
+  ringtone-23.wav         ringtones/ringtone23.ogg
+  ringtone-24.wav         ringtones/ringtone24.ogg
+  ringtone-25.wav         ringtones/ringtone25.ogg
+  ringtone-26.wav         ringtones/ringtone26.ogg
+  ringtone-28.wav         ringtones/ringtone28.ogg
+  ringtone-29.wav         ringtones/ringtone29.ogg
+  ringtone-30.wav         ringtones/ringtone30.ogg
+  ringtone-31.wav         ringtones/ringtone31.ogg
+  ringtone-32.wav         ringtones/ringtone32.ogg
+  ringtone-33.wav         ringtones/ringtone33.ogg
+  ringtone-34.wav         ringtones/ringtone34.ogg
+  ringtone-35.wav         ringtones/ringtone35.ogg
+  ringtone-36.wav         ringtones/ringtone36.ogg
+  ringtone-37.wav         ringtones/ringtone37.ogg
+  ringtone-38.wav         ringtones/ringtone38.ogg
+  scarabaeus.wav          ringtones/ogg/Scarabaeus.ogg
+  sceptrum.wav            ringtones/ogg/Sceptrum.ogg
+  sceptrum-classic.wav    ringtones/Sceptrum.ogg
+  sedna.wav               ringtones/material/ogg/Sedna.ogg
+  solarium.wav            ringtones/ogg/Solarium.ogg
+  solarium-classic.wav    ringtones/Solarium.ogg
+  synth-1.wav             Ring_Synth_01.ogg
+  synth-3.wav             Ring_Synth_03.ogg
+  synth-5.wav             Ring_Synth_05.ogg
+  testudo.wav             ringtones/ogg/Testudo.ogg
+  titania.wav             ringtones/material/ogg/Titania.ogg
+  triton.wav              ringtones/material/ogg/Triton.ogg
+  triton-classic.wav      ringtones/ogg/Triton.ogg
+  umbriel.wav             ringtones/material/ogg/Umbriel.ogg
+  umbriel-classic.wav     ringtones/ogg/Umbriel.ogg
+  ursa-minor.wav          ringtones/ogg/UrsaMinor.ogg
+  ursa-minor-classic.wav  ringtones/URSAMINOR.ogg
+  vespa.wav               ringtones/Vespa.ogg
+  zeta.wav                ringtones/ogg/Zeta.ogg
+
+From the NOTICE file of that repository:
+
+  Android Code
+  Copyright 2005-2008 The Android Open Source Project
+
+  This product includes software developed as part of
+  The Android Open Source Project (http://source.android.com).

@@ -116,7 +116,8 @@ fn fetched_config_network_selection_and_typed_view() {
     assert_eq!(c.blf_items_url(), Some("http://10.10.0.2/blf.xml"));
     let r = c.ringtones();
     assert_eq!(r.active, "Chime");
-    assert_eq!(r.tones.len(), 7);
+    // The 90 built-in ringtones of the base layer and the provisioned one.
+    assert_eq!(r.tones.len(), 91);
     assert_eq!(r.alerts[0].ring_type, "answer");
     assert_eq!(c.multicast_listeners()[0].addr, "239.1.1.1");
     assert_eq!(c.multicast_listeners()[0].interrupt_calls, 1);

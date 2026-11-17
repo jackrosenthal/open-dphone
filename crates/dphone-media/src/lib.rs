@@ -68,7 +68,6 @@ pub mod dtmf;
 pub mod g711;
 pub mod jitter;
 pub mod ring;
-pub mod ringsynth;
 pub mod rtp;
 pub mod srtp;
 pub mod tone;

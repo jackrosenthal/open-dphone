@@ -1,80 +1,20 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-//! Ring playback: the built-in ringtones, synthesized from scores by
-//! [`crate::ringsynth`] (the stock ringtones cannot be shipped; these are
-//! original), and WAV files (PCM, mu-law, or A-law) for user ringtones.
-//! The same player plays a sound file once for an app
-//! ([`RingSource::Once`]).  Output is 16 kHz mono, 10 ms at a time.
+//! Ring playback: ringtones and alarm tones, 16 kHz samples looped with a
+//! pause between passes, and the decoding of the WAV files (PCM, mu-law,
+//! or A-law) they come in.  The same player plays a sound file once for an
+//! app ([`RingSource::Once`]).  Output is 16 kHz mono, 10 ms at a time.
 
 use std::sync::Arc;
 
 use crate::bands::WB;
 use crate::g711::Law;
-use crate::ringsynth::{self, Score, Synth};
 
-pub const RING_RATE: u32 = ringsynth::RATE;
-
-/// Built-in ringtones, all original.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum BuiltinRing {
-    /// A short phrase on a marimba.
-    Marimba,
-    /// A telephone bell: two gongs under one clapper, two seconds on and
-    /// four off.
-    Classic,
-    /// Three falling bell notes.
-    Chime,
-    /// Two short rounded beeps.
-    Pulse,
-    /// An electric piano's rising arpeggio.
-    Rise,
-    /// Two soft notes, for a quiet office.
-    Mellow,
-}
-
-impl BuiltinRing {
-    /// What a phone rings with when nothing else is chosen, and what a
-    /// name that is no ringtone (any more) rings with.
-    pub const DEFAULT: BuiltinRing = Self::Marimba;
-
-    /// Every built-in ring, the default first.
-    pub const ALL: [BuiltinRing; 6] = [Self::Marimba, Self::Classic, Self::Chime, Self::Pulse, Self::Rise, Self::Mellow];
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Marimba => "Marimba",
-            Self::Classic => "Classic",
-            Self::Chime => "Chime",
-            Self::Pulse => "Pulse",
-            Self::Rise => "Rise",
-            Self::Mellow => "Mellow",
-        }
-    }
-
-    pub fn from_name(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|r| r.name().eq_ignore_ascii_case(name))
-    }
-
-    /// The length of one cycle, the phrase and the pause after it.
-    pub fn cycle_ms(self) -> u32 {
-        u32::from(self.score().cycle_ms)
-    }
-
-    fn score(self) -> &'static Score {
-        match self {
-            Self::Marimba => &ringsynth::MARIMBA,
-            Self::Classic => &ringsynth::CLASSIC,
-            Self::Chime => &ringsynth::CHIME,
-            Self::Pulse => &ringsynth::PULSE,
-            Self::Rise => &ringsynth::RISE,
-            Self::Mellow => &ringsynth::MELLOW,
-        }
-    }
-}
+/// Samples per second of everything the player plays.
+pub const RING_RATE: u32 = 16_000;
 
 /// What to ring with.
 #[derive(Clone, Debug)]
 pub enum RingSource {
-    Builtin(BuiltinRing),
     /// 16 kHz samples, looped with a pause between passes.
     Pcm { samples: Arc<[i16]>, pause_ms: u32 },
     /// 16 kHz samples played once, from sample `start` to the end.
@@ -82,12 +22,8 @@ pub enum RingSource {
     Once { samples: Arc<[i16]>, start: usize, token: u32 },
 }
 
-// The synthesizer's voices are kept in place: a ring starts on the audio
-// thread, which does not allocate.
-#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 enum State {
-    Synth(Synth),
     Pcm { samples: Arc<[i16]>, pos: usize, pause: u32, pause_left: u32 },
     Once { samples: Arc<[i16]>, pos: usize, token: u32 },
 }
@@ -106,8 +42,8 @@ const LIMIT_CEILING: i32 = 32_000;
 
 /// Leaves samples up to [`LIMIT_KNEE`] alone and bends louder ones over
 /// smoothly (the slope is continuous at the knee) so that none exceeds
-/// [`LIMIT_CEILING`]: a built-in ring turned up past full scale rounds off
-/// rather than clips.
+/// [`LIMIT_CEILING`]: a ring turned up past full scale rounds off rather
+/// than clips.
 fn soft_limit(v: i32) -> i16 {
     let mag = v.abs();
     if mag <= LIMIT_KNEE {
@@ -122,7 +58,6 @@ fn soft_limit(v: i32) -> i16 {
 impl RingPlayer {
     pub fn new(source: RingSource) -> Self {
         let state = match source {
-            RingSource::Builtin(b) => State::Synth(Synth::new(b.score())),
             RingSource::Pcm { samples, pause_ms } => State::Pcm { samples, pos: 0, pause: pause_ms * (RING_RATE / 1000), pause_left: 0 },
             RingSource::Once { samples, start, token } => {
                 let pos = start.min(samples.len());
@@ -170,19 +105,16 @@ impl RingPlayer {
                 out[n..].fill(0);
                 *pos += n;
             }
-            State::Synth(synth) => {
-                // The gain goes on before the limiter, so that a loud ring
-                // is rounded off rather than clipped.
-                let mut mix = [0i32; WB];
-                synth.mix_into(&mut mix);
-                let gain = self.gain_q12.clamp(0, 8 << 12);
-                for (o, m) in out.iter_mut().zip(mix) {
-                    *o = soft_limit((m.clamp(-65_535, 65_535) * gain) >> 12);
-                }
-                return;
+        }
+        if self.gain_q12 <= 4096 {
+            // Nothing can pass full scale.
+            crate::bands::scale(out, self.gain_q12.max(0));
+        } else {
+            let gain = self.gain_q12.min(8 << 12);
+            for o in out.iter_mut() {
+                *o = soft_limit((i32::from(*o) * gain) >> 12);
             }
         }
-        crate::bands::scale(out, self.gain_q12);
     }
 }
 
@@ -304,97 +236,23 @@ mod tests {
         assert_eq!(decode_wav(&wav(3, 1, 16_000, 32, &pcm)), Err(WavError::Unsupported("sample format")));
     }
 
-    /// `cycles` cycles of a built-in ring at `gain_q12`.
-    fn render(ring: BuiltinRing, cycles: u32, gain_q12: i32) -> Vec<i16> {
-        let mut p = RingPlayer::new(RingSource::Builtin(ring));
+    /// A loud 1 kHz pass of 0.1 s (peak 26,000, the loudest a ringtone is
+    /// stored at).
+    fn pass() -> Arc<[i16]> {
+        (0..1600).map(|i| ((f64::from(i) * std::f64::consts::TAU / 16.0).sin() * 26_000.0) as i16).collect()
+    }
+
+    /// [`pass`] and a 0.1 s pause, through the player at `gain_q12`.
+    fn render(gain_q12: i32) -> Vec<i16> {
+        let mut p = RingPlayer::new(RingSource::Pcm { samples: pass(), pause_ms: 100 });
         p.set_gain_q12(gain_q12);
         let mut pcm = Vec::new();
-        for _ in 0..ring.cycle_ms() / 10 * cycles {
+        for _ in 0..20 {
             let mut buf = [0i16; WB];
             p.fill(&mut buf);
             pcm.extend_from_slice(&buf);
         }
         pcm
-    }
-
-    fn rms(pcm: &[i16]) -> f64 {
-        (pcm.iter().map(|&s| f64::from(s) * f64::from(s)).sum::<f64>() / pcm.len() as f64).sqrt()
-    }
-
-    #[test]
-    fn builtin_ring_names() {
-        assert_eq!(BuiltinRing::ALL[0], BuiltinRing::DEFAULT);
-        for ring in BuiltinRing::ALL {
-            assert_eq!(BuiltinRing::from_name(ring.name()), Some(ring));
-            assert_eq!(BuiltinRing::from_name(&ring.name().to_uppercase()), Some(ring));
-        }
-        // The names saved settings may hold still name a ring.
-        for name in ["Classic", "Chime", "Pulse", "Rise", "Mellow"] {
-            assert!(BuiltinRing::from_name(name).is_some(), "{name}");
-        }
-        assert_eq!(BuiltinRing::from_name("Soft"), None);
-        assert_eq!(BuiltinRing::from_name(""), None);
-    }
-
-    #[test]
-    fn builtin_rings_are_a_phrase_and_a_pause() {
-        for ring in BuiltinRing::ALL {
-            let cycle = (ring.cycle_ms() * (RING_RATE / 1000)) as usize;
-            assert!((3000..=6000).contains(&ring.cycle_ms()) && ring.cycle_ms() % 10 == 0, "{ring:?}");
-            let pcm = render(ring, 3, 4096);
-            assert_eq!(pcm.len(), 3 * cycle);
-            let one = &pcm[..cycle];
-
-            // No clipping, and nowhere near the limiter at unity gain.
-            let peak = one.iter().map(|s| i32::from(*s).abs()).max().unwrap();
-            assert!((6000..=16_000).contains(&peak), "{ring:?} peak {peak}");
-
-            // It starts from silence, and ends in silence: at least two
-            // seconds more than 50 dB below its peak, the last half second
-            // of them nothing at all, before it comes round.
-            assert_eq!(one[0], 0, "{ring:?}");
-            let last = one.iter().rposition(|s| i32::from(s.abs()) > peak / 300).unwrap();
-            assert!(cycle - last >= 32_000, "{ring:?} sounds until {last} of {cycle}");
-            assert!(one[cycle - 8000..].iter().all(|&s| s == 0), "{ring:?}");
-            let first_loud = one.iter().position(|s| s.abs() > 500).unwrap();
-            let last_loud = one.iter().rposition(|s| s.abs() > 500).unwrap();
-            assert!(first_loud < 800, "{ring:?} is late: {first_loud}");
-            assert!(last_loud > 4000, "{ring:?} is too short: {last_loud}");
-
-            // It loops seamlessly: every cycle is the first one again.
-            assert_eq!(one, &pcm[cycle..2 * cycle], "{ring:?} second cycle");
-            assert_eq!(one, &pcm[2 * cycle..], "{ring:?} third cycle");
-
-            // No clicks (`ringsynth` tests each note's start and end): the
-            // wave never jumps by as much as its own peak.
-            let step = one.windows(2).map(|w| (i32::from(w[1]) - i32::from(w[0])).abs()).max().unwrap();
-            assert!(step < peak, "{ring:?} steps by {step}, peak {peak}");
-
-            // About as loud as the rings these replace.  The old default,
-            // a 9000-peak warble of 440 Hz and 480 Hz, was 6340 RMS, but
-            // at the bottom of what the loudspeaker gives; through a 450 Hz
-            // high-pass filter and A-weighting it measured 3000, and the
-            // old rings near 1 kHz 3500 to 5400, where these measure 3800
-            // to 4500 (and Mellow, the soft one, 2900).  Unweighted, the
-            // loudest 400 ms of each:
-            let loudest = one.chunks(6400).map(rms).fold(0.0, f64::max);
-            assert!((3200.0..=4600.0).contains(&loudest), "{ring:?} loudest 400 ms {loudest:.0}");
-        }
-    }
-
-    #[test]
-    fn builtin_rings_fit_the_voices() {
-        // The player is made and kept on the audio thread, in place.
-        assert!(std::mem::size_of::<RingPlayer>() <= 1024, "{}", std::mem::size_of::<RingPlayer>());
-        for ring in BuiltinRing::ALL {
-            let mut synth = Synth::new(ring.score());
-            for _ in 0..ring.cycle_ms() / 10 * 2 {
-                synth.mix_into(&mut [0i32; WB]);
-            }
-            let (dropped, most) = synth.load();
-            assert_eq!(dropped, 0, "{ring:?}");
-            assert!((1..=ringsynth::VOICES).contains(&most), "{ring:?} {most}");
-        }
     }
 
     #[test]
@@ -409,17 +267,18 @@ mod tests {
             assert_eq!(i32::from(soft_limit(-v)), -out);
             last = out;
         }
-        // The top of the volume scale is 15 dB above unity.
-        for ring in BuiltinRing::ALL {
-            let pcm = render(ring, 1, 23_033);
-            let peak = pcm.iter().map(|s| i32::from(*s).abs()).max().unwrap();
-            assert!(peak > LIMIT_KNEE && peak <= LIMIT_CEILING, "{ring:?} peak {peak}");
-            // Unity is the same samples scaled.
-            let quiet = render(ring, 1, 2048);
-            let unity = render(ring, 1, 4096);
-            assert!(quiet.iter().zip(&unity).all(|(q, u)| (i32::from(*q) - i32::from(*u) / 2).abs() <= 1), "{ring:?}");
-        }
-        assert!(render(BuiltinRing::DEFAULT, 1, 0).iter().all(|&s| s == 0));
+        // The top of the volume scale is 15 dB above unity: rounded off,
+        // and still louder than one step down.
+        let peak = |pcm: &[i16]| pcm.iter().map(|s| i32::from(*s).abs()).max().unwrap();
+        let top = render(23_033);
+        assert!(peak(&top) > 30_000 && peak(&top) <= LIMIT_CEILING, "{}", peak(&top));
+        assert!(peak(&render(16_306)) < peak(&top));
+        // At unity and below, the samples are the stored ones, scaled.
+        let unity = render(4096);
+        assert_eq!(unity[..1600], pass()[..]);
+        let quiet = render(2048);
+        assert!(quiet.iter().zip(&unity).all(|(q, u)| (i32::from(*q) - i32::from(*u) / 2).abs() <= 1));
+        assert!(render(0).iter().all(|&s| s == 0));
     }
 
     #[test]
@@ -440,7 +299,7 @@ mod tests {
         // A start beyond the end is the end.
         let p = RingPlayer::new(RingSource::Once { samples, start: 9000, token: 1 });
         assert_eq!(p.one_shot(), Some((1, 400, true)));
-        assert_eq!(RingPlayer::new(RingSource::Builtin(BuiltinRing::Classic)).one_shot(), None);
+        assert_eq!(RingPlayer::new(RingSource::Pcm { samples: Arc::from([1i16]), pause_ms: 0 }).one_shot(), None);
     }
 
     #[test]

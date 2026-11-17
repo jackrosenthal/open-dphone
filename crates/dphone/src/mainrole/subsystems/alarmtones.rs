@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use dphone_media::ring::{BuiltinRing, RingSource, decode_wav};
+use dphone_media::ring::{RingSource, decode_wav};
 use log::warn;
 
 /// Where the image keeps the tones.
@@ -106,11 +106,11 @@ pub fn source_in(dir: &Path, name: &str) -> RingSource {
         }
         Ok(_) => {
             warn!("alarm tone {}: {} is empty", tone.name, path.display());
-            RingSource::Builtin(BuiltinRing::DEFAULT)
+            super::ringtones::source(super::ringtones::DEFAULT)
         }
         Err(e) => {
             warn!("alarm tone {}: {}: {e}", tone.name, path.display());
-            RingSource::Builtin(BuiltinRing::DEFAULT)
+            super::ringtones::source(super::ringtones::DEFAULT)
         }
     }
 }
@@ -185,6 +185,11 @@ mod tests {
         }
         // Without its file a tone still rings: with the default ringtone.
         let empty = tempfile::tempdir().unwrap();
-        assert!(matches!(source_in(empty.path(), "Osmium"), RingSource::Builtin(BuiltinRing::DEFAULT)));
+        let default = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/ringtones/flutey-phone.wav");
+        let default = decode_wav(&std::fs::read(default).unwrap()).unwrap();
+        match source_in(empty.path(), "Osmium") {
+            RingSource::Pcm { samples, .. } => assert_eq!(samples[..], default[..]),
+            other => panic!("{other:?}"),
+        }
     }
 }

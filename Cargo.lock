@@ -1227,7 +1227,6 @@ name = "dphone-media"
 version = "3.0.0"
 dependencies = [
  "aes",
- "clap",
  "dphone-vpm",
  "getrandom 0.2.17",
  "hmac",
