@@ -5,7 +5,7 @@ description: Open firmware for the Digium D-series desk phones, and Open DPMA, t
 
 # Open DPhone
 
-Open DPhone is open-source firmware for the Digium D-series desk phones: the D40, D45, D50, D60, D62, D65, and D70.  Open DPhone replaces the stock firmware with a mainline Linux kernel and a phone application written in Rust, and is licensed under the GNU General Public License, version 2 or later.
+Open DPhone is open-source firmware for the Digium D-series desk phones: the D40, D45, D50, D60, D62, D65, and D70.  Open DPhone replaces the stock firmware with a mainline Linux kernel and a phone application written in Rust.
 
 <link rel="stylesheet" href="assets/phones/viewer.css">
 
@@ -82,9 +82,6 @@ Open DPhone is open-source firmware for the Digium D-series desk phones: the D40
       <img class="phone-viewer__screen" style="--n: 8" src="assets/phones/d70/screens/09-call-conference.webp" alt="" loading="lazy">
     </span>
 
-[Download the firmware](https://github.com/jackrosenthal/open-dphone/releases){ .md-button .md-button--primary }
-[Install Open DPMA](open-dpma/installation.md){ .md-button }
-
 Open DPhone is an independent project and is not affiliated with or endorsed by Digium or Sangoma.
 
 ## Features
@@ -92,7 +89,6 @@ Open DPhone is an independent project and is not affiliated with or endorsed by 
 - **Apps.**  Twelve apps are built in: Alarms, Calendar, Contacts, Diagnostics, Hot Desking, Parking, Queues, Status, Voicemail, and the games Box Pusher, Desk Sparrow, and Light Up.  Apps are WebAssembly components.  You can install more from the phone's web interface, or write one with the [App SDK](app-sdk/index.md).
 - **Themes.**  The color models (D60, D62, and D65) come with 42 themes.  Each theme pairs a wallpaper with a color palette that applies to every screen, and eight of the wallpapers are animated on the idle screen.  With Open DPMA, a user's theme follows the user to other phones and survives a factory reset.  A provisioning server can also set the theme, or supply a custom wallpaper and a matching palette.
 - **Web interface.**  Manage calls, accounts, contacts, preferences, Bluetooth devices, alarms, apps, network settings, provisioning, and logs from a browser.  The web interface also mirrors the phone's screen and includes a shell.
-- **Safe firmware updates.**  Each update is written to the inactive firmware bank, so the running firmware stays intact.  A new image boots on a trial basis, and the phone rolls back automatically if the new image fails to come up.  The web interface also installs stock firmware images, so a phone can return to stock firmware.
 - **Remote administration.**  Every phone has an SSH server with public-key login, a serial console on the EHS port, and a `/metrics` endpoint for monitoring.  Each can be turned on or off per phone.
 
 ## Installation
