@@ -112,15 +112,21 @@ mod tests {
     }
 
     #[test]
-    fn updates_notify_the_changed_topic() {
+    fn update_notifies_only_on_change() {
         let store = Store::new(Model::D40);
         let sub = store.subscribe([Topic::Audio, Topic::Calls]);
+        assert!(sub.try_take().is_none());
+        store.update::<Audio, _>(|a| a.muted = false); // no change
+        assert!(sub.try_take().is_none());
         let before = store.get::<Audio>();
         store.update::<Audio, _>(|a| a.muted = true);
         store.update::<Audio, _>(|a| a.speaker_volume = 9);
         let w = sub.try_take().unwrap();
         assert_eq!(w.topics, TopicSet::of(Topic::Audio)); // coalesced
         assert!(!before.muted && store.get::<Audio>().muted); // snapshots immutable
+        store.update::<Network, _>(|n| n.phase = NetPhase::Up); // not subscribed
+        assert!(sub.try_take().is_none());
+        assert!(sub.wait_timeout(Duration::from_millis(10)).is_none());
     }
 
     #[test]
@@ -128,7 +134,7 @@ mod tests {
         let store = Store::new(Model::D70);
         let n = Arc::new(AtomicUsize::new(0));
         let n2 = n.clone();
-        let _guard = store.on_change(Topic::Mwi, move |t| {
+        let guard = store.on_change(Topic::Mwi, move |t| {
             assert_eq!(t, Topic::Mwi);
             n2.fetch_add(1, Ordering::SeqCst);
         });
@@ -142,6 +148,10 @@ mod tests {
         add(1);
         add(2);
         assert_eq!(n.load(Ordering::SeqCst), 2);
+        drop(guard);
+        add(3);
+        assert_eq!(n.load(Ordering::SeqCst), 2);
+        assert_eq!(store.get::<Mwi>().total_new(), 3);
     }
 
     #[test]
@@ -157,7 +167,10 @@ mod tests {
         t.join().unwrap();
         assert!(w.topics.is_empty());
         assert_eq!(w.events.len(), 1);
+        // Plain subscriptions get no events.
+        let plain = store.subscribe(TopicSet::ALL);
         store.emit(Event::TimeChanged);
+        assert!(plain.try_take().is_none());
         assert_eq!(sub.try_take().unwrap().events, vec![Event::TimeChanged]);
         // Overflow drops the oldest and counts.
         for _ in 0..300 {

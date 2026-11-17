@@ -353,9 +353,10 @@ async fn configuration_accounts_and_contacts() {
     let v = rpc_json(p.addr, &s, "ConfigService/ListSettings", r#"{"prefix":"handset_"}"#).await.json();
     assert_eq!(v["settings"][0]["value"], "4");
     assert_eq!(v["settings"][0]["provisioned"], true);
-    // A secret is marked as one, and the password has its own RPC.
+    // Secrets never leave the phone, and the password has its own RPC.
     let v = rpc_json(p.addr, &s, "ConfigService/ListSettings", r#"{"prefix":"login_"}"#).await.json();
     assert_eq!(v["settings"][0]["secret"], true);
+    assert!(v["settings"][0].get("value").is_none());
     let r = rpc_json(p.addr, &s, "ConfigService/SetSettings", r#"{"changes":[{"id":"login_password","value":"x"}]}"#).await;
     assert_eq!(r.status, 400);
     let r = rpc_json(p.addr, &s, "ConfigService/SetSettings", r#"{"changes":[{"id":"bad id","value":"x"}]}"#).await;
@@ -374,6 +375,7 @@ async fn configuration_accounts_and_contacts() {
     }
     let v = rpc_json(p.addr, &s, "AccountsService/ListAccounts", "{}").await.json();
     assert_eq!(v["accounts"][0]["hasPassword"], true);
+    assert!(v["accounts"][0].get("password").is_none());
     assert_eq!(v["local"], true);
     assert_eq!(v["maxAccounts"], 2);
     // An edit without a password keeps the stored one.
@@ -567,7 +569,7 @@ async fn login_throttling() {
 }
 
 /// A static address from the provisioning server is what the network form
-/// shows, and the form can be saved as shown.
+/// shows, and saving the form leaves the phone's own address settings alone.
 #[tokio::test]
 async fn provisioned_static_address_in_the_network_form() {
     let p = phone().await;
@@ -589,6 +591,9 @@ async fn provisioned_static_address_in_the_network_form() {
     let body = serde_json::json!({ "settings": form }).to_string();
     let r = rpc_json(p.addr, &s, "NetworkService/SetNetworkSettings", &body).await;
     assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    let config = p.config.lock().unwrap().config();
+    assert!(config.network().dhcp, "the phone's own setting still says DHCP");
+    assert_eq!(config.network().static_ip, None);
 }
 
 /// The theme: the built-in ones are listed, a choice is kept with
@@ -616,9 +621,10 @@ async fn the_theme_setting() {
     assert_eq!(r.json()["theme"]["source"], "SETTING_SOURCE_LOCAL");
     let config = p.config.lock().unwrap().config();
     assert_eq!(config.dphone_settings().theme.as_deref(), Some("dusk"));
-    // Not a theme: refused.
+    // Not a theme: refused, and nothing changes.
     let r = set("no-such").await;
     assert_eq!(r.json()["code"], "invalid_argument");
+    assert_eq!(get().await["id"], "dusk");
     // A name in the file that this firmware does not have is the default
     // theme, as on the phone's screen.
     p.config.lock().unwrap().update_dphone_settings(|d| d.theme = Some("from-the-future".into())).unwrap();

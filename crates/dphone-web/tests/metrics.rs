@@ -203,6 +203,21 @@ fn value(samples: &[Sample], name: &str, labels: &[(&str, &str)]) -> f64 {
 
 // ---------------------------------------------------------------- state
 
+const SECRETS: [&str; 12] = [
+    "front-desk-phone",
+    "Avery Quill",
+    "4155550123",
+    "pbx.example.net",
+    "sipsecretuser",
+    "Jordan Marlowe",
+    "2125550188",
+    "jordan@far.example.org",
+    "00:0f:d3:aa:bb:cc",
+    "switch-closet-7",
+    "prov.example.net",
+    "assigned-user-77",
+];
+
 /// A phone with something in every part of the state, including text that
 /// must never be published.
 fn fabricate(store: &Store) {
@@ -284,6 +299,7 @@ async fn open_to_scrapers_and_nothing_else_is() {
     assert_eq!(r.status, 200);
     assert_eq!(r.header("content-type"), Some("text/plain; version=0.0.4; charset=utf-8"));
     assert_eq!(r.header("cache-control"), Some("no-store"));
+    assert!(r.header("set-cookie").is_none() && r.header("www-authenticate").is_none());
     assert_eq!(r.header("content-length").unwrap().parse::<usize>().unwrap(), r.body.len());
     parse(&r.body);
 
@@ -297,9 +313,11 @@ async fn open_to_scrapers_and_nothing_else_is() {
     let r = request(p.addr, "HEAD", "/metrics", &[]).await;
     assert_eq!(r.status, 200);
 
-    // Only for reading.
+    // Only the exact path, and only for reading.
     assert_eq!(request(p.addr, "POST", "/metrics", &[]).await.status, 404);
     assert_eq!(request(p.addr, "DELETE", "/metrics", &[]).await.status, 405);
+    let r = request(p.addr, "GET", "/metrics/", &[]).await;
+    assert!(!r.body.contains("dphone_build_info"));
 
     // Everything else that is not a static file still needs a session.
     for path in [
@@ -386,10 +404,18 @@ async fn values_follow_the_state() {
 }
 
 #[tokio::test]
-async fn every_label_is_from_a_fixed_vocabulary() {
+async fn nothing_that_identifies_anyone() {
     let p = phone(fabricate).await;
     ended(&p.store, 30, st::Direction::Incoming, st::EndCause::Error("Jordan Marlowe hung up".into()), 10);
     let r = request(p.addr, "GET", "/metrics", &[]).await;
+    let lower = r.body.to_lowercase();
+    for secret in SECRETS {
+        assert!(!lower.contains(&secret.to_lowercase()), "{secret:?} is in the metrics");
+    }
+    for forbidden in ["10.10.15.", "forbidden", "example", "admin", "sip:"] {
+        assert!(!lower.contains(forbidden), "{forbidden:?} is in the metrics");
+    }
+    // Every label comes from a fixed vocabulary.
     let allowed: HashSet<&str> = [
         "version", "model", "phase", "subsystem", "status", "port", "family", "account", "state", "direction",
         "cause", "bank", "window", "partition",

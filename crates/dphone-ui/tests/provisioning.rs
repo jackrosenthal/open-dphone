@@ -124,6 +124,16 @@ fn a_key_stops_the_count() {
             assert_eq!(r.ui.screen_name(), "provisioning");
         }
         assert_ne!(r.frame(), counting, "{key:?}: the count is no longer shown");
+        let stopped = r.frame();
+        r.at(6000);
+        r.at(60_000);
+        assert!(r.commands().is_empty(), "{key:?}");
+        assert_eq!(r.frame(), stopped, "{key:?}: nothing counts");
+        // The list following discovery does not start it again.
+        r.found(vec![server(5), server(6)]);
+        r.found(vec![server(5)]);
+        r.at(120_000);
+        assert!(r.commands().is_empty(), "{key:?}");
     }
 }
 
@@ -138,13 +148,25 @@ fn select_picks_at_once() {
 }
 
 #[test]
-fn a_second_server_found_during_the_count_can_be_chosen() {
+fn a_second_server_cancels_the_count() {
     let mut r = Rig::new(Model::D40, vec![server(5)]);
     r.at(3000);
     r.found(vec![server(5), server(6)]);
+    r.at(60_000);
+    assert!(r.commands().is_empty());
+    // With several entries the phone waits for a choice.
     r.tap(Key::Down);
     r.tap(Key::Select);
     assert_eq!(r.commands(), pick(6));
+}
+
+#[test]
+fn several_servers_wait_for_a_choice() {
+    let mut r = Rig::new(Model::D40, vec![server(5), server(6)]);
+    let shown = r.frame();
+    r.at(60_000);
+    assert!(r.commands().is_empty());
+    assert_eq!(r.frame(), shown);
 }
 
 #[test]
@@ -174,6 +196,7 @@ fn setup_shows_before_the_client_has_started() {
     assert_eq!(r.ui.screen_name(), "provisioning");
     r.at(120_000);
     assert_eq!(r.ui.screen_name(), "provisioning");
+    assert!(r.commands().is_empty());
     // The client starts and waits for a server: the list, then the count.
     r.store.update::<Provisioning, _>(|p| {
         p.phase = ProvisionPhase::AwaitingServer;
@@ -218,7 +241,8 @@ fn setup_with_no_network_is_not_a_trap() {
     }
 }
 
-/// The network settings are reachable from the server list too.
+/// The network settings are reachable from the server list too; going
+/// there stops the count, as stock's Settings softkey does.
 #[test]
 fn network_settings_from_the_server_list() {
     let mut r = Rig::new(Model::D40, vec![server(5)]);
@@ -228,6 +252,8 @@ fn network_settings_from_the_server_list() {
     r.at(30_000);
     r.tap(Key::Cancel);
     assert_eq!(r.ui.screen_name(), "provisioning");
+    r.at(60_000);
+    assert!(r.commands().is_empty(), "the count was stopped");
     r.tap(Key::Select);
     assert_eq!(r.commands(), pick(5));
 }

@@ -171,6 +171,7 @@ async fn assert_closed(addr: SocketAddr, old: Option<&Session>) {
             let r = post(addr, session, path, json!({ "user": "admin", "password": "789" })).await;
             assert_eq!(r.status, 403, "{path}: {}", r.text());
             assert_eq!(r.json()["code"], "permission_denied", "{path}");
+            assert_eq!(r.header("set-cookie"), None, "{path}");
         }
         // The one question that is answered: the state, and nothing else.
         let r = post(addr, session, "/dphone.v1.AuthService/GetSession", json!({})).await;
@@ -205,6 +206,7 @@ async fn assert_metrics(addr: SocketAddr, served: bool) {
         assert!(r.text().contains("dphone_build_info"), "{}", r.text());
     } else {
         assert_eq!(r.status, 404);
+        assert!(!r.text().contains("dphone_"));
     }
     let r = request(addr, "HEAD", "/metrics", &[], b"").await;
     assert_eq!(r.status, if served { 200 } else { 404 });
@@ -236,6 +238,8 @@ async fn four_combinations_at_start() {
         } else {
             assert_closed(p.addr, None).await;
         }
+        // Metrics are unaffected by what was just asked of the rest.
+        assert_metrics(p.addr, metrics).await;
     }
 }
 
@@ -311,6 +315,7 @@ async fn switching_at_run_time() {
     let r = post(p.addr, Some(&second), "/dphone.v1.SystemService/SetMetricsEnabled", json!({})).await;
     assert_eq!(r.json()["metricsEnabled"], json!({ "source": "SETTING_SOURCE_LOCAL" }));
     assert_metrics(p.addr, false).await;
+    assert!(p.switch.enabled(), "the metrics switch leaves web configuration alone");
 }
 
 /// A value the provisioning server froze cannot be changed from the web
@@ -330,12 +335,14 @@ async fn frozen_provisioned_metrics_setting() {
     assert_eq!(r.json()["metricsEnabled"], json!({ "source": "SETTING_SOURCE_PROVISIONED", "locked": true }));
     let r = post(p.addr, Some(&s), "/dphone.v1.SystemService/SetMetricsEnabled", json!({ "metricsEnabled": true })).await;
     assert_eq!((r.status, r.json()["code"].as_str().map(str::to_owned)), (400, Some("failed_precondition".into())));
+    assert_metrics(p.addr, false).await;
 
     // Frozen on: it cannot be turned off here either.
     p.provision(r#"<setting id="dphone_metrics_enabled" value="1" conflict="freeze"/>"#);
     assert_metrics(p.addr, true).await;
     let r = post(p.addr, Some(&s), "/dphone.v1.SystemService/SetMetricsEnabled", json!({})).await;
     assert_eq!(r.status, 400);
+    assert_metrics(p.addr, true).await;
 
     // The server lets go: the local value applies again.
     p.provision("");
@@ -364,6 +371,7 @@ async fn erase_nvdata_is_a_guarded_command() {
     }
     let r = post(p.addr, Some(&s), "/dphone.v1.SystemService/EraseNvdata", json!({ "confirm": "D62" })).await;
     assert_eq!(r.status, 400, "{}", r.text());
+    assert!(got.lock().unwrap().is_empty());
     let r = post(p.addr, Some(&s), "/dphone.v1.SystemService/EraseNvdata", json!({ "confirm": "d60" })).await;
     assert_eq!(r.status, 200, "{}", r.text());
     assert!(matches!(got.lock().unwrap().as_slice(), [Command::EraseNvdata]));
@@ -414,6 +422,7 @@ async fn built_in_apps_are_switched_off_and_on() {
     set("calendar", true).await;
     let r = set("parking", true).await;
     assert_eq!(r.json()["disabledApps"], json!({ "source": "SETTING_SOURCE_DEFAULT" }));
+    assert!(!file().contains("disabled_apps"));
 
     // Over a provisioned list, switching the app on is a local, empty list.
     p.provision(r#"<setting id="dphone_disabled_apps" value="calendar"/>"#);

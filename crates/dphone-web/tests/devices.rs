@@ -239,7 +239,8 @@ async fn bluetooth() {
     assert_ne!(status, 200);
     assert_eq!(v["message"], "the headset did not answer");
 
-    // Bad input is refused.
+    // Bad input is refused before any command is sent.
+    let sent = p.seen.lock().unwrap().len();
     for (method, body) in [
         ("PairBluetoothDevice", json!({ "address": "nonsense" })),
         ("PairBluetoothDevice", json!({ "address": "70:BF:92:11:22" })),
@@ -249,6 +250,7 @@ async fn bluetooth() {
         let (status, v) = call(&p, &l, &format!("BluetoothService/{method}"), body).await;
         assert_eq!((status, v["code"].as_str()), (400, Some("invalid_argument")), "{method}");
     }
+    assert_eq!(p.seen.lock().unwrap().len(), sent);
 
     // Not without a session.
     let (status, _, _) =
@@ -263,8 +265,11 @@ async fn no_bluetooth_on_other_models() {
     let (_, v) = call(&p, &l, "StatusService/GetStatus", json!({})).await;
     assert_eq!(v["status"]["system"].get("hasBluetooth"), None);
     assert_eq!(v["status"]["system"]["hasExpansion"], true);
+    let (status, v) = call(&p, &l, "BluetoothService/GetBluetooth", json!({})).await;
+    assert_eq!((status, &v["snapshot"]), (200, &json!({})));
     let (status, v) = call(&p, &l, "BluetoothService/SetBluetoothDiscovery", json!({ "discovering": true })).await;
     assert_eq!((status, v["code"].as_str()), (501, Some("unimplemented")));
+    assert!(p.seen.lock().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -384,6 +389,7 @@ async fn idle_softkeys() {
     // An empty list drops the local one.
     let (_, v) = call(&p, &l, "ConfigService/SetIdleSoftkeys", json!({})).await;
     assert_eq!(v["idleSoftkeys"]["source"], "SETTING_SOURCE_DEFAULT");
+    assert!(!std::fs::read_to_string(&settings).unwrap().contains("idle_softkeys"));
 
     // A list the provisioning server froze cannot be changed here.
     p.config
@@ -465,7 +471,8 @@ async fn alarms() {
     assert_ne!(status, 200);
     assert_eq!(v["message"], "no alarm is ringing");
 
-    // Bad input is refused.
+    // Bad input is refused before any command is sent.
+    let sent = p.seen.lock().unwrap().len();
     for (method, body, code) in [
         ("SetAlarm", json!({}), "invalid_argument"),
         ("SetAlarm", json!({ "alarm": { "hour": 24 } }), "invalid_argument"),
@@ -484,6 +491,7 @@ async fn alarms() {
     });
     let (_, v) = call(&p, &l, "AlarmsService/SetAlarm", json!({ "alarm": { "hour": 6 } })).await;
     assert_eq!(v["code"], "resource_exhausted");
+    assert_eq!(p.seen.lock().unwrap().len(), sent);
 
     // Not without a session.
     let (status, _, _) = post(p.addr, "/dphone.v1.AlarmsService/DismissAlarm", &[("Content-Type", "application/json")], b"{}", false).await;

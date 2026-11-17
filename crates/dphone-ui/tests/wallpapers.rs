@@ -5,8 +5,8 @@
 //! with a meaning keep it; an unknown name is the default; a new
 //! wallpaper re-themes every screen at once, apps included; and the
 //! first wallpaper keeps the skin's palette.  The wallpapers that move do
-//! so on the idle screen and in the theme selector; the theme selector is
-//! on a softkey.
+//! so on the idle screen and in the theme selector, and nowhere else; the
+//! theme selector is on a softkey.
 
 use dphone_hal::{Hal, Screen};
 use dphone_state::*;
@@ -425,6 +425,10 @@ fn a_new_wallpaper_rethemes_at_once() {
     assert_eq!(view.theme_color(ThemeColor::TitleBackground), rgb(tides.title_bg));
     assert_eq!(view.theme_color(ThemeColor::Background), rgb(tides.bg));
     assert_eq!(events.try_recv(), Some(AppEvent::Foreground));
+    // The same configuration again changes nothing and tells no one.
+    handle.set_config(UiConfig { theme: "tides".into(), utc_offset_secs: -7 * 3600, backlight_timeout_secs: 0, ..UiConfig::default() });
+    r.ui.pump();
+    assert_eq!(events.try_recv(), None);
     // A view made by the UI (as the app host makes them) has the theme's
     // colors from the start, before it is on screen, for every role: an
     // app asks for its colors as it starts.  They follow a new theme
@@ -533,10 +537,12 @@ fn the_theme_selector_is_the_idle_screen_with_a_bubble() {
     is_idle_with_bubble(&r.frame(), &all[2]);
     r.tap(Key::Up);
     is_idle_with_bubble(&r.frame(), &all[1]);
-    // Back: the Display menu, in the wallpaper in use.
+    // Nothing is saved by looking; Back leaves the wallpaper as it was.
+    assert!(r.commands().is_empty());
     r.tap(Key::Soft(4));
     assert_eq!(r.ui.screen_name(), "display");
     assert_eq!(at(&r.frame(), 470, 5), skin.title_bg);
+    assert!(r.commands().is_empty());
     // Select saves the one that is showing.
     r.tap(Key::Digit(4));
     r.tap(Key::Right);
@@ -546,6 +552,21 @@ fn the_theme_selector_is_the_idle_screen_with_a_bubble() {
     assert_eq!(r.ui.screen_name(), "display");
     // No family is named anywhere on the screen: nothing but the idle
     // screen and the bubble is drawn (checked above, pixel for pixel).
+}
+
+/// A wallpaper the provisioning server fixed can be looked at, not set.
+#[test]
+fn a_fixed_wallpaper_cannot_be_changed_in_the_menu() {
+    let mut r = Rig::new(UiConfig { theme: "slate".into(), theme_locked: true, ..UiConfig::default() });
+    r.show("settings");
+    r.tap(Key::Digit(3));
+    r.tap(Key::Digit(4));
+    assert_eq!(r.ui.screen_name(), "theme");
+    r.tap(Key::Right);
+    r.tap(Key::Soft(1));
+    r.tap(Key::Select);
+    assert_eq!(r.ui.screen_name(), "theme");
+    assert!(r.commands().is_empty());
 }
 
 /// A wallpaper picture that is not built in is shown instead of the
@@ -580,6 +601,32 @@ fn a_wallpaper_picture_and_its_palette() {
     r.show("settings");
     let frame = r.frame();
     assert_eq!((at(&frame, 470, 5), at(&frame, 440, 200)), (0x123456, palette.bg));
+}
+
+/// Gray screens have no wallpaper and one palette: every screen is the
+/// same whatever is selected, and the Display menu has no Wallpaper item.
+#[test]
+fn gray_models_are_unaffected() {
+    for model in [Model::D40, Model::D45, Model::D50, Model::D70] {
+        let image = dphone_ui::image::Image { width: 1, height: 1, pixels: vec![255, 0, 0, 255].into() };
+        let picture = std::sync::Arc::new(Picture::new(&image, Some(wallpaper::find("sunrise").unwrap().palette())));
+        let mut plain = Rig::with_model(model, UiConfig::default());
+        let mut named = Rig::with_model(model, UiConfig { theme: "sunrise".into(), ..UiConfig::default() });
+        let mut pictured = Rig::with_model(model, UiConfig { wallpaper_picture: Some(picture), ..UiConfig::default() });
+        assert_eq!(named.frame(), plain.frame(), "{model}: idle");
+        assert_eq!(pictured.frame(), plain.frame(), "{model}: idle");
+        for r in [&mut plain, &mut named, &mut pictured] {
+            r.show("settings");
+            r.tap(Key::Digit(3));
+            assert_eq!(r.ui.screen_name(), "display");
+        }
+        assert_eq!(named.frame(), plain.frame(), "{model}: display menu");
+        assert_eq!(pictured.frame(), plain.frame(), "{model}: display menu");
+        // Brightness, Contrast, Dim when idle, Backlight timeout: a fifth
+        // item would open on 5.
+        named.tap(Key::Digit(5));
+        assert_eq!(named.ui.screen_name(), "display", "{model}");
+    }
 }
 
 // ------------------------------------------------------------------ motion
@@ -619,6 +666,12 @@ fn difference(a: &[u32], b: &[u32]) -> (usize, u32) {
 #[test]
 fn the_moving_wallpapers() {
     let _alone = MOTION.lock().unwrap_or_else(|p| p.into_inner());
+    for w in wallpaper::all().iter().filter(|w| w.frame_ms().is_none()) {
+        // The others are their still pictures at every time.
+        if ["harbor", "dusk", "pebbles", "houndstooth"].contains(&w.id) {
+            assert_eq!(w.render_at(12_345), w.render(), "{}", w.id);
+        }
+    }
     let mut failures = Vec::new();
     for id in MOVING {
         let w = wallpaper::find(id).unwrap();
@@ -744,10 +797,11 @@ fn a_frame_made_from_the_one_before_is_the_screen_drawn_whole() {
 }
 
 /// The wallpaper moves on the idle screen and in the theme selector, and
-/// behind a call it is its still picture.  A new frame is due a frame's
+/// nowhere else: not under a menu, not behind a call, not on a gray
+/// model, not while the backlight is off.  A new frame is due a frame's
 /// time after the last.
 #[test]
-fn the_wallpaper_moves_on_the_idle_screen_and_in_the_theme_selector() {
+fn the_wallpaper_moves_on_the_idle_screen_only() {
     let _alone = MOTION.lock().unwrap_or_else(|p| p.into_inner());
     let tides = wallpaper::find("tides").unwrap();
     let mut r = Rig::with_model(Model::D60, UiConfig { theme: "tides".into(), ..UiConfig::default() });
@@ -756,6 +810,7 @@ fn the_wallpaper_moves_on_the_idle_screen_and_in_the_theme_selector() {
     // The time is fixed (as in every other test here): the still picture.
     let still = r.frame();
     assert_eq!(spot(&still), spot(&tides.render()));
+    assert_eq!(r.ui.motion_deadline(), None);
     // With a time for the motion: the frame of that time, and the next
     // is due.
     r.ui.set_motion_time(Some(3_000));
@@ -774,11 +829,24 @@ fn the_wallpaper_moves_on_the_idle_screen_and_in_the_theme_selector() {
     let key = Theme::for_wallpaper(tides).softkey_rect(0);
     assert_eq!(at(&b, key.x + 1, key.y + 3), Theme::for_wallpaper(tides).sk_bg);
 
-    // The theme selector shows the wallpaper as the idle screen does.
+    // Under a menu nothing moves, and no frame is due.
+    r.show("settings");
+    r.ui.set_motion_time(Some(12_000));
+    let menu = r.frame();
+    assert_eq!(r.ui.motion_deadline(), None);
     r.ui.set_motion_time(Some(15_000));
+    assert_eq!(r.frame(), menu);
+    assert_eq!(r.ui.motion_deadline(), None);
+    // The theme selector shows the wallpaper as the idle screen does.
     r.show("theme");
     assert_eq!(r.ui.screen_name(), "theme");
     assert_eq!(spot(&r.frame()), spot(&tides.render_at(15_000)));
+    assert!(r.ui.motion_deadline().is_some());
+    // The selection on a theme that does not move (Glacier, before
+    // Tides): nothing is due.  Back on Tides, a frame is.
+    r.tap(Key::Left);
+    assert_eq!(r.ui.motion_deadline(), None);
+    r.tap(Key::Right);
     assert!(r.ui.motion_deadline().is_some());
     r.show("idle");
     assert!(r.ui.motion_deadline().is_some());
@@ -793,6 +861,7 @@ fn the_wallpaper_moves_on_the_idle_screen_and_in_the_theme_selector() {
     });
     let call = r.frame();
     assert_ne!(r.ui.screen_name(), "idle");
+    assert_eq!(r.ui.motion_deadline(), None);
     assert_eq!(at(&call, 2, 242), at(&tides.render(), 2, 242));
     r.store.update::<Calls, _>(|c| {
         c.calls.clear();
@@ -800,13 +869,29 @@ fn the_wallpaper_moves_on_the_idle_screen_and_in_the_theme_selector() {
     });
     r.show("idle");
     assert_eq!(spot(&r.frame()), spot(&tides.render_at(15_000)));
+
+    // A theme that does not move; a provisioned picture; a gray model.
+    let mut dusk = Rig::named("dusk");
+    dusk.ui.set_motion_time(Some(3_000));
+    assert_eq!(dusk.frame(), idle_frame("dusk"));
+    assert_eq!(dusk.ui.motion_deadline(), None);
+    let image = dphone_ui::image::Image { width: 2, height: 2, pixels: vec![0x40; 16].into() };
+    let picture = std::sync::Arc::new(Picture::new(&image, None));
+    let mut pictured = Rig::new(UiConfig { theme: "tides".into(), wallpaper_picture: Some(picture), ..UiConfig::default() });
+    pictured.ui.set_motion_time(Some(3_000));
+    pictured.frame();
+    assert_eq!(pictured.ui.motion_deadline(), None);
+    let mut gray = Rig::with_model(Model::D50, UiConfig { theme: "tides".into(), ..UiConfig::default() });
+    let before = gray.frame();
+    gray.ui.set_motion_time(Some(3_000));
+    assert_eq!(gray.frame(), before);
+    assert_eq!(gray.ui.motion_deadline(), None);
 }
 
-/// By the clock: frames follow one another on the idle screen; when the
-/// backlight goes off (dimmed to nothing) the screen shows the still
-/// picture, until a key lights it again and the motion goes on.  A
-/// backlight that is dimmed and still gives light leaves the wallpaper
-/// moving.
+/// By the clock: frames follow one another on the idle screen, and stop
+/// when the backlight goes off (dimmed to nothing), until a key lights it
+/// again.  A backlight that is dimmed and still gives light leaves the
+/// wallpaper moving.
 #[test]
 fn the_motion_stops_while_the_backlight_is_off() {
     let _alone = MOTION.lock().unwrap_or_else(|p| p.into_inner());
@@ -832,12 +917,15 @@ fn the_motion_stops_while_the_backlight_is_off() {
         wait(1_000);
         let dimmed = r.frame();
         assert_eq!(r.store.read::<dphone_state::Ui, _>(|u| u.backlight_on), moves_when_dim);
+        assert_eq!(r.ui.motion_deadline().is_some(), moves_when_dim, "dim level {dim_level}");
         wait(400);
         let later = r.frame();
         if moves_when_dim {
             assert_ne!(spot(&dimmed), spot(&later), "dimmed, with light: the wallpaper moves");
         } else {
-            // Dark: the still picture.
+            // Dark: nothing is drawn, and what is there is the still
+            // picture.
+            assert_eq!(later, dimmed);
             assert_eq!(spot(&later), spot(&tides.render()));
             // A key lights the screen, and the motion goes on.
             r.tap(Key::Cancel);
@@ -889,14 +977,23 @@ fn the_theme_softkey() {
     let label = |f: &[u32]| (key.y..key.bottom()).flat_map(|y| (key.x..key.right()).map(move |x| (x, y))).filter(|(x, y)| at(f, *x, *y) == th.sk_fg).count();
     assert!(label(&with) > 30 && label(&with) != label(&without));
 
-    // A gray model leaves the softkey out: the second softkey is the one
-    // after it.
+    // A gray model: the softkey is not there, so the second softkey is
+    // the one after it, and there is no third.
     let mut gray = Rig::with_model(Model::D50, UiConfig { idle_softkeys: vec![Menu, THEME, Forward], ..UiConfig::default() });
     gray.tap(Key::Soft(2));
     assert_eq!(gray.ui.screen_name(), "forward");
     gray.tap(Key::Cancel);
-    // Nor can the selector be asked for.
+    gray.tap(Key::Soft(3));
+    assert_eq!(gray.ui.screen_name(), "idle");
+    // Nor can the selector be asked for, and the Display menu has no
+    // such item (its last is the backlight timeout).
     let asked = gray.store.send(Command::ShowScreen { name: "theme".into() });
     gray.ui.pump();
     assert!(asked.wait().is_err());
+    assert_ne!(gray.ui.screen_name(), "theme");
+    gray.show("settings");
+    gray.tap(Key::Digit(3));
+    assert_eq!(gray.ui.screen_name(), "display");
+    gray.tap(Key::Digit(5));
+    assert_ne!(gray.ui.screen_name(), "theme");
 }
