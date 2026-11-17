@@ -681,11 +681,18 @@ async fn run(
                                     let _ = d.handle(&mut tx).await;
                                 });
                             }
-                            (_, Some(mut d)) if in_dialog => {
+                            (Method::Invite, Some(mut d)) if in_dialog => {
                                 runtime().spawn(async move {
                                     let _ = d.handle(&mut tx).await;
                                 });
                             }
+                            // Every other request is answered here, in the
+                            // order the requests arrive.  Handed to the
+                            // call's dialog, each in a task of its own, a
+                            // request that its task handles before the ACK
+                            // would be dropped (the dialog is not confirmed
+                            // yet), and one that another request's task
+                            // overtook would be refused (its CSeq is older).
                             (method, _) => {
                                 let method = method.clone();
                                 let _ = tx.reply(StatusCode::OK).await;
@@ -704,21 +711,6 @@ async fn run(
             }
             s = state_rx.recv() => {
                 match s {
-                    Some(DialogState::Info(_, req, handle)) => {
-                        let _ = handle.reply(StatusCode::OK).await;
-                        send(UaEvent::Info(sip::from_request(&req)));
-                    }
-                    Some(DialogState::Message(_, req, handle)) => {
-                        let _ = handle.reply(StatusCode::OK).await;
-                        send(UaEvent::Message(sip::from_request(&req)));
-                    }
-                    Some(DialogState::Notify(_, req, handle)) => {
-                        let _ = handle.reply(StatusCode::OK).await;
-                        send(UaEvent::Notify(sip::from_request(&req)));
-                    }
-                    Some(DialogState::Options(_, _, handle)) => {
-                        let _ = handle.reply(StatusCode::OK).await;
-                    }
                     Some(DialogState::Updated(_, _, handle)) => {
                         let _ = handle.reply(StatusCode::OK).await;
                     }
