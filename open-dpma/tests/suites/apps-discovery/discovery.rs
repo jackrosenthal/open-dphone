@@ -353,14 +353,15 @@ fn checks(ctx: &mut Ctx, orig: &[u8]) -> Result<()> {
         browse(0.7),
         Found::new(),
     );
+    // (Asterisk's logger writes from its own thread.)
     let re = Regex::new(r"(?-u)ERROR\[[^\n]*Service name 'Test Caf\xE9' is not valid UTF-8")
         .expect("valid");
-    let text = log.since(mark);
-    ctx.c.check(
-        "mDNS: non-UTF-8 name logged as an error",
-        re.is_match(&text),
-        "",
-    );
+    let logged =
+        dpma_tests::util::wait_until(Duration::from_secs(3), Duration::from_millis(20), || {
+            re.is_match(&log.since(mark))
+        });
+    ctx.c
+        .check("mDNS: non-UTF-8 name logged as an error", logged, "");
     set_general(
         ctx,
         orig,
