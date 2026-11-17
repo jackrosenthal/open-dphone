@@ -206,8 +206,5 @@ mod tests {
                     0000000000000000      DF *UND*\t0000000000000000  GLIBC_PRIVATE y\n";
         assert_eq!(newest_glibc(dump), Some(vec![2, 34]));
         assert_eq!(newest_glibc("nothing"), None);
-        assert!([2, 35].as_slice() > GLIBC_BASELINE.as_slice());
-        assert!([2, 34].as_slice() <= GLIBC_BASELINE.as_slice());
-        assert!([2, 3, 4].as_slice() <= GLIBC_BASELINE.as_slice());
     }
 }

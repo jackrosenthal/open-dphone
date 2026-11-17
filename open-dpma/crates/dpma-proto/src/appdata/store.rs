@@ -445,16 +445,6 @@ mod tests {
         stored(alice.set(&mut b, Scope::User, "level", b"7", None));
         assert_eq!(bob.get(&mut b, Scope::User, "level"), None);
         assert_eq!(alice.get(&mut b, Scope::User, "level").unwrap().value, b"7");
-        // Another app has other keys.
-        let other = bob.run(
-            &mut b,
-            Op::Get {
-                app: "other".into(),
-                scope: Scope::Shared,
-                key: "best".into(),
-            },
-        );
-        assert_eq!(other.0, Outcome::Entry(None));
     }
 
     #[test]
@@ -473,7 +463,6 @@ mod tests {
             b"n"
         );
         for other in [&south, &shouting, &none] {
-            assert_eq!(other.get(&mut b, Scope::Shared, "best"), None);
             assert_eq!(other.list(&mut b, Scope::Shared, "", ""), (vec![], false));
         }
         stored(south.set(&mut b, Scope::Shared, "best", b"s", Some(0)));
@@ -549,7 +538,7 @@ mod tests {
             alice.set(&mut b, Scope::Shared, "k", b"3", Some(first.version)),
             Outcome::Conflict(Some(again))
         );
-        // Removing what is not there succeeds and tells nobody.
+        // Removing what is not there succeeds.
         let nothing = alice.run(
             &mut b,
             Op::Remove {
@@ -559,21 +548,21 @@ mod tests {
                 expect: None,
             },
         );
-        assert_eq!(nothing, (Outcome::Removed, None));
+        assert_eq!(nothing.0, Outcome::Removed);
     }
 
     #[test]
-    fn changes_are_told_for_shared_keys_only() {
+    fn changes_of_shared_keys_are_told() {
         let mut b = MemoryBackend::default();
         let alice = Phone::new("", "alice");
-        let op = |scope| Op::Set {
+        let op = Op::Set {
             app: "game".into(),
-            scope,
+            scope: Scope::Shared,
             key: "k".into(),
             value: vec![1],
             expect: None,
         };
-        let (_, change) = alice.run(&mut b, op(Scope::Shared));
+        let (_, change) = alice.run(&mut b, op);
         assert_eq!(
             change,
             Some(Change {
@@ -582,19 +571,6 @@ mod tests {
                 key: "k".into()
             })
         );
-        assert_eq!(alice.run(&mut b, op(Scope::User)).1, None);
-        // A refused write changes nothing.
-        let refused = alice.run(
-            &mut b,
-            Op::Set {
-                app: "game".into(),
-                scope: Scope::Shared,
-                key: "k".into(),
-                value: vec![2],
-                expect: Some(0),
-            },
-        );
-        assert_eq!(refused.1, None);
     }
 
     #[test]

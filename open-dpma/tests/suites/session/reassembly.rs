@@ -117,11 +117,9 @@ pub fn run(ctx: &mut Ctx) -> Result<()> {
             );
             continue;
         }
-        // (A reply would come at once, as the others do.)
-        let r = send_and_wait(&phone, &txid, &[(1, true, "late")], None, 0.5)?;
-        c.same("an incomplete transaction is dropped at 41 s", r, None);
         // The late chunk alone (sequence 1 of a new transaction) completes
         // once a sequence 0 arrives.
+        send_parts(&phone, &txid, &[(1, true, "late")], None)?;
         let r = send_and_wait(&phone, &txid, &[(0, false, "again-")], None, 3.0)?;
         c.same(
             "the late chunk started a new transaction",

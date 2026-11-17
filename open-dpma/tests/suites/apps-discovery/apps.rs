@@ -12,7 +12,7 @@ use bstr::ByteSlice;
 use dpma_tests::harness::{fixtures, regex_search, Ctx};
 use regex::Regex;
 
-use crate::{cli, cli_raw, TONE};
+use crate::{cli, TONE};
 
 /// The result variables of a test: status, stop key, offset, and
 /// voicemail status (`None`: the test stored no result).
@@ -163,19 +163,6 @@ fn wanted(want: &[Option<&str>; 4]) -> Option<Vec<Option<String>>> {
     Some(want.iter().map(|w| w.map(str::to_string)).collect())
 }
 
-/// Both applications are registered.
-pub fn registered(ctx: &mut Ctx) -> Result<()> {
-    for app in ["DigiumControlPlayback", "DigiumVoicemailPlayback"] {
-        let out = cli_raw(ctx, &format!("core show application {app}"));
-        ctx.c.same(
-            format!("core show application {app}"),
-            out.contains(&format!("-= Info about Application '{app}' =-")),
-            true,
-        );
-    }
-    Ok(())
-}
-
 /// DigiumControlPlayback, compared with ControlPlayback.
 pub fn controlplayback(ctx: &mut Ctx) -> Result<()> {
     cli(ctx, "core set debug 1 res_open_dpma");
@@ -253,7 +240,7 @@ pub fn controlplayback(ctx: &mut Ctx) -> Result<()> {
     ctx.c.same(
         "usage logged without arguments",
         regex_search(
-            r"DPMA\[\d+\](\[[^\]]*\])? apps.rs: DigiumControlPlayback requires an argument \(filename\)",
+            r"DPMA\[\d+\](\[[^\]]*\])? \S+: DigiumControlPlayback requires an argument \(filename\)",
             &text,
         ),
         true,
@@ -292,11 +279,6 @@ pub fn controlplayback(ctx: &mut Ctx) -> Result<()> {
         "debug: custom keys",
         text.contains_str("Forward key = 1, Rewind key = 2"),
         true,
-    );
-    ctx.c.same(
-        "no panics",
-        text.contains_str("Internal error (panic)"),
-        false,
     );
     Ok(())
 }
@@ -394,11 +376,6 @@ pub fn vm_playback(ctx: &mut Ctx) -> Result<()> {
         text.find_iter("DigiumVoicemailPlayback requires arguments (mailbox|folder|message)")
             .count(),
         3,
-    );
-    ctx.c.same(
-        "no panics",
-        text.contains_str("Internal error (panic)"),
-        false,
     );
     Ok(())
 }

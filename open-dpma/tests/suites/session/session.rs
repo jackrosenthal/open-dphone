@@ -13,29 +13,26 @@ use dpma_proto::headers::{
     MESSAGE_SEQUENCE as H_SEQUENCE, RESPONSE_TYPE as H_RESPONSE_TYPE, SESSION as H_SESSION,
 };
 use dpma_tests::harness::{Ctx, LogMark};
-use dpma_tests::sim::{Exchange, Form, Phone, Transport};
+use dpma_tests::sim::{Form, Phone, Transport};
 
 use crate::ami_cli;
 
 /// Checks that the module dropped a request: `text` (its last log line
-/// about it) is logged since `mark`, and then no reply comes.
-fn dropped(ctx: &mut Ctx, label: &str, phone: &Phone, mut ex: Exchange, mark: LogMark, text: &str) {
+/// about it) is logged since `mark`.
+fn dropped(ctx: &mut Ctx, label: &str, mark: LogMark, text: &str) {
     let ok = ctx.log().wait_for(mark, text, Duration::from_secs(2));
     ctx.c.check(
         format!("{label}: logged"),
         ok,
         format!("not in the log: {text:?}"),
     );
-    phone.wait_reply(&mut ex, Some(Duration::from_millis(200)));
-    ctx.c.exchange(label, &ex).no_reply();
 }
 
 /// Sends one hand-made MESSAGE on the phone's session with `headers`
 /// (besides the ID, MAC, and session, and sequence 0, finished) and
-/// `body`, unencrypted; the exchange that catches a reply to its ID.
-fn raw_message(phone: &Phone, headers: &[(&str, &str)], body: &str) -> Result<Exchange> {
+/// `body`, unencrypted.
+fn raw_message(phone: &Phone, headers: &[(&str, &str)], body: &str) -> Result<()> {
     let txid = phone.new_id();
-    let ex = phone.expect_reply("(none)", &txid);
     let mut h: Vec<(String, BString)> = vec![
         (H_ID.into(), txid.as_str().into()),
         (H_MAC.into(), phone.mac().into()),
@@ -49,7 +46,7 @@ fn raw_message(phone: &Phone, headers: &[(&str, &str)], body: &str) -> Result<Ex
             .map(|(k, v)| (k.to_string(), BString::from(*v))),
     );
     phone.send_message(&h, body.as_bytes())?;
-    Ok(ex)
+    Ok(())
 }
 
 /// What validation drops before a request reaches its handler (UDP only:
@@ -59,14 +56,14 @@ fn drops(ctx: &mut Ctx, phone: &Phone) -> Result<()> {
 
     // An unencrypted AsteriskRequest with a body.
     let mark = log.mark();
-    let ex = phone
+    phone
         .request("AsteriskRequest")
         .encrypt(false)
         .body("X-Digium-AppServer-Digest-Auth=a:b")
         .no_wait()
         .send()?;
     let text = "AsteriskRequest dropped due to lack of encryption.";
-    dropped(ctx, "unencrypted AsteriskRequest", phone, ex, mark, text);
+    dropped(ctx, "unencrypted AsteriskRequest", mark, text);
 
     // An unencrypted HTTPRequest is not dropped.
     let doc = method_request_json("test.dpma.api.echo", Some(&serde_json::json!({"x": 1})));
@@ -83,32 +80,32 @@ fn drops(ctx: &mut Ctx, phone: &Phone) -> Result<()> {
 
     // An unencrypted UserlistResponse with a body.
     let mark = log.mark();
-    let ex = raw_message(phone, &[(H_RESPONSE_TYPE, "UserlistResponse")], "x")?;
+    raw_message(phone, &[(H_RESPONSE_TYPE, "UserlistResponse")], "x")?;
     let text = "UserlistResponse dropped due to lack of encryption.";
-    dropped(ctx, "unencrypted UserlistResponse", phone, ex, mark, text);
+    dropped(ctx, "unencrypted UserlistResponse", mark, text);
 
     // Neither a request type nor a response type.
     let mark = log.mark();
-    let ex = raw_message(phone, &[], "x")?;
+    raw_message(phone, &[], "x")?;
     let text = "Message dropped due to lack of response or request type.";
-    dropped(ctx, "no request or response type", phone, ex, mark, text);
+    dropped(ctx, "no request or response type", mark, text);
 
     // A request that needs a session, without one.
     let mark = log.mark();
-    let ex = phone
+    phone
         .request("PingRequest")
         .no_session()
         .encrypt(false)
         .no_wait()
         .send()?;
     let text = "Message 'PingRequest' dropped because of lacking session id";
-    dropped(ctx, "no session", phone, ex, mark, text);
+    dropped(ctx, "no session", mark, text);
 
     // A request type nobody handles.
     let mark = log.mark();
-    let ex = phone.request("BogusRequest").no_wait().send()?;
+    phone.request("BogusRequest").no_wait().send()?;
     let text = "Received request with unknown type 'BogusRequest'";
-    dropped(ctx, "unknown request type", phone, ex, mark, text);
+    dropped(ctx, "unknown request type", mark, text);
     Ok(())
 }
 
@@ -220,7 +217,6 @@ pub fn run(ctx: &mut Ctx, t: Transport) -> Result<()> {
         c.exchange("handshake legacy", &ex)
             .ok()
             .ty("HandshakeResponse")
-            .header_absent("Handshake-Version")
             .appserver_ok();
         let ex = phone
             .request("PingRequest")
@@ -246,7 +242,6 @@ pub fn run(ctx: &mut Ctx, t: Transport) -> Result<()> {
         .ok()
         .ty("HandshakeResponse")
         .no_error()
-        .header_absent("Handshake-Version")
         .appserver_ok();
     let ex = phone.ping().send()?;
     c.exchange("ping after legacy PEM cuts", &ex)

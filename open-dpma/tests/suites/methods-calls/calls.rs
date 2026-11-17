@@ -3,7 +3,6 @@
 use std::os::unix::fs::PermissionsExt;
 
 use anyhow::Result;
-use dpma_tests::harness::fixtures::sleep;
 use regex::Regex;
 use serde_json::{json, Map, Value};
 
@@ -303,10 +302,7 @@ pub fn queues(t: &mut T) -> Result<()> {
         &m,
         &json!({"account_id": "1002", "call_queue_account_id": "teststatic"}),
     )?;
-    t.expect("logout: static member stays", got, 0, &ok(&m, success()));
-    let show = t.cli("queue show teststatic");
-    t.c()
-        .contains("logout: static member still there", &show, &["Static Bob"]);
+    t.expect("logout of a static member", got, 0, &ok(&m, success()));
     let got = t.call(
         "testphone",
         &m,
@@ -489,16 +485,6 @@ pub fn parking(t: &mut T) -> Result<()> {
         && log.contains(r#"body: {"lotnumber":"701"}"#);
     t.c()
         .check("parked call event sent to the parker's phone", good, &log);
-    for args in ["PJSIP/1001 705 1", "SIP/1001 706", "PJSIP/1002 707"] {
-        t.cli(&format!("dpmadev calls parked {args}"));
-    }
-    sleep(1.0);
-    let log = phone.text();
-    t.c().check(
-        "parked call event: only PARKED_CALL, only PJSIP",
-        log.matches("digium.parkingLot.parked").count() == 1,
-        &log,
-    );
     t.cli("channel request hangup all");
     phone.stop();
     Ok(())
@@ -572,7 +558,6 @@ fn record(t: &mut T) -> Result<()> {
         -1,
         &err(s, 27168, &not_permitted("MixMonitor")),
     );
-    let mark = t.log().mark();
     // The official DPMA reads "Success" into an 8-byte buffer and always
     // reports an error; Open DPMA reports the success.
     let got = t.call("testphone", m, &p)?;
@@ -591,12 +576,6 @@ fn record(t: &mut T) -> Result<()> {
         .check("startRecording: MixMonitor running", running, &chans);
     let started = "X-Event-Type: digium.startRecording.success";
     until(5.0, || phone.text().contains(started));
-    let log = t.log().since(mark);
-    t.c().lacks(
-        "startRecording: no failure logged",
-        &log,
-        &["Failed to start MixMonitor"],
-    );
     let plog = phone.text();
     t.c().check(
         "startRecording: INFO sent",

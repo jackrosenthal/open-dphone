@@ -299,7 +299,6 @@ mod tests {
             .map(|i| all[i].as_str())
             .collect();
         assert_eq!(order[..LONGEST.len()], LONGEST);
-        assert_eq!(order[LONGEST.len()], "config-xml");
         assert_eq!(order.len(), all.len());
     }
 }

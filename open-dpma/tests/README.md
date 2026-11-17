@@ -116,8 +116,8 @@ bindgen generates the same bindings from the headers of every pinned
 release.  The module carries no build options checksum, as the
 official DPMA does not, so Asterisk loads it whatever its build options.
 
-On 22.11.0 and 23.5.0, `pjsip-helpers` expects no dialog-info
-supplement and "Bail.  No Channel" in the supplement's log.  Those
+On 22.11.0 and 23.5.0, `pjsip-helpers` expects "Bail.  No Channel" in
+the dialog-info supplement's log.  Those
 releases have Asterisk bug #2186 ("extstate: Include causing device
 channel details in legacy callbacks"): the new extension state API of
 22.11.0, 23.5.0, and 24.0.0-rc1 leaves the ringing channel out of the

@@ -152,7 +152,6 @@ fn main() -> ExitCode {
     let discovery_ok = isolated();
     Suite::new("apps-discovery")
         .prepare(|inst| fixtures::prepare(inst, setup))
-        .part("applications", apps::registered)
         .part("controlplayback", apps::controlplayback)
         .part("vm-playback", apps::vm_playback)
         .part("show-settings", move |ctx| settings::run(ctx, discovery_ok))

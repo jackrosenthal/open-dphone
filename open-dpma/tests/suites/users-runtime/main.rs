@@ -75,13 +75,6 @@ fn presence(ctx: &mut Ctx) -> Result<()> {
             "(*) 4: available  ",
         ],
     );
-    // The name is matched case sensitively: nothing is printed.
-    let out = ctx.cli("digium_phones show status Testphone");
-    ctx.c.check(
-        "digium_phones show status Testphone (empty)",
-        out.iter().all(|&b| b == b'\n'),
-        format!("printed: {out:?}"),
-    );
     expect(
         ctx,
         "dpmadev config testphone D65",

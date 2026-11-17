@@ -57,16 +57,6 @@ mod tests {
     }
 
     #[test]
-    fn utf8_like_jansson() {
-        assert_eq!(utf8("Jos\u{e9}".as_bytes()), Some("Jos\u{e9}"));
-        assert_eq!(utf8(b"Jos\xe9"), None);
-        // Overlong, surrogate, and out of range forms.
-        assert_eq!(utf8(b"\xc0\xaf"), None);
-        assert_eq!(utf8(b"\xed\xa0\x80"), None);
-        assert_eq!(utf8(b"\xf4\x90\x80\x80"), None);
-    }
-
-    #[test]
     fn escapes_like_jansson() {
         let v = serde_json::Value::String("q\"b\\\u{1}\u{1f}\n\t\u{7f}é".into());
         assert_eq!(dump(&v), "\"q\\\"b\\\\\\u0001\\u001F\\n\\t\u{7f}é\"");

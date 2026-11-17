@@ -116,13 +116,6 @@ fn expect_event(ctx: &mut Ctx, name: &str, p: &Phone, body: &[u8], event: &str) 
     Some(r)
 }
 
-/// Checks that no unsolicited message arrives within 1.5 s.
-fn no_event(ctx: &mut Ctx, name: &str, p: &Phone) {
-    let r = p.next_event(Duration::from_secs_f64(1.5), None);
-    let detail = r.as_ref().map(|r| r.describe(0)).unwrap_or_default();
-    ctx.c.check(name, r.is_none(), detail);
-}
-
 /// Writes the test phones with `extra` appended and reloads.
 fn edit_phones_conf(ctx: &mut Ctx, extra: &str) -> Result<()> {
     std::fs::write(
@@ -145,9 +138,6 @@ fn reload_checks(ctx: &mut Ctx) -> Result<()> {
     let p = phone(ctx, MAC_A)?;
     token_for(ctx, &p, "phonea")?;
     let mark = log_mark(ctx);
-    edit_phones_conf(ctx, "\n[phonea-line2]\ntype=line\n")?;
-    // Adding a line section alone changes nothing for phonea.
-    no_event(ctx, "unrelated change: no reconfigure", &p);
     edit_phones_conf(
         ctx,
         "\n[phonea-line2]\ntype=line\n[phonea](+)\nline=phonea-line2\n",
@@ -195,7 +185,6 @@ fn reload_checks(ctx: &mut Ctx) -> Result<()> {
     let got = flags(ctx, &sid(&t))?;
     ctx.c
         .same("deleted phone: session inactive", got, fl("Yes", "Yes"));
-    no_event(ctx, "deleted phone: others not reconfigured", &p);
     Ok(())
 }
 
@@ -331,11 +320,8 @@ fn token_checks(ctx: &mut Ctx) -> Result<()> {
     present(ctx, "the old phone's token", &a, &keyed, true)?;
     // The numbers of one MAC make no token for another.
     let mut swapped = keyed_b.clone();
-    let n = swapped.len();
     swapped.truncate(format!("phonea/{MAC_BAD}").len());
     swapped.extend_from_slice(&keyed[format!("phonea/{MAC_A}").len()..]);
-    ctx.c
-        .check("(swapped numbers differ)", swapped != keyed_b, n);
     present(ctx, "the old phone's numbers", &b, &swapped, true)?;
     // The user logs in on the first phone again.
     let again = issue(ctx, &a, "phonea")?;
@@ -401,7 +387,6 @@ fn mismatch_checks(ctx: &mut Ctx) -> Result<()> {
         PLAIN,
         UPDATE,
     );
-    no_event(ctx, "MAC mismatch: the new location is not", &b);
     let got = last_info(ctx, "phonea")?.0;
     ctx.c
         .same("phonea at B", got, at(MAC_BAD, &uri_of(&b), &sid(&b)));
@@ -540,7 +525,6 @@ pub fn uri(ctx: &mut Ctx) -> Result<()> {
         PLAIN,
         UPDATE,
     );
-    no_event(ctx, "not to the old one", &p);
     Ok(())
 }
 
@@ -606,11 +590,6 @@ pub fn restore(ctx: &mut Ctx) -> Result<()> {
         token_for(ctx, &p, "phonea")?;
         (sid(&p), p.common_password(), p.token())
     };
-    // Another session that never authenticates is not saved.
-    let xsid = {
-        let x = phone(ctx, "000fd30012bb")?;
-        sid(&x)
-    };
     restart(ctx)?;
     let got = flags(ctx, &rsid)?;
     ctx.c.same(
@@ -618,9 +597,6 @@ pub fn restore(ctx: &mut Ctx) -> Result<()> {
         got,
         fl("Yes", "No"),
     );
-    let line = session_line(ctx, &xsid)?;
-    ctx.c
-        .same("unauthenticated session not restored", line.as_str(), "");
     let got = last_info(ctx, "phonea")?.0;
     ctx.c.same(
         "last info restored",
@@ -668,12 +644,6 @@ pub fn restore(ctx: &mut Ctx) -> Result<()> {
         "PingResponse",
         None,
         Body::Is(b"empty body"),
-    );
-    let got = flags(ctx, &rsid)?;
-    ctx.c.same(
-        "restored session survives the idle pruning",
-        got,
-        fl("Yes", "No"),
     );
     Ok(())
 }

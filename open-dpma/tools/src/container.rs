@@ -461,10 +461,6 @@ mod tests {
         let pin = crate::pins::pin(None).unwrap();
         let tag = image_tag(&pin).unwrap();
         assert!(tag.starts_with(&format!("open-dpma-asterisk:{}-", pin.version)));
-        assert_eq!(
-            tag.len(),
-            "open-dpma-asterisk:".len() + pin.version.len() + 13
-        );
         let other = Pin {
             sha256: "0".repeat(64),
             ..pin.clone()

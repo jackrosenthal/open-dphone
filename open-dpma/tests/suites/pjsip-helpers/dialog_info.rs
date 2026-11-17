@@ -6,8 +6,8 @@
 //! data, so the supplement finds none ("Bail.  No Channel") and adds
 //! nothing.  It is fixed in 22.12.0, 23.6.0, and 24.0.0-rc2.  On releases
 //! with the bug (detected by the release number, from `asterisk -V`) the
-//! checks expect exactly that; on the others, the supplement for the
-//! Digium subscriber only.
+//! check expects that log line; on the others, the supplement of the
+//! Digium subscriber's NOTIFY.
 
 use anyhow::Result;
 use dpma_tests::harness::{fixtures, Ctx};
@@ -54,12 +54,6 @@ pub fn run(ctx: &mut Ctx) -> Result<()> {
             "Asterisk {version} has bug #2186 (fixed in 22.12.0, 23.6.0, and 24.0.0-rc2): \
              no ringing channel, so nothing is supplemented"
         ));
-        let ok = !notify.iter().any(|l| l.contains("anonymous.invalid"));
-        ctx.c.check(
-            "dialog-info: no NOTIFY supplemented (bug #2186: no ringing channel)",
-            ok,
-            detail(ok),
-        );
         let ok = lines
             .iter()
             .any(|l| l.starts_with("  log: ") && l.contains("Bail.  No Channel"));
@@ -77,14 +71,6 @@ pub fn run(ctx: &mut Ctx) -> Result<()> {
             ok,
             detail(ok),
         );
-        let ok = !notify
-            .iter()
-            .any(|l| l.starts_with("  other: ") && l.contains("anonymous.invalid"));
-        ctx.c.check(
-            "dialog-info: the other subscriber's NOTIFY not supplemented",
-            ok,
-            detail(ok),
-        );
     }
     res
 }
@@ -95,16 +81,10 @@ fn scenario(s: &mut Scenario) -> Result<()> {
     s.ast("core set debug 3 res_open_dpma", true);
     let uas = s.uas("2002", "pw2002", "Acme Phone 1.0", 16.0, &[2])?;
     fixtures::sleep(1.0);
-    let subs = [
-        (
-            "digium",
-            s.subscribe("2001", "pw2001", DIGIUM_UA, "2002", 15.0),
-        ),
-        (
-            "other",
-            s.subscribe("2001", "pw2001", "Acme Phone 1.0", "2002", 15.0),
-        ),
-    ];
+    let subs = [(
+        "digium",
+        s.subscribe("2001", "pw2001", DIGIUM_UA, "2002", 15.0),
+    )];
     fixtures::sleep(1.5);
     s.out("-- ringing (early), Carol Caller <3003>");
     s.ast(

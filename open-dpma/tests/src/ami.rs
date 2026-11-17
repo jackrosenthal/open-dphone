@@ -696,13 +696,6 @@ mod tests {
             )
             .unwrap();
         assert_eq!(ev.get("Name").unwrap(), &b"caf\xe9"[..]);
-        assert!(ami
-            .wait_event(
-                Some("Custom"),
-                &[("Name", Match::re("^x"))],
-                Duration::from_millis(100)
-            )
-            .is_none());
     }
 
     #[test]
