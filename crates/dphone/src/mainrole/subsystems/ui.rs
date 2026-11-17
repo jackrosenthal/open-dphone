@@ -127,7 +127,7 @@ fn ui_config(ctx: &Context, cfg: Option<&Config>) -> UiConfig {
     let mut out = UiConfig { ringtones, ..UiConfig::default() };
     out.ringtone = out.ringtones.first().cloned().unwrap_or_default();
     let Some(cfg) = cfg else { return out };
-    out.time_24h = cfg.setting("time_short_format").is_some_and(|f| f.contains('H') || f.contains('k'));
+    out.time_24h = cfg.localization_setting("time_short_format").is_some_and(|f| f.contains('H') || f.contains('k'));
     out.utc_offset_secs = crate::tz::utc_offset(&cfg.time().time_zone, crate::sys::now_secs());
     if let Some(v) = cfg.setting_num::<u8>("brightness") {
         out.brightness = v.min(10);
@@ -373,5 +373,26 @@ mod tests {
         assert!(started.elapsed() >= ScreenTap::WAIT);
         assert!(stale.pixels.iter().all(|b| *b == 3), "the UI did not answer: the copy it took last");
         drop(ui.join().unwrap());
+    }
+
+    #[test]
+    fn the_clock_has_24_hours_when_the_locales_time_format_has() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = Context::standalone(
+            crate::paths::Paths::new(dir.path().join("nvdata"), dir.path().join("run")),
+            crate::model::Model::D60,
+        );
+        let cfg = Config::from_merged(
+            dphone_config::xml::Element::parse(concat!(
+                "<config>",
+                "<setting id=\"locale\" value=\"de_DE\"/>",
+                "<locales><locale id=\"de_DE\"><setting id=\"time_short_format\" value=\"HH:mm\"/></locale></locales>",
+                "</config>",
+            ))
+            .unwrap(),
+            dphone_config::Model::D60,
+            None,
+        );
+        assert!(ui_config(&ctx, Some(&cfg)).time_24h);
     }
 }

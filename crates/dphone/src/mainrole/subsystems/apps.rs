@@ -129,6 +129,18 @@ fn without_credentials(mut appconfig: Element) -> Element {
     appconfig
 }
 
+/// Whether an app's `<appconfig>` disables it, as stock's `app.isDisabled()`
+/// decides: `lib/app.js` makes an object of the element
+/// (`util.restructureXmlToJson`), in which a child `<disabled>` is an
+/// object and an attribute `disabled`, which replaces it, is a string, and
+/// the app is disabled when that value is truthy.
+fn disables(appconfig: &Element) -> bool {
+    match appconfig.attr("disabled") {
+        Some(value) => !value.is_empty(),
+        None => appconfig.child("disabled").is_some(),
+    }
+}
+
 impl ConfigSource for AppConfig {
     fn app_config_xml(&self, app: &str) -> String {
         self.appconfig(app).map(|e| without_credentials(e).to_document()).unwrap_or_default()
@@ -156,8 +168,12 @@ impl ConfigSource for AppConfig {
         appconfig.child("settings").and_then(|s| s.attr(name)).or_else(|| appconfig.attr(name)).map(str::to_string)
     }
 
+    /// Off when `disabled_apps` lists the app, or when its `<appconfig>`
+    /// disables it as stock's `app.isDisabled()` reads it.
     fn app_enabled(&self, app: &str) -> bool {
-        self.merged().is_none_or(|c| !c.disabled_apps().value.iter().any(|d| d == app))
+        self.merged().is_none_or(|c| {
+            !c.disabled_apps().value.iter().any(|d| d == app) && !c.appconfig(app).is_some_and(disables)
+        })
     }
 
     fn setting(&self, id: &str) -> Option<String> {
@@ -373,6 +389,20 @@ mod tests {
         assert_eq!(apps.app_setting("weather", "units").as_deref(), Some("metric"));
         assert_eq!(apps.app_setting("voicemail", "require_password").as_deref(), Some("1"));
         assert_eq!(apps.app_setting("status", "network_id").as_deref(), Some("network1"));
+    }
+
+    /// As stock's `app.isDisabled()`: a `<disabled>` child, or a
+    /// `disabled` attribute with a value.
+    #[test]
+    fn an_apps_appconfig_disables_it() {
+        let (_dir, apps) = phone_with(concat!(
+            "<config>\n",
+            "<appconfig id=\"voicemail\"><disabled/></appconfig>\n",
+            "<appconfig id=\"parking\" disabled=\"1\"/>\n",
+            "</config>\n",
+        ));
+        assert!(!apps.app_enabled("voicemail"));
+        assert!(!apps.app_enabled("parking"));
     }
 
     #[test]
