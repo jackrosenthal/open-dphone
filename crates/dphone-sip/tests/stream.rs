@@ -192,6 +192,9 @@ async fn accepts_connections_over_tls() {
         rustls::pki_types::PrivateKeyDer::Pkcs8(k) => k.secret_pkcs8_der().to_vec(),
         other => panic!("the test key is not PKCS#8: {other:?}"),
     };
+    // Without a certificate there is no TLS listener, and no crash.
+    let quiet = free_port();
+    let _p0 = stream_phone(Transport::Tcp, |cfg| cfg.tls_port = Some(quiet)).await;
     let _p = stream_phone(Transport::Tcp, |cfg| {
         // A TLS account is what turns the listener on; the registrar here
         // speaks plain TCP, so registration itself fails, which is fine.
@@ -219,6 +222,7 @@ async fn accepts_connections_over_tls() {
         .expect("TLS handshake with the phone");
     let answer = ask(tls).await;
     assert!(answer.starts_with("SIP/2.0 200"), "{answer}");
+    assert!(std::net::TcpStream::connect(("127.0.0.1", quiet)).is_err(), "no listener without a certificate");
 }
 
 /// Installs a marker that sets a DSCP and records each socket it saw as

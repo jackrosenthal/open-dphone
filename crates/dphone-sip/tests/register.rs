@@ -123,11 +123,12 @@ async fn register_failover_subscribe_message() {
     assert_eq!((entry.status, entry.status_text.as_str()), (PresenceStatus::Available, ""));
     assert!(entry.subscribed && entry.pickup_ringing);
     let keys = p.store.get::<Keys>();
-    // On a D60 the item is on the free line key.
+    // A D60 has no rapid-dial strip: the item is on the free line key.
     assert_eq!(keys.line_keys[1].binding, dphone_state::LineKeyBinding::Blf("c101".into()));
     assert_eq!(keys.line_keys[1].lamp, LampState::blinking(LampColor::Green, Blink::Fast));
+    assert!(keys.rapid_dial.is_empty());
     // The contact has one subscription: `presence`, with stock's Accept
-    // and expiry.
+    // and expiry.  Nothing subscribes to `dialog`.
     let subs = good.requests("SUBSCRIBE");
     let events = |uri: &str| -> Vec<String> {
         let mut dialogs: Vec<(String, String)> = subs
@@ -141,17 +142,19 @@ async fn register_failover_subscribe_message() {
     };
     assert_eq!(events("SUBSCRIBE sip:auto_hint_101@127.0.0.1"), ["presence"]);
     assert_eq!(events("SUBSCRIBE sip:100@127.0.0.1"), ["message-summary"]);
+    assert!(subs.iter().all(|s| s.header("Event") != Some("dialog")));
     let sub = subs.iter().find(|s| s.header("Event") == Some("presence")).unwrap();
     assert_eq!(sub.header("Accept"), Some("application/pidf+xml, application/xpidf+xml"));
     assert_eq!(sub.header("Expires"), Some("600"));
 
     // A press on the ringing contact's key is a pickup, since the contact
     // allows it: a call to the contact's number (not to the subscription
-    // target) marked with stock's header.
+    // target) marked with stock's header, and no Replaces.
     assert!(p.store.send(Command::Pickup { blf_entry: "c101".into() }).await.is_ok());
     let invite = wait("the pickup INVITE", || good.requests("INVITE").pop()).await;
     assert!(invite.start.starts_with("INVITE sip:101@127.0.0.1"), "{}", invite.start);
     assert_eq!(invite.header("X-Digium-Call-Feature"), Some("feature_pickup"));
+    assert_eq!(invite.header("Replaces"), None);
 
     // A later NOTIFY belongs to the established dialog (it carries the
     // tags both sides now know) and updates the same entry: idle, and the
@@ -161,6 +164,8 @@ async fn register_failover_subscribe_message() {
     wait("BLF idle", || p.store.get::<Presence>().get("c101").filter(|e| e.state == BlfState::Idle).map(|_| ())).await;
     let entry = p.store.get::<Presence>().get("c101").cloned().unwrap();
     assert_eq!((entry.status, entry.status_text.as_str()), (PresenceStatus::Away, "Back at 1"));
+    // An idle contact lights nothing (stock's default behavior).
+    assert_eq!(p.store.get::<Keys>().line_keys[1].lamp, LampState::OFF);
 
     // MESSAGE out (as DPMA sends it: from the MAC at the phone's address).
     let code = p

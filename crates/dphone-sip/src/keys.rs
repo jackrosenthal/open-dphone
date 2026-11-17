@@ -140,7 +140,8 @@ mod tests {
         let l = layout(Model::D60, 1, false, &items);
         assert_eq!((l.account_keys, l.pages), (1, 1));
         assert_eq!(l.line, [[Empty, Item(1)]]);
-        // No account still keeps key 0.
+        // Two accounts: no key is free.  No account still keeps key 0.
+        assert_eq!(layout(Model::D60, 2, false, &items).line, [[Empty, Empty]]);
         assert_eq!(layout(Model::D40, 0, false, &items).line, [[Empty, Item(1)]]);
         // Without line-key paging a repeated key is overwritten.
         let l = layout(Model::D62, 1, false, &[item(Main, 1), item(Main, 1)]);
@@ -173,6 +174,7 @@ mod tests {
         assert_eq!(l.line[0], [Empty, Item(0), Item(1), Item(2), Item(3), Item(4)]);
         assert_eq!(l.line[1], [Empty, Item(5), Item(6), Item(7), Item(8), Item(9)]);
         assert_eq!(l.line[2], [Empty, Item(10), Item(11), Empty, Empty, Empty]);
+        assert!(l.side.iter().all(|p| p.is_empty()));
         // D60: one free key, one page; the last side item wins it.
         let l = layout(Model::D60, 1, false, &items[..3]);
         assert_eq!(l.line, [[Empty, Item(2)]]);
@@ -194,6 +196,7 @@ mod tests {
         assert_eq!(l.pages, 2);
         assert_eq!(l.side[0], [Item(0), Empty, Empty, Empty, Blank, Empty, Empty, Empty, Empty, Item(1)]);
         assert_eq!(l.side[1][0], Item(2));
+        assert_eq!(l.side[1][4], Empty);
         // The main item is on the line keys of every page.
         assert!(l.line.iter().all(|p| p[3] == Item(4)));
         items[2].paging = false;
@@ -202,5 +205,8 @@ mod tests {
         // D50: one page; a second item on a used key is dropped.
         let l = layout(Model::D50, 1, false, &[item(Side, 3), item(Side, 3)]);
         assert_eq!((l.pages, l.side.len(), l.side[0][3]), (1, 1, Item(0)));
+        // D40: no strip.
+        let l = layout(Model::D40, 1, false, &[item(Side, 0)]);
+        assert_eq!((l.line.clone(), l.side), (vec![vec![Empty, Empty]], vec![Vec::<Slot>::new()]));
     }
 }

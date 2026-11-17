@@ -48,6 +48,7 @@ async fn incoming_session_timer_is_answered_and_enforced() {
     server.socket.send_to(invite(server.addr, phone, "small", "Supported: timer\r\nSession-Expires: 1\r\n").as_bytes(), &to).await.unwrap();
     let refused = wait("422", || response(&server, "small", "422")).await;
     assert_eq!(refused.header("Min-SE"), Some("2"));
+    assert!(p.store.get::<Calls>().calls.is_empty());
 
     // They ask for a timer and say they will refresh.
     let extra = "Supported: timer\r\nSession-Expires: 4;refresher=uac\r\nMin-SE: 2\r\n";
@@ -124,10 +125,13 @@ async fn outgoing_session_timer_follows_422_and_refreshes() {
     assert_eq!(sent[1].header("Session-Expires"), Some("3600"), "the retry asks for their minimum");
 
     // We are the refresher of a 3 s session: UPDATEs keep coming, with our
-    // role stated.
+    // role stated, and the call stays up.
     wait("two refreshes", || (server.requests("UPDATE").len() >= 2).then_some(())).await;
     let update = server.requests("UPDATE").remove(0);
     assert_eq!(update.header("Session-Expires"), Some("3;refresher=uac"));
+    assert!(update.body.is_empty());
+    assert_eq!(p.store.get::<Calls>().get(call).map(|c| c.state.clone()), Some(CallState::Active));
+    assert!(server.requests("BYE").is_empty());
 }
 
 #[tokio::test(flavor = "current_thread")]

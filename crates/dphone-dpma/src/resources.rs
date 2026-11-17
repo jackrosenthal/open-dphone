@@ -388,18 +388,22 @@ mod tests {
         }
     }
 
-    /// A server with files by name (`file://`) and by URL.
+    /// A server with files by name (`file://`) and by URL, counting what
+    /// it is asked for.
     #[derive(Default)]
     struct Server {
         files: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
+        asked: std::sync::Mutex<Vec<String>>,
     }
 
     #[async_trait::async_trait]
     impl Fetch for Server {
         async fn file(&self, name: &str) -> Result<Vec<u8>, DpmaError> {
+            self.asked.lock().unwrap().push(name.into());
             self.files.lock().unwrap().get(name).cloned().ok_or_else(|| DpmaError::Protocol(format!("no file {name}")))
         }
         async fn http(&self, url: &str, max: usize) -> Result<Vec<u8>, String> {
+            self.asked.lock().unwrap().push(url.into());
             let data = self.files.lock().unwrap().get(url).cloned().ok_or("404")?;
             if data.len() > max { Err(format!("more than {max} bytes")) } else { Ok(data) }
         }
@@ -429,7 +433,7 @@ mod tests {
         // content changes nothing.
         let report = sync(&both, &files, &server).await;
         assert_eq!((report.fetched, report.changed), (2, false));
-        // With a matching `md5` they count as matched.
+        // With a matching `md5` they are not asked for.
         let (png_md5, palette_md5) = (md5_hex(b"\x89PNG picture"), md5_hex(b"primary: \"#1F6E4E\"\n"));
         let pinned = Wanted {
             resources: vec![
@@ -438,26 +442,38 @@ mod tests {
             ],
             apps: vec![],
         };
+        server.asked.lock().unwrap().clear();
         let report = sync(&pinned, &files, &server).await;
         assert_eq!((report.matched, report.fetched), (2, 0));
+        assert!(server.asked.lock().unwrap().is_empty());
         // A new palette file takes the old one's place.
         serve("http://pbx/files/wall.txtpb", b"light: true\n");
         let report = sync(&both, &files, &server).await;
         assert!(report.changed);
         assert_eq!(has("open/wallpaper_palette.txtpb").as_deref(), Some(&b"light: true\n"[..]));
-        // A palette file over its limit is refused.
+        // A palette file over its limit is refused; the one on the phone
+        // stays.
         serve("http://pbx/files/wall.txtpb", &vec![b'#'; MAX_PALETTE + 1]);
         let report = sync(&both, &files, &server).await;
         assert_eq!((report.fetched, report.failed), (1, 1));
-        // The palette file is no longer named: it goes, with its digest.
+        assert_eq!(has("open/wallpaper_palette.txtpb").as_deref(), Some(&b"light: true\n"[..]));
+        // The palette file is no longer named: it goes, with its digest;
+        // the picture stays.
         let picture_only = Wanted { resources: vec![r(Kind::Wallpaper, "file://wall.png", None)], apps: vec![] };
         let report = sync(&picture_only, &files, &server).await;
         assert_eq!((report.removed, report.changed), (1, true));
         assert_eq!((has("open/wallpaper_palette.txtpb"), has("md5s/dphone_palette_file")), (None, None));
+        assert!(has("user_wallpaper.png").is_some());
         // Neither is named: the picture goes too.
         let report = sync(&Wanted::default(), &files, &server).await;
         assert_eq!(report.removed, 1);
         assert_eq!((has("user_wallpaper.png"), has("md5s/wallpaper_file")), (None, None));
+        // A picture that this mechanism did not download (it has no
+        // digest: a stock firmware's upload, say) is left alone.
+        files.write("user_wallpaper.png", b"someone's own").unwrap();
+        let report = sync(&Wanted::default(), &files, &server).await;
+        assert_eq!(report.removed, 0);
+        assert!(has("user_wallpaper.png").is_some());
     }
 
     #[test]

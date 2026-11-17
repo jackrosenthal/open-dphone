@@ -510,7 +510,10 @@ mod tests {
         let s = select(&f, &p, "D60").unwrap();
         assert_eq!(s.version, "2_9_28");
         assert_eq!(s.urls, ["http://x/d60", "http://pub/1"]);
+        assert_eq!(select(&f, &p, "D65"), None);
         assert_eq!(select(&[fw("D60", "4", "")], &[], "D60"), None);
+        // The model comparison is exact, like stock's.
+        assert_eq!(select(&[fw("d60", "4", "http://x")], &[], "D60"), None);
     }
 
     #[test]

@@ -303,6 +303,7 @@ mod tests {
         let missing = c.missing();
         assert_eq!(missing.len(), 2);
         assert_eq!(missing[0].qtype, TYPE_SRV);
+        assert!(c.services(DIGIUM_PROXY_SERVICE).is_empty());
 
         let mut b = Message {
             flags: 0x8400,

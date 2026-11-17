@@ -340,7 +340,7 @@ mod tests {
             })
         );
         assert_eq!(p.base_if, "br0");
-        assert!(p.pc_up);
+        assert!(p.pc_up && p.add.is_empty() && p.remove.is_empty());
     }
 
     #[test]
@@ -390,11 +390,12 @@ mod tests {
                 },
             ]
         );
+        assert!(p.remove.is_empty());
         assert_eq!(vlan_ifname(&p.base_if, 100), "br0.100");
     }
 
     #[test]
-    fn expansion_vlan_is_on_the_pc_jack_and_the_phone() {
+    fn expansion_vlan_stays_off_the_lan_jack() {
         let mut c = cfg();
         c.expansion_address = Some("172.20.2.3".parse().unwrap());
         // Bridged: filtering on, the VLAN tagged on the PC jack and the
@@ -405,14 +406,20 @@ mod tests {
         let members: Vec<_> = p.add.iter().filter(|e| e.vid == EXPANSION_VID).map(|e| (e.ifname.as_str(), e.on_bridge)).collect();
         assert_eq!(members, [("pc", false), ("br0", true)]);
         assert!(p.add.iter().all(|e| e.vid != EXPANSION_VID || e.flags == VlanFlags::default()));
-        // With a voice VLAN as well, the LAN jack gets the voice VLAN.
+        // With a voice VLAN as well, the LAN jack gets that one only.
         let p = plan(&c, true, true, Some(100));
         assert!(p.add.iter().any(|e| e.ifname == "lan" && e.vid == 100));
+        assert!(!p.add.iter().any(|e| e.ifname == "lan" && e.vid == EXPANSION_VID));
         // PC jack not bridged: the port comes up alone and carries the device.
         c.pc_port = PcPort::Disabled;
         let p = plan(&c, true, true, None);
         assert_eq!((p.bridge, p.pc_up, p.expansion_parent.as_deref()), (None, true, Some("pc")));
         assert_eq!(p.base_if, "lan");
+        // No PC port, or the port switched off: nothing to put it on.
+        assert_eq!(plan(&c, false, true, None).expansion_parent, None);
+        c.pc_port_mode = PortMode::Off;
+        let p = plan(&c, true, true, None);
+        assert_eq!((p.pc_up, p.expansion_parent), (false, None));
     }
 
     #[test]
@@ -448,6 +455,8 @@ mod tests {
             flags: VlanFlags::default(),
             on_bridge: false
         }));
+        // The PC does not get the voice VLAN when it has its own.
+        assert!(!p.add.iter().any(|e| e.ifname == "pc" && e.vid == 100));
         // Out-of-range IDs are ignored.
         c.pc_vlan_id = Some(4095);
         assert!(!plan(&c, true, true, None).bridge.unwrap().vlan_filtering);

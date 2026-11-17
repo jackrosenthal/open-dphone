@@ -162,6 +162,7 @@ mod tests {
         let stripped = String::from_utf8(strip_firmware(cfg)).unwrap();
         assert!(!stripped.contains("firmware"), "{stripped}");
         assert!(stripped.contains("<setting id=\"a\" value=\"1\"/>") && stripped.contains("<accounts/>"));
+        assert_eq!(offered_firmware(b"<config/>"), None);
     }
 
     #[test]

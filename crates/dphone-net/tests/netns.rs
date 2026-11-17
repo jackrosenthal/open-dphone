@@ -512,6 +512,20 @@ async fn frame_crosses(from: u32, to: u32, ethertype: u16, dst: MacAddr) -> bool
     false
 }
 
+/// Whether a frame sent from `from` stays off `to`.  A frame that does
+/// cross (as in [`frame_crosses`]) is sent after it: once that one is
+/// through, the first one would have been as well.
+async fn frame_held_back(from: u32, to: u32, ethertype: u16, dst: MacAddr) -> bool {
+    let rx = PacketSocket::new(to, ethertype).unwrap();
+    PacketSocket::new(from, ethertype).unwrap().send(dst, &[0x5au8; 60]).await.unwrap();
+    assert!(
+        frame_crosses(from, to, 0x88b5, MacAddr::BROADCAST).await,
+        "the frame sent after it did not cross"
+    );
+    let mut buf = [0u8; 128];
+    timeout(Duration::from_millis(50), rx.recv(&mut buf)).await.is_err()
+}
+
 async fn wait_for(
     mgr: &NetManager,
     what: &str,
@@ -724,6 +738,12 @@ async fn manager_end_to_end() {
         frame_crosses(sw, pcpeer, 0x88b5, MacAddr::BROADCAST).await,
         "LAN to PC"
     );
+    // EAPOL does not cross without pass-through.
+    let pae = MacAddr::parse("01:80:c2:00:00:03").unwrap();
+    assert!(
+        frame_held_back(pcpeer, sw, 0x888e, pae).await,
+        "EAPOL crossed without pass-through"
+    );
     println!("netns: PC-port bridging ok");
 
     // The six-second lease renews at three seconds, by unicast.
@@ -756,8 +776,10 @@ async fn manager_end_to_end() {
 
     // --- Settings that apply in place -------------------------------------
     // Selecting the network profile by the leased address changes the time
-    // server and the DSCP values on every boot.  The running session adopts
-    // them: the new time settings bring a synchronization.
+    // server and the DSCP values on every boot.  That must not cost a new
+    // bring-up: the address stays, and no DHCP exchange happens.
+    let exchanges = |l: &ServerLog| (l.discovers, l.requests);
+    let before = exchanges(&dhcp_log.lock().unwrap());
     let ntp_before = *ntp_hits.lock().unwrap();
     let mut live = cfg.clone();
     live.ntp.server = Some("pool.ntp.org".into());
@@ -766,6 +788,8 @@ async fn manager_end_to_end() {
     live.qos.sip_dscp = Some(0);
     live.ipv4 = Ipv4Config::Dhcp { arp_check: true, requested_ip: Some(LEASED_IP) };
     assert!(!cfg.needs_restart(&live));
+    let mut watch = mgr.state();
+    watch.borrow_and_update();
     let started = std::time::Instant::now();
     mgr.reconfigure(live.clone()).await;
     timeout(Duration::from_secs(5), async {
@@ -776,6 +800,14 @@ async fn manager_end_to_end() {
     .await
     .expect("the new time settings did not trigger a synchronization");
     let live_time = started.elapsed();
+    // Every state published since the change still has the address.
+    while watch.has_changed().unwrap() {
+        let st = watch.borrow_and_update().clone();
+        assert_eq!(st.ipv4.as_ref().map(|v| v.address), Some(LEASED_IP), "the address was dropped");
+        assert_eq!(st.phase, Phase::Up);
+    }
+    assert_eq!(exchanges(&dhcp_log.lock().unwrap()), before, "a live change must not restart DHCP");
+    assert!(nl.link_by_name("br0.100").await.unwrap().is_some());
     // For comparison: a change that does rearrange the network.
     let mut hard = live.clone();
     hard.eapol_passthrough = true;
@@ -785,7 +817,7 @@ async fn manager_end_to_end() {
     wait_for(&mgr, "address loss", Duration::from_secs(5), |s| s.ipv4.is_none()).await;
     wait_for(&mgr, "the address after a restart", Duration::from_secs(25), |s| s.phase == Phase::Up && s.ipv4.is_some()).await;
     println!(
-        "netns: live settings change ok ({} ms to the synchronization; a full bring-up took {} ms)",
+        "netns: live settings change ok ({} ms with the address kept; a full bring-up took {} ms)",
         live_time.as_millis(),
         started.elapsed().as_millis()
     );
@@ -812,11 +844,18 @@ async fn manager_end_to_end() {
     })
     .await;
     assert_eq!(st.interface, "br0");
+    assert_eq!(st.vlan_id, None);
     assert_eq!(st.dns, vec![IpAddr::V4(Ipv4Addr::new(10, 98, 0, 53))]);
     assert_eq!(st.domain.as_deref(), Some("static.test"));
+    assert!(st.tftp_server.is_none());
     assert!(
         nl.link_by_name("br0.100").await.unwrap().is_none(),
         "the VLAN device should be gone"
+    );
+    assert_eq!(
+        dhcp_log.lock().unwrap().releases,
+        0,
+        "a reconfiguration does not release the lease"
     );
     let br = idx(&mut nl, "br0").await;
     let routes = nl.routes(false).await.unwrap();
@@ -831,7 +870,6 @@ async fn manager_end_to_end() {
             .iter()
             .any(|r| r.gateway == Some(IpAddr::V4(Ipv4Addr::new(10, 97, 0, 1))) && r.metric == 1)
     );
-    let pae = MacAddr::parse("01:80:c2:00:00:03").unwrap();
     assert!(
         frame_crosses(pcpeer, sw, 0x888e, pae).await,
         "EAPOL should cross with pass-through"
@@ -865,8 +903,9 @@ async fn manager_end_to_end() {
 
     // --- Expansion modules behind the PC jack -----------------------------
     // The module talks on VLAN 3182 at 172.20.x.y; the phone gets `exp`
-    // with its own address there.
+    // with its own address there, and none of it shows on the LAN jack.
     {
+        use dphone_net::packet::RawSocket;
         use dphone_net::topology::{EXPANSION_IF, EXPANSION_VID};
         let phone_addr = Ipv4Addr::new(172, 20, 2, 3);
         let module_addr = Ipv4Addr::new(172, 20, 9, 9);
@@ -878,6 +917,8 @@ async fn manager_end_to_end() {
         module.set_nonblocking(true).unwrap();
         dphone_net::qos::bind_to_device(&module, "module").unwrap();
         let module = UdpSocket::from_std(module).unwrap();
+        // Everything that crosses the LAN jack with an 802.1Q tag.
+        let lan_tap = RawSocket::new(sw, 0x8100).unwrap();
 
         for bridged in [true, false] {
             let mut c = test_config();
@@ -915,6 +956,21 @@ async fn manager_end_to_end() {
                 }
             }
             assert!(answered, "the module was not reachable over {EXPANSION_IF} (bridged: {bridged})");
+            // Broadcast discovery from the module must not leave by the LAN jack.
+            module.set_broadcast(true).unwrap();
+            module.send_to(b"discover", (Ipv4Addr::new(172, 20, 255, 255), 10026)).await.unwrap();
+            let mut frame = [0u8; 256];
+            let leaked = timeout(Duration::from_millis(400), async {
+                loop {
+                    let n = lan_tap.recv(&mut frame).await.unwrap();
+                    if n >= 16 && u16::from_be_bytes([frame[14], frame[15]]) & 0xfff == EXPANSION_VID {
+                        return;
+                    }
+                }
+            })
+            .await
+            .is_ok();
+            assert!(!leaked, "expansion VLAN traffic reached the LAN jack (bridged: {bridged})");
         }
         nl.del_link(module_if).await.unwrap();
     }

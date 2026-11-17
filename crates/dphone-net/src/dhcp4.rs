@@ -1177,6 +1177,12 @@ mod tests {
         let mut b = sample_ack();
         b[236] = 0;
         assert!(Message::parse(&b).is_none());
+        // A truncated option does not panic.
+        let mut b = sample_ack();
+        let n = b.len();
+        b[n - 1] = 6;
+        b.push(200);
+        assert!(Message::parse(&b).is_some());
     }
 
     #[test]
