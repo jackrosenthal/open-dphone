@@ -380,6 +380,8 @@ mod tests {
         assert_eq!(lines(&mut g), ["+CIEV: 3,1", "RING", "+CLIP: \"1234\",129"]);
         assert_eq!(g.deadline(), Some(t0 + RING_INTERVAL));
 
+        g.tick(t0 + Duration::from_secs(1));
+        assert!(text(&mut g).is_empty());
         g.tick(t0 + RING_INTERVAL);
         assert_eq!(lines(&mut g), ["RING", "+CLIP: \"1234\",129"]);
 
@@ -389,6 +391,7 @@ mod tests {
 
         g.set_call_state(t0, CallState::Active);
         assert_eq!(lines(&mut g), ["+CIEV: 2,1", "+CIEV: 3,0"]);
+        assert_eq!(g.deadline(), None);
 
         g.receive(b"AT+CHUP\r");
         assert_eq!(g.take_actions(), [Action::HangUp]);
@@ -410,12 +413,13 @@ mod tests {
     }
 
     #[test]
-    fn a_call_alerting_during_set_up_is_in_cind_and_rings_on_connection() {
+    fn no_indicator_events_before_they_are_asked_for() {
         let t0 = Instant::now();
         let mut g = Gateway::new(Dialect::HandsFree);
         g.receive(b"AT+BRSF=0\rAT+CIND=?\rAT+CIND?\r");
         g.take_output();
         g.set_call_state(t0, CallState::Incoming { number: None });
+        assert!(text(&mut g).is_empty());
         // The state is reported by +CIND?, and ringing starts on connection.
         g.receive(b"AT+CIND?\rAT+CMER=3,0,0,1\r");
         assert_eq!(lines(&mut g), ["+CIND: 1,0,1,0,5,0,5", "OK", "OK", "RING"]);
@@ -448,6 +452,7 @@ mod tests {
         let mut g = Gateway::new(Dialect::HandsFree);
         g.receive(b"AT+BVRA=1\rAT+NREC=0\rAT+CHLD=?\rAT+BAC=1,2\rhello\r\r\n");
         assert_eq!(lines(&mut g), ["ERROR", "ERROR", "ERROR", "ERROR", "ERROR"]);
+        assert!(g.take_actions().is_empty());
     }
 
     #[test]
@@ -455,6 +460,7 @@ mod tests {
         let mut g = Gateway::new(Dialect::HandsFree);
         g.receive(b"at+cl");
         g.receive(b"ip=1");
+        assert!(text(&mut g).is_empty());
         g.receive(b"\r");
         assert_eq!(lines(&mut g), ["OK"]);
     }
@@ -469,5 +475,7 @@ mod tests {
         g.receive(b"AT+CKPD=200\rAT+VGS=7\rAT+BRSF=0\r");
         assert_eq!(lines(&mut g), ["OK", "OK", "ERROR"]);
         assert_eq!(g.take_actions(), [Action::Button, Action::SpeakerVolume(7)]);
+        g.set_call_state(t0, CallState::Active);
+        assert!(text(&mut g).is_empty());
     }
 }

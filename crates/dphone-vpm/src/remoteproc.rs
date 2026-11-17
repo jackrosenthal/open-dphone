@@ -135,6 +135,12 @@ mod tests {
         let r = Remoteproc::find_in(&root).unwrap();
         assert_eq!(r.state().unwrap(), State::Offline);
         assert_eq!(r.firmware().unwrap(), "dspapp1107_lcc.bin");
+        // A stopped DSP is not stopped again, nor a running one started:
+        // nothing here answers a write to `state`, so a write would end in
+        // an error when the wait for the new state times out.
+        r.stop().unwrap();
+        fs::write(rp.join("state"), "running\n").unwrap();
+        r.start().unwrap();
         fs::remove_dir_all(&root).unwrap();
     }
 }

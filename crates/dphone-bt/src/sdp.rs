@@ -476,7 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn a_search_finds_the_records_of_its_class() {
+    fn both_records_match_generic_audio_and_none_match_a_stranger() {
         let search = |class: u16| {
             let mut body = De::Seq(vec![De::uuid16(class)]).to_bytes();
             body.extend_from_slice(&[0x00, 0x10, 0x00]);
@@ -486,6 +486,7 @@ mod tests {
         };
         assert_eq!(search(uuid::GENERIC_AUDIO), 2);
         assert_eq!(search(uuid::HANDSFREE_AG), 1);
+        assert_eq!(search(0x110a), 0);
     }
 
     #[test]

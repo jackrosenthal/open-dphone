@@ -302,6 +302,7 @@ mod tests {
         let a = f64::from(amplitude_dbm0(-13));
         assert!((goertzel(&buf, 350, 8000) - a).abs() < a * 0.02);
         assert!((goertzel(&buf, 440, 8000) - a).abs() < a * 0.02);
+        assert!(goertzel(&buf, 620, 8000) < a * 0.01);
     }
 
     #[test]

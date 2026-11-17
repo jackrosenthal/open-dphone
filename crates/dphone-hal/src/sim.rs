@@ -1049,8 +1049,9 @@ mod tests {
         let mut back = vec![0u8; data.len()];
         assert_eq!(read_skip_bad(k0.as_mut(), 0, &mut back).unwrap(), end);
         assert_eq!(back, data);
-        // The raw layout shows the skip.
+        // Block 1 untouched, and the raw layout shows the skip.
         let raw = sim.mtd_contents("k0").unwrap();
+        assert!(raw[bs..2 * bs].iter().all(|b| *b == 0xff));
         assert_eq!(&raw[2 * bs..3 * bs], &data[bs..2 * bs]);
         // Writing without erasing can only clear bits.
         k0.write(0, &[0xff; 4]).unwrap();
