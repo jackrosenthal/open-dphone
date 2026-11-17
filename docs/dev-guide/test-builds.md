@@ -1,6 +1,6 @@
 # Test builds
 
-Open DPhone has two ways to run new code on a phone without writing to flash.  Both require a phone that already runs Open DPhone with [SSH](ssh-and-serial-console.md#ssh) turned on.
+Two ways run new code on a phone without writing to flash.  Both require a phone running Open DPhone with [SSH](ssh-and-serial-console.md#ssh) on.
 
 | | Binary deploy | RAM boot |
 | --- | --- | --- |
@@ -11,37 +11,35 @@ Open DPhone has two ways to run new code on a phone without writing to flash.  B
 
 ## Binary deploy
 
-For a change to the main role, i.e., anything in the `dphone` binary other than the init role, one command builds the binary for the phone, copies the binary over SSH, and restarts the main role:
+For a change to the main role, i.e., anything in the `dphone` binary but the init role, one command builds the binary for the phone, copies the binary over SSH, and restarts the main role:
 
 ```sh
 cargo xtask deploy 192.0.2.20
 ```
 
-The argument is the phone's address or host name.  The login is `root` unless the argument has the form `LOGIN@HOST`.  Pass `--no-build` to push the binary from the previous build.
+The argument is the phone's address or host name, with the login `root` unless written as `LOGIN@HOST`.  `--no-build` pushes the binary of the previous build.
 
-The command copies the binary to `/tmp/dphone` on the phone.  Whenever that file exists, the init role runs `/tmp/dphone` as the main role in place of the installed binary.  `/tmp` is in RAM, so a reboot restores the installed binary.  To restore the installed binary without a reboot:
+The command copies the binary to `/tmp/dphone`.  While that file exists, the init role runs `/tmp/dphone` as the main role instead of the installed binary.  `/tmp` is in RAM, so a reboot restores the installed binary.  To restore the installed binary without a reboot:
 
 ```sh
 ssh root@192.0.2.20 'rm /tmp/dphone && dphone restart'
 ```
 
-If a pushed binary fails three times in a row, each time within 30 seconds of starting, the init role ignores the pushed binary until the next boot and runs the installed binary again.
+If a pushed binary fails three times in a row, each time within 30 seconds of starting, the init role runs the installed binary until the next boot.
 
 ### Limitations
 
-A pushed binary does not update the following:
+A pushed binary does not update:
 
 - **The init role.**  Process 1 remains the installed binary.  A change to the init role requires an image.
-- **The built-in apps.**  The apps are compiled files in the root file system, tied to the version of the app runtime in the binary.  If a change alters the runtime, the pushed binary refuses to load the installed apps.
+- **The built-in apps.**  The apps are compiled files in the root file system, tied to the binary's app runtime.  If a change alters the runtime, the pushed binary refuses to load the installed apps.
 - **The web frontend, unless built.**  The binary embeds `web/dist`.  Run `pnpm build` in `web/` before deploying, or the pushed binary serves a placeholder page.  See [Web frontend](building.md#web-frontend).
 
 ## RAM boot
 
-`dphone ramboot` boots an image's kernel, device tree, and root file system from RAM.  Nothing is written to the firmware banks or to the `ctrl` partition.  Use the command to test a kernel before flashing, or to test a whole image without a flash write.
+`dphone ramboot` boots an image's kernel, device tree, and root file system from RAM, without writing to the firmware banks or the `ctrl` partition: to test a kernel before flashing, or a whole image without a flash write.
 
-The image is the same EFF image that the build produces and that `dphone update install` installs.  The command accepts only an Open DPhone image for the phone's model.
-
-While loading, the command briefly needs enough free memory for two copies of the image, and a copy in `/tmp` would use up that memory.  Pipe the image to the command over SSH so that no copy is stored on the phone:
+The command accepts only an Open DPhone EFF image for the phone's model, as built by `nix build` and installed by `dphone update install`.  Loading briefly takes free memory for two copies of the image, so a copy in `/tmp` would exhaust the memory.  Pipe the image over SSH instead:
 
 ```sh
 ssh root@192.0.2.20 dphone ramboot - < result
@@ -51,20 +49,20 @@ ssh root@192.0.2.20 dphone ramboot - < result
 
 In the RAM-booted system:
 
-- nvdata is the phone's real nvdata.  The settings, the network address, and the SSH keys are unchanged, so the same `ssh` command works.  Anything that the RAM-booted system writes to nvdata persists after the phone returns to the installed firmware.
+- nvdata is the phone's nvdata.  The settings, the network address, and the SSH keys are unchanged, so the same `ssh` command works.  Writes to nvdata persist after the phone returns to the installed firmware.
 - `dphone update status` reports that the phone is running from neither bank.
 - A pending trial boot is neither counted nor confirmed.
-- The full `dphone update` command is available.  Once an image has proved to work, you can [install the image](firmware-updates.md#dphone-update-install) from the RAM-booted system.
+- The full `dphone update` command is available, e.g., to [install the image](firmware-updates.md#dphone-update-install) once the image works.
 
 ### Return to the installed firmware
 
-A RAM-booted system returns to the installed firmware in any of these cases:
+The phone returns to the installed firmware when:
 
-- You run `dphone reboot` or power-cycle the phone.
-- The kernel hangs.  The hardware watchdog keeps running across the handover and resets the phone.
-- The time limit expires.  The limit is 900 seconds unless `--max-uptime` sets another.
+- you run `dphone reboot` or power-cycle the phone,
+- the kernel hangs: the hardware watchdog keeps running across the handover and resets the phone, or
+- the time limit expires: 900 seconds, or the value of `--max-uptime`.
 
-The time limit ensures that an unreachable system, e.g., one without a working network, gives the phone back without intervention.  To stay past the limit, create the file `/run/dphone/stay` in the RAM-booted system:
+The time limit returns an unreachable system, e.g., one without a working network, without intervention.  To stay past the limit, create `/run/dphone/stay` in the RAM-booted system:
 
 ```sh
 ssh root@192.0.2.20 touch /run/dphone/stay
@@ -75,10 +73,10 @@ ssh root@192.0.2.20 touch /run/dphone/stay
 | Option | Description |
 | --- | --- |
 | `--dry-run` | Verifies the image, prints what would be loaded and passed to the kernel, and stops. |
-| `--max-uptime <seconds>` | Sets the time limit.  The default is 900.  A value of 0 disables the limit. |
-| `--append <arguments>` | Adds kernel parameters, e.g., `amba_pl011.console_output=1` to get [early kernel messages](ssh-and-serial-console.md#early-kernel-messages) on the serial console. |
+| `--max-uptime <seconds>` | The time limit.  The default is 900; 0 disables the limit. |
+| `--append <arguments>` | Adds kernel parameters, e.g., `amba_pl011.console_output=1` for [early kernel messages](ssh-and-serial-console.md#early-kernel-messages) on the serial console. |
 
-For example, to boot an image with no time limit:
+To boot an image with no time limit:
 
 ```sh
 ssh root@192.0.2.20 dphone ramboot --max-uptime 0 - < result
@@ -86,11 +84,11 @@ ssh root@192.0.2.20 dphone ramboot --max-uptime 0 - < result
 
 ### Kernel requirements
 
-A kernel configuration change can break `dphone ramboot` for later runs.  The command depends on the following:
+A kernel configuration change can break later runs of `dphone ramboot`, which requires:
 
-- The running kernel must have `CONFIG_KEXEC`.
-- The new kernel must have `CONFIG_MTD_PHRAM`, because the root file system is placed in RAM and presented to the kernel as a flash device.
-- The new kernel must keep the watchdog from expiring until the init role opens `/dev/watchdog`.  `CONFIG_WATCHDOG_OPEN_TIMEOUT` allows 120 seconds, and a system that takes longer to start is reset.
-- The new kernel receives the parameter `bcmring.coldsim`, which makes the kernel reset the peripherals early so that drivers find the hardware in the power-on state.
+- `CONFIG_KEXEC` in the running kernel.
+- `CONFIG_MTD_PHRAM` in the new kernel, which sees the root file system in RAM as a flash device.
+- A new kernel that keeps the watchdog from expiring until the init role opens `/dev/watchdog`.  `CONFIG_WATCHDOG_OPEN_TIMEOUT` allows 120 seconds; a system that takes longer to start is reset.
+- The parameter `bcmring.coldsim`, passed to the new kernel, which makes the kernel reset the peripherals early so that drivers find the hardware in the power-on state.
 
-See `kernel/README.md` for details, and `crates/dphone-update/src/ramboot.rs` for how the image is laid out in memory.
+For details, see `kernel/README.md`, and for the image's memory layout, `crates/dphone-update/src/ramboot.rs`.

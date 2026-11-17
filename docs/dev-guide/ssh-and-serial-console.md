@@ -1,22 +1,20 @@
 # SSH and serial console
 
-Open DPhone provides a root shell over SSH and on a serial console on the EHS port.  Both are off by default.
-
-The shell is [brush](https://github.com/reubeno/brush), a Bash-compatible shell.  The uutils versions of the common utilities, `sed`, and the [`dphone` command](dphone-command.md) are available.
+Open DPhone provides a root shell over SSH and on a serial console on the EHS port.  Both are off by default.  The shell is [brush](https://github.com/reubeno/brush), which is Bash-compatible, with the uutils versions of the common utilities, `sed`, and the [`dphone` command](dphone-command.md).
 
 ## SSH
 
-The SSH server accepts public keys only, and the login name is `root`.  Before you can log in, the SSH setting must be on, and the phone must have at least one public key.
+The SSH server accepts public keys only; the login name is `root`.  A login requires the SSH setting on and at least one public key on the phone.
 
 ### Web interface
 
-On the **System** page, the **SSH** card has the **Enabled** switch and the list of keys.  Paste a public key (the contents of a `.pub` file, e.g., `~/.ssh/id_ed25519.pub`) into the box, or choose the file, and click **Add Key**.  The switch takes effect immediately.
+On the **System** page, the **SSH** card has the **Enabled** switch, which takes effect immediately, and the list of keys.  To add a key, paste the public key (the contents of a `.pub` file, e.g., `~/.ssh/id_ed25519.pub`) into the box, or choose the file, and click **Add Key**.
 
-Keys added in the web interface are stored in `/nvdata/root/.ssh/authorized_keys`, the same file that the stock firmware's SSH server reads.
+The keys are stored in `/nvdata/root/.ssh/authorized_keys`, the file that the stock firmware's SSH server reads.
 
 ### PBX configuration
 
-With [Open DPMA](../open-dpma/index.md) on the PBX, the phone's section of `res_digium_phone.conf` can turn SSH on and supply keys:
+With [Open DPMA](../open-dpma/index.md), the phone section turns SSH on and supplies keys:
 
 ```ini
 [phone101]
@@ -25,20 +23,18 @@ dphone_ssh_enabled=yes
 dphone_ssh_authorized_key=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa alice@laptop
 ```
 
-See [Open DPhone options](../open-dpma/open-dphone-options.md#dphone_ssh_enabled) for details.
+See [Open DPhone options](../open-dpma/open-dphone-options.md#dphone_ssh_enabled).
 
 ### Settings file
 
-From a shell that is already open, e.g., on the serial console, turn SSH on by editing `/nvdata/dphone_settings.txtpb`, the file where the web interface stores the setting.  The file has one field per line.  Set the field, then tell the main role to reload the configuration.
-
-If the file has no `ssh_enabled` line yet:
+From an open shell, e.g., on the serial console, set `ssh_enabled: true` in `/nvdata/dphone_settings.txtpb`, the file where the web interface stores the setting, one field per line.  Then reload the configuration.  If the file has no `ssh_enabled` line:
 
 ```sh
 echo 'ssh_enabled: true' >> /nvdata/dphone_settings.txtpb
 dphone config reload
 ```
 
-If the file already has the line, change the value on that line instead of adding a second line.  The field for the serial console is `serial_console: true`.
+If the file has the line, change the value instead of adding a second line.  The serial console's field is `serial_console: true`.
 
 ### Login
 
@@ -53,33 +49,33 @@ ssh root@192.0.2.20 dphone version
 scp root@192.0.2.20:/tmp/screen.ppm .
 ```
 
-The phone generates an Ed25519 host key on first use and stores the key in nvdata, so the host key stays the same across firmware updates.  The server accepts at most six connections at a time.
+The phone generates an Ed25519 host key on first use and stores the key in nvdata, so the host key survives firmware updates.  The server accepts at most six connections at a time.
 
-Turning SSH off closes the listening socket but leaves open sessions running, so turning SSH off from an SSH session does not cut the session off.
+Turning SSH off closes the listening socket but not open sessions, so turning SSH off from an SSH session does not end the session.
 
 ## Serial console
 
-The phone's serial port is the EHS port, the connector for an electronic hook switch (EHS) headset adapter.  A headset adapter and a console cannot share the port, so a setting selects one or the other.  With the default setting, Headset, the phone writes nothing to the port: no kernel messages, no shell, and no log output.
+The phone's serial port is the EHS port, the connector for an electronic hook switch (EHS) headset adapter.  A setting gives the port to either a headset adapter or the console.  With the default setting, Headset, the phone writes nothing to the port: no kernel messages, no shell, and no log output.
 
 ### Console mode
 
-On the **System** page of the web interface, set **EHS Port** to **Serial Console (115200 8N1)**.  The change takes effect immediately.  From the PBX, set [`dphone_serial_console`](../open-dpma/open-dphone-options.md#dphone_serial_console) in the phone's section:
+On the **System** page of the web interface, set **EHS Port** to **Serial Console (115200 8N1)**; the change takes effect immediately.  From the PBX, set [`dphone_serial_console`](../open-dpma/open-dphone-options.md#dphone_serial_console) in the phone section:
 
 ```ini
 dphone_serial_console=yes
 ```
 
-In console mode:
+In console mode, the port carries:
 
-- the kernel writes console messages to the port,
-- the main role's log is copied to the port, and
-- a root shell runs on the port, with no login prompt.
+- the kernel's console messages,
+- a copy of the main role's log, and
+- a root shell, with no login prompt.
 
 !!! warning "Console mode gives a root shell to anyone with physical access"
 
     Switch the setting back to Headset before a phone goes back into service.
 
-The console also takes over the port when the main role fails, whatever the setting says.  The init role gives the port to the console until a working main role applies the setting again.  A phone whose main role cannot start is therefore reachable with nothing but a cable.
+The console also takes over the port when the main role fails, whatever the setting: the init role gives the port to the console until a working main role applies the setting again.  A phone whose main role cannot start is reachable with a cable.
 
 ### Wiring
 
@@ -96,7 +92,7 @@ Every model has the same EHS header: two rows of three positions on a 1 mm pitch
 | 5 | Phone RX (input to the phone) | Transmit wire (green) |
 | 6 | Ground | Alternative to pin 1 for the ground wire |
 
-Use a USB serial cable with 3.3 V logic levels.  The wire colors in the table are typical for USB serial cables with four loose wires, but colors vary between manufacturers, so check the cable's documentation.
+Use a USB serial cable with 3.3 V logic levels.  The wire colors are typical of cables with four loose wires, but vary between manufacturers; check the cable's documentation.
 
 !!! danger "Do not connect the cable's power wire"
 
@@ -104,17 +100,17 @@ Use a USB serial cable with 3.3 V logic levels.  The wire colors in the table ar
 
 ### Terminal settings
 
-The port runs at 115200 bits per second with 8 data bits, no parity, and 1 stop bit (8N1), and no flow control.  For example, with the cable at `/dev/ttyUSB0`:
+115200 bits per second, 8 data bits, no parity, 1 stop bit (8N1), and no flow control.  For example, with the cable at `/dev/ttyUSB0`:
 
 ```sh
 picocom -b 115200 /dev/ttyUSB0
 ```
 
-Press ++enter++ to get a prompt.
+Press ++enter++ for a prompt.
 
 ### Early kernel messages
 
-The firmware applies the console setting, so with the setting alone, kernel messages appear on the port only after the main role has started.  The kernel parameter `amba_pl011.console_output=1` makes the kernel write to the port from the start of the boot.
+The firmware applies the console setting, so with the setting alone, kernel messages reach the port only after the main role has started.  The kernel parameter `amba_pl011.console_output=1` makes the kernel write to the port from the start of the boot:
 
 - **For an image booted from RAM**, pass the parameter with [`--append`](test-builds.md#options):
 
@@ -122,5 +118,5 @@ The firmware applies the console setting, so with the setting alone, kernel mess
     ssh root@192.0.2.20 dphone ramboot --append amba_pl011.console_output=1 - < result
     ```
 
-- **For an image that will be installed**, add the parameter to the `bootargs` property in `kernel/files/arch/arm/boot/dts/broadcom/bcmring-digium-common.dtsi` and build the image.  The boot loader's part of the kernel command line cannot be changed.
-- **On a running phone**, write `1` to `/sys/module/amba_pl011/parameters/console_output` to turn the kernel's console output on.
+- **For an image to install**, add the parameter to the `bootargs` property in `kernel/files/arch/arm/boot/dts/broadcom/bcmring-digium-common.dtsi` and build the image.  The boot loader's part of the kernel command line cannot be changed.
+- **On a running phone**, write `1` to `/sys/module/amba_pl011/parameters/console_output`.

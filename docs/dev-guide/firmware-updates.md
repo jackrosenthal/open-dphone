@@ -2,43 +2,43 @@
 
 ## Firmware banks
 
-A phone's flash holds two complete firmware installations:
+The flash holds two complete firmware installations:
 
 | Bank | Kernel partition | Root file system partition |
 | --- | --- | --- |
 | A | `k0` | `root0` |
 | B | `k1` | `root1` |
 
-A record in the `ctrl` partition selects the bank that the boot loader starts.  An installation always writes to the inactive bank and then selects that bank, so the running firmware stays intact in the other bank.  The boot loader starts whichever bank the record selects and never falls back.
+A record in the `ctrl` partition selects the bank that the boot loader starts; the boot loader never falls back to the other bank.  An installation writes to the inactive bank and then selects that bank, so the running firmware stays intact in the other bank.
 
 ## Installation from stock firmware
 
-To install Open DPhone on a phone running stock firmware, follow [Installation](../index.md#installation).  Stock firmware writes the image to the inactive bank and remains in the other bank.
+To install Open DPhone on a phone running stock firmware, follow [Installation](../index.md#installation).  Stock firmware writes the image to the inactive bank and stays in the other bank.
 
 !!! warning "The first boot from stock firmware has no trial"
 
-    Stock firmware does not record a trial boot, so nothing returns the phone to stock firmware if the installed image fails to start.  Install only released images from stock firmware.  Test development builds from a working Open DPhone installation with [`dphone ramboot`](test-builds.md#ram-boot).
+    Stock firmware records no trial boot, so nothing returns the phone to stock firmware if the installed image fails to start.  From stock firmware, install only released images.  Test development builds from a working Open DPhone installation with [`dphone ramboot`](test-builds.md#ram-boot).
 
 ## Provisioned firmware
 
-A phone provisioned by a DPMA server installs the firmware that the PBX configuration offers, just as a phone running stock firmware does.  On a development phone, the PBX's image therefore replaces a test image at the next provisioning.  To make the phone ignore the PBX's firmware entries, do either of the following:
+A phone provisioned by a DPMA server installs the firmware that the PBX offers, as stock firmware does, so the PBX's image replaces a test image at the next provisioning.  To make the phone ignore the PBX's firmware entries, either:
 
-- On the **System** page of the web interface, turn on **Ignore DPMA firmware updates** in the **Firmware** card.
-- With [Open DPMA](../open-dpma/index.md), set [`dphone_ignore_provisioned_firmware=yes`](../open-dpma/open-dphone-options.md#dphone_ignore_provisioned_firmware) in the phone's section of `res_digium_phone.conf`.
+- on the **System** page of the web interface, turn on **Ignore DPMA firmware updates** in the **Firmware** card, or
+- with [Open DPMA](../open-dpma/index.md), set [`dphone_ignore_provisioned_firmware=yes`](../open-dpma/open-dphone-options.md#dphone_ignore_provisioned_firmware) in the phone section.
 
 ## Installation from Open DPhone
 
 ### Web interface
 
-On the **System** page, the **Firmware** card shows the running version and the active bank.
+The **Firmware** card on the **System** page shows the running version and the active bank.
 
-1. Click **Upload Firmware** and choose an `.eff` file.  The phone writes the upload to the inactive bank, verifies the bank, and then shows the upload's version, model, and size.
-2. Click **Install** to select the new image, or **Discard** to leave the selection unchanged.
-3. Reboot the phone to start the new image.
+1. Click **Upload Firmware** and choose an `.eff` file.  The phone writes the upload to the inactive bank, verifies the bank, and shows the upload's version, model, and size.
+2. Click **Install** to select the new image, or **Discard** to keep the selection.
+3. Reboot the phone.
 
 ### `dphone update install` { #dphone-update-install }
 
-`dphone update install` reads an image from standard input, a URL, or a file.  In each case, the command writes the image to the inactive bank, reads the image back to verify the write, and selects the bank for the next boot.
+`dphone update install` writes an image from standard input, a URL, or a file to the inactive bank, reads the image back to verify the write, and selects the bank for the next boot.
 
 === "Standard input"
 
@@ -46,7 +46,7 @@ On the **System** page, the **Firmware** card shows the running version and the 
     ssh root@192.0.2.20 dphone update install - < result
     ```
 
-    The image goes from the workstation straight into flash, and no copy is stored on the phone.  `result` is the link that `nix build .#eff-d60` creates.
+    The image goes from the workstation into flash without a copy on the phone.  `result` is the link that `nix build .#eff-d60` creates.
 
 === "URL"
 
@@ -54,7 +54,7 @@ On the **System** page, the **Firmware** card shows the running version and the 
     dphone update install http://192.0.2.5:8000/3_0_0_D60_firmware.eff
     ```
 
-    The phone downloads the image straight into flash.  Both `http://` and `https://` URLs work.  The command does not verify an HTTPS server's certificate, but does verify the checksums inside the image.
+    The phone downloads the image into flash.  `http://` and `https://` URLs work.  The command verifies the checksums in the image, but not an HTTPS server's certificate.
 
 === "File"
 
@@ -63,37 +63,37 @@ On the **System** page, the **Firmware** card shows the running version and the 
     ssh root@192.0.2.20 dphone update install /tmp/image.eff
     ```
 
-    The command reads and verifies the whole file before writing anything.  `/tmp` is in the phone's RAM, so delete the file afterward.
+    The command reads and verifies the whole file before writing.  `/tmp` is in the phone's RAM; delete the file afterward.
 
-After a successful installation, reboot the phone to start the new image:
+Then reboot the phone:
 
 ```sh
 ssh root@192.0.2.20 dphone reboot
 ```
 
-An image from standard input or a URL cannot be read twice, so the checks that need the whole image run after the write.  If such an image turns out to be truncated or corrupt, the inactive bank has lost the previous contents and cannot be selected.  Nothing else changes: the running bank, the selection, and the trial record are as before.
+An image from standard input or a URL cannot be read twice, so the checks that need the whole image run after the write.  A truncated or corrupt image leaves the inactive bank without the previous contents and unselectable.  The running bank, the selection, and the trial record are unchanged.
 
-The command rejects an image built for another model.  Only one update runs at a time, and no update can start while an installed image is still on trial; see [`dphone update abandon`](#dphone-update-abandon).
+The command rejects an image built for another model.  One update runs at a time, and no update starts while an installed image is on trial; see [`dphone update abandon`](#dphone-update-abandon).
 
 | Option | Description |
 | --- | --- |
-| `--bank a` or `--bank b` | Selects the bank to write.  The default is the inactive bank.  The command refuses to write the running bank. |
-| `--allow-unbootable-other` | Proceeds even when the bank that is not being written is unbootable.  Intended for recovery work from a [RAM-booted](test-builds.md#ram-boot) system. |
+| `--bank a` or `--bank b` | The bank to write.  The default is the inactive bank.  The command refuses to write the running bank. |
+| `--allow-unbootable-other` | Proceeds when the bank not being written is unbootable.  For recovery from a [RAM-booted](test-builds.md#ram-boot) system. |
 
 ## Trial boot
 
-An Open DPhone image installed by `dphone update install` or the web interface starts on trial.  Before selecting the new bank, the updater writes a trial record to nvdata (`/nvdata/open/trial`).  The record is removed only after the new image proves healthy.
+An Open DPhone image installed by `dphone update install` or the web interface starts on trial.  Before selecting the new bank, the updater writes a trial record, `/nvdata/open/trial`, which is removed only after the new image proves healthy.
 
-- **Each boot of the new bank is counted.**  The early-boot stage in the new kernel image counts the boot before the root file system is needed.  A kernel panic, a watchdog reset, or a crash of the init role each uses up one boot.  After three boots without confirmation, the stage selects the previous bank and restarts the phone.
-- **An unusable root file system ends the trial immediately.**  If the root file system cannot be mounted or has no init program, the stage returns to the previous bank without using up the remaining boots.
-- **A healthy main role confirms the trial.**  The init role removes the record when the main role reports that the phone is healthy.  `dphone health` shows the conditions behind that report.
-- **A main role that keeps failing ends the trial.**  Five failures of the main role within one trial boot return the phone to the previous bank.  If the main role does not become healthy within 300 seconds, the phone restarts, and the boot still counts.
+- **Each boot of the new bank counts.**  The early-boot stage in the new kernel image counts the boot before the root file system is needed.  A kernel panic, a watchdog reset, or a crash of the init role uses up one boot.  After three boots without confirmation, the stage selects the previous bank and restarts the phone.
+- **An unusable root file system ends the trial at once.**  If the root file system cannot be mounted or has no init program, the stage returns to the previous bank without using up the remaining boots.
+- **A healthy main role confirms the trial.**  The init role removes the record when the main role reports the phone healthy.  `dphone health` shows the conditions behind the report.
+- **A main role that keeps failing ends the trial.**  Five failures of the main role within one trial boot return the phone to the previous bank.  If the main role is not healthy within 300 seconds, the phone restarts, and the boot counts.
 
-While a trial is pending, the **Firmware** card shows the number of boots left.  Click **Keep** to confirm the image manually, or **Roll Back** to return to the previous firmware.  After an automatic rollback, the card reports that the last update was rolled back, and why.
+During a trial, the **Firmware** card shows the boots left, with **Keep** to confirm the image and **Roll Back** to return to the previous firmware.  After an automatic rollback, the card reports the rollback and the reason.
 
 !!! danger "The trial does not protect against a kernel that fails early"
 
-    If a kernel stops before the early-boot stage runs, the boot loader starts the same kernel again at every power-on, and the phone stays down until the flash is rewritten through a JTAG adapter.  Always [boot an image with a changed kernel from RAM](test-builds.md#ram-boot) before installing the image.
+    If a kernel stops before the early-boot stage runs, the boot loader starts the same kernel at every power-on, and the phone stays down until the flash is rewritten through a JTAG adapter.  Always [boot an image with a changed kernel from RAM](test-builds.md#ram-boot) before installing the image.
 
 A stock firmware image installed from Open DPhone gets no trial, because stock firmware does not count trial boots.
 
@@ -107,12 +107,12 @@ dphone update status
 
 The command reads both banks back and reports:
 
-- the bank that the phone is running from, the bank that the `ctrl` record selects, and the bank that the boot loader will start next,
+- the bank that the phone runs from, the bank that the `ctrl` record selects, and the bank that the boot loader starts next,
 - whether the `ctrl` record and the record's backup copies are valid,
 - for each bank: the version, whether the boot loader would start the bank, the number of bad blocks, and whether the kernel and the root file system match the lengths and checksums in the bank's header, and
 - the pending trial, if any.
 
-The boot loader checks only the header and the first words of the kernel.  The content comparison is therefore the only evidence that a bank holds the image described by the header.
+The boot loader checks only the header and the first words of the kernel, so the content comparison is the only evidence that a bank holds the image that the header describes.
 
 ### `dphone update switch-bank` { #dphone-update-switch-bank }
 
@@ -121,9 +121,7 @@ dphone update switch-bank b
 dphone reboot
 ```
 
-`switch-bank` selects bank `a` or bank `b` for the next boot without writing an image.  The command fails unless the named bank holds an image that the boot loader would start.  Use `switch-bank` to move quickly between two installed images, e.g., back to the stock firmware that the first installation left in the other bank.
-
-`switch-bank` removes any trial record, so a bank selected with `switch-bank` is not on trial.
+`switch-bank` selects bank `a` or `b` for the next boot without writing an image, e.g., to return to the stock firmware that the first installation left in the other bank.  The command fails unless the boot loader would start the named bank's image.  `switch-bank` removes any trial record, so the selected bank is not on trial.
 
 ### `dphone update arm-trial` { #dphone-update-arm-trial }
 
@@ -133,9 +131,9 @@ dphone update arm-trial
 dphone reboot
 ```
 
-`arm-trial` puts the bank selected for the next boot on trial.  Use the command for an image that was selected by some means other than an installation, e.g., with `switch-bank`.  The phone then returns to the other bank if the image does not come up healthy within three boots.  Run `switch-bank` first, because `switch-bank` removes the trial record.
+`arm-trial` puts the bank selected for the next boot on trial, for an image selected other than by an installation, e.g., with `switch-bank`.  The phone then returns to the other bank if the image is not healthy within three boots.  Run `switch-bank` first, because `switch-bank` removes the trial record.
 
-By default, the phone returns to the running bank.  If the phone is running from the selected bank, or from neither bank after a RAM boot, name the bank to return to with `--return-to a` or `--return-to b`.  The command refuses to put stock firmware on trial.
+The phone returns to the running bank by default.  When the phone runs from the selected bank, or from neither bank after a RAM boot, name the bank with `--return-to a` or `--return-to b`.  The command refuses to put stock firmware on trial.
 
 ### `dphone update abandon` { #dphone-update-abandon }
 
@@ -143,15 +141,11 @@ By default, the phone returns to the running bank.  If the phone is running from
 dphone update abandon
 ```
 
-`abandon` cancels a trial: the command selects the bank that the phone would roll back to and removes the trial record, so that another image can be installed.  If the phone is already running the abandoned image, reboot afterward.
-
-Use `abandon` when you find a mistake in an image that you just installed, either before or after the reboot.
+`abandon` cancels a trial, e.g., for a faulty image just installed, before or after the reboot: the command selects the bank that the phone would roll back to and removes the trial record, so that another image can be installed.  If the phone runs the abandoned image, reboot afterward.
 
 ## Return to stock firmware
 
-How to return a phone to stock firmware depends on what the other bank holds:
-
 - If stock firmware is still in the other bank, [switch to that bank](#dphone-update-switch-bank).
-- Otherwise, install a stock firmware image for the phone's model through the web interface or with `dphone update install`.  Both accept stock images, and the web interface asks for confirmation first.
+- Otherwise, install a stock firmware image for the phone's model through the web interface, which asks for confirmation, or with `dphone update install`.
 
-Stock firmware has no command to select the other bank.  Getting from stock firmware back to Open DPhone therefore takes another [installation from stock firmware](#installation-from-stock-firmware), even when an Open DPhone image is still in the other bank.
+Stock firmware has no command to select the other bank, so returning from stock firmware to Open DPhone takes another [installation from stock firmware](#installation-from-stock-firmware), even with an Open DPhone image in the other bank.
