@@ -60,6 +60,37 @@ const RTP_PORT_BASE: u16 = 10_000;
 /// plays ends with it).
 const VOLUME_PREVIEW: Duration = Duration::from_secs(2);
 
+/// How long a tone tried in the settings sounds: an alarm tone for this
+/// long, a ringtone for at least this long (see [`ringtone_preview`]).
+const PREVIEW: Duration = Duration::from_secs(4);
+
+/// What a ringtone tried in the settings plays, once, as `token`: the
+/// passes of its ring that begin within [`PREVIEW`], with the ring's pause
+/// between them, the last to its end.  A ringtone longer than that is
+/// heard whole, and the engine ends the preview where its sound ends.
+fn ringtone_preview(source: RingSource, token: u32) -> RingSource {
+    let (samples, pause_ms) = match source {
+        RingSource::Pcm { samples, pause_ms } => (samples, pause_ms),
+        RingSource::Once { samples, start, .. } => return RingSource::Once { samples, start, token },
+    };
+    let per_ms = (dphone_media::ring::RING_RATE / 1000) as usize;
+    let pass = samples.len();
+    let period = (pass + pause_ms as usize * per_ms).max(1);
+    let passes = (PREVIEW.as_millis() as usize * per_ms).div_ceil(period).max(1);
+    let samples = if passes == 1 {
+        samples
+    } else {
+        let mut all = Vec::with_capacity((passes - 1) * period + pass);
+        for _ in 1..passes {
+            all.extend_from_slice(&samples);
+            all.resize(all.len() + period - pass, 0);
+        }
+        all.extend_from_slice(&samples);
+        all.into()
+    };
+    RingSource::Once { samples, start: 0, token }
+}
+
 /// A negotiated stream, in this module's own terms.
 #[derive(Clone, Debug)]
 pub struct Stream {
@@ -132,6 +163,10 @@ struct Inner {
     /// The preview in progress is the volume keys' (the ringer sounding
     /// at the volume just set), not a ringtone picked in the settings.
     preview_is_volume: bool,
+    /// The engine's token for the sound of the preview in progress when
+    /// that is a ringtone tried in the settings ([`ringtone_preview`]),
+    /// which ends when the engine reports that the sound has played out.
+    preview_sound: Option<u32>,
     /// The ringtone that incoming calls ring with (`active_ringtone`).
     ringtone: String,
     /// The ringer is sounding for the alarm clock.
@@ -213,6 +248,7 @@ impl AudioService {
                 preview: 0,
                 previews: 0,
                 preview_is_volume: false,
+                preview_sound: None,
                 ringtone: String::new(),
                 alarm: false,
                 playback: None,
@@ -421,6 +457,9 @@ impl AudioService {
             if std::mem::take(&mut inner.preview) != 0 {
                 inner.sound = false;
             }
+            // The end of a ringtone preview's sound, which the engine
+            // reports as this replaces it, ends nothing that follows.
+            inner.preview_sound = None;
             inner.ringing = source.is_some();
             let level = self.store.read::<Audio, _>(|a| a.ringer_volume);
             let _ = inner.send(Ec::PlayRing(source, ring_gain_q12(level)));
@@ -463,6 +502,7 @@ impl AudioService {
                 inner.ended.push(p);
             }
             inner.preview = 0;
+            inner.preview_sound = None;
             inner.ringing = false;
             inner.alarm = false;
             inner.playbacks = inner.playbacks.wrapping_add(1);
@@ -485,6 +525,7 @@ impl AudioService {
                 return;
             }
             inner.preview = 0;
+            inner.preview_sound = None;
             inner.sound = false;
             inner.ringing = false;
             let sent = inner.send(Ec::PlayRing(None, 4096));
@@ -499,7 +540,8 @@ impl AudioService {
         self.refresh();
     }
 
-    /// The engine's report that a sound file ended at sample `position`.
+    /// The engine's report that a sound file (or a ringtone preview's
+    /// sound) ended at sample `position`.
     fn sound_ended(&self, token: u32, position: usize) {
         let (app, current) = {
             let mut inner = self.inner.lock().unwrap();
@@ -507,6 +549,13 @@ impl AudioService {
                 // It played to its end.
                 inner.sound = false;
                 (inner.playback.take().map(|p| p.app), true)
+            } else if inner.preview_sound == Some(token) {
+                // The ringtone tried in the settings has played out.
+                inner.preview = 0;
+                inner.preview_sound = None;
+                inner.sound = false;
+                inner.ringing = false;
+                (None, true)
             } else {
                 let i = inner.ended.iter().position(|p| p.token == token);
                 (i.map(|i| inner.ended.remove(i).app), false)
@@ -790,14 +839,28 @@ impl AudioService {
                 }
             }
             Command::StopTone => self.tone(None),
-            command @ (Command::PlaySound { .. } | Command::PlayAlarmTone { .. }) => {
-                // A preview: the named ringtone or alarm tone, for a few
-                // seconds.
-                self.ring_with(Some(match &command {
-                    Command::PlayAlarmTone { name } => super::alarmtones::source(name),
-                    Command::PlaySound { name } => super::ringtones::source(name),
-                    _ => unreachable!(),
-                }));
+            Command::PlaySound { name } => {
+                // A preview of the named ringtone: no time cuts it off;
+                // the engine ends it with its sound.
+                let token = {
+                    let mut inner = self.inner.lock().unwrap();
+                    inner.playbacks = inner.playbacks.wrapping_add(1);
+                    inner.playbacks
+                };
+                self.ring_with(Some(ringtone_preview(super::ringtones::source(&name), token)));
+                {
+                    let mut inner = self.inner.lock().unwrap();
+                    inner.sound = true;
+                    inner.previews += 1;
+                    inner.preview = inner.previews;
+                    inner.preview_is_volume = false;
+                    inner.preview_sound = Some(token);
+                }
+                self.refresh();
+            }
+            Command::PlayAlarmTone { name } => {
+                // A preview of the named alarm tone, for a few seconds.
+                self.ring_with(Some(super::alarmtones::source(&name)));
                 let mine = {
                     let mut inner = self.inner.lock().unwrap();
                     inner.sound = true;
@@ -809,7 +872,7 @@ impl AudioService {
                 self.refresh();
                 let me = self.clone();
                 tokio::spawn(async move {
-                    tokio::time::sleep(Duration::from_secs(4)).await;
+                    tokio::time::sleep(PREVIEW).await;
                     if me.inner.lock().unwrap().preview == mine {
                         me.stop_sound();
                     }
@@ -1866,6 +1929,84 @@ mod volume_key_tests {
         assert_eq!(preview(&svc), None);
         svc.input_event(&Event::Key { key: Key::Down, down: true, source: InputSource::Physical });
         assert!(sounding(&svc).0);
+        svc.command(Command::StopSound).unwrap();
+        assert_eq!(sounding(&svc), (false, AudioPath::None));
+    }
+}
+
+/// A ringtone tried in the settings is heard whole: no time cuts it off,
+/// and it ends where its sound does.
+#[cfg(test)]
+mod ringtone_preview_tests {
+    use super::super::ringtones;
+    use super::*;
+    use dphone_state::Model;
+
+    #[test]
+    fn every_pass_of_the_preview_is_whole() {
+        let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/ringtones");
+        let within = PREVIEW.as_millis() as usize * 16;
+        let mut long = 0;
+        for tone in &ringtones::BUILTIN {
+            let RingSource::Pcm { samples, pause_ms } = ringtones::source_in(None, &assets, tone.name) else {
+                panic!("{}", tone.name)
+            };
+            let RingSource::Once { samples: preview, start: 0, token: 7 } =
+                ringtone_preview(RingSource::Pcm { samples: samples.clone(), pause_ms }, 7)
+            else {
+                panic!("{}", tone.name)
+            };
+            let (pass, period) = (samples.len(), samples.len() + pause_ms as usize * 16);
+            // Whole passes with the ring's pause between them, the last
+            // to its end...
+            assert_eq!((preview.len() - pass) % period, 0, "{}", tone.name);
+            for chunk in preview.chunks(period) {
+                assert_eq!(chunk[..pass], samples[..], "{}", tone.name);
+                assert!(chunk[pass..].iter().all(|&s| s == 0), "{}", tone.name);
+            }
+            // ...as many as begin within the preview's time: a ringtone
+            // longer than that, once.
+            let passes = (preview.len() - pass) / period + 1;
+            assert!((passes - 1) * period < within && passes * period >= within, "{}: {passes}", tone.name);
+            if pass > within {
+                assert_eq!(passes, 1, "{}", tone.name);
+                long += 1;
+            }
+        }
+        assert!(long > 50, "{long}");
+    }
+
+    #[tokio::test]
+    async fn it_sounds_until_its_sound_ends() {
+        let svc = AudioService::new(Store::new(Model::D60), dphone_vpm::Family::New);
+        let sounding = |svc: &AudioService| svc.store.read::<Audio, _>(|a| (a.ringing, a.path));
+        let token = |svc: &AudioService| svc.inner.lock().unwrap().preview_sound.expect("a ringtone preview");
+        svc.command(Command::PlaySound { name: "Crazy Dream".into() }).unwrap();
+        let first = token(&svc);
+        assert_eq!(sounding(&svc), (true, AudioPath::Speaker));
+        // The four seconds that once ended every preview, and more, do
+        // not end it.
+        tokio::time::sleep(PREVIEW + Duration::from_millis(500)).await;
+        assert_eq!(sounding(&svc), (true, AudioPath::Speaker));
+        // Another sound's end is not its end; its own is.
+        svc.sound_ended(first.wrapping_sub(1), 0);
+        assert_eq!(sounding(&svc), (true, AudioPath::Speaker));
+        svc.sound_ended(first, 503_174);
+        assert_eq!(sounding(&svc), (false, AudioPath::None));
+        assert_eq!(svc.inner.lock().unwrap().preview, 0);
+
+        // The end of a preview's sound that another preview replaced,
+        // which the engine reports late, ends nothing.
+        svc.command(Command::PlaySound { name: "Bell Phone".into() }).unwrap();
+        let replaced = token(&svc);
+        svc.command(Command::PlaySound { name: "Pyxis".into() }).unwrap();
+        assert_ne!(token(&svc), replaced);
+        svc.sound_ended(replaced, 100);
+        assert_eq!(sounding(&svc), (true, AudioPath::Speaker));
+        svc.command(Command::PlayAlarmTone { name: "Buzzer".into() }).unwrap();
+        assert_eq!(svc.inner.lock().unwrap().preview_sound, None);
+        svc.sound_ended(replaced + 1, 100);
+        assert_eq!(sounding(&svc), (true, AudioPath::Speaker), "an alarm tone's preview");
         svc.command(Command::StopSound).unwrap();
         assert_eq!(sounding(&svc), (false, AudioPath::None));
     }
