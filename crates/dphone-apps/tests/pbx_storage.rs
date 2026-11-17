@@ -32,6 +32,8 @@ fn set(store: &FakeStore, scope: StoreScope, key: &str, value: &str, expect: Opt
 #[test]
 fn the_probe_uses_the_interface() {
     assert!(common::capabilities("probe").contains(&"storage"));
+    // An app that does not call it does not have it.
+    assert!(!common::capabilities("diagnostics").contains(&"storage"));
 }
 
 #[test]
@@ -114,10 +116,12 @@ fn an_app_that_meets_a_conflict_writes_again_over_the_newer_entry() {
 }
 
 #[test]
-fn a_users_keys_are_kept_on_the_pbx() {
-    let (mut alice, _bob) = two_phones();
+fn a_user_has_keys_of_their_own() {
+    let (mut alice, mut bob) = two_phones();
     alice.softkey("probe", "Save");
     assert_eq!(alice.ui.texts("probe"), ["saved=level 5 by Alice (101)"]);
+    bob.softkey("probe", "Load");
+    assert_eq!(bob.ui.texts("probe"), ["loaded=None"]);
     alice.softkey("probe", "Load");
     assert_eq!(alice.ui.texts("probe"), ["loaded=Some(\"level 5\")"]);
 
@@ -132,9 +136,18 @@ fn a_users_keys_are_kept_on_the_pbx() {
 }
 
 #[test]
-fn every_request_of_an_app_carries_its_name() {
+fn an_app_reaches_only_its_own_keys() {
     let (mut alice, _bob) = two_phones();
+    // Another app's key of the same name.
+    alice.app_data.run(StoreOp::Set {
+        app: "other".into(),
+        scope: StoreScope::User,
+        key: "progress".into(),
+        value: b"not the probe's".to_vec(),
+        expect: None,
+    });
     alice.softkey("probe", "Load");
+    assert_eq!(alice.ui.texts("probe"), ["loaded=None"]);
     // Every request of the app carries the app's name, from the phone.
     let apps: Vec<String> = alice
         .app_data
@@ -147,12 +160,13 @@ fn every_request_of_an_app_carries_its_name() {
             | StoreOp::Remove { app, .. } => app,
         })
         .collect();
-    assert_eq!(apps, ["probe"]);
+    assert_eq!(apps, ["other", "probe"]);
 }
 
 #[test]
 fn a_watching_app_hears_of_another_phones_change() {
     let (mut alice, mut bob) = two_phones();
+    assert!(alice.app_data.watched().is_empty());
     alice.softkey("probe", "Board");
     assert_eq!(alice.ui.texts("probe"), ["board= more=false"]);
     assert_eq!(alice.app_data.watched(), ["probe"]);
@@ -193,10 +207,11 @@ fn an_app_is_told_when_the_pbx_cannot_be_reached_and_when_it_can_again() {
     assert_eq!(alice.ui.texts("probe"), ["who=Some(\"101/Alice/101\") online=false"]);
     alice.softkey("probe", "Save");
     assert_eq!(alice.ui.texts("probe"), ["unreachable=not attached to a DPMA server"]);
-    // In reach again.
+    // Nothing was kept to send later.
     alice.app_data.set_online(true);
     alice.settle();
     assert_eq!(alice.ui.texts("probe"), ["online"]);
+    assert_eq!(alice.app_data.value("probe", StoreScope::User, "progress"), None);
     // The app writes again.
     alice.softkey("probe", "Save");
     assert_eq!(alice.ui.texts("probe"), ["saved=level 5 by Alice (101)"]);

@@ -716,7 +716,7 @@ mod tests {
     const PNG: &[u8] = b"\x89PNG\r\n\x1a\nrest";
 
     #[test]
-    fn a_record_round_trips() {
+    fn a_record_round_trips_and_only_a_record_carries_capabilities() {
         let mut m = sample();
         m.display_name = "Voicemail".into();
         m.kind = AppType::Background;
@@ -733,6 +733,10 @@ mod tests {
         // A phone shows its model's icon, else the app's.
         assert_eq!(back.icon_for("D60"), [PNG, b"color"].concat());
         assert_eq!(back.icon_for("D40"), PNG);
+        // The same bytes as an app's own section: the capabilities are not
+        // the app's to declare.
+        let own = Manifest::from_wasm(&module_with(&m.record())).unwrap();
+        assert!(own.capabilities.is_empty());
     }
 
     #[test]
