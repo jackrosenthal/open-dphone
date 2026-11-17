@@ -249,7 +249,7 @@ fn obstacle(ops: &mut Vec<Op>, look: &Look, p: &Pipe) {
 }
 
 /// A slim pipe from `top` to `bottom` whose open end, at the bottom if
-/// `opens_down`, has a flat bolted flange; clamping bands sit along it at
+/// `opens_down`, has a flat flange; clamping bands sit along it at
 /// even distances from the flange.  It is lit from the left.
 fn pipe(ops: &mut Vec<Op>, look: &Look, x: i32, top: i32, bottom: i32, opens_down: bool) {
     let (u, w, c) = (look.unit, look.rules.pipe_w, &look.pipe);
@@ -279,12 +279,6 @@ fn pipe(ops: &mut Vec<Op>, look: &Look, x: i32, top: i32, bottom: i32, opens_dow
     fill(ops, x, fy, w, u, c.light);
     fill(ops, x, fy + flange - u, w, u, c.dark);
     fill(ops, x + w - u, fy, u, flange, c.dark);
-    // Two bolts.
-    let by = fy + (flange - 2 * u) / 2;
-    if flange >= 4 * u {
-        fill(ops, x + 3 * u, by, 2 * u, 2 * u, c.light);
-        fill(ops, x + w - 6 * u, by, 2 * u, 2 * u, c.light);
-    }
 }
 
 /// The sparrow with its top-left corner at (`x`, `y`).
