@@ -31,6 +31,7 @@ nav = [
   ] },
   { "App SDK" = [
     "app-sdk/index.md",
+    "app-sdk/examples.md",
     { "Tutorial" = [
       "app-sdk/tutorial/index.md",
       "app-sdk/tutorial/first-app.md",
