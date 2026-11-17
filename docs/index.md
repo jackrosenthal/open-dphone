@@ -77,4 +77,4 @@ To return to stock firmware, upload a stock firmware image on the **System** pag
 
 ## Open DPMA
 
-While Open DPhone's firmware is compatible with the original `res_digium_phone`, we also recommend you migrate to Open DPMA, which not only fixes several security issues and bugs with the original DPMA, but also adds additional configuration options for Open DPhone phones.
+While Open DPhone's firmware is compatible with the original `res_digium_phone`, we also recommend you migrate to [Open DPMA](open-dpma/index.md), which not only fixes several security issues and bugs with the original DPMA, but also adds additional configuration options for Open DPhone phones.
