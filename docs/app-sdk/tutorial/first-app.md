@@ -41,20 +41,6 @@ strip = true
 - `crate-type = ["cdylib"]` makes `cargo` build a WebAssembly module.
 - `dphone-app-sdk = "3"` is the SDK for firmware 3.  The SDK version always matches the firmware version.
 
-!!! note "Firmware built from source"
-
-    Use the SDK from the same source.  Clone the repository next to `freshpot`:
-
-    ```sh
-    git clone https://github.com/jackrosenthal/open-dphone
-    ```
-
-    In `Cargo.toml`, replace `dphone-app-sdk = "3"` with:
-
-    ```toml
-    dphone-app-sdk = { path = "../open-dphone/crates/dphone-app-sdk" }
-    ```
-
 ## App code
 
 Replace `src/lib.rs` with:
