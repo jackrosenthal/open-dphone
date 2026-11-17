@@ -2,11 +2,11 @@
 
 A call that an app places or answers is an ordinary call: the phone shows the call screen, selects the audio path, and writes the call log.
 
-The functions that return `Result` wait up to 0.5 seconds for the phone's call control:
+The functions that return `Result` wait up to 0.5 seconds for the phone's call control, and `send_dtmf` up to 0.5 seconds for each digit:
 
 - `Error::Invalid(text)`: call control rejected the request as impossible: no such call, a call in the wrong state, or a bad argument.
 - `Error::Failed(text)`: call control tried and failed.
-- `Failed("the phone did not answer in time; what was asked may still happen")`: call control didn't answer within 0.5 seconds, and may still carry out the request.  [`list`](#list) or [`Event::Call`](app-events.md#call) shows what happened.
+- `Failed("the phone did not answer in time; what was asked may still happen")`: call control didn't answer within that time, and may still carry out the request.  [`list`](#list) or [`Event::Call`](app-events.md#call) shows what happened.
 
 ## `dial`
 

@@ -27,7 +27,7 @@ A function that needs the network, such as a PBX or HTTP request, returns an ID 
 
 The phone stops an app that:
 
-- runs longer than 5 seconds in `start`, or 2 seconds in one `handle` call,
+- runs longer than 5 seconds in `start`, or 2 seconds in one `handle` call, not counting [waits for the phone's answer](#execution-model),
 - requests more memory than the app's limit, or
 - traps.  A Rust panic is a trap.
 
