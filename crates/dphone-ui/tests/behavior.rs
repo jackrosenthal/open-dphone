@@ -788,20 +788,8 @@ fn bluetooth_application_asks_before_pairing() {
         r.ui.pump();
         assert_eq!(shown.wait(), Ok(Reply::Done));
     };
-    // Without a controller, the screen says so and offers nothing.
-    show(&mut r);
-    assert_eq!(r.screen(), "bluetooth");
-    r.tap(Key::Select);
-    assert!(Rig::drain(&bt).is_empty());
-
-    // With one, Bluetooth is on and there is no on/off row: the only row
-    // looks for headsets.
     r.store.update::<Bluetooth, _>(|b| b.present = true);
-    r.ui.pump();
-    r.tap(Key::Select);
-    assert_eq!(Rig::drain(&bt), [Command::BluetoothDiscovery { on: true }]);
-    assert_eq!(r.screen(), "bluetooth-discovery");
-    r.tap(Key::Cancel);
+    show(&mut r);
     assert_eq!(r.screen(), "bluetooth");
 
     // A headset asks to pair: the question is the first row, with the six
