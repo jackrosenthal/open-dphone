@@ -20,7 +20,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-dphone-app-sdk = "3"
+dphone-app-sdk = "=3.0.0"
 
 [profile.release]
 opt-level = "s"

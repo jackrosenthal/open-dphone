@@ -28,7 +28,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-dphone-app-sdk = "3"
+dphone-app-sdk = "=3.0.0"
 
 [profile.release]
 opt-level = "s"
@@ -39,7 +39,7 @@ strip = true
 ```
 
 - `crate-type = ["cdylib"]` makes `cargo` build a WebAssembly module.
-- `dphone-app-sdk = "3"` is the SDK for firmware 3.  The SDK version always matches the firmware version.
+- `dphone-app-sdk = "=3.0.0"` is the SDK for firmware 3.0.0; the `=` makes Cargo use exactly that version.  The SDK version always matches the firmware version exactly.
 
 ## App code
 
