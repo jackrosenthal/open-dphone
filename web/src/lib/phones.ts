@@ -34,9 +34,10 @@
 // - Both families: the dial keys (and the old family's headset, speaker,
 //   and mute keys) have straight sides and top and bottom edges that bow
 //   outward.  Each digit stands below the space for letters, also on the
-//   1 key, which has no letters; the 0, star, and pound sit in the middle
-//   of their keys.  A handset in a legend is a C-shaped handle with a
-//   separate cap at each end.
+//   1 key, which has no letters; the star and pound sit in the middle of
+//   their keys, and so does the new family's 0.  The old family's 0 has
+//   OPER above it, placed like the other digits.  A handset in a legend is
+//   a C-shaped handle with a separate cap at each end.
 //
 // Not established from the references: the printed lines from the line
 // keys to the display on the new family (none is visible, so none is
@@ -135,12 +136,14 @@ export function archedRect(x: number, y: number, w: number, h: number, r: number
 }
 
 /// The letters on each dial key; the 1 key has a row for letters with none
-/// in it, and the 0, star, and pound keys have no row.
+/// in it, and the 0 (new family), star, and pound keys have no row.
 const letters: Record<string, string> = { "1": "", "2": "ABC", "3": "DEF", "4": "GHI", "5": "JKL", "6": "MNO", "7": "PQRS", "8": "TUV", "9": "WXYZ" };
 const digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
 /// A dial key's legend: the star is drawn, centered; the others are type.
-const dialLegend = (d: string): Legend => (d === "*" ? { icon: "asterisk" } : { digit: d, letters: letters[d] });
+/// The old family prints OPER above the 0.
+const dialLegend = (d: string, old = false): Legend =>
+  d === "*" ? { icon: "asterisk" } : { digit: d, letters: old && d === "0" ? "OPER" : letters[d] };
 
 // ------------------------------------------------------------ new family
 
@@ -403,7 +406,7 @@ function oldFamily(v: Old, L: OldLayout): Panel {
   // Dial pad.
   const [dx0, dy0, ddx, ddy, dw, dh] = L.dial;
   digits.forEach((dg, i) =>
-    keys.push({ id: dg, cx: dx0 + (i % 3) * ddx, cy: dy0 + Math.floor(i / 3) * ddy, w: dw, h: dh, r: 3, arch: 1.4, fill: KEY, ink: white, legend: dialLegend(dg), size: 12.9 }),
+    keys.push({ id: dg, cx: dx0 + (i % 3) * ddx, cy: dy0 + Math.floor(i / 3) * ddy, w: dw, h: dh, r: 3, arch: 1.4, fill: KEY, ink: white, legend: dialLegend(dg, true), size: 12.9 }),
   );
   // Volume: one bar.
   const [vx, vy, vw] = L.volume;
