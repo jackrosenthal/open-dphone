@@ -220,6 +220,14 @@ impl Wallpaper {
         self.spec.moves.as_ref().map(|m| m.every_ms)
     }
 
+    /// The farthest anything in the picture goes from one frame of the
+    /// motion to the next, over a cycle, in sixteenths of a pixel (rounded
+    /// up; for a flow, a bound from the fastest its waves go); `None` for
+    /// a wallpaper that is still.
+    pub fn farthest_step(&'static self) -> Option<u64> {
+        motion::Moving::new(self.id, &self.spec).map(|m| m.farthest())
+    }
+
     /// The picture at `t_ms` (any clock that counts milliseconds) of a
     /// wallpaper that moves; the still picture of one that does not.
     /// The same pixels for the same time, and again one [`CYCLE_MS`]
@@ -235,35 +243,51 @@ impl Wallpaper {
     /// has it.  What one frame needs from the frame before is kept (for
     /// one wallpaper), so that a frame draws only what moved.
     pub fn with_frame<R>(&'static self, t_ms: u64, f: impl FnOnce(&[u32]) -> R) -> R {
+        self.with_frame_and_changes(t_ms, |frame, _| f(frame))
+    }
+
+    /// [`Wallpaper::with_frame`], and what the frame changed
+    /// ([`Changes`]): with it, whoever has the frame before on a screen
+    /// can bring the screen up to this frame without looking at the rest
+    /// of the picture.  For a wallpaper that is still: the still picture,
+    /// and no frame before.
+    pub fn with_frame_and_changes<R>(&'static self, t_ms: u64, f: impl FnOnce(&[u32], Changes) -> R) -> R {
         static MOVING: Mutex<Option<motion::Moving>> = Mutex::new(None);
-        /// The frames drawn and the microseconds they took, for the log.
-        static COST: Mutex<(u32, u64)> = Mutex::new((0, 0));
         let mut moving = MOVING.lock().unwrap_or_else(|p| p.into_inner());
         if moving.as_ref().is_none_or(|m| m.id != self.id) {
             *moving = None;
             *moving = motion::Moving::new(self.id, &self.spec);
-            *COST.lock().unwrap_or_else(|p| p.into_inner()) = (0, 0);
         }
         let Some(m) = moving.as_mut() else {
             drop(moving);
-            return self.with_pixels(f);
+            return self.with_pixels(|pixels| f(pixels, Changes { serial: motion::next_serial(), before: 0, runs: &[] }));
         };
-        let start = std::time::Instant::now();
-        let frame = m.frame(t_ms);
-        let mut cost = COST.lock().unwrap_or_else(|p| p.into_inner());
-        if cost.0 == 0 {
-            log::debug!("wallpaper {}: the first frame drawn in {} ms", self.id, start.elapsed().as_millis());
-            cost.0 = 1;
-        } else {
-            *cost = (cost.0 + 1, cost.1 + start.elapsed().as_micros() as u64);
-            if cost.0 > 256 {
-                log::debug!("wallpaper {}: {} us a frame", self.id, cost.1 / 256);
-                *cost = (1, 0);
-            }
-        }
-        drop(cost);
-        f(frame)
+        let before = m.serial;
+        let (frame, runs, serial) = m.frame_and_changes(t_ms);
+        f(frame, Changes { serial, before, runs })
     }
+}
+
+/// What a frame of a wallpaper in motion changed
+/// ([`Wallpaper::with_frame_and_changes`]).
+#[derive(Clone, Copy)]
+pub struct Changes<'a> {
+    /// This frame's number: no other frame, of any wallpaper, has it.
+    pub serial: u64,
+    /// The number of the frame the changes are from; 0 when there was
+    /// none (the whole picture is new).
+    pub before: u64,
+    /// The pixels that may differ from that frame's.
+    pub runs: &'a [Run],
+}
+
+/// Pixels side by side in a row of a wallpaper: the columns `x0..x1` of
+/// row `y`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Run {
+    pub y: u16,
+    pub x0: u16,
+    pub x1: u16,
 }
 
 /// The palette a palette file describes: derived from its `primary` and

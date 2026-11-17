@@ -687,6 +687,15 @@ fn gray_models_are_unaffected() {
 /// The wallpapers that move.
 const MOVING: [&str; 8] = ["regatta", "bokeh", "fizz", "lanterns", "orbit", "tides", "dunes", "drift"];
 
+/// The most a channel of a pixel changes from one frame of a wallpaper's
+/// motion to the next, in steps of the frame buffer's 255: motion in
+/// steps as small as this is not seen as steps.
+const SMOOTH: u32 = 8;
+
+/// One test at a time draws wallpapers in motion: what a frame needs from
+/// the frame before is kept for one wallpaper, for one user of it.
+static MOTION: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// How many pixels differ, and the largest difference of a channel.
 fn difference(a: &[u32], b: &[u32]) -> (usize, u32) {
     let mut most = 0;
@@ -709,6 +718,7 @@ fn difference(a: &[u32], b: &[u32]) -> (usize, u32) {
 /// of the idle screen can be read on every frame.
 #[test]
 fn the_moving_wallpapers() {
+    let _alone = MOTION.lock().unwrap_or_else(|p| p.into_inner());
     let moving: Vec<&str> = wallpaper::all().iter().filter(|w| w.frame_ms().is_some()).map(|w| w.id).collect();
     assert_eq!(moving, MOVING);
     for w in wallpaper::all().iter().filter(|w| w.frame_ms().is_none()) {
@@ -721,10 +731,13 @@ fn the_moving_wallpapers() {
     for id in MOVING {
         let w = wallpaper::find(id).unwrap();
         let every = u64::from(w.frame_ms().unwrap());
-        // Three to ten frames a second, a whole number of frames (and
-        // of the steps of two frames) in a cycle.
-        assert!((100..=300).contains(&every), "{id}: a frame every {every} ms");
+        // Ten to twenty frames a second, a whole number of them (and of
+        // pairs of them: the rows of a flow take turns) in a cycle.
+        assert!((50..=100).contains(&every), "{id}: a frame every {every} ms");
         assert_eq!(wallpaper::CYCLE_MS % (2 * every), 0, "{id}");
+        // Nothing goes farther than a pixel between two frames.
+        let farthest = w.farthest_step().unwrap();
+        assert!((1..=16).contains(&farthest), "{id}: {farthest} sixteenths of a pixel in a frame");
         let th = Theme::for_wallpaper(w);
         // The picture of a time: the same every time, and a cycle later.
         let start = 7_000;
@@ -733,19 +746,23 @@ fn the_moving_wallpapers() {
         assert_eq!(first, w.render_at(start + wallpaper::CYCLE_MS), "{id}: after a cycle");
         assert_eq!(first, w.render_at(start + 5 * wallpaper::CYCLE_MS), "{id}: after five cycles");
         // Frame after frame, each drawn from the one before, is the
-        // picture drawn whole; each differs from the one before, and by
-        // little (the motion is slow), and after a few seconds by more.
+        // picture drawn whole; it differs from the one before by little
+        // (the motion is slow; where every circle is a large, faint one
+        // that moves once in several frames, some frames by nothing), and
+        // after a few seconds by more.
         let mut last = first.clone();
+        let mut moved = 0;
         assert!(w.with_frame(start, |f| f == first.as_slice()), "{id}");
         for n in 1..=24 {
             let t = start + n * every;
             let whole = w.render_at(t);
             assert!(w.with_frame(t, |f| f == whole.as_slice()), "{id}: frame {n} drawn from the one before");
             let (count, most) = difference(&last, &whole);
-            assert!(count > 0, "{id}: frame {n} is the frame before");
-            assert!(most <= 96, "{id}: frame {n} differs from the one before by {most} in a channel");
+            moved += u32::from(count > 0);
+            assert!(most <= SMOOTH, "{id}: frame {n} differs from the one before by {most} in a channel");
             last = whole;
         }
+        assert!(moved >= 8, "{id}: {moved} of 24 frames differ from the one before");
         // A frame that is skipped to (the UI was busy), and one before.
         for t in [start + 31_000, start + 2_000] {
             let whole = w.render_at(t);
@@ -766,11 +783,72 @@ fn the_moving_wallpapers() {
     }
     assert!(failures.is_empty(), "frames on which text cannot be read:\n{}", failures.join("\n"));
     // The flow's frame at the start of a cycle is its still picture, to
-    // within two steps of a channel (the frames keep a channel away from
-    // its ends, and take the waves from tables).
+    // within eight steps of a channel: its rows are of two times, a frame
+    // apart, and the frames keep a channel away from its ends, take the
+    // waves from tables, work the flow out for one pixel in eight, and
+    // place the colors more finely than the still picture does.
     let regatta = wallpaper::find("regatta").unwrap();
     let (_, most) = difference(&regatta.render_at(0), &regatta.render());
-    assert!(most <= 2, "regatta at the start of a cycle: {most} from its still picture");
+    assert!(most <= 8, "regatta at the start of a cycle: {most} from its still picture");
+}
+
+/// A frame of the motion is made from the frame before when nothing else
+/// on the screen has changed: the pixels the wallpaper's frame changed,
+/// with what the screen draws over them, and the screen is not drawn
+/// again.  The result is the screen drawn whole at that time: the same
+/// pixel for pixel where the wallpaper shows or is hidden, and within one
+/// step of a channel where something is blended over it (the edges of the
+/// clock's digits, of the softkeys, of the selector's bubble).
+#[test]
+fn a_frame_made_from_the_one_before_is_the_screen_drawn_whole() {
+    let _alone = MOTION.lock().unwrap_or_else(|p| p.into_inner());
+    for id in MOVING {
+        let w = wallpaper::find(id).unwrap();
+        let every = u64::from(w.frame_ms().unwrap());
+        for screen in ["idle", "theme", "notice"] {
+            let rig = |t: u64| {
+                let mut r = Rig::with_model(Model::D60, UiConfig { theme: id.into(), ..UiConfig::default() });
+                match screen {
+                    "theme" => r.show("theme"),
+                    "notice" => {
+                        let note = Command::Notify { level: dphone_state::NoticeLevel::Info, title: "A notice".into(), text: "Over the wallpaper.".into(), timeout_ms: 0 };
+                        let asked = r.store.send(note);
+                        r.ui.pump();
+                        assert!(asked.wait().is_ok());
+                    }
+                    _ => {}
+                }
+                r.ui.set_motion_time(Some(t));
+                r.frame();
+                r
+            };
+            let mut t = 2_000;
+            let mut r = rig(t);
+            let first = r.frame();
+            for n in 1..=24u64 {
+                t += every;
+                let made = r.ui.motion_frames();
+                r.ui.motion_step(t);
+                // (The frame after the comparison below is drawn whole:
+                // the other screen has drawn the wallpaper since.)
+                let whole = n % 8 == 1 && n > 1;
+                assert_eq!(r.ui.motion_frames() - made, u64::from(!whole), "{id} on {screen}: frame {n}");
+                if n % 8 != 0 {
+                    continue;
+                }
+                let (stepped, whole) = (r.frame(), rig(t).frame());
+                let (_, most) = difference(&stepped, &whole);
+                assert!(most <= 1, "{id} on {screen}: frame {n} differs by {most} from the screen drawn whole");
+                // The wallpaper alone, and the fill of a softkey.
+                let th = Theme::for_wallpaper(w);
+                let key = th.softkey_rect(0);
+                for (x, y) in [(3, 60), (300, 215), (40, 230), (key.x + 6, key.y + 4)] {
+                    assert_eq!(at(&stepped, x, y), at(&whole, x, y), "{id} on {screen}: frame {n} at ({x}, {y})");
+                }
+                assert_ne!(stepped, first, "{id} on {screen}: frame {n} is the first");
+            }
+        }
+    }
 }
 
 /// The wallpaper moves on the idle screen and in the theme selector, and
@@ -779,6 +857,7 @@ fn the_moving_wallpapers() {
 /// time after the last.
 #[test]
 fn the_wallpaper_moves_on_the_idle_screen_only() {
+    let _alone = MOTION.lock().unwrap_or_else(|p| p.into_inner());
     let tides = wallpaper::find("tides").unwrap();
     let mut r = Rig::with_model(Model::D60, UiConfig { theme: "tides".into(), ..UiConfig::default() });
     // Where no text or tab is: the wallpaper itself.
@@ -870,6 +949,7 @@ fn the_wallpaper_moves_on_the_idle_screen_only() {
 /// wallpaper moving.
 #[test]
 fn the_motion_stops_while_the_backlight_is_off() {
+    let _alone = MOTION.lock().unwrap_or_else(|p| p.into_inner());
     let tides = wallpaper::find("tides").unwrap();
     let spot = |frame: &[u32]| -> Vec<u32> { (100..244).flat_map(|y| (0..30).map(move |x| (x, y))).map(|(x, y)| at(frame, x, y)).collect() };
     let wait = |ms| std::thread::sleep(std::time::Duration::from_millis(ms));
@@ -1079,9 +1159,11 @@ fn contact_sheets() {
 
 /// The motion, to look at: for each wallpaper that moves, the idle screen
 /// of a D60 over one whole cycle as an animated PNG file (`<id>.png`,
-/// frame after frame at the phone's pace, repeating without a seam), and
-/// a sheet (`<id>-sheet.png`) of six frames ten seconds apart, each
-/// beside what differs from the first of them, eight times as strong.
+/// frame after frame at the phone's pace, each made from the one before
+/// as the phone makes it, repeating without a seam; a frame of the file
+/// holds only the pixels that changed), and a sheet (`<id>-sheet.png`)
+/// of six frames ten seconds apart, each beside what differs from the
+/// first of them, eight times as strong.
 /// Into the directory named by `WALLPAPER_PREVIEWS`; `WALLPAPER_ONLY`
 /// names one wallpaper.  Run with
 /// `--release -- --ignored --nocapture motion_previews`.
@@ -1095,23 +1177,48 @@ fn motion_previews() {
         let w = wallpaper::find(id).unwrap();
         let every = u64::from(w.frame_ms().unwrap());
         let mut r = Rig::with_model(Model::D60, UiConfig { theme: id.into(), ..UiConfig::default() });
-        let mut frame_at = |t: u64| {
+        let frame_at = |r: &mut Rig, t: u64| {
             r.ui.set_motion_time(Some(t));
             r.frame()
         };
-        let rgb = |frame: &[u32]| -> Vec<u8> { frame.iter().flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8]).collect() };
         // The cycle.
         let frames = (wallpaper::CYCLE_MS / every) as u32;
         let file = std::io::BufWriter::new(std::fs::File::create(dir.join(format!("{id}.png"))).unwrap());
         let mut enc = png::Encoder::new(file, WIDTH as u32, HEIGHT as u32);
-        enc.set_color(png::ColorType::Rgb);
+        enc.set_color(png::ColorType::Rgba);
         enc.set_depth(png::BitDepth::Eight);
         enc.set_compression(png::Compression::High);
         enc.set_animated(frames, 0).unwrap();
         enc.set_frame_delay(every as u16, 1000).unwrap();
         let mut writer = enc.write_header().unwrap();
-        for n in 0..frames {
-            writer.write_image_data(&rgb(&frame_at(u64::from(n) * every))).unwrap();
+        let mut last = frame_at(&mut r, 0);
+        writer.write_image_data(&last.iter().flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8, 255]).collect::<Vec<u8>>()).unwrap();
+        for n in 1..frames {
+            r.ui.motion_step(u64::from(n) * every);
+            let frame = r.frame();
+            // The rectangle around what changed; the pixels in it that
+            // did not are left as they were (transparent).
+            let differ = |x: i32, y: i32| at(&frame, x, y) != at(&last, x, y);
+            let rows: Vec<i32> = (0..HEIGHT).filter(|y| (0..WIDTH).any(|x| differ(x, *y))).collect();
+            let columns: Vec<i32> = (0..WIDTH).filter(|x| rows.iter().any(|y| differ(*x, *y))).collect();
+            let (x0, x1) = (columns.first().copied().unwrap_or(0), columns.last().copied().unwrap_or(0));
+            let (y0, y1) = (rows.first().copied().unwrap_or(0), rows.last().copied().unwrap_or(0));
+            let mut rgba = Vec::with_capacity(((x1 - x0 + 1) * (y1 - y0 + 1) * 4) as usize);
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    let p = at(&frame, x, y);
+                    rgba.extend_from_slice(&if differ(x, y) { [(p >> 16) as u8, (p >> 8) as u8, p as u8, 255] } else { [0; 4] });
+                }
+            }
+            // (Each is checked against the other as it is set: the place
+            // of the frame before and the size of this one may not fit.)
+            writer.set_frame_position(0, 0).unwrap();
+            writer.set_frame_dimension((x1 - x0 + 1) as u32, (y1 - y0 + 1) as u32).unwrap();
+            writer.set_frame_position(x0 as u32, y0 as u32).unwrap();
+            writer.set_blend_op(png::BlendOp::Over).unwrap();
+            writer.set_dispose_op(png::DisposeOp::None).unwrap();
+            writer.write_image_data(&rgba).unwrap();
+            last = frame;
         }
         writer.finish().unwrap();
         // The sheet: three across, two down; each cell a frame and its
@@ -1120,10 +1227,10 @@ fn motion_previews() {
         let th = Theme::for_model(Model::D65);
         let mut c = Canvas::new((gap + 3 * (2 * WIDTH + 2 + gap)) as u16, (gap + 2 * (HEIGHT + label + gap)) as u16, false);
         c.clear(0x2B2B2B);
-        let first = frame_at(0);
+        let first = frame_at(&mut r, 0);
         for i in 0..6 {
             let t = i as u64 * 10_000;
-            let frame = frame_at(t);
+            let frame = frame_at(&mut r, t);
             let (x0, y0) = (gap + (i % 3) * (2 * WIDTH + 2 + gap), gap + (i / 3) * (HEIGHT + label + gap));
             let rgba: Vec<u8> = frame.iter().flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8, 255]).collect();
             c.rgba(x0, y0, WIDTH, HEIGHT, &rgba);
@@ -1145,9 +1252,9 @@ fn motion_previews() {
 }
 
 /// What the motion costs: prints, for each wallpaper that moves, the time
-/// to draw a frame from the one before (on this machine), the same with
-/// the idle screen drawn over it and presented, and how much of the
-/// picture a frame changes.  Run with
+/// to draw a frame from the one before (on this machine), the same on
+/// the idle screen (the frame, and what it changed brought to the
+/// display), and how much of the picture a frame changes.  Run with
 /// `--release -- --ignored --nocapture motion_costs`.
 ///
 /// For counting instructions (e.g., under `qemu-arm`, built for the
@@ -1176,9 +1283,10 @@ fn motion_costs() {
         let (w, n) = parse(v);
         let every = u64::from(w.frame_ms().expect("a wallpaper that moves"));
         let mut r = Rig::with_model(Model::D60, UiConfig { theme: w.id.into(), ..UiConfig::default() });
-        for i in 0..=n {
-            r.ui.set_motion_time(Some(i * every));
-            r.ui.pump();
+        r.ui.set_motion_time(Some(0));
+        r.ui.pump();
+        for i in 1..=n {
+            r.ui.motion_step(i * every);
         }
         println!("{}: {}", w.id, r.ui.screen_name());
         return;
@@ -1205,8 +1313,7 @@ fn motion_costs() {
         r.ui.pump();
         let start = std::time::Instant::now();
         for i in 1..=frames {
-            r.ui.set_motion_time(Some(i * every));
-            r.ui.pump();
+            r.ui.motion_step(i * every);
         }
         let shown = start.elapsed().as_secs_f64() * 1000.0 / frames as f64;
         println!(
@@ -1251,4 +1358,46 @@ fn costs() {
         println!("{:12} {ms:6.2} ms here, {:7} bytes as PNG", w.id, png_file.len());
     }
     println!("{} wallpapers as PNG files: {} bytes", wallpaper::all().len(), total_png);
+}
+
+/// How far the motion goes from one frame to the next: prints, for each
+/// wallpaper that moves, the farthest anything in it goes between two
+/// frames ([`Wallpaper::farthest_step`]), and, over a whole cycle at its
+/// pace, the largest change of a channel of a pixel between two frames,
+/// how many pixels a frame draws and how much of the picture it changes,
+/// and how many pixels a frame changes by one step of a channel, by 2 or
+/// 3, by 4 to 7, by 8 to 15, and by more.
+/// Run with `--release -- --ignored --nocapture motion_steps`.
+#[test]
+#[ignore = "a measurement, not a check"]
+fn motion_steps() {
+    for id in MOVING {
+        let w = wallpaper::find(id).unwrap();
+        let every = u64::from(w.frame_ms().unwrap());
+        let frames = wallpaper::CYCLE_MS / every;
+        let mut last = w.render_at(0);
+        let (mut most, mut changed, mut drawn, mut sizes) = (0, 0, 0, [0usize; 5]);
+        for i in 1..=frames {
+            let frame = w.with_frame_and_changes(i * every, |f, changes| {
+                drawn += changes.runs.iter().map(|r| usize::from(r.x1 - r.x0)).sum::<usize>();
+                f.to_vec()
+            });
+            let (count, m) = difference(&last, &frame);
+            most = most.max(m);
+            changed += count;
+            for (p, q) in last.iter().zip(&frame).filter(|(p, q)| p != q) {
+                let d = [16, 8, 0].map(|s| ((p >> s) & 255).abs_diff((q >> s) & 255)).into_iter().max().unwrap_or(0);
+                sizes[(31 - d.leading_zeros()).min(4) as usize] += 1;
+            }
+            last = frame;
+        }
+        println!(
+            "{id:9} every {every:3} ms: at most {:4.2} of a pixel and {most:2} in a channel; a frame draws {:6} pixels ({:7} a second) and changes {:5.2} % of the picture; by 1, 2-3, 4-7, 8-15, more: {:?}",
+            w.farthest_step().unwrap() as f64 / 16.0,
+            drawn / frames as usize,
+            drawn as u64 * 1000 / wallpaper::CYCLE_MS,
+            changed as f64 * 100.0 / frames as f64 / (WIDTH * HEIGHT) as f64,
+            sizes.map(|n| n / frames as usize)
+        );
+    }
 }

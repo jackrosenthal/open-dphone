@@ -1279,6 +1279,7 @@ dependencies = [
 name = "dphone-ui"
 version = "3.0.0"
 dependencies = [
+ "bytemuck",
  "dphone-hal",
  "dphone-state",
  "fontdue",

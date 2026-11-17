@@ -81,6 +81,82 @@ pub enum HAlign {
     Right,
 }
 
+/// Writes pixels to a frame buffer of [`PixelFormat::Xrgb8888`]: four
+/// bytes each, the blue first.
+#[inline]
+fn put_xrgb(dst: &mut [u8], src: &[u32]) {
+    // Where the processor keeps a word's low byte first, the pixels are
+    // the bytes as they are, and one copy of them is five times as fast
+    // on the phone as a pixel at a time (measured on a D60: 1.5 ms for
+    // 285 kB, where four single bytes for each pixel took 7.8 ms).
+    #[cfg(target_endian = "little")]
+    dst.copy_from_slice(bytemuck::cast_slice(src));
+    #[cfg(not(target_endian = "little"))]
+    for (o, p) in dst.as_chunks_mut::<4>().0.iter_mut().zip(src) {
+        *o = p.to_le_bytes();
+    }
+}
+
+/// What a screen draws over its wallpaper, apart from the wallpaper: for
+/// each pixel, how much of the wallpaper shows there and the color that
+/// is added to it.  With it, the picture over another frame of the
+/// wallpaper is arithmetic on the pixels that frame changed, and the
+/// screen need not be drawn again ([`Canvas::patch`]).
+///
+/// It is made from the screen drawn twice, over black and over white:
+/// everything the screens draw either replaces a pixel or blends a color
+/// into it, so a pixel of the result is the wallpaper's times a factor
+/// plus a color, and the two drawings give both.  Where the screen left
+/// the wallpaper alone, and where it hid it, the result is exact; where
+/// something is blended (the edges of text and of shapes), it is within
+/// one step of a channel of what drawing would give.
+#[derive(Default)]
+pub struct Overlay {
+    /// The part of the wallpaper that shows (of 255) in the top byte; the
+    /// color added below it.
+    px: Vec<u32>,
+}
+
+impl Overlay {
+    /// The first step: the canvas holds the screen drawn over black.
+    pub fn over_black(&mut self, c: &Canvas) {
+        self.px.clear();
+        self.px.extend_from_slice(&c.pix);
+    }
+
+    /// The second step: the canvas holds the same drawn over white.
+    pub fn over_white(&mut self, c: &Canvas) {
+        for (o, white) in self.px.iter_mut().zip(&c.pix) {
+            let black = *o & 0xFF_FFFF;
+            let shows = if black == 0 && *white == 0xFF_FFFF {
+                255
+            } else {
+                // The same in every channel, but for the rounding.
+                let ch = |shift: u32| ((white >> shift) & 255).saturating_sub((black >> shift) & 255);
+                (ch(16) + ch(8) + ch(0) + 1) / 3
+            };
+            *o = (shows << 24) | black;
+        }
+    }
+
+    /// A pixel of the screen, whose pixel of the overlay is `o`, over a
+    /// wallpaper whose pixel is `wall`.
+    #[inline]
+    fn over(o: u32, wall: Rgb) -> Rgb {
+        match o >> 24 {
+            255 => wall,
+            0 => o,
+            shows => {
+                let ch = |shift: u32| {
+                    let v = ((wall >> shift) & 255) * shows + 127;
+                    (((o >> shift) & 255) + ((v + 1 + (v >> 8)) >> 8)).min(255) << shift
+                };
+                ch(16) | ch(8) | ch(0)
+            }
+        }
+    }
+}
+
 /// A back buffer for one screen.
 pub struct Canvas {
     w: i32,
@@ -504,12 +580,7 @@ impl Canvas {
                 let src = &self.pix[y * w + d.x as usize..y * w + d.right() as usize];
                 let row = y * info.stride;
                 match info.format {
-                    PixelFormat::Xrgb8888 => {
-                        let dst = &mut frame[row + d.x as usize * 4..row + d.right() as usize * 4];
-                        for (o, p) in dst.as_chunks_mut::<4>().0.iter_mut().zip(src) {
-                            *o = p.to_le_bytes();
-                        }
-                    }
+                    PixelFormat::Xrgb8888 => put_xrgb(&mut frame[row + d.x as usize * 4..row + d.right() as usize * 4], src),
                     PixelFormat::R8 => {
                         let dst = &mut frame[row + d.x as usize..row + d.right() as usize];
                         for (o, p) in dst.iter_mut().zip(src) {
@@ -538,6 +609,86 @@ impl Canvas {
         Ok(Some(d))
     }
 
+    /// Brings the screen from one frame of a moving wallpaper to the
+    /// next without drawing the screen again: `frame` is the wallpaper's
+    /// new frame, `runs` the pixels of it that may differ from the frame
+    /// before, and `over` what the screen draws over the wallpaper.  The
+    /// pixels that changed go to the canvas and straight to the display.
+    ///
+    /// Returns false, with nothing done, where this cannot be (a gray
+    /// canvas, nothing presented yet, a display of another size or
+    /// format): the screen is then to be drawn and presented whole.
+    pub fn patch(
+        &mut self,
+        frame: &[u32],
+        runs: &[crate::wallpaper::Run],
+        over: &Overlay,
+        display: &mut dyn Display,
+        screen: Screen,
+    ) -> dphone_hal::Result<bool> {
+        let n = self.pix.len();
+        if self.gray || !self.presented || frame.len() != n || over.px.len() != n {
+            return Ok(false);
+        }
+        let Some(info) = display.info(screen) else { return Ok(false) };
+        if info.format != PixelFormat::Xrgb8888 || info.width as i32 != self.w || info.height as i32 != self.h {
+            return Ok(false);
+        }
+        let w = self.w as usize;
+        // The rows and columns with a pixel that changed.
+        let (mut top, mut bottom, mut left, mut right) = (usize::MAX, 0, usize::MAX, 0);
+        {
+            let fb = display.frame(screen)?;
+            for run in runs {
+                let (y, x0, x1) = (usize::from(run.y), usize::from(run.x0), usize::from(run.x1).min(w));
+                if y >= self.h as usize || x0 >= x1 {
+                    continue;
+                }
+                let row = y * w;
+                if x1 - x0 == 1 {
+                    // One pixel (many runs are): without the copies' calls.
+                    let i = row + x0;
+                    let p = Overlay::over(over.px[i], frame[i]);
+                    if p != self.pix[i] {
+                        (self.pix[i], self.front[i]) = (p, p);
+                        let at = y * info.stride + x0 * 4;
+                        fb[at..at + 4].copy_from_slice(&p.to_le_bytes());
+                        (top, bottom) = (top.min(y), bottom.max(y));
+                        (left, right) = (left.min(x0), right.max(x0));
+                    }
+                    continue;
+                }
+                let (mut first, mut last) = (usize::MAX, 0);
+                let span = row + x0..row + x1;
+                let pixels = self.pix[span.clone()].iter_mut().zip(&frame[span.clone()]).zip(&over.px[span]);
+                for (x, ((pix, &wall), &o)) in pixels.enumerate() {
+                    let p = Overlay::over(o, wall);
+                    if p != *pix {
+                        *pix = p;
+                        first = first.min(x);
+                        last = x;
+                    }
+                }
+                if first == usize::MAX {
+                    continue;
+                }
+                let (first, last) = (row + x0 + first, row + x0 + last);
+                self.front[first..=last].copy_from_slice(&self.pix[first..=last]);
+                let at = y * info.stride + (first - row) * 4;
+                put_xrgb(&mut fb[at..at + (last + 1 - first) * 4], &self.pix[first..=last]);
+                (top, bottom) = (top.min(y), bottom.max(y));
+                (left, right) = (left.min(first - row), right.max(last - row));
+            }
+        }
+        if top != usize::MAX {
+            display.flush(
+                screen,
+                &[dphone_hal::Rect::new(left as u16, top as u16, (right + 1 - left) as u16, (bottom + 1 - top) as u16)],
+            )?;
+        }
+        Ok(true)
+    }
+
     /// Forgets what was presented, so the next present repaints everything
     /// (after the panel was powered off, for example).
     pub fn invalidate(&mut self) {
@@ -550,11 +701,14 @@ impl Canvas {
 impl Canvas {
     /// Paints the idle/call background over the whole screen: the
     /// wallpaper on the color skin, the plain background on gray.
-    pub fn wallpaper(&mut self, plain: Rgb, backdrop: crate::wallpaper::Backdrop) {
+    ///
+    /// Returns the number of the frame drawn, of a wallpaper in motion
+    /// ([`crate::wallpaper::Changes::serial`]).
+    pub fn wallpaper(&mut self, plain: Rgb, backdrop: crate::wallpaper::Backdrop) -> Option<u64> {
         use crate::wallpaper::{Backdrop, HEIGHT, WIDTH};
         if self.gray || self.w != WIDTH || self.h != HEIGHT {
             self.clear(plain);
-            return;
+            return None;
         }
         let clip = self.clip;
         let (w, pix) = (self.w, &mut self.pix);
@@ -567,9 +721,15 @@ impl Canvas {
         };
         match backdrop {
             Backdrop::Builtin(wallpaper) => wallpaper.with_pixels(copy),
-            Backdrop::Moving(wallpaper, t_ms) => wallpaper.with_frame(t_ms, copy),
+            Backdrop::Moving(wallpaper, t_ms) => {
+                return Some(wallpaper.with_frame_and_changes(t_ms, |frame, changes| {
+                    copy(frame);
+                    changes.serial
+                }));
+            }
             Backdrop::Picture(picture) => copy(picture.pixels()),
         }
+        None
     }
 
     /// Fills one row span `x0..x1` (exclusive) at `y`.

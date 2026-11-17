@@ -240,7 +240,7 @@ static ALL: [Wallpaper; 42] = [
             dither: true,
             // The bends travel along the ribbons, each at its own pace, so
             // the flame and the red edge fold into the yellow and the navy.
-            moves: Some(Moves { every_ms: 300, motion: Motion::Run(&[1, 2, -1]) }),
+            moves: Some(Moves { every_ms: 100, motion: Motion::Run(&[1, 2, -1]) }),
         },
     },
     // ------------------------------------------------------------ Bubbles
@@ -257,7 +257,7 @@ static ALL: [Wallpaper; 42] = [
                 Layer::Bubbles { seed: 21, count: 14, r: (14, 34), alpha: (26, 50), soft: 30, rim: 0, colors: &[0x7C9CE0, 0xC89A6A, 0x9C84D8, 0x5AB0C8] },
             ],
             dither: true,
-            moves: Some(Moves { every_ms: 300, motion: Motion::Wander { reach: (7, 5), turns: (2, 4) } }),
+            moves: Some(Moves { every_ms: 100, motion: Motion::Wander { reach: (7, 5), turns: (2, 4) } }),
         },
     },
     Wallpaper {
@@ -274,7 +274,7 @@ static ALL: [Wallpaper; 42] = [
             ],
             dither: true,
             // Up and down more than across, as bubbles in a glass.
-            moves: Some(Moves { every_ms: 200, motion: Motion::Wander { reach: (3, 7), turns: (3, 6) } }),
+            moves: Some(Moves { every_ms: 50, motion: Motion::Wander { reach: (3, 7), turns: (3, 6) } }),
         },
     },
     Wallpaper {
@@ -290,7 +290,7 @@ static ALL: [Wallpaper; 42] = [
                 Layer::Bubbles { seed: 17, count: 12, r: (12, 28), alpha: (30, 56), soft: 40, rim: 0, colors: &[0xE89A40, 0xD86444, 0xF0C060] },
             ],
             dither: true,
-            moves: Some(Moves { every_ms: 300, motion: Motion::Wander { reach: (5, 7), turns: (2, 4) } }),
+            moves: Some(Moves { every_ms: 100, motion: Motion::Wander { reach: (5, 7), turns: (2, 4) } }),
         },
     },
     Wallpaper {
@@ -313,7 +313,7 @@ static ALL: [Wallpaper; 42] = [
                 ],
             }],
             dither: true,
-            moves: Some(Moves { every_ms: 200, motion: Motion::Wander { reach: (8, 8), turns: (2, 3) } }),
+            moves: Some(Moves { every_ms: 50, motion: Motion::Wander { reach: (8, 8), turns: (3, 5) } }),
         },
     },
     Wallpaper {
@@ -406,7 +406,7 @@ static ALL: [Wallpaper; 42] = [
             dither: true,
             // Each wave rises and falls a few pixels, the nearer ones a
             // little more, no two in step.
-            moves: Some(Moves { every_ms: 150, motion: Motion::Bob(&[(48, 3, 0), (56, 4, 90), (64, 5, 170), (72, 4, 220)]) }),
+            moves: Some(Moves { every_ms: 50, motion: Motion::Bob(&[(48, 6, 0), (56, 8, 90), (64, 10, 170), (72, 8, 220)]) }),
         },
     },
     Wallpaper {
@@ -423,7 +423,7 @@ static ALL: [Wallpaper; 42] = [
                 Wave { y: 208, amp: 14, period: 560, phase: 130, amp2: 0, period2: 0, color: 0xAE6C40, alpha: 110, fade: 70 },
             ])],
             dither: true,
-            moves: Some(Moves { every_ms: 300, motion: Motion::Bob(&[(56, 2, 40), (64, 3, 150), (72, 2, 230)]) }),
+            moves: Some(Moves { every_ms: 50, motion: Motion::Bob(&[(56, 4, 40), (64, 6, 150), (72, 4, 230)]) }),
         },
     },
     Wallpaper {
@@ -468,7 +468,7 @@ static ALL: [Wallpaper; 42] = [
                 },
             ],
             dither: true,
-            moves: Some(Moves { every_ms: 250, motion: Motion::Wander { reach: (16, 12), turns: (1, 2) } }),
+            moves: Some(Moves { every_ms: 100, motion: Motion::Wander { reach: (16, 12), turns: (1, 2) } }),
         },
     },
     Wallpaper {

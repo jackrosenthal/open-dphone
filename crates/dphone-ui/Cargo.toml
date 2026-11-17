@@ -11,6 +11,8 @@ publish = false
 dphone-state = { path = "../dphone-state" }
 dphone-hal = { path = "../dphone-hal" }
 log = "0.4"
+# Pixels as the bytes they are, for the copy to the frame buffer.
+bytemuck = "1"
 # App package icons and pictures (pure Rust; `flate2` and `miniz_oxide` are
 # in the binary already for app packages).
 png = "0.18"

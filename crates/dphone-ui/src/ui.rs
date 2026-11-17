@@ -154,7 +154,116 @@ enum Msg {
     CloseApp(String),
     Config(UiConfig),
     Wake,
+    /// Capture every screen through the display ([`UiHandle::capture_screens`]).
+    Capture,
     Quit,
+}
+
+/// What a drawing of the screen is for ([`Ui::draw`]).
+#[derive(Clone, Copy)]
+enum Pass {
+    /// Over black and over white in place of the wallpaper: the two
+    /// halves of a [`crate::gfx::Overlay`].
+    OverBlack,
+    OverWhite,
+    /// The picture that is shown.
+    Shown,
+}
+
+/// A wallpaper in motion on the main screen.
+#[derive(Clone, Copy)]
+struct Moving {
+    wallpaper: &'static wallpaper::Wallpaper,
+    /// The time from one frame to the next, in milliseconds.
+    every: u64,
+    /// The number of the frame on the screen
+    /// ([`wallpaper::Changes::serial`]).
+    serial: u64,
+}
+
+/// What the frames of a wallpaper's motion cost: the log gets one line
+/// for a wallpaper, when it has moved for [`MotionCost::FRAMES`] frames
+/// after its first, and another only after another wallpaper has moved.
+#[derive(Default)]
+struct MotionCost {
+    id: &'static str,
+    /// The time the first frame took: the screen drawn whole, with this
+    /// wallpaper in place of another.
+    first: Duration,
+    /// The frames since the first.
+    frames: u32,
+    /// When the first frame began, and the last, in monotonic
+    /// milliseconds; the longest time from one frame to the next, apart
+    /// from the time from the first to the second (the first's own).
+    since: u64,
+    last: u64,
+    gap: u64,
+    /// The frames made from the frame before ([`Ui::motion_frame`]): the
+    /// time they took, the longest, and the part of it in which the
+    /// wallpaper drew its frames.
+    made: u32,
+    spent: Duration,
+    longest: Duration,
+    drawing: Duration,
+    /// The frames for which the screen was drawn whole (something else on
+    /// it changed): the time they took, and the longest.
+    whole: u32,
+    whole_spent: Duration,
+    whole_longest: Duration,
+}
+
+impl MotionCost {
+    const FRAMES: u32 = 200;
+
+    /// One more frame of wallpaper `id`, begun at `started`, took `time`:
+    /// made from the frame before (`drawing` of the time for the
+    /// wallpaper to draw its frame, the rest to bring what the frame
+    /// changed to the display), or, with `drawing` `None`, with the screen
+    /// drawn whole.
+    fn frame(&mut self, id: &'static str, every: u64, started: u64, drawing: Option<Duration>, time: Duration) {
+        if self.id != id {
+            *self = MotionCost { id, first: time, since: started, last: started, ..MotionCost::default() };
+            return;
+        }
+        if self.frames >= Self::FRAMES {
+            return;
+        }
+        self.frames += 1;
+        if self.frames > 1 {
+            self.gap = self.gap.max(started - self.last);
+        }
+        self.last = started;
+        match drawing {
+            Some(drawing) => {
+                self.made += 1;
+                self.spent += time;
+                self.drawing += drawing;
+                self.longest = self.longest.max(time);
+            }
+            None => {
+                self.whole += 1;
+                self.whole_spent += time;
+                self.whole_longest = self.whole_longest.max(time);
+            }
+        }
+        if self.frames == Self::FRAMES {
+            let each = |time: Duration, n: u32| time.as_micros() / u128::from(n.max(1));
+            log::info!(
+                "wallpaper {id}: the first frame took {} us; then {} frames, one every {} ms (asked: {every} ms), at most {} ms apart; {} made from the frame before, which took {} us each ({} us of them to draw the wallpaper), the longest {} us; {} with the screen drawn whole, which took {} us each, the longest {} us",
+                self.first.as_micros(),
+                self.frames,
+                (started - self.since) / u64::from(self.frames),
+                self.gap,
+                self.made,
+                each(self.spent, self.made),
+                each(self.drawing, self.made),
+                self.longest.as_micros(),
+                self.whole,
+                each(self.whole_spent, self.whole),
+                self.whole_longest.as_micros(),
+            );
+        }
+    }
 }
 
 /// Thread-safe access to a running [`Ui`].
@@ -166,6 +275,14 @@ pub struct UiHandle {
 }
 
 impl UiHandle {
+    /// Asks the UI to read every screen back through its display
+    /// ([`Display::capture`]), on the UI's thread, when it next has a
+    /// moment.  For a display that keeps a copy of what is shown for
+    /// others to look at, and takes the copy when it is asked to.
+    pub fn capture_screens(&self) {
+        let _ = self.tx.send(Msg::Capture);
+    }
+
     /// A view for the app `name` on this UI: [`AppView::new`], with the
     /// UI's theme from the start.  Its [`AppView::theme_color`] answers
     /// in the palette in use before the view is first on screen (an app
@@ -697,6 +814,18 @@ pub struct Ui {
     /// When the next frame of the wallpaper's motion is due; `None` while
     /// nothing on screen moves.
     motion_deadline: Option<u64>,
+    /// That time has come.
+    motion_due: bool,
+    /// How many frames of the motion were made from the frame before
+    /// ([`Ui::motion_frame`]).
+    motion_frames: u64,
+    /// The wallpaper in motion on the main screen, as last drawn; `None`
+    /// while nothing on screen moves.
+    moving: Option<Moving>,
+    /// What the screen shown draws over that wallpaper.
+    over: crate::gfx::Overlay,
+    /// What the frames of the motion cost, for the log.
+    motion_cost: MotionCost,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
     commands: Option<ds::CommandReceiver>,
@@ -784,6 +913,11 @@ impl Ui {
             fixed_time: None,
             motion_time: None,
             motion_deadline: None,
+            motion_due: false,
+            motion_frames: 0,
+            moving: None,
+            over: crate::gfx::Overlay::default(),
+            motion_cost: MotionCost::default(),
             backlight_on: true,
             tx,
             rx,
@@ -833,6 +967,24 @@ impl Ui {
     /// When the wallpaper's next frame is due, if it is moving (tests).
     pub fn motion_deadline(&self) -> Option<u64> {
         self.motion_deadline
+    }
+
+    /// How many frames of the wallpaper's motion were made from the frame
+    /// before, without drawing the screen again (tests).
+    pub fn motion_frames(&self) -> u64 {
+        self.motion_frames
+    }
+
+    /// Shows the wallpaper's motion as it is at `ms`, as the UI does when
+    /// a frame is due and nothing else on the screen has changed: only
+    /// what the motion changed is drawn (tests and measurements).
+    pub fn motion_step(&mut self, ms: u64) {
+        self.motion_time = Some(ms);
+        if self.needs_draw {
+            self.draw();
+        } else {
+            self.motion_frame();
+        }
     }
 
     fn now(&self) -> (u64, u64) {
@@ -1157,6 +1309,7 @@ impl Ui {
     // ------------------------------------------------------------- draw
 
     fn draw(&mut self) {
+        let begun = std::time::Instant::now();
         let st = self.store.snapshot();
         let cfg = self.cfg.clone();
         let store = self.store.clone();
@@ -1211,82 +1364,101 @@ impl Ui {
             backdrop = Backdrop::Moving(wallpaper, t);
             frame_ms = Some(u64::from(every));
         }
-        if top.full_screen() {
-            top.draw(&cx, c, bounds);
-        } else {
-            // The whole frame gets a background first: the softkey shapes
-            // and the line-key tabs sit on it.
-            if top.wallpaper() {
-                c.wallpaper(th.bg, backdrop);
-            } else {
-                c.clear(th.bg);
-            }
-            if top.softkey_bar(&cx) {
-                let (area, _) = bounds.split_bottom(th.softkey_h);
-                top.draw(&cx, c, area);
-                let labels = match top.raw_softkeys(&cx) {
-                    Some(l) => l,
-                    None => soft_slots(&top.softkeys(&cx), self.nav.soft_page).map(|(_, l)| l),
-                };
-                widgets::softkey_bar(c, th, &labels);
-            } else {
+        // Over a wallpaper in motion the screen is drawn three times: over
+        // black and over white, which together tell what the screen puts
+        // over the wallpaper ([`crate::gfx::Overlay`]), and then as it is
+        // shown.  The frames that follow are made from the wallpaper and
+        // that ([`Ui::motion_frame`]) until something else changes.
+        let passes: &[Pass] = if frame_ms.is_some() { &[Pass::OverBlack, Pass::OverWhite, Pass::Shown] } else { &[Pass::Shown] };
+        let mut serial = None;
+        for pass in passes {
+            if top.full_screen() {
                 top.draw(&cx, c, bounds);
+            } else {
+                // The whole frame gets a background first: the softkey shapes
+                // and the line-key tabs sit on it.
+                match pass {
+                    Pass::OverBlack => c.clear(0x000000),
+                    Pass::OverWhite => c.clear(0xFFFFFF),
+                    Pass::Shown if top.wallpaper() => serial = c.wallpaper(th.bg, backdrop),
+                    Pass::Shown => c.clear(th.bg),
+                }
+                if top.softkey_bar(&cx) {
+                    let (area, _) = bounds.split_bottom(th.softkey_h);
+                    top.draw(&cx, c, area);
+                    let labels = match top.raw_softkeys(&cx) {
+                        Some(l) => l,
+                        None => soft_slots(&top.softkeys(&cx), self.nav.soft_page).map(|(_, l)| l),
+                    };
+                    widgets::softkey_bar(c, th, &labels);
+                } else {
+                    top.draw(&cx, c, bounds);
+                }
+            }
+
+            // Volume popup.
+            if self.popup.is_some() {
+                let a = &st.audio;
+                // The ringer sounds on the speaker (for a call, or to let the
+                // user hear the volume the keys just set): that is the
+                // ringer's volume, not the speaker's.
+                let (label, icon) = match a.current_target() {
+                    VolumeTarget::Handset => (tr::VOL_HANDSET, "handset"),
+                    VolumeTarget::Headset => (tr::VOL_HEADSET, "headset"),
+                    VolumeTarget::Speaker => (tr::VOL_SPEAKER, "speaker"),
+                    VolumeTarget::Ringer | VolumeTarget::Current => (tr::VOL_RINGER, "ring"),
+                };
+                let (w, h) = if th.gray { (bounds.w * 3 / 4, th.line_h * 2 + 12) } else { (300, 84) };
+                let inner = widgets::modal(c, th, bounds, w, h);
+                let (head, rest) = inner.split_top(th.line_h);
+                let (ic, text) = head.split_left(th.icon + th.pad);
+                if let Some(i) = th.icon(icon) {
+                    c.icon_in(i, IRect { w: th.icon, ..ic }, th.fg);
+                }
+                c.text_in(th.font(crate::appview::Font::Bold), text, label, th.fg, HAlign::Left);
+                let mh = if th.gray { 8 } else { 18 };
+                widgets::meter(
+                    c,
+                    th,
+                    IRect::new(rest.x, rest.y + (rest.h - mh) / 2, rest.w, mh),
+                    a.volume(VolumeTarget::Current) as u32,
+                    ds::VOLUME_MAX as u32,
+                );
+            }
+
+            // The newest notice.
+            if let Some(n) = st.ui.notices.last() {
+                let f = th.font(crate::appview::Font::Normal);
+                let w = if th.gray { bounds.w - 12 } else { 380 };
+                let lines = f.wrap(&n.text, w - 2 * th.pad).len().clamp(1, 4) as i32;
+                let h = (lines + 1) * th.line_h + 2 * th.pad + 2;
+                let inner = widgets::modal(c, th, bounds, w, h);
+                let (head, rest) = inner.split_top(th.line_h);
+                let (icon, tint) = match n.level {
+                    ds::NoticeLevel::Info => ("info", th.accent),
+                    ds::NoticeLevel::Warning => ("warning", th.warn),
+                    ds::NoticeLevel::Error => ("error", th.error),
+                };
+                let (ic, text) = head.split_left(th.icon + th.pad);
+                if let Some(i) = th.icon(icon) {
+                    c.icon_in(i, IRect { w: th.icon, ..ic }, tint);
+                }
+                c.text_in(th.font(crate::appview::Font::Bold), text, &n.title, th.fg, HAlign::Left);
+                c.text_wrapped(f, rest, &n.text, th.fg, HAlign::Left, th.line_h);
+            }
+            match pass {
+                Pass::OverBlack => self.over.over_black(c),
+                Pass::OverWhite => self.over.over_white(c),
+                Pass::Shown => {}
             }
         }
         self.screen_deadline = top.deadline(&cx);
         let name = top.name();
         let dial = top.dial_buffer().unwrap_or("").to_string();
-
-        // Volume popup.
-        if self.popup.is_some() {
-            let a = &st.audio;
-            // The ringer sounds on the speaker (for a call, or to let the
-            // user hear the volume the keys just set): that is the
-            // ringer's volume, not the speaker's.
-            let (label, icon) = match a.current_target() {
-                VolumeTarget::Handset => (tr::VOL_HANDSET, "handset"),
-                VolumeTarget::Headset => (tr::VOL_HEADSET, "headset"),
-                VolumeTarget::Speaker => (tr::VOL_SPEAKER, "speaker"),
-                VolumeTarget::Ringer | VolumeTarget::Current => (tr::VOL_RINGER, "ring"),
-            };
-            let (w, h) = if th.gray { (bounds.w * 3 / 4, th.line_h * 2 + 12) } else { (300, 84) };
-            let inner = widgets::modal(c, th, bounds, w, h);
-            let (head, rest) = inner.split_top(th.line_h);
-            let (ic, text) = head.split_left(th.icon + th.pad);
-            if let Some(i) = th.icon(icon) {
-                c.icon_in(i, IRect { w: th.icon, ..ic }, th.fg);
-            }
-            c.text_in(th.font(crate::appview::Font::Bold), text, label, th.fg, HAlign::Left);
-            let mh = if th.gray { 8 } else { 18 };
-            widgets::meter(
-                c,
-                th,
-                IRect::new(rest.x, rest.y + (rest.h - mh) / 2, rest.w, mh),
-                a.volume(VolumeTarget::Current) as u32,
-                ds::VOLUME_MAX as u32,
-            );
-        }
-
-        // The newest notice.
-        if let Some(n) = st.ui.notices.last() {
-            let f = th.font(crate::appview::Font::Normal);
-            let w = if th.gray { bounds.w - 12 } else { 380 };
-            let lines = f.wrap(&n.text, w - 2 * th.pad).len().clamp(1, 4) as i32;
-            let h = (lines + 1) * th.line_h + 2 * th.pad + 2;
-            let inner = widgets::modal(c, th, bounds, w, h);
-            let (head, rest) = inner.split_top(th.line_h);
-            let (icon, tint) = match n.level {
-                ds::NoticeLevel::Info => ("info", th.accent),
-                ds::NoticeLevel::Warning => ("warning", th.warn),
-                ds::NoticeLevel::Error => ("error", th.error),
-            };
-            let (ic, text) = head.split_left(th.icon + th.pad);
-            if let Some(i) = th.icon(icon) {
-                c.icon_in(i, IRect { w: th.icon, ..ic }, tint);
-            }
-            c.text_in(th.font(crate::appview::Font::Bold), text, &n.title, th.fg, HAlign::Left);
-            c.text_wrapped(f, rest, &n.text, th.fg, HAlign::Left, th.line_h);
-        }
+        self.moving = match (backdrop, frame_ms, serial) {
+            (Backdrop::Moving(wallpaper, _), Some(every), Some(serial)) => Some(Moving { wallpaper, every, serial }),
+            _ => None,
+        };
 
         if let Err(e) = c.present(self.display.as_mut(), dphone_hal::Screen::Main) {
             log::warn!("display: {e}");
@@ -1307,6 +1479,10 @@ impl Ui {
             let done = clock::mono_ms();
             (started + every).max(done + every / 2)
         });
+        self.motion_due = false;
+        if let Some(moving) = self.moving {
+            self.motion_cost.frame(moving.wallpaper.id, moving.every, started, None, begun.elapsed());
+        }
         self.store.update::<ds::Ui, _>(|u| {
             if u.screen != name {
                 u.screen = name;
@@ -1316,6 +1492,44 @@ impl Ui {
             }
         });
         self.needs_draw = false;
+    }
+
+    /// The next frame of the wallpaper in motion, when nothing else on
+    /// the screen has changed since it was drawn: the pixels the motion
+    /// changed, with what the screen draws over them, go to the display.
+    /// The screen is not drawn again.
+    fn motion_frame(&mut self) {
+        self.motion_due = false;
+        let (now_ms, _) = self.now();
+        let (Some(moving), Some(t)) = (self.moving, self.motion_time.or(self.fixed_time.is_none().then_some(now_ms))) else {
+            return self.draw();
+        };
+        let started = clock::mono_ms();
+        let begun = std::time::Instant::now();
+        let (c, over, display) = (&mut self.main, &self.over, self.display.as_mut());
+        let mut drawn = Duration::ZERO;
+        let serial = moving.wallpaper.with_frame_and_changes(t, |frame, changes| {
+            drawn = begun.elapsed();
+            // Another user of the wallpaper may have drawn a frame since
+            // (the changes are then from a frame this screen never had).
+            if changes.before != moving.serial {
+                return None;
+            }
+            match c.patch(frame, changes.runs, over, display, dphone_hal::Screen::Main) {
+                Ok(true) => Some(changes.serial),
+                Ok(false) => None,
+                Err(e) => {
+                    log::warn!("display: {e}");
+                    None
+                }
+            }
+        });
+        let Some(serial) = serial else { return self.draw() };
+        self.moving = Some(Moving { serial, ..moving });
+        self.motion_frames += 1;
+        let done = clock::mono_ms();
+        self.motion_deadline = Some((started + moving.every).max(done + moving.every / 2));
+        self.motion_cost.frame(moving.wallpaper.id, moving.every, started, Some(drawn), begun.elapsed());
     }
 
     // ------------------------------------------------------------- loop
@@ -1382,6 +1596,11 @@ impl Ui {
                 self.needs_draw = true;
             }
             Msg::Wake => self.needs_draw = true,
+            Msg::Capture => {
+                for screen in self.display.screens() {
+                    let _ = self.display.capture(screen);
+                }
+            }
             Msg::Quit => self.quit = true,
         }
     }
@@ -1439,7 +1658,7 @@ impl Ui {
             self.needs_draw = true;
         }
         if self.motion_deadline.is_some_and(|d| real_now_mono >= d) {
-            self.needs_draw = true;
+            self.motion_due = true;
         }
         self.check_light();
     }
@@ -1565,6 +1784,8 @@ impl Ui {
         self.sync_lamps();
         if self.needs_draw {
             self.draw();
+        } else if self.motion_due {
+            self.motion_frame();
         }
         self.store.heartbeat(Subsystem::Ui);
     }
