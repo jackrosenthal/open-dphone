@@ -26,6 +26,7 @@ struct Part {
     info: MtdInfo,
     data: Vec<u8>,
     bad: Vec<bool>,
+    erases: Vec<u32>,
 }
 
 struct Inner {
@@ -87,6 +88,7 @@ impl MemNand {
                 },
                 data: vec![0xff; (*blocks * BLOCK) as usize],
                 bad: vec![false; *blocks as usize],
+                erases: vec![0; *blocks as usize],
             })
             .collect();
         MemNand(Arc::new(Mutex::new(Inner {
@@ -107,6 +109,10 @@ impl MemNand {
 
     pub fn contents(&self, name: &str) -> Vec<u8> {
         self.with(name, |p| p.data.clone())
+    }
+    /// Whole flash, for "nothing changed" comparisons.
+    pub fn snapshot(&self) -> Vec<Vec<u8>> {
+        self.0.lock().unwrap().parts.iter().map(|p| p.data.clone()).collect()
     }
     /// Loads raw contents at the start of a partition, bypassing NAND rules.
     pub fn load(&self, name: &str, data: &[u8]) {
@@ -136,6 +142,9 @@ impl MemNand {
     }
     pub fn is_bad(&self, name: &str, block: usize) -> bool {
         self.with(name, |p| p.bad[block])
+    }
+    pub fn erases(&self, name: &str) -> u32 {
+        self.with(name, |p| p.erases.iter().sum())
     }
     pub fn corrupt_writes(&self, name: &str, block: usize) {
         self.0.lock().unwrap().corrupt_writes.insert((name.to_string(), block));
@@ -217,7 +226,9 @@ impl MtdPartition for MemPart {
             }
             return Err(off());
         }
-        g.parts[self.idx].data[range].fill(0xff);
+        let p = &mut g.parts[self.idx];
+        p.erases[block] += 1;
+        p.data[range].fill(0xff);
         Ok(())
     }
 

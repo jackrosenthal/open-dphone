@@ -172,6 +172,9 @@ fn stock_accepts_trees_we_wrote() {
         assert_eq!(get("login_password").as_deref(), Some("pa&ss\"<wd>'"));
         assert_eq!(get("time_zone").as_deref(), Some("America/Denver"));
         assert_eq!(get("config_server_url").as_deref(), Some("sip:proxy@10.10.0.2"));
+        assert!(!out.contains("ssh_enabled"));
+        // What we leave in config.xml is the stock layers' merge and no more.
+        assert!(!nv.read_string("config.xml").unwrap().unwrap().contains("ssh_enabled"));
         // The same accounts both firmwares see for the selected network
         // (stock applies its own account limit at run time, not in the merge).
         let stock_accounts: Vec<_> =

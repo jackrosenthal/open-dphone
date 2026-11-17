@@ -257,6 +257,10 @@ fn ctrl_layout_per_family() {
         assert_eq!((scan.valid_copies, scan.good_blocks, scan.bad_blocks), (3, 3, 1));
         assert!(scan.consistent);
         assert_eq!(scan.record, Some(rec));
+        // Rewriting the same record costs no erases.
+        let erases = nand.erases("ctrl");
+        ctrl::write(part.as_mut(), &rec, repl).unwrap();
+        assert_eq!(nand.erases("ctrl"), erases);
     }
 }
 
@@ -389,13 +393,18 @@ fn trailing_ff_is_not_programmed_but_reads_back() {
     assert_bank_holds(&nand, Bank::B, &img);
 }
 
-fn refusal(model: Model, cmdline: &str, nand: &MemNand, eff: &[u8], opts: Options) -> UpdateError {
+fn assert_refused_untouched(model: Model, cmdline: &str, nand: &MemNand, eff: &[u8], opts: Options) -> UpdateError {
+    let before = nand.snapshot();
+    let ops = nand.ops();
     let mut m = nand.clone();
-    Updater::new(&mut m, model, cmdline, tempfile::tempdir().unwrap().path()).options(opts).install_eff(eff).unwrap_err()
+    let err = Updater::new(&mut m, model, cmdline, tempfile::tempdir().unwrap().path()).options(opts).install_eff(eff).unwrap_err();
+    assert_eq!(nand.ops(), ops, "no flash operation: {err}");
+    assert_eq!(nand.snapshot(), before);
+    err
 }
 
 #[test]
-fn unsafe_images_and_targets_are_refused() {
+fn refusals_leave_the_flash_untouched() {
     let (kl, rl) = sizes();
     let old = image("D60", "2_9_28", 1, kl, rl);
     let new = image("D60", "3_0_0", 3, kl, rl);
@@ -404,17 +413,17 @@ fn unsafe_images_and_targets_are_refused() {
 
     // Another model's image.
     let d62 = image("D62", "3_0_0", 3, kl, rl);
-    let e = refusal(Model::D60, CMD_A, &nand, &d62.eff, none());
+    let e = assert_refused_untouched(Model::D60, CMD_A, &nand, &d62.eff, none());
     assert!(matches!(e, UpdateError::WrongModel { .. }), "{e}");
 
     // The running bank named as the target.
-    let e = refusal(Model::D60, CMD_A, &nand, &new.eff, Options { target: Some(Bank::A), ..none() });
+    let e = assert_refused_untouched(Model::D60, CMD_A, &nand, &new.eff, Options { target: Some(Bank::A), ..none() });
     assert!(matches!(e, UpdateError::Refused(_)), "{e}");
 
     // Not an EFF at all; a truncated header.
-    let e = refusal(Model::D60, CMD_A, &nand, &prng(5, 4000), none());
+    let e = assert_refused_untouched(Model::D60, CMD_A, &nand, &prng(5, 4000), none());
     assert!(matches!(e, UpdateError::Image(_)), "{e}");
-    let e = refusal(Model::D60, CMD_A, &nand, &new.eff[..300], none());
+    let e = assert_refused_untouched(Model::D60, CMD_A, &nand, &new.eff[..300], none());
     assert!(matches!(e, UpdateError::Image(_)), "{e}");
 
     // A kernel that boot2 would copy over itself (unpatched zImage header).
@@ -423,13 +432,13 @@ fn unsafe_images_and_targets_are_refused() {
     k[0x2c..0x30].copy_from_slice(&(kl as u32).to_le_bytes());
     let ota = eff::ota::pack(&k, &new.rootfs, "d", "n").unwrap();
     let bad = eff::envelope::pack(&EffHeader::new("D60", "3_0_0").unwrap(), &ota, [2; 8]).unwrap();
-    let e = refusal(Model::D60, CMD_A, &nand, &bad, none());
+    let e = assert_refused_untouched(Model::D60, CMD_A, &nand, &bad, none());
     assert!(matches!(&e, UpdateError::Image(m) if m.contains("header-patched")), "{e}");
 
     // Not a kernel.
     let ota = eff::ota::pack(&prng(6, kl), &new.rootfs, "d", "n").unwrap();
     let bad = eff::envelope::pack(&EffHeader::new("D60", "3_0_0").unwrap(), &ota, [2; 8]).unwrap();
-    let e = refusal(Model::D60, CMD_A, &nand, &bad, none());
+    let e = assert_refused_untouched(Model::D60, CMD_A, &nand, &bad, none());
     assert!(matches!(&e, UpdateError::Image(m) if m.contains("zImage")), "{e}");
 
     // A bootstrap update (OTA type 1), which would rewrite the boot loader:
@@ -439,7 +448,7 @@ fn unsafe_images_and_targets_are_refused() {
     ota[4..8].copy_from_slice(&1u32.to_be_bytes());
     ota[8..12].copy_from_slice(&eff::ota::type_crc(eff::ota::OTA_MAGIC, 1).to_be_bytes());
     let bootstrap = eff::envelope::pack(&EffHeader::new("D60", "3_0_0").unwrap(), &ota, [2; 8]).unwrap();
-    let e = refusal(Model::D60, CMD_A, &nand, &bootstrap, none());
+    let e = assert_refused_untouched(Model::D60, CMD_A, &nand, &bootstrap, none());
     assert!(matches!(&e, UpdateError::Image(m) if m.contains("OTA type 1")), "{e}");
 
     // Too large once bad blocks are counted: 6-block slot, 3 bad, kernel
@@ -447,7 +456,7 @@ fn unsafe_images_and_targets_are_refused() {
     for b in [0, 2, 5] {
         nand.set_bad("k1", b);
     }
-    let e = refusal(Model::D60, CMD_A, &nand, &new.eff, none());
+    let e = assert_refused_untouched(Model::D60, CMD_A, &nand, &new.eff, none());
     assert!(matches!(e, UpdateError::Layout(_)), "{e}");
 }
 
@@ -463,13 +472,13 @@ fn refuses_when_the_bank_that_stays_is_not_bootable() {
     let mut rec = ctrl::read(m.open("ctrl").unwrap().as_mut()).unwrap();
     rec.sides[0] = Side::INVALID;
     ctrl::write(m.open("ctrl").unwrap().as_mut(), &rec, Replication::EveryPage).unwrap();
-    let e = refusal(Model::D60, CMD_A, &nand, &new.eff, Options::default());
+    let e = assert_refused_untouched(Model::D60, CMD_A, &nand, &new.eff, Options::default());
     assert!(matches!(e, UpdateError::Refused(_)), "{e}");
 
     // A's kernel slot is erased.
     let nand = phone(Model::D60, &old, &old, Bank::A);
     nand.load("k0", &[]);
-    let e = refusal(Model::D60, CMD_A, &nand, &new.eff, Options::default());
+    let e = assert_refused_untouched(Model::D60, CMD_A, &nand, &new.eff, Options::default());
     assert!(matches!(e, UpdateError::Refused(_)), "{e}");
     // ...unless told to go ahead (recovery from a RAM boot).
     let mut m = nand.clone();
@@ -482,7 +491,7 @@ fn refuses_when_the_bank_that_stays_is_not_bootable() {
     // No valid ctrl record at all.
     let nand = phone(Model::D60, &old, &old, Bank::A);
     nand.load("ctrl", &[]);
-    let e = refusal(Model::D60, CMD_A, &nand, &new.eff, Options::default());
+    let e = assert_refused_untouched(Model::D60, CMD_A, &nand, &new.eff, Options::default());
     assert!(matches!(e, UpdateError::Ctrl(_)), "{e}");
 }
 
@@ -612,7 +621,9 @@ fn trial_and_rollback() {
         assert_eq!(u.trial, dphone_state::TrialBoot::Pending { boots_left: 3 });
 
         // A stale record (we are already on the previous bank) is refused.
+        let before = nand.snapshot();
         assert!(matches!(trial::rollback(&mut m, model, CMD_A, Bank::A), Err(UpdateError::Refused(_))));
+        assert_eq!(nand.snapshot(), before);
 
         // The real thing: running B, go back to A.
         trial::rollback(&mut m, model, CMD_B, Bank::A).unwrap();
@@ -643,7 +654,9 @@ fn arm_trial_follows_ctrl_and_refuses_what_it_cannot_tell() {
     let armed = |nand: &MemNand, cmdline: &str, return_to: Option<Bank>| {
         let dir = tempfile::tempdir().unwrap();
         let mut m = nand.clone();
+        let before = nand.snapshot();
         let r = trial::arm(&mut m, cmdline, dir.path(), return_to);
+        assert_eq!(nand.snapshot(), before, "arming never writes flash");
         // What is returned is what is stored, or nothing is stored.
         assert_eq!(trial::load(dir.path()), r.as_ref().ok().cloned());
         r
@@ -718,7 +731,9 @@ fn select_bank_refuses_an_unbootable_bank() {
     let mut rec = ctrl::read(m.open("ctrl").unwrap().as_mut()).unwrap();
     rec.sides[1] = Side::INVALID;
     ctrl::write(m.open("ctrl").unwrap().as_mut(), &rec, Replication::EveryPage).unwrap();
+    let before = nand.snapshot();
     assert!(matches!(select_bank(&mut m, Model::D60, Bank::B), Err(UpdateError::Refused(_))));
+    assert_eq!(nand.snapshot(), before);
     // B's header valid but its kernel gone.
     let nand = phone(Model::D60, &old, &old, Bank::A);
     nand.load("k1", &[]);
@@ -751,14 +766,19 @@ fn inspect_reports_banks_and_next_boot() {
     assert_eq!(s.banks[1].version.as_deref(), Some("3_0_0"));
     assert_eq!(s.banks[1].image_name, "3_0_0_D60_firmware.bin");
     assert_eq!(s.trial.unwrap().previous_bank, Bank::A);
+    let (ops, before) = (nand.ops(), nand.snapshot());
+    inspect(&mut m, CMD_A, Some(dir.path())).unwrap();
+    assert_eq!((nand.ops(), nand.snapshot()), (ops, before), "inspect never writes");
 
     // Inspecting an erased flash works and reports nothing bootable.
     let empty = MemNand::new();
+    let ops = empty.ops();
     let mut m = empty.clone();
     let s = inspect(&mut m, "", None).unwrap();
     assert!(!s.ctrl_valid && s.running.is_none() && s.active.is_none());
     assert_eq!(s.next_boot, Bank::A);
     assert!(!s.banks[0].bootable() && !s.banks[1].bootable());
+    assert_eq!(empty.ops(), ops, "inspect never writes");
 }
 
 // ----------------------------------------------------------------- power cuts
@@ -921,8 +941,9 @@ fn one_update_at_a_time() {
     let dir = tempfile::tempdir().unwrap();
     let mut m = nand.clone();
     // While the first update is writing, everything else that would write
-    // a bank or ctrl is refused.
+    // a bank or ctrl is refused, and does nothing to the flash.
     let meanwhile = || {
+        let (ops, before) = (nand.ops(), nand.snapshot());
         let e = install_in(&nand, Model::D60, CMD_A, &other.eff, dir.path()).unwrap_err();
         assert!(matches!(&e, UpdateError::Refused(m) if m.contains("another firmware update")), "{e}");
         let e = Updater::new(&mut nand.clone(), Model::D60, CMD_A, dir.path())
@@ -931,6 +952,7 @@ fn one_update_at_a_time() {
         assert!(matches!(e, UpdateError::Refused(_)), "{e}");
         assert!(matches!(abandon(&mut nand.clone(), Model::D60, dir.path()), Err(UpdateError::Refused(_))));
         assert!(matches!(crate::lock::acquire(dir.path()), Err(UpdateError::Refused(_))));
+        assert_eq!((nand.ops(), nand.snapshot()), (ops, before));
     };
     let reader = Midway { data: &new.eff, pos: 0, at_half: Some(meanwhile) };
     Updater::new(&mut m, Model::D60, CMD_A, dir.path()).install_eff(reader).unwrap();
@@ -954,12 +976,15 @@ fn no_update_while_an_image_is_on_trial_until_it_is_abandoned() {
     // Before the reboot (still running A) and after it (running B on
     // trial): no other image, as a stream or as a file.
     for cmdline in [CMD_A, CMD_B] {
+        let (ops, before) = (nand.ops(), nand.snapshot());
         let e = install_in(&nand, Model::D60, cmdline, &other.eff, dir.path()).unwrap_err();
         assert!(matches!(&e, UpdateError::Refused(m) if m.contains("dphone update abandon")), "{e}");
         let e = Updater::new(&mut m, Model::D60, cmdline, dir.path())
             .install_eff_file(std::io::Cursor::new(&other.eff))
             .unwrap_err();
         assert!(matches!(e, UpdateError::Refused(_)), "{e}");
+        assert_eq!((nand.ops(), nand.snapshot()), (ops, before), "refused before any flash operation");
+        assert_eq!(trial::load(dir.path()).unwrap().boots, 0, "the record is as it was");
     }
     // Giving it up selects the bank to return to and removes the record.
     assert_eq!(abandon(&mut m, Model::D60, dir.path()).unwrap(), Some(Bank::A));
@@ -978,9 +1003,9 @@ fn no_update_while_an_image_is_on_trial_until_it_is_abandoned() {
 }
 
 /// The incident of 2026-11-14 as far as one update goes: a truncated file
-/// (the copy to a full `/tmp` had failed) is refused.
+/// (the copy to a full `/tmp` had failed) must cost nothing.
 #[test]
-fn a_bad_file_is_refused_and_a_good_one_installs() {
+fn a_bad_file_touches_neither_the_flash_nor_the_trial_record() {
     let (kl, rl) = sizes();
     let old = image("D60", "2_9_28", 1, kl, rl);
     let new = image("D60", "3_0_0", 3, kl, rl);
@@ -1002,25 +1027,61 @@ fn a_bad_file_is_refused_and_a_good_one_installs() {
             file[at] ^= 0x01;
         }
         assert!(matches!(check_eff(&file[..], Model::D60), Err(UpdateError::Image(_))));
+        let (ops, before) = (nand.ops(), nand.snapshot());
         let mut m = nand.clone();
         let err = Updater::new(&mut m, Model::D60, CMD_A, dir.path())
             .install_eff_file(std::io::Cursor::new(&file))
             .unwrap_err();
         assert!(matches!(err, UpdateError::Image(_)), "{flip:?} {end}: {err}");
+        assert_eq!(nand.ops(), ops, "no flash operation ({flip:?} {end})");
+        assert_eq!(nand.snapshot(), before);
+        assert_eq!(trial::load(dir.path()), None);
+        assert!(!trial::record_path(dir.path()).exists());
     }
     // An image for another model, too; and the good file installs.
     let nand = phone(Model::D60, &old, &old, Bank::A);
     let dir = tempfile::tempdir().unwrap();
     let mut m = nand.clone();
     let wrong = image("D40", "3_0_0", 3, kl, rl);
+    let ops = nand.ops();
     let err = Updater::new(&mut m, Model::D60, CMD_A, dir.path())
         .install_eff_file(std::io::Cursor::new(&wrong.eff))
         .unwrap_err();
     assert!(matches!(err, UpdateError::WrongModel { .. }), "{err}");
+    assert_eq!(nand.ops(), ops);
     assert_eq!(check_eff(&new.eff[..], Model::D60).unwrap(), "3_0_0");
     Updater::new(&mut m, Model::D60, CMD_A, dir.path()).install_eff_file(std::io::Cursor::new(&new.eff)).unwrap();
     assert_bank_holds(&nand, Bank::B, &new);
     assert_eq!(trial::load(dir.path()).unwrap().trial_bank, Some(Bank::B));
+}
+
+/// A stream cannot be read twice: a bad one costs the spare bank's old
+/// contents, and nothing else.
+#[test]
+fn a_bad_stream_leaves_the_selection_and_the_trial_record_alone() {
+    let (kl, rl) = sizes();
+    let old = image("D60", "2_9_28", 1, kl, rl);
+    let new = image("D60", "3_0_0", 3, kl, rl);
+    let nand = phone(Model::D60, &old, &old, Bank::A);
+    let dir = tempfile::tempdir().unwrap();
+    let mut m = nand.clone();
+    let before = nand.snapshot();
+    let err = Updater::new(&mut m, Model::D60, CMD_A, dir.path())
+        .install_eff(Tamper { data: &new.eff, pos: 0, flip: None, end: new.eff.len() / 2 })
+        .unwrap_err();
+    assert!(matches!(err, UpdateError::Image(_)), "{err}");
+    assert_eq!(boot2::simulate(&mut m).unwrap().side, Bank::A);
+    assert_bank_holds(&nand, Bank::A, &old);
+    assert!(!trial::record_path(dir.path()).exists());
+    let rec = ctrl::read(m.open("ctrl").unwrap().as_mut()).unwrap();
+    assert!(!rec.sides[1].is_valid(), "the half-written bank cannot be selected");
+    // Nothing but the spare bank and its header in ctrl changed.
+    let after = nand.snapshot();
+    for (i, (name, _)) in crate::memnand::PARTS.iter().enumerate() {
+        if !["ctrl", "k1", "root1"].contains(name) {
+            assert_eq!(after[i], before[i], "{name} changed");
+        }
+    }
 }
 
 /// The bank is read back and compared with the image after the last write
@@ -1094,6 +1155,7 @@ fn verify_bank_compares_both_components_with_the_header() {
     let b = image("D60", "3_0_0", 3, kl, rl);
     let nand = phone(Model::D60, &a, &b, Bank::B);
     let mut m = nand.clone();
+    let (ops, before) = (nand.ops(), nand.snapshot());
     assert_eq!(verify_bank(&mut m, Bank::A, &a.header).unwrap(), Ok(()));
     assert_eq!(verify_bank(&mut m, Bank::B, &b.header).unwrap(), Ok(()));
     nand.load("root1", &b.rootfs[..2 * BLOCK as usize]);
@@ -1105,6 +1167,9 @@ fn verify_bank_compares_both_components_with_the_header() {
     let why = verify_bank(&mut m, Bank::B, &b.header).unwrap().unwrap_err();
     assert!(why.contains("kernel"), "{why}");
     assert_eq!(verify_bank(&mut m, Bank::A, &a.header).unwrap(), Ok(()));
+    assert_eq!(nand.ops(), ops, "verifying never writes");
+    nand.flip_bit("k1", 5000);
+    assert_eq!(nand.snapshot(), before);
 }
 
 // ------------------------------------- shared with the early-boot stage
@@ -1217,9 +1282,11 @@ fn the_early_stage_goes_back_exactly_as_the_updater_would() {
         assert_eq!(nand.contents("ctrl"), reference.contents("ctrl"), "{model}");
         assert_eq!(boot2::simulate(&mut m).unwrap().side, Bank::A);
         assert_bank_holds(&nand, Bank::A, &old);
-        // Too little scratch space is refused.
+        // Too little scratch space is refused before anything is erased.
+        let ops = nand.ops();
         let other = record::with_active(&current, 1);
         let e = dphone_ctrl::write(&mut part, &other, boot::replication(&cmdline), &mut scratch[..BLOCK as usize]);
         assert!(matches!(e, Err(dphone_ctrl::WriteError::Geometry)));
+        assert_eq!(nand.ops(), ops);
     }
 }

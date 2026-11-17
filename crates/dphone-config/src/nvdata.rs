@@ -816,11 +816,13 @@ mod authorized_keys_tests {
         assert!(nv.remove_authorized_key(blob).unwrap());
         assert!(!nv.remove_authorized_key(blob).unwrap());
         assert_eq!(fs::read_to_string(&file).unwrap(), original);
+        // The stock firmware's file is never written.
+        assert!(!dir.join(STOCK_AUTHORIZED_KEYS_FILE).exists());
         let _ = fs::remove_dir_all(&dir);
     }
 
     /// The keys of the stock firmware's file move once, without the stock
-    /// firmware's keys.
+    /// firmware's keys, and the stock file stays as it was.
     #[test]
     fn stock_file_keys_move_once_without_the_stock_keys() {
         let dir = std::env::temp_dir().join(format!("dphone-ak-move-{}", std::process::id()));
@@ -829,8 +831,9 @@ mod authorized_keys_tests {
         let (new, stock) = (dir.join(AUTHORIZED_KEYS_FILE), dir.join(STOCK_AUTHORIZED_KEYS_FILE));
         fs::create_dir_all(stock.parent().unwrap()).unwrap();
 
-        // No stock file: nothing to move.
+        // No stock file: nothing to move, and no file is created.
         assert_eq!(nv.move_stock_authorized_keys().unwrap(), None);
+        assert!(!new.exists());
 
         // The stock file as a phone that has run both firmwares has it: a key
         // added under an earlier Open DPhone, the stock firmware's keys (one
@@ -843,6 +846,7 @@ mod authorized_keys_tests {
         assert_eq!(nv.move_stock_authorized_keys().unwrap(), Some(2));
         assert_eq!(fs::read_to_string(&new).unwrap(), format!("{ED}\n# mine\n{RSA}\n"));
         assert_eq!(nv.authorized_keys().unwrap(), [ED, RSA]);
+        assert_eq!(fs::read_to_string(&stock).unwrap(), stock_text, "the stock file is not changed");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
