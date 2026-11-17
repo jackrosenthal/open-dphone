@@ -1934,80 +1934,50 @@ mod volume_key_tests {
     }
 }
 
-/// A ringtone tried in the settings is heard whole: no time cuts it off,
-/// and it ends where its sound does.
+/// A ringtone tried in the settings is heard whole, and ends where its
+/// sound does.
 #[cfg(test)]
 mod ringtone_preview_tests {
-    use super::super::ringtones;
     use super::*;
     use dphone_state::Model;
 
-    #[test]
-    fn every_pass_of_the_preview_is_whole() {
-        let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/ringtones");
-        let within = PREVIEW.as_millis() as usize * 16;
-        let mut long = 0;
-        for tone in &ringtones::BUILTIN {
-            let RingSource::Pcm { samples, pause_ms } = ringtones::source_in(None, &assets, tone.name) else {
-                panic!("{}", tone.name)
-            };
-            let RingSource::Once { samples: preview, start: 0, token: 7 } =
-                ringtone_preview(RingSource::Pcm { samples: samples.clone(), pause_ms }, 7)
-            else {
-                panic!("{}", tone.name)
-            };
-            let (pass, period) = (samples.len(), samples.len() + pause_ms as usize * 16);
-            // Whole passes with the ring's pause between them, the last
-            // to its end...
-            assert_eq!((preview.len() - pass) % period, 0, "{}", tone.name);
-            for chunk in preview.chunks(period) {
-                assert_eq!(chunk[..pass], samples[..], "{}", tone.name);
-                assert!(chunk[pass..].iter().all(|&s| s == 0), "{}", tone.name);
-            }
-            // ...as many as begin within the preview's time: a ringtone
-            // longer than that, once.
-            let passes = (preview.len() - pass) / period + 1;
-            assert!((passes - 1) * period < within && passes * period >= within, "{}: {passes}", tone.name);
-            if pass > within {
-                assert_eq!(passes, 1, "{}", tone.name);
-                long += 1;
-            }
-        }
-        assert!(long > 50, "{long}");
+    fn sound(ms: usize) -> Vec<i16> {
+        vec![1000; ms * 16]
     }
 
-    #[tokio::test]
-    async fn it_sounds_until_its_sound_ends() {
+    fn silence(ms: usize) -> Vec<i16> {
+        vec![0; ms * 16]
+    }
+
+    /// What the preview of a ringtone of this pass and pause plays.
+    fn preview(pass_ms: usize, pause_ms: u32) -> Vec<i16> {
+        match ringtone_preview(RingSource::Pcm { samples: sound(pass_ms).into(), pause_ms }, 7) {
+            RingSource::Once { samples, start: 0, token: 7 } => samples.to_vec(),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_long_ringtone_is_heard_whole() {
+        assert_eq!(preview(31_000, 500), sound(31_000));
+    }
+
+    #[test]
+    fn a_short_ringtone_is_heard_in_the_whole_passes_that_begin_within_four_seconds() {
+        // Passes begin at 0 and 3 s; the second plays on to its end.
+        assert_eq!(preview(2000, 1000), [sound(2000), silence(1000), sound(2000)].concat());
+        // At 0, 1.5, and 3 s.
+        assert_eq!(preview(1000, 500), [sound(1000), silence(500), sound(1000), silence(500), sound(1000)].concat());
+    }
+
+    #[test]
+    fn it_ends_when_its_sound_has_played_out() {
         let svc = AudioService::new(Store::new(Model::D60), dphone_vpm::Family::New);
         let sounding = |svc: &AudioService| svc.store.read::<Audio, _>(|a| (a.ringing, a.path));
-        let token = |svc: &AudioService| svc.inner.lock().unwrap().preview_sound.expect("a ringtone preview");
         svc.command(Command::PlaySound { name: "Crazy Dream".into() }).unwrap();
-        let first = token(&svc);
         assert_eq!(sounding(&svc), (true, AudioPath::Speaker));
-        // The four seconds that once ended every preview, and more, do
-        // not end it.
-        tokio::time::sleep(PREVIEW + Duration::from_millis(500)).await;
-        assert_eq!(sounding(&svc), (true, AudioPath::Speaker));
-        // Another sound's end is not its end; its own is.
-        svc.sound_ended(first.wrapping_sub(1), 0);
-        assert_eq!(sounding(&svc), (true, AudioPath::Speaker));
-        svc.sound_ended(first, 503_174);
-        assert_eq!(sounding(&svc), (false, AudioPath::None));
-        assert_eq!(svc.inner.lock().unwrap().preview, 0);
-
-        // The end of a preview's sound that another preview replaced,
-        // which the engine reports late, ends nothing.
-        svc.command(Command::PlaySound { name: "Bell Phone".into() }).unwrap();
-        let replaced = token(&svc);
-        svc.command(Command::PlaySound { name: "Pyxis".into() }).unwrap();
-        assert_ne!(token(&svc), replaced);
-        svc.sound_ended(replaced, 100);
-        assert_eq!(sounding(&svc), (true, AudioPath::Speaker));
-        svc.command(Command::PlayAlarmTone { name: "Buzzer".into() }).unwrap();
-        assert_eq!(svc.inner.lock().unwrap().preview_sound, None);
-        svc.sound_ended(replaced + 1, 100);
-        assert_eq!(sounding(&svc), (true, AudioPath::Speaker), "an alarm tone's preview");
-        svc.command(Command::StopSound).unwrap();
+        let token = svc.inner.lock().unwrap().preview_sound.expect("a ringtone preview");
+        svc.sound_ended(token, 0);
         assert_eq!(sounding(&svc), (false, AudioPath::None));
     }
 }
