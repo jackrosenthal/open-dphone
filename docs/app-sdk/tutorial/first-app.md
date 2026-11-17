@@ -1,17 +1,13 @@
 # Your first app
 
-This chapter takes the smallest possible app, a screen with one line of text, through the whole workflow: install the toolchain, create the crate, write the code, build the app file, install the file on a phone, run the app, and read the log.  Later chapters only change the code and repeat the build and install steps.
-
 ## Toolchain
 
-Building an app takes two tools.  `cargo` compiles the crate to a WebAssembly module, and `wasm-tools` turns the module into a WebAssembly component.  Install the Rust target that `cargo` needs, and then `wasm-tools`:
+Install the Rust target for WebAssembly, and `wasm-tools`, which turns the module that `cargo` builds into a WebAssembly component:
 
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install wasm-tools
 ```
-
-`cargo install` compiles `wasm-tools` from source, which takes a few minutes.
 
 ## Project setup
 
@@ -44,15 +40,12 @@ panic = "abort"
 strip = true
 ```
 
-Three parts of this file matter to the phone:
-
-- `crate-type = ["cdylib"]` tells `cargo` to produce a WebAssembly module.  A plain library crate doesn't produce one.
+- `crate-type = ["cdylib"]` tells `cargo` to produce a WebAssembly module.
 - `dphone-app-sdk = "3"` is the SDK for firmware 3.  The SDK's version always matches the firmware version that the SDK targets.
-- The release profile optimizes for size.  The phone compiles an app at install time, so a smaller app installs faster and leaves more memory free.  `panic = "abort"` leaves out the unwinding code, which an app can't use anyway: a panic always stops an app on the phone.
 
 !!! note "Phones running firmware built from source"
 
-    Every firmware release publishes a matching `dphone-app-sdk` on crates.io.  If your phone runs firmware built from source, build against the SDK from the same source instead.  Clone the repository next to the `freshpot` directory:
+    If your phone runs firmware built from source, build against the SDK from the same source.  Clone the repository next to the `freshpot` directory:
 
     ```sh
     git clone https://github.com/jackrosenthal/open-dphone
@@ -99,23 +92,19 @@ dphone_app_sdk::export_app! {
 }
 ```
 
-The file has three parts.
-
-**The app type.**  `FreshPot` holds the app's state, and so far there is none.  When the app starts, the phone creates one value of this type with `Default::default()`.
+**The app type.**  `FreshPot` holds the app's state.  When the app starts, the phone creates one value of this type with `Default::default()`.
 
 **The `App` trait.**  The phone calls `start` once, and then calls `handle` once for every event.
 
-- `start` builds the screen.  [`screen`](../reference/helpers.md#screen) clears the app's window, draws a title, and returns the rectangle below the title.  [`ui::create`](../reference/ui.md#create) creates a widget, here a `Text` widget that is a child of the window (`ROOT`) and fills that rectangle.  [`ui::set_text`](../reference/ui.md#set_text) sets the text to show.
-- `log_info` writes a line to the phone's log.  You'll read that line back in [Logs](#logs).
-- `handle` receives events.  `screen` claims the cancel key (the key marked ✕) for the app, so a press arrives as `Event::Key("cancel")`.  The app responds by calling [`runtime::exit`](../reference/runtime.md#exit), which stops the app and removes the window from the display.
+- In `start`, [`screen`](../reference/helpers.md#screen) clears the app's window, draws a title, and returns the rectangle below the title.  [`ui::create`](../reference/ui.md#create) then makes a `Text` widget that is a child of the window (`ROOT`) and fills that rectangle.
+- `screen` also claims the cancel key (the key marked ✕) for the app, so a press arrives in `handle` as `Event::Key("cancel")`.  [`runtime::exit`](../reference/runtime.md#exit) stops the app and removes the window from the display.
 
-**The manifest.**  `export_app!` registers the type with the phone and embeds the manifest in the app file.  The manifest describes the app to the phone:
+**The manifest.**  `export_app!` registers the type with the phone and embeds the manifest in the app file.
 
 - `name` identifies the app on the phone.  Installing an app replaces any installed app with the same `name`, and the phone rejects the name of a built-in app.
-- `display_name` is the name shown in the Applications menu.
-- `description` is a one-line description shown next to the name in the web interface.
+- `display_name` is the name shown in the Applications menu, and `description` is shown next to the name in the web interface.
 
-The [manifest reference](../reference/manifest.md) covers the remaining fields, such as `icon`.  The manifest is checked at compile time: a malformed field, such as a `name` that contains a space, is a compile error that explains the problem.
+The [manifest reference](../reference/manifest.md) covers the remaining fields, such as `icon`.
 
 ## Build
 
@@ -127,15 +116,13 @@ wasm-tools component new \
     target/wasm32-unknown-unknown/release/freshpot.wasm -o freshpot.wasm
 ```
 
-The first command writes the module to `target/wasm32-unknown-unknown/release/freshpot.wasm`.  `cargo` names the module after the crate, with each `-` replaced by `_`.  The second command writes the component to `freshpot.wasm` in the crate's directory.  That file, about 30 KiB, is the entire app: the code, the manifest, and any data that the code embeds.
+The file `freshpot.wasm` is the entire app, including the manifest and any data that the code embeds.
 
 ## Installation
 
 1. In a browser, go to the phone's IP address to open the web interface, and sign in.
 2. Open the **Apps** page, click **Install App**, and choose `freshpot.wasm`.
-3. Wait a few seconds while the phone compiles the app.  The phone stays usable in the meantime.
-
-The **Apps** page now lists Fresh Pot, with the name `freshpot`, the description, and the **Open** and **Remove** buttons.
+3. Wait a few seconds while the phone compiles the app.
 
 To install a newer build, repeat the same three steps.  The phone replaces the installed app and stops the running copy, so open the app again to see the new build.
 
@@ -145,14 +132,13 @@ On the phone, open the Applications menu (**Applications** in the main menu, or 
 
 <figure markdown="span">
   ![The first screen of Fresh Pot: a title and one line of text](../../assets/app-sdk/first-screen.png){ width="480" }
-  <figcaption>The app on a D60.  The softkey bar is empty because the app hasn't set any softkeys.</figcaption>
 </figure>
 
 Press the cancel key to exit the app.
 
 ## Logs
 
-Open the **Logs** page of the web interface and type `freshpot` in the **Filter** field.  The page shows the lines that the app wrote, which have the source `app` and start with the app's name, along with the lines that the phone wrote about the app:
+Open the **Logs** page of the web interface and type `freshpot` in the **Filter** field.  The page shows the lines that the app wrote with `log_info`, along with the lines that the phone wrote about the app:
 
 ```text
 INFO  dphone_apps::manager app freshpot: installed
@@ -161,12 +147,10 @@ INFO  dphone_apps::manager app freshpot: started
 INFO  dphone_apps::manager app freshpot: stopped
 ```
 
-Besides `log_info`, the SDK has `log_error`, `log_warn`, and `log_debug`.  The level selector on the **Logs** page hides lines below the selected level.
-
-When an app panics, the phone stops the app and logs two error lines.  The first comes from the app, through a panic hook that `export_app!` installs, and gives the panic message with the file and line:
+When an app panics, the phone stops the app, and the log shows the panic message with the file and line:
 
 ```text
 ERROR app freshpot: panicked at src/lib.rs:81: the pot is empty
 ```
 
-The second comes from the phone, starts with `app freshpot: stopped after a fault`, and includes a WebAssembly backtrace.
+A second error line, from the phone, starts with `app freshpot: stopped after a fault` and includes a WebAssembly backtrace.

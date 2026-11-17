@@ -1,23 +1,19 @@
 # Shared data
 
-A coffee pot serves the whole office, not one desk.  This last chapter moves the brew time to the PBX, so that pressing **Brewed** on any phone updates every phone, along with the name of the person who pressed the key.
+The brew time moves to the PBX, so that pressing **Brewed** on any phone updates every phone, which also shows the name of the person who pressed the key.
 
 <figure markdown="span">
   ![Fresh Pot showing a pot that Alice brewed twelve minutes ago](../../assets/app-sdk/shared.png){ width="480" }
-  <figcaption>Bob's phone, twelve minutes after Alice pressed Brewed on another phone.</figcaption>
 </figure>
 
 ## PBX storage
 
-The [`pbx-storage`](../reference/pbx-storage.md) interface (the Rust module `pbx_storage`) is a second key-value store, hosted by the PBX.  The store requires a PBX running [Open DPMA](../../open-dpma/index.md), and needs no configuration in the app or on the phone.  An app has two sets of keys there:
-
-- `PbxScope::Shared`: one set shared by every phone on the PBX that runs the app.  Fresh Pot keeps the pot here.
-- `PbxScope::User`: one set per user, the same on every phone that the user signs in to.  A game might keep a player's progress here.
+The [`pbx_storage`](../reference/pbx-storage.md) interface is a second key-value store, hosted by the PBX.  The store requires a PBX running [Open DPMA](../../open-dpma/index.md), and needs no configuration in the app or on the phone.  Fresh Pot keeps the pot in the app's `PbxScope::Shared` keys, which every phone on the PBX that runs the app shares.
 
 PBX storage differs from the phone's store in two ways:
 
-- **Requests are asynchronous.**  The PBX is across the network, and no call from an app may block.  `get`, `set`, and `remove` immediately return a request ID, and the result arrives later as an `Event::PbxStorage` with the same ID.
-- **The PBX records the author of every entry.**  An entry comes back with the value and the name of the user who wrote the value.  The PBX fills in the name from the user that the writing phone is provisioned for, so Fresh Pot can show who brewed the pot without ever asking for a name.
+- **Requests are asynchronous.**  `get`, `set`, and `remove` immediately return a request ID, and the result arrives later as an `Event::PbxStorage` with the same ID.
+- **The PBX records the author of every entry.**  The PBX fills in the author from the user that the writing phone is provisioned for, so Fresh Pot can show who brewed the pot without ever asking for a name.
 
 ## Design
 
@@ -40,7 +36,7 @@ Both stores use the same key name.  Update the comment on the constant to say so
 const KEY: &str = "brewed";
 ```
 
-Add two fields to `FreshPot`, one for the name and one for the ID of the request that the app is waiting on:
+Add two fields to `FreshPot`:
 
 ```rust
 /// Who brewed the pot, as reported by the PBX.
@@ -70,7 +66,7 @@ fn take(&mut self, entry: Option<PbxEntry>) {
 }
 ```
 
-`ask` sends a `get` and remembers the request ID.  `take` receives a [`PbxEntry`](../reference/pbx-storage.md#requests-and-outcomes), or `None` if the key isn't set on the PBX.  The entry's `value` holds the bytes that a phone wrote (here, the time as text), and `author_name` is the name that the PBX recorded for the writer.
+The [`PbxEntry`](../reference/pbx-storage.md#requests-and-outcomes) that `take` receives holds in `value` the bytes that a phone wrote (here, the time as text), and in `author_name` the name that the PBX recorded for the writer.
 
 In `show`, add the name to the second line.  Replace the line that sets the text of `self.age` with:
 
@@ -140,44 +136,23 @@ fn handle(&mut self, event: Event) {
 }
 ```
 
-The softkeys now also write to the PBX:
-
-- **Brewed** sets the key to the current time.  [`pbx_storage::user`](../reference/pbx-storage.md#user) returns the phone's user as known to the PBX, so the name appears immediately, before the PBX answers.  The last argument to `set`, `None`, makes the write unconditional.  For a pot of coffee, the latest press wins.  An app where two phones must not overwrite each other, such as a shared list, passes the version of the entry that the app last read instead; see [Concurrent writes](../reference/pbx-storage.md#concurrent-writes).
-- **Empty** removes the key.
+The softkeys now also write to the PBX.  On **Brewed**, [`pbx_storage::user`](../reference/pbx-storage.md#user) returns the phone's user as known to the PBX, so the name appears immediately, before the PBX answers.  The last argument to `set`, `None`, makes the write unconditional: for a pot of coffee, the latest press wins.
 
 Three new arms handle what comes back:
 
-- **`Event::PbxStorage`** is the answer to a request.  The guard `id == self.asked` ignores answers to all but the latest request.  `Entry` answers a `get`, `Stored` answers a `set` with the entry as now stored on the PBX, and `Removed` answers a `remove`.  All three end up in `take`.  `Unreachable` means that the request never reached the PBX or that the PBX didn't answer; the app logs the reason and keeps showing what the phone's store holds.  Of the remaining outcomes, only `Refused` can follow these requests (the PBX refuses a value larger than 4096 bytes, for example), and the app logs a warning.
-- **`Event::PbxStorageChanged`** means that another phone wrote the key.  The event carries no value, so the app queries the PBX.
+- **`Event::PbxStorage`** is the answer to a request.  The guard `id == self.asked` ignores answers to all but the latest request.  `Entry` answers a `get`, `Stored` answers a `set` with the entry as now stored on the PBX, and `Removed` answers a `remove`.  `Unreachable` means that the request never reached the PBX or that the PBX didn't answer.  Of the remaining outcomes, only `Refused` can follow these requests, and the app logs a warning.
+- **`Event::PbxStorageChanged`** carries no value, so the app queries the PBX.
 - **`Event::PbxStorageOnline`** means that the store has become reachable, for the first time or again.  Anything the app read earlier may be stale, so the app queries the PBX.
-
-The last two arms return without calling `show`, because nothing changes until the answer arrives.
 
 !!! note "Pressing Brewed while the PBX is unreachable"
 
-    The phone doesn't queue failed writes for later.  In Fresh Pot, pressing **Brewed** while the PBX is unreachable therefore shows up only on that phone, and the PBX's value takes over again once the PBX is back.  An app that can't afford to lose a write keeps the write in `storage` and sends the write again on `Event::PbxStorageOnline`; see [Offline behavior](../reference/pbx-storage.md#offline-behavior).
+    The phone doesn't queue failed writes for later.  In Fresh Pot, pressing **Brewed** while the PBX is unreachable therefore shows up only on that phone, and the PBX's value takes over again once the PBX is back.
 
 ## Build and run
 
-Build the app as before, and install the app file on two phones on the same PBX:
-
-```sh
-cargo build --release --target wasm32-unknown-unknown
-wasm-tools component new \
-    target/wasm32-unknown-unknown/release/freshpot.wasm -o freshpot.wasm
-```
-
-Open the app on both phones and press **Brewed** on one.  A moment later, the other phone shows the same time, with the name of the first phone's user.  Press **Empty** on either phone, and both go back to "No pot".
+[Build the app](first-app.md#build) as before, and install the app file on two phones on the same PBX.  Open the app on both phones and press **Brewed** on one.  A moment later, the other phone shows the same time, with the name of the first phone's user.  Press **Empty** on either phone, and both go back to "No pot".
 
 If you have only one phone, the second line shows the name of that phone's user after you press **Brewed**.  If the phone has no PBX store to reach, the **Logs** page shows `not shared:` followed by the reason.
-
-## Next steps
-
-Fresh Pot is complete: about 250 lines of Rust in one file, running on every model.  Some features that the tutorial didn't cover:
-
-- **An icon.**  The manifest fields [`icon` and `icon_for`](../reference/manifest.md#fields) give the app an icon in the Applications menu, from PNG files embedded in the crate.
-- **Lists and text input.**  The [`TextList` and `Input` widgets](../reference/ui.md#widget-kinds) handle selection and typing.
-- **Running in the background.**  A [`Background` app](../reference/index.md#app-lifecycle) starts with the phone and keeps running off screen.
 
 ??? example "Complete `src/lib.rs` for this chapter"
 

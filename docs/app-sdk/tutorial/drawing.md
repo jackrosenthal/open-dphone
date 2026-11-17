@@ -1,23 +1,14 @@
 # Drawing with the canvas
 
-Text works for someone who stops to read the screen.  This chapter adds a picture for someone who only glances at the phone: a mug, and a bar that starts full and empties over an hour as the coffee goes stale.
+Below the text, the app draws a mug, and a bar that starts full and empties over an hour as the coffee goes stale.
 
 <figure markdown="span">
   ![Fresh Pot with the mug and the bar, on a color display and on a grayscale display](../../assets/app-sdk/gauge.png){ width="656" }
-  <figcaption>The app at the end of this chapter, 18 minutes after Brewed, on a D60 and on a D40.  The same app file drew both.</figcaption>
 </figure>
 
 ## Canvas basics
 
-The [`ui`](../reference/ui.md) widgets show text, lists, input fields, and PNG images.  For anything else, the [`canvas`](../reference/canvas.md) interface provides a widget that the app draws.  The app gives the phone a list of drawing operations, and the phone paints from that list whenever the display needs repainting.  There are three operations:
-
-| Operation | Draws |
-| --- | --- |
-| `Op::Fill` | A rectangle in a solid color. |
-| `Op::Bitmap` | A one-color image, one bit per pixel, scaled up by a whole-number factor. |
-| `Op::Text` | A single line of text in one of the phone's fonts. |
-
-Each call to [`canvas::draw`](../reference/canvas.md#draw) replaces the entire list, so the phone never shows a half-finished picture.  Fresh Pot uses `Fill` and `Bitmap`.
+A [`canvas`](../reference/canvas.md) is a widget that shows a list of drawing operations from the app, and the phone paints from that list whenever the display needs repainting.  Each call to [`canvas::draw`](../reference/canvas.md#draw) replaces the entire list.
 
 Import the module and the types:
 
@@ -27,7 +18,7 @@ use dphone_app_sdk::canvas::{self, Bitmap, Op, Role};
 
 ## Bitmap data
 
-A bitmap is stored as rows of bits.  Each row is padded to a whole number of bytes, and the leftmost pixel is the high bit of the first byte.  The mug is 12 pixels wide, so each row takes two bytes, and in binary notation you can see the picture in the constant.  Add the mug, along with the number of minutes that a pot stays fresh, below the other constants:
+A bitmap has one bit per pixel, and each row is padded to a whole number of bytes.  Add the mug, along with the number of minutes that a pot stays fresh, below the other constants:
 
 ```rust
 /// A pot is stale after this many minutes.
@@ -50,11 +41,9 @@ const MUG: [u8; 20] = [
 ];
 ```
 
-`#[rustfmt::skip]` keeps `cargo fmt` from joining the rows.
-
 ## Canvas placement
 
-Like any widget, a canvas is created with bounds inside the window.  The app needs to keep the handle, and also the dimensions, which the drawing code uses.  Add three fields to `FreshPot`:
+Add three fields to `FreshPot`:
 
 ```rust
 /// The canvas below the two lines of text, and the canvas dimensions.
@@ -63,7 +52,7 @@ gauge_width: u16,
 gauge_height: u16,
 ```
 
-In `start`, after the two text widgets, create the canvas below the second line.  The layout is again in multiples of the phone's line height:
+In `start`, after the two text widgets, create the canvas:
 
 ```rust
 // The canvas is half the width of the window, centered, and two
@@ -130,11 +119,11 @@ fn gauge_ops(&self) -> Vec<Op> {
 }
 ```
 
-Coordinates are relative to the top-left corner of the canvas, and the phone clips everything to the canvas.  Three decisions make the same drawing work on every display:
+Coordinates are relative to the top-left corner of the canvas, and the phone clips everything to the canvas.
 
-- **Sizes are derived from the canvas.**  The mug's `scale` turns each bit into a square, so that the 10 rows fill the height of the canvas: 5 pixels per bit on a color display, 3 on the smallest grayscale display.  The bar takes up the remaining width.
-- **Colors come from the phone.**  [`canvas::theme_color`](../reference/canvas.md#theme_color) returns the color that the phone uses for a given role: `Role::Foreground` for text, `Role::Border` for lines, and `Role::Highlight` for a selection.  On a color display, these are the colors of the theme that the user chose.  A grayscale display has four shades of gray.  Either way, the drawing matches the rest of the phone's screens.
-- **Only the foreground is painted.**  The frame is four rectangles, each one pixel thick, and the only other paint inside the frame is the filled portion, so the window's background shows through everywhere else.  Where operations overlap, later ones paint over earlier ones.
+- The mug's `scale` paints each bit as a square of that many pixels, so that the 10 rows fill the height of the canvas on every display.
+- [`canvas::theme_color`](../reference/canvas.md#theme_color) returns the color that the phone uses for a given role: `Role::Foreground` for text, `Role::Border` for lines, and `Role::Highlight` for a selection.  On a color display, these are the colors of the theme that the user chose.
+- Only the foreground is painted.  The frame is four rectangles, each one pixel thick, and the only other paint inside the frame is the filled portion, so the window's background shows through everywhere else.
 
 Finally, draw whenever the state is rendered.  At the end of `show`, add:
 
@@ -144,13 +133,11 @@ if let Err(e) = canvas::draw(self.gauge, &self.gauge_ops()) {
 }
 ```
 
-`show` already runs after every softkey press and on every tick of the 30-second timer, so the bar empties with no further code.  `canvas::draw` rejects a list that exceeds the [canvas limits](../reference/limits.md#ui-and-canvas), such as more than 512 operations, and the canvas then keeps the previous picture.
-
 ## Theme changes
 
 The operations contain the colors that `theme_color` returned at the time of the call.  If the user picks another theme, the phone restyles text widgets automatically, but a canvas keeps the old colors until the app draws again.
 
-The phone tells the app when to redraw: `Event::Foreground` arrives whenever the app's window comes to the front, and again when the theme changes while the app is on screen.  In `handle`, add `Event::Foreground` to the timer's arm so that both fall through to `show`:
+`Event::Foreground` arrives whenever the app's window comes to the front, and again when the theme changes while the app is on screen.  In `handle`, add `Event::Foreground` to the timer's arm so that both fall through to `show`:
 
 ```rust
 // On a timer tick, or when the window returns to the screen
@@ -160,17 +147,7 @@ Event::Timer(_) | Event::Foreground => {}
 
 ## Build and run
 
-Build and install the app as before:
-
-```sh
-cargo build --release --target wasm32-unknown-unknown
-wasm-tools component new \
-    target/wasm32-unknown-unknown/release/freshpot.wasm -o freshpot.wasm
-```
-
-Open the app.  The pot from the previous chapter is still there, because installing a newer build keeps the app's store, and the bar shows how much of the pot's hour remains.
-
-One limitation remains: only the phone where someone pressed **Brewed** knows about the pot.  The last chapter fixes that.
+[Build and install](first-app.md#build) the app as before, and open the app.  The pot from the previous chapter is still there, and the bar shows how much of the pot's hour remains.
 
 ??? example "Complete `src/lib.rs` for this chapter"
 

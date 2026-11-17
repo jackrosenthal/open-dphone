@@ -1,25 +1,19 @@
 # Persistent storage
 
-At the end of [the previous chapter](softkeys-and-state.md), the app forgot the pot every time the app left the screen.  This chapter explains why, and stores the time on the phone so that the time survives.
-
-## App lifetime
-
 By default, the phone stops an app when the app's window leaves the screen.  That happens after `runtime::exit`, and also when the user leaves the app by pressing line key 1.  Opening the app again starts a new instance with a new `FreshPot::default()`, where `brewed` is `None`.
-
-An app that runs only while on screen is a `Foreground` app, which is the default kind when the manifest doesn't specify one.  An app can also [keep running off screen](../reference/index.md#app-lifecycle), but a coffee tracker has nothing to do there.  Fresh Pot stays a `Foreground` app and stores whatever needs to last.
 
 ## Key-value storage
 
-The phone gives each app a private key-value store through the [`storage`](../reference/storage.md) interface.  A key is a short name, and a value is up to 1 MiB of arbitrary bytes.  The store survives app exits, phone restarts, firmware updates, and installing a newer build of the app.  No other app can read the store, and removing the app deletes the store.
+The [`storage`](../reference/storage.md) interface gives each app a private key-value store on the phone, which survives app exits, phone restarts, and installing a newer build of the app.
 
-Fresh Pot needs a single key.  Define the key at the top of the file:
+Define the key at the top of the file:
 
 ```rust
 /// The storage key for the time the pot was brewed.
 const KEY: &str = "brewed";
 ```
 
-Add two functions to `impl FreshPot`, one to read and one to write:
+Add two functions to `impl FreshPot`:
 
 ```rust
 /// Loads the brew time from the phone's store.
@@ -39,8 +33,8 @@ fn save(&self) {
 }
 ```
 
-- `load` uses the SDK helper `read_string`, which returns a key's value as text, or `None` if the key isn't set.  A value that doesn't parse as a number also leaves `brewed` as `None`, which is the right behavior if an older build of the app stored something different.
-- `save` writes the time as text with [`storage::set`](../reference/storage.md#set), or removes the key with [`storage::remove`](../reference/storage.md#remove) when there is no pot.  Both return a `Result`, because a write fails when the phone's flash is full.  The app can't do anything useful about that failure, so `save` just logs a warning with `log_warn`.
+- `load` uses the SDK helper `read_string`, which returns a key's value as text, or `None` if the key isn't set.
+- In `save`, [`storage::set`](../reference/storage.md#set) and [`storage::remove`](../reference/storage.md#remove) return a `Result`, because a write fails when the phone's flash is full.
 
 Add the two new helpers to the imports:
 
@@ -75,21 +69,9 @@ Event::Softkey(SK_EMPTY) => {
 
 Save when the state changes, not when the app exits.  The phone does send `Event::Exit` before an orderly stop, but an app that is stopped after a fault gets no event, and neither does an app on a phone that loses power.
 
-## Permissions
-
-The app now uses a second interface, and nothing in `Cargo.toml` or the manifest says so.  Nothing needs to: the component that `wasm-tools` produces imports exactly the interfaces that the code calls, and the phone gives an installed app those interfaces and no others.
-
 ## Build and run
 
-Build and install the app as before:
-
-```sh
-cargo build --release --target wasm32-unknown-unknown
-wasm-tools component new \
-    target/wasm32-unknown-unknown/release/freshpot.wasm -o freshpot.wasm
-```
-
-Open the app, press **Brewed**, press **Exit**, and open the app again.  The time is still there, and the age has advanced.  The time also survives a reboot, which you can trigger with the **Reboot** button in the web interface.
+[Build and install](first-app.md#build) the app as before.  Open the app, press **Brewed**, press **Exit**, and open the app again.  The time is still there, and the age has advanced.  The time also survives a reboot, which you can trigger with the **Reboot** button in the web interface.
 
 ??? example "Complete `src/lib.rs` for this chapter"
 
