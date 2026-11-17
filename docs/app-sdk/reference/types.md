@@ -11,7 +11,7 @@ pub const ROOT: Widget = 0;
 
 `ROOT` is the app's [window](ui.md#window).  Handles of widgets in the [idle window](ui.md#idle-window) have the high bit set.  Handles aren't reused within an instance.
 
-Timer and request IDs are never 0.  `pbx::request`, `http::request`, and the `pbx_storage` requests share one ID counter, so pending requests have distinct IDs.
+Timer and request IDs are never 0.  `pbx::request`, `http::request`, and the `storage` requests to the PBX share one ID counter, so pending requests have distinct IDs.
 
 ## Geometry
 
@@ -93,18 +93,14 @@ See [`ui`](ui.md).
 
 ```rust
 pub enum Error {
-    NotFound,
     Invalid(String),
-    NoSpace,
     Failed(String),
 }
 ```
 
 | Variant | Meaning |
 | --- | --- |
-| `NotFound` | The named item doesn't exist. |
 | `Invalid(text)` | An argument is invalid; the text says which and why. |
-| `NoSpace` | The flash is full. |
 | `Failed(text)` | The phone failed or refused; the text says why. |
 
 ## HTTP
@@ -122,14 +118,14 @@ pub enum PbxOutcome { Ok(String), Errors(String), Transport(String) }
 
 See [`pbx::request`](pbx.md#request).
 
-## PBX storage
+## Storage
 
 ```rust
-pub enum PbxScope { Shared, User }
+pub enum StorageLocation { Local, PbxPrivate, PbxShared }
 
 pub struct PbxUser { pub id: String, pub name: String, pub extension: String }
 
-pub struct PbxEntry {
+pub struct StorageEntry {
     pub key: String,
     pub value: Vec<u8>,
     pub version: u64,
@@ -138,20 +134,22 @@ pub struct PbxEntry {
     pub author_name: String,
 }
 
-pub enum PbxStorageOutcome {
-    Entry(Option<PbxEntry>),
-    Entries((Vec<PbxEntry>, bool)),
-    Stored(PbxEntry),
+pub enum StorageOutcome {
+    Entry(Option<StorageEntry>),
+    Entries((Vec<StorageEntry>, bool)),
+    Stored(StorageEntry),
     Removed,
-    Conflict(Option<PbxEntry>),
+    Conflict(Option<StorageEntry>),
     Unreachable(String),
     Refused(String),
 }
 
-pub struct PbxStorageChange { pub scope: PbxScope, pub key: String }
+pub enum StorageReply { Done(StorageOutcome), Pending(u32) }
+
+pub struct StorageChange { pub location: StorageLocation, pub key: String }
 ```
 
-See [`pbx_storage`](pbx-storage.md).
+See [`storage`](storage.md).
 
 ## Calls
 

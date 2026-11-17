@@ -1,13 +1,13 @@
-//! A test guest without a screen that uses the app's store on the PBX by
+//! A test guest without a screen that uses the app's keys on the PBX by
 //! itself and logs what happens, for tests that run whole phones against
 //! a real PBX (`crates/dphone/tests/asterisk.rs`).
 //!
-//! What it does is in its storage key `role`, which the test writes
+//! What it does is in its `local` key `role`, which the test writes
 //! before the phone starts; without one it does nothing.
 //!
-//! - `writer`: when the store is in reach, sets the shared key `greeting`
+//! - `writer`: when the PBX is in reach, sets the shared key `greeting`
 //!   and the user's key `progress`.
-//! - `reader`: when the store is in reach, and whenever another phone
+//! - `reader`: when the PBX is in reach, and whenever another phone
 //!   changes a shared key, reads both.
 
 use dphone_app_sdk::prelude::*;
@@ -25,15 +25,23 @@ struct StoreProbe {
     asked: Vec<(u32, &'static str)>,
 }
 
+/// The id of a request to a PBX location, which is never answered at once.
+fn pending(reply: StorageReply) -> u32 {
+    match reply {
+        StorageReply::Pending(id) => id,
+        StorageReply::Done(outcome) => panic!("answered at once: {outcome:?}"),
+    }
+}
+
 impl StoreProbe {
     fn act(&mut self) {
-        let who = pbx_storage::user().map(|u| format!("{} ({})", u.name, u.id));
+        let who = storage::user().map(|u| format!("{} ({})", u.name, u.id));
         log_info(&format!("store in reach; the user is {who:?}"));
         match self.role.as_str() {
             "writer" => {
-                let id = pbx_storage::set(PbxScope::Shared, "greeting", GREETING, None);
+                let id = pending(storage::set(StorageLocation::PbxShared, "greeting", GREETING, None));
                 self.asked.push((id, "greeting"));
-                let id = pbx_storage::set(PbxScope::User, "progress", PROGRESS, None);
+                let id = pending(storage::set(StorageLocation::PbxPrivate, "progress", PROGRESS, None));
                 self.asked.push((id, "progress"));
             }
             "reader" => self.read(),
@@ -42,9 +50,9 @@ impl StoreProbe {
     }
 
     fn read(&mut self) {
-        let id = pbx_storage::get(PbxScope::Shared, "greeting");
+        let id = pending(storage::get(StorageLocation::PbxShared, "greeting"));
         self.asked.push((id, "greeting"));
-        let id = pbx_storage::get(PbxScope::User, "progress");
+        let id = pending(storage::get(StorageLocation::PbxPrivate, "progress"));
         self.asked.push((id, "progress"));
     }
 }
@@ -56,8 +64,8 @@ impl App for StoreProbe {
             return;
         }
         log_info(&format!("role {}", self.role));
-        pbx_storage::watch(true);
-        if pbx_storage::online() {
+        storage::watch(true);
+        if storage::online() {
             self.act();
         }
     }
@@ -67,25 +75,25 @@ impl App for StoreProbe {
             return;
         }
         match event {
-            Event::PbxStorageOnline => self.act(),
-            Event::PbxStorageChanged(change) => {
-                log_info(&format!("changed {:?} {}", change.scope, change.key));
+            Event::StorageOnline => self.act(),
+            Event::StorageChanged(change) => {
+                log_info(&format!("changed {:?} {}", change.location, change.key));
                 if self.role == "reader" {
                     self.read();
                 }
             }
-            Event::PbxStorage((id, outcome)) => {
+            Event::Storage((id, outcome)) => {
                 let Some(at) = self.asked.iter().position(|(i, _)| *i == id) else { return };
                 let (_, key) = self.asked.remove(at);
                 let text = |value: &[u8]| String::from_utf8_lossy(value).into_owned();
                 let said = match outcome {
-                    PbxStorageOutcome::Stored(e) => {
+                    StorageOutcome::Stored(e) => {
                         format!("stored {key}={:?} by {}", text(&e.value), e.author_name)
                     }
-                    PbxStorageOutcome::Entry(Some(e)) => {
+                    StorageOutcome::Entry(Some(e)) => {
                         format!("read {key}={:?} by {}", text(&e.value), e.author_name)
                     }
-                    PbxStorageOutcome::Entry(None) => format!("read {key}: not set"),
+                    StorageOutcome::Entry(None) => format!("read {key}: not set"),
                     other => format!("{key}: {other:?}"),
                 };
                 log_info(&said);

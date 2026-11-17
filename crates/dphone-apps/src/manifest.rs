@@ -37,7 +37,6 @@ pub enum Capability {
     Storage,
     Config,
     Pbx,
-    PbxStorage,
     Http,
     Calls,
     Presence,
@@ -53,13 +52,12 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Capability; 18] = [
+    pub const ALL: [Capability; 17] = [
         Capability::Ui,
         Capability::Timers,
         Capability::Storage,
         Capability::Config,
         Capability::Pbx,
-        Capability::PbxStorage,
         Capability::Http,
         Capability::Calls,
         Capability::Presence,
@@ -81,7 +79,6 @@ impl Capability {
             Capability::Storage => "storage",
             Capability::Config => "config",
             Capability::Pbx => "pbx",
-            Capability::PbxStorage => "pbx-storage",
             Capability::Http => "http",
             Capability::Calls => "calls",
             Capability::Presence => "presence",

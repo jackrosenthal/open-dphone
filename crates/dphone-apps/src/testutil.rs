@@ -1154,6 +1154,22 @@ impl PbxStore for FakeStore {
     }
 }
 
+/// The value of an app's `local` key, as the phone keeps it in `dir`
+/// (the app's directory under `appdata`).
+pub fn local_value(dir: &std::path::Path, key: &str) -> Option<Vec<u8>> {
+    match crate::localstore::LocalStore::new(dir.to_path_buf()).get(key) {
+        StoreReply::Entry(e) => e.map(|e| e.value),
+        _ => None,
+    }
+}
+
+/// Sets an app's `local` key in `dir` (the app's directory under
+/// `appdata`), as the app would.
+pub fn set_local(dir: &std::path::Path, key: &str, value: &[u8]) {
+    let reply = crate::localstore::LocalStore::new(dir.to_path_buf()).set(key, value, None);
+    assert!(matches!(reply, StoreReply::Stored(_)), "{key}: {reply:?}");
+}
+
 /// Services without a PBX store.
 pub fn services(pbx: &FakePbx, config: FakeConfig) -> Services {
     Services {

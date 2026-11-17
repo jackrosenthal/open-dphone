@@ -4,7 +4,7 @@
 //! Its idle window says whether the idle screen is showing.  The message
 //! `panic` makes the app panic with the message's payload.
 //!
-//! Softkeys 6 to 11 use the app's store on the PBX: 6 watches it and
+//! Softkeys 6 to 11 use the app's keys on the PBX: 6 watches them and
 //! lists the shared keys under `best/`, 7 adds the user's name to the
 //! list in the shared key `best/top` without losing a name another phone
 //! adds meanwhile, 8 saves the user's progress, 9 loads it, 10 says who
@@ -40,11 +40,19 @@ fn text(value: &[u8]) -> String {
     String::from_utf8_lossy(value).into_owned()
 }
 
+/// The id of a request to a PBX location, which is never answered at once.
+fn pending(reply: StorageReply) -> u32 {
+    match reply {
+        StorageReply::Pending(id) => id,
+        StorageReply::Done(outcome) => panic!("answered at once: {outcome:?}"),
+    }
+}
+
 impl Probe {
     /// Writes `best/top` again with the user's name added to what
     /// `current` holds, over exactly that entry.
-    fn add_to_top(&mut self, current: Option<PbxEntry>) {
-        let me = pbx_storage::user().map(|u| u.name).unwrap_or_default();
+    fn add_to_top(&mut self, current: Option<StorageEntry>) {
+        let me = storage::user().map(|u| u.name).unwrap_or_default();
         let (mut names, version) = match &current {
             Some(e) => (text(&e.value), e.version),
             None => (String::new(), 0),
@@ -53,35 +61,40 @@ impl Probe {
             names.push(',');
         }
         names.push_str(&me);
-        let id = pbx_storage::set(PbxScope::Shared, "best/top", names.as_bytes(), Some(version));
+        let id = pending(storage::set(
+            StorageLocation::PbxShared,
+            "best/top",
+            names.as_bytes(),
+            Some(version),
+        ));
         self.asked.push((id, Asked::TopWrite));
     }
 
-    fn storage(&mut self, id: u32, outcome: PbxStorageOutcome) -> String {
+    fn storage(&mut self, id: u32, outcome: StorageOutcome) -> String {
         let Some(at) = self.asked.iter().position(|(i, _)| *i == id) else {
             return "unasked".to_string();
         };
         let (_, asked) = self.asked.remove(at);
         match (asked, outcome) {
-            (_, PbxStorageOutcome::Unreachable(why)) => format!("unreachable={why}"),
-            (_, PbxStorageOutcome::Refused(why)) => format!("refused={why}"),
-            (Asked::Board, PbxStorageOutcome::Entries((entries, more))) => {
+            (_, StorageOutcome::Unreachable(why)) => format!("unreachable={why}"),
+            (_, StorageOutcome::Refused(why)) => format!("refused={why}"),
+            (Asked::Board, StorageOutcome::Entries((entries, more))) => {
                 let rows: Vec<String> = entries
                     .iter()
                     .map(|e| format!("{}:{}@{}", e.key, text(&e.value), e.author_name))
                     .collect();
                 format!("board={} more={more}", rows.join(";"))
             }
-            (Asked::TopRead, PbxStorageOutcome::Entry(e))
-            | (Asked::TopWrite, PbxStorageOutcome::Conflict(e)) => {
+            (Asked::TopRead, StorageOutcome::Entry(e))
+            | (Asked::TopWrite, StorageOutcome::Conflict(e)) => {
                 self.add_to_top(e);
                 "adding".to_string()
             }
-            (Asked::TopWrite, PbxStorageOutcome::Stored(e)) => format!("top={}", text(&e.value)),
-            (Asked::Save, PbxStorageOutcome::Stored(e)) => {
+            (Asked::TopWrite, StorageOutcome::Stored(e)) => format!("top={}", text(&e.value)),
+            (Asked::Save, StorageOutcome::Stored(e)) => {
                 format!("saved={} by {} ({})", text(&e.value), e.author_name, e.author_id)
             }
-            (Asked::Load, PbxStorageOutcome::Entry(e)) => {
+            (Asked::Load, StorageOutcome::Entry(e)) => {
                 format!("loaded={:?}", e.map(|e| text(&e.value)))
             }
             (_, other) => format!("unexpected={other:?}"),
@@ -146,40 +159,40 @@ impl App for Probe {
                 format!("pics={defined:?}")
             }
             Event::Softkey(6) => {
-                pbx_storage::watch(true);
-                let id = pbx_storage::list(PbxScope::Shared, "best/", "");
+                storage::watch(true);
+                let id = pending(storage::list(StorageLocation::PbxShared, "best/", ""));
                 self.asked.push((id, Asked::Board));
                 "asked".to_string()
             }
             Event::Softkey(7) => {
-                let id = pbx_storage::get(PbxScope::Shared, "best/top");
+                let id = pending(storage::get(StorageLocation::PbxShared, "best/top"));
                 self.asked.push((id, Asked::TopRead));
                 "asked".to_string()
             }
             Event::Softkey(8) => {
-                let id = pbx_storage::set(PbxScope::User, "progress", b"level 5", None);
+                let id = pending(storage::set(StorageLocation::PbxPrivate, "progress", b"level 5", None));
                 self.asked.push((id, Asked::Save));
                 "asked".to_string()
             }
             Event::Softkey(9) => {
-                let id = pbx_storage::get(PbxScope::User, "progress");
+                let id = pending(storage::get(StorageLocation::PbxPrivate, "progress"));
                 self.asked.push((id, Asked::Load));
                 "asked".to_string()
             }
             Event::Softkey(10) => {
-                let who = pbx_storage::user().map(|u| format!("{}/{}/{}", u.id, u.name, u.extension));
-                format!("who={who:?} online={}", pbx_storage::online())
+                let who = storage::user().map(|u| format!("{}/{}/{}", u.id, u.name, u.extension));
+                format!("who={who:?} online={}", storage::online())
             }
             Event::Softkey(11) => {
-                let id = pbx_storage::get(PbxScope::Shared, "not a key");
+                let id = pending(storage::get(StorageLocation::PbxShared, "not a key"));
                 self.asked.push((id, Asked::Bad));
                 "asked".to_string()
             }
-            Event::PbxStorage((id, outcome)) => self.storage(id, outcome),
-            Event::PbxStorageChanged(change) => {
-                format!("changed={:?}:{}", change.scope, change.key)
+            Event::Storage((id, outcome)) => self.storage(id, outcome),
+            Event::StorageChanged(change) => {
+                format!("changed={:?}:{}", change.location, change.key)
             }
-            Event::PbxStorageOnline => "online".to_string(),
+            Event::StorageOnline => "online".to_string(),
             Event::Message((what, why)) if what == "panic" => panic!("{why}"),
             Event::PlaybackStopped(at) => format!("stopped={at}"),
             Event::IdleScreenShow => {

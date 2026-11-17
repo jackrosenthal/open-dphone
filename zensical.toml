@@ -52,7 +52,6 @@ nav = [
         "app-sdk/reference/canvas.md",
         "app-sdk/reference/timers.md",
         "app-sdk/reference/storage.md",
-        "app-sdk/reference/pbx-storage.md",
         "app-sdk/reference/config.md",
         "app-sdk/reference/pbx.md",
         "app-sdk/reference/http.md",

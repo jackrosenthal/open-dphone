@@ -29,6 +29,7 @@ mod game;
 use board::Row;
 use dphone_app_sdk::canvas::{self, Bitmap, Color, Op, Role};
 use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::StorageLocation::{Local, PbxShared};
 use dphone_app_sdk::{Align, Font};
 use game::{Game, Pipe, Rules};
 
@@ -638,6 +639,15 @@ impl Default for Sparrow {
     }
 }
 
+/// Writes a key on the phone, and says in the log if the phone did not
+/// keep it.
+fn keep(key: &str, value: &[u8], what: &str) {
+    let reply = storage::set(Local, key, value, None);
+    if !matches!(reply, StorageReply::Done(StorageOutcome::Stored(_))) {
+        dphone_app_sdk::log_warn(&format!("{what} was not saved: {reply:?}"));
+    }
+}
+
 impl Sparrow {
     fn stop_timer(&mut self) {
         if let Some(t) = self.timer.take() {
@@ -654,7 +664,7 @@ impl Sparrow {
         let panel = match self.state {
             State::Flying => Panel::None,
             _ if viewing => Panel::Board(
-                if pbx_storage::online() {
+                if storage::online() {
                     "Leaderboard"
                 } else {
                     "Leaderboard (offline)"
@@ -674,7 +684,7 @@ impl Sparrow {
     /// The leaderboard to show: the PBX's with the scores that it does
     /// not have yet.
     fn shown(&self) -> Vec<Shown> {
-        let me = pbx_storage::user().map(|u| u.id);
+        let me = storage::user().map(|u| u.id);
         board::merge(&self.board, &self.waiting)
             .iter()
             .enumerate()
@@ -704,18 +714,14 @@ impl Sparrow {
     fn keep_waiting(&mut self, waiting: Vec<Row>) {
         if waiting != self.waiting {
             self.waiting = waiting;
-            if let Err(e) = storage::set(WAITING_FILE, &board::format(&self.waiting)) {
-                dphone_app_sdk::log_warn(&format!(
-                    "a score for the leaderboard was not saved: {e:?}"
-                ));
-            }
+            keep(WAITING_FILE, &board::format(&self.waiting), "a score for the leaderboard");
         }
     }
 
     /// The game's score, if it belongs on the leaderboard as far as the
     /// phone knows it, waits to be written there.  Says whether it does.
     fn note_score(&mut self) -> bool {
-        let (id, name) = pbx_storage::user()
+        let (id, name) = storage::user()
             .map(|u| (u.id, u.name))
             .unwrap_or_default();
         let tag = format!("{:016x}", runtime::random());
@@ -730,9 +736,11 @@ impl Sparrow {
     /// the scores that wait are added to it ([`Sparrow::read`]).
     fn ask(&mut self) {
         if let Some(id) = self.asked.take() {
-            pbx_storage::cancel(id);
+            storage::cancel(id);
         }
-        self.asked = Some(pbx_storage::get(PbxScope::Shared, BOARD_KEY));
+        if let StorageReply::Pending(id) = storage::get(PbxShared, BOARD_KEY) {
+            self.asked = Some(id);
+        }
     }
 
     /// The PBX's leaderboard is `entry`: read, written by this phone, or
@@ -740,20 +748,18 @@ impl Sparrow {
     /// that it lacks are written over exactly this entry; if another
     /// phone writes first, the PBX answers with that phone's entry, and
     /// this is done again with it.
-    fn read(&mut self, entry: Option<PbxEntry>) {
+    fn read(&mut self, entry: Option<StorageEntry>) {
         let (rows, version) = match &entry {
             Some(e) => (board::parse(&e.value), e.version),
             None => (Vec::new(), 0),
         };
         if rows != self.board {
-            if let Err(e) = storage::set(BOARD_FILE, &board::format(&rows)) {
-                dphone_app_sdk::log_warn(&format!("the leaderboard was not saved: {e:?}"));
-            }
+            keep(BOARD_FILE, &board::format(&rows), "the leaderboard");
             self.board = rows;
         }
         self.version = version;
         // The phone has reached the PBX: it knows its user now.
-        let waiting = match pbx_storage::user() {
+        let waiting = match storage::user() {
             Some(u) => board::claim(&self.waiting, &u.id, &u.name),
             None => self.waiting.clone(),
         };
@@ -766,28 +772,25 @@ impl Sparrow {
             .collect();
         if !known.is_empty() {
             let value = board::format(&board::merge(&self.board, &known));
-            self.asked = Some(pbx_storage::set(
-                PbxScope::Shared,
-                BOARD_KEY,
-                &value,
-                Some(self.version),
-            ));
+            if let StorageReply::Pending(id) =
+                storage::set(PbxShared, BOARD_KEY, &value, Some(self.version))
+            {
+                self.asked = Some(id);
+            }
         }
         if self.viewing {
             self.show();
         }
     }
 
-    fn answered(&mut self, outcome: PbxStorageOutcome) {
+    fn answered(&mut self, outcome: StorageOutcome) {
         match outcome {
-            PbxStorageOutcome::Entry(entry) | PbxStorageOutcome::Conflict(entry) => {
-                self.read(entry)
-            }
-            PbxStorageOutcome::Stored(entry) => self.read(Some(entry)),
+            StorageOutcome::Entry(entry) | StorageOutcome::Conflict(entry) => self.read(entry),
+            StorageOutcome::Stored(entry) => self.read(Some(entry)),
             // The scores wait in the phone's storage, and are written
-            // when the store is in reach: `Event::PbxStorageOnline`, or
-            // the next time the game starts.
-            PbxStorageOutcome::Unreachable(_) => {}
+            // when the PBX is in reach: `Event::StorageOnline`, or the
+            // next time the game starts.
+            StorageOutcome::Unreachable(_) => {}
             other => dphone_app_sdk::log_warn(&format!("the leaderboard: {other:?}")),
         }
     }
@@ -803,9 +806,7 @@ impl Sparrow {
     fn keep_best(&mut self) {
         if self.game.score > self.best {
             self.best = self.game.score;
-            if let Err(e) = storage::set(BEST_FILE, self.best.to_string().as_bytes()) {
-                dphone_app_sdk::log_warn(&format!("the best score was not saved: {e:?}"));
-            }
+            keep(BEST_FILE, self.best.to_string().as_bytes(), "the best score");
         }
     }
 
@@ -870,14 +871,13 @@ impl App for Sparrow {
         self.best = dphone_app_sdk::read_string(BEST_FILE)
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or(0);
-        let rows = |file: &str| {
-            storage::get(file)
-                .map(|v| board::parse(&v))
-                .unwrap_or_default()
+        let rows = |file: &str| match storage::get(Local, file) {
+            StorageReply::Done(StorageOutcome::Entry(Some(e))) => board::parse(&e.value),
+            _ => Vec::new(),
         };
         self.board = rows(BOARD_FILE);
         self.waiting = rows(WAITING_FILE);
-        pbx_storage::watch(true);
+        storage::watch(true);
         self.ask();
     }
 
@@ -888,14 +888,14 @@ impl App for Sparrow {
             Event::Timer(id) if self.timer == Some(id) => self.tick(),
             Event::Key(k) if PLAY_KEYS.contains(&k.as_str()) => self.play(),
             Event::Key(k) if BOARD_KEYS.contains(&k.as_str()) => self.turn(),
-            Event::PbxStorage((id, outcome)) if self.asked == Some(id) => {
+            Event::Storage((id, outcome)) if self.asked == Some(id) => {
                 self.asked = None;
                 self.answered(outcome);
             }
-            // Another phone wrote the leaderboard, or the store is in
-            // reach (again): read it, and add what waits.
-            Event::PbxStorageChanged(change) if change.key == BOARD_KEY => self.ask(),
-            Event::PbxStorageOnline => {
+            // Another phone wrote the leaderboard, or the PBX is in reach
+            // (again): read it, and add what waits.
+            Event::StorageChanged(change) if change.key == BOARD_KEY => self.ask(),
+            Event::StorageOnline => {
                 self.ask();
                 if self.viewing {
                     self.show();

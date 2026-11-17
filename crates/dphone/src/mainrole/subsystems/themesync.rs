@@ -3,7 +3,7 @@
 //!
 //! The theme is a setting of the phone (`theme` in Open DPhone's settings
 //! file).  The PBX keeps a copy for the phone's user in its store of app
-//! data (Open DPMA), which the apps use through `pbx-storage` and the
+//! data (Open DPMA), which the apps use through `storage` and the
 //! firmware reaches here through the same [`PbxStore`]: the user's key
 //! `theme` of the name `dphone` ([`dphone_apps::manifest::PHONE_DATA_NAME`],
 //! which no app can have), whose value is the theme's name.

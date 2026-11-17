@@ -70,11 +70,8 @@ interface types {
   }
 
   variant error {
-    not-found,
-    /// Bad argument (e.g., a path separator in a storage key).
+    /// Bad argument (e.g., a number that cannot be dialed).
     invalid(string),
-    /// No space left (the 2 MiB reserve counts as used).
-    no-space,
     /// The phone could not do what was asked, or would not; the text says
     /// why.
     failed(string),
@@ -96,13 +93,15 @@ interface types {
     transport(string),
   }
 
-  /// Whose keys of the app's store on the PBX.
-  enum pbx-scope {
-    /// The keys that the app's copies on all phones share.
-    shared,
-    /// The keys of the phone's user: the same on every phone the user
-    /// has, and kept when a phone is reset.
-    user,
+  /// Where an app's keys are (`storage`).
+  enum storage-location {
+    /// On the phone.
+    local,
+    /// On the PBX, the keys of the phone's user: the same on every phone
+    /// the user has, and kept when a phone is reset.
+    pbx-private,
+    /// On the PBX, the keys that the app's copies on all phones share.
+    pbx-shared,
   }
 
   /// The phone's user, as the PBX knows them.
@@ -115,50 +114,60 @@ interface types {
     extension: string,
   }
 
-  /// One key of the app's store on the PBX.
-  record pbx-entry {
+  /// One key of the app's store.
+  record storage-entry {
     key: string,
     value: list<u8>,
     /// Changes with every write of the key, and is never 0 and never a
-    /// version the key had before.  `pbx-storage.set` and `remove` take
-    /// it as `expect`.
+    /// version the key had before.  `storage.set` and `remove` take it
+    /// as `expect`.
     version: u64,
     /// When the key was set: seconds since the Unix epoch, by the PBX's
-    /// clock.
+    /// clock (the phone's for `local`).
     modified: u64,
-    /// The user who set it (`pbx-user.id`).
+    /// The user who set it (`pbx-user.id`); empty for `local`.
     author-id: string,
-    /// That user's name when they set it.
+    /// That user's name when they set it; empty for `local`.
     author-name: string,
   }
 
-  /// The result of a `pbx-storage` request.
-  variant pbx-storage-outcome {
+  /// The outcome of a `storage` request.
+  variant storage-outcome {
     /// `get`: the entry, if the key is set.
-    entry(option<pbx-entry>),
+    entry(option<storage-entry>),
     /// `list`: entries in the order of their keys, and whether there are
     /// more after the last of them.
-    entries(tuple<list<pbx-entry>, bool>),
-    /// `set`: the entry as the PBX now has it.
-    stored(pbx-entry),
+    entries(tuple<list<storage-entry>, bool>),
+    /// `set`: the entry as the store now has it.
+    stored(storage-entry),
     /// `remove`: the key is not set (now, or it never was).
     removed,
     /// `set` or `remove` with `expect`: the key is not as expected, and
     /// nothing was changed.  This is the entry it has now, if it is set.
-    conflict(option<pbx-entry>),
-    /// The PBX could not be asked or did not answer: the phone has no
-    /// session with it, or the PBX keeps no app data.  The text says
-    /// which.  Nothing is kept to send later.  A `set` or `remove` that
-    /// ends so may still have reached the PBX.
+    conflict(option<storage-entry>),
+    /// The store could not be reached: for a PBX location, the phone has
+    /// no session with the PBX, or the PBX did not answer (it may keep no
+    /// app data); for `local`, the phone could not read or write its
+    /// flash.  The text says why.  Nothing is kept to send later.  A
+    /// `set` or `remove` that ends so may still have been done.
     unreachable(string),
-    /// The PBX refused the request: a key that cannot be one, a value
+    /// The store refused the request: a key that cannot be one, a value
     /// over the limit, or a store that is full.  The text says which.
     refused(string),
   }
 
-  /// A change to the app's store on the PBX made from another phone.
-  record pbx-storage-change {
-    scope: pbx-scope,
+  /// What a `storage` request returns.
+  variant storage-reply {
+    /// `local`: the outcome.
+    done(storage-outcome),
+    /// `pbx-private` and `pbx-shared`: the outcome arrives as
+    /// `event.storage` with this id.
+    pending(request-id),
+  }
+
+  /// A change to the app's keys on the PBX made from another phone.
+  record storage-change {
+    location: storage-location,
     /// The key that was set or removed.
     key: string,
   }
@@ -268,15 +277,15 @@ interface types {
     playback-stopped(u32),
     /// An event from another app or the phone, addressed to this app.
     message(tuple<string, string>),
-    /// The result of a `pbx-storage` request.
-    pbx-storage(tuple<request-id, pbx-storage-outcome>),
-    /// Another phone set or removed a shared key of this app (after
-    /// `pbx-storage.watch(true)`).
-    pbx-storage-changed(pbx-storage-change),
-    /// The app's store on the PBX can be reached (again): requests that
-    /// ended `unreachable` are worth another try, and what the app read
-    /// before may have changed since.
-    pbx-storage-online,
+    /// The outcome of a `storage` request to a PBX location.
+    storage(tuple<request-id, storage-outcome>),
+    /// Another phone set or removed a `pbx-shared` key of this app (after
+    /// `storage.watch(true)`).
+    storage-changed(storage-change),
+    /// The PBX locations of `storage` can be reached (again): requests
+    /// that ended `unreachable` are worth another try, and what the app
+    /// read there before may have changed since.
+    storage-online,
     /// The phone's alarm clock changed: an alarm was set, changed, or
     /// removed (from this app, another, or the web interface), rang, or
     /// was snoozed or dismissed.  For apps that use `alarms`.
@@ -404,23 +413,6 @@ interface timers {
   wall-time: func() -> u64;
 }
 
-/// Capability `storage`: the app's store of keys and values.  The phone
-/// keeps it across restarts and firmware updates, no other app can reach
-/// it, and it is deleted when the app is removed.  A key is a name of 1
-/// to 64 bytes that does not start with `.` and has no `/`, `\`, or NUL
-/// in it; a value is at most 1 MiB.  Another key is refused (`invalid`).
-interface storage {
-  use types.{error};
-  /// The value of a key, if the key is set.
-  get: func(key: string) -> option<list<u8>>;
-  /// Sets a key, replacing the value it had.
-  set: func(key: string, value: list<u8>) -> result<_, error>;
-  /// Removes a key.  Removing a key that is not set succeeds.
-  remove: func(key: string) -> result<_, error>;
-  /// The keys that are set, sorted.
-  keys: func() -> list<string>;
-}
-
 /// Capability `config`.
 interface config {
   use types.{account-info};
@@ -450,54 +442,58 @@ interface pbx {
   cancel: func(id: request-id);
 }
 
-/// Capability `pbx-storage`: the app's store of keys and values on the
-/// PBX.  The app's copies on all phones share one set of keys
-/// (`pbx-scope.shared`, e.g., a table of best times), and each user has
-/// another (`pbx-scope.user`, e.g., how far the user has come), which
-/// outlasts a reset of the phone.  No other app can reach either.  The
-/// PBX keeps a separate store for each of its tenants.
+/// Capability `storage`: the app's keys and values, in three locations
+/// (`storage-location`).  No other app can reach them.
 ///
-/// Every request returns an id at once, and its result arrives as
-/// `event.pbx-storage`.  A request that cannot reach the PBX ends
-/// `unreachable`; the phone keeps nothing to send later, so an app that
-/// must not lose what it wanted to write keeps it in `storage` and writes
-/// it again at `event.pbx-storage-online`.
+/// `local` keys are on the phone.  The phone keeps them across restarts
+/// and firmware updates, and deletes them when the app is removed.  A
+/// key is a name of 1 to 64 bytes that does not start with `.` and has
+/// no `/`, `\`, or NUL in it; a value is at most 1 MiB.  The phone
+/// answers a request at once (`storage-reply.done`).
 ///
-/// A key is 1 to 64 characters, each a letter, a digit, or one of `.`,
-/// `_`, `-`, `/`, and `:`.  A value is at most 4096 bytes.  An app has at
-/// most 1024 shared keys, and 64 keys for each user.
+/// `pbx-private` and `pbx-shared` keys are on the PBX, in Open DPMA's
+/// store of app data, which keeps a separate store for each of its
+/// tenants.  A key is 1 to 64 characters, each a letter, a digit, or one
+/// of `.`, `_`, `-`, `/`, and `:`.  A value is at most 4096 bytes.  An
+/// app has at most 64 keys for each user and 1024 shared keys.  A
+/// request returns an id at once (`storage-reply.pending`), and its
+/// outcome arrives as `event.storage`.  A request that cannot reach the
+/// PBX ends `unreachable`; the phone keeps nothing to send later, so an
+/// app that must not lose what it wanted to write keeps it in `local` and
+/// writes it again at `event.storage-online`.
 ///
-/// Two phones can write the same key at the same time.  A writer that
-/// must not undo another's write passes `expect`, the version of the
-/// entry it read: the PBX then writes only over that entry, and answers
-/// `conflict` with the entry that is there otherwise, for the app to
-/// change and write again.
-interface pbx-storage {
-  use types.{request-id, pbx-scope, pbx-user};
-  /// The value of a key.  Ends `entry`.
-  get: func(scope: pbx-scope, key: string) -> request-id;
+/// A writer that must not undo another's write (another phone's, for
+/// the PBX locations) passes `expect`, the version of the entry it read:
+/// the store then writes only over that entry, and answers `conflict`
+/// with the entry that is there otherwise, for the app to change and
+/// write again.
+interface storage {
+  use types.{request-id, storage-location, storage-reply, pbx-user};
+  /// The entry of a key.  Ends `entry`.
+  get: func(location: storage-location, key: string) -> storage-reply;
   /// The entries whose keys start with `prefix` and come after the key
   /// `after` ("" for the first ones), in the order of their keys.  Ends
-  /// `entries`, with at most 64 entries and about 16 KiB of values; when
-  /// it says there are more, ask again with the last key as `after`.
-  %list: func(scope: pbx-scope, prefix: string, after: string) -> request-id;
+  /// `entries`, with at most 64 entries and, past the first, about 16 KiB
+  /// of values; when it says there are more, ask again with the last key
+  /// as `after`.
+  %list: func(location: storage-location, prefix: string, after: string) -> storage-reply;
   /// Sets a key.  Without `expect`, whatever value it had is replaced.
   /// With `expect` 0, the key is set only if it is not set yet; with a
   /// version, only if its entry still has that version.  Ends `stored`
   /// or `conflict`.
-  set: func(scope: pbx-scope, key: string, value: list<u8>, expect: option<u64>) -> request-id;
+  set: func(location: storage-location, key: string, value: list<u8>, expect: option<u64>) -> storage-reply;
   /// Removes a key, under the same conditions as `set`.  Ends `removed`
   /// or `conflict`.
-  remove: func(scope: pbx-scope, key: string, expect: option<u64>) -> request-id;
-  /// Forget a request: its result is not delivered.
+  remove: func(location: storage-location, key: string, expect: option<u64>) -> storage-reply;
+  /// Forget a request to a PBX location: its outcome is not delivered.
   cancel: func(id: request-id);
-  /// With `true`, `event.pbx-storage-changed` arrives whenever another
-  /// phone sets or removes a shared key of this app, while the app runs.
+  /// With `true`, `event.storage-changed` arrives whenever another phone
+  /// sets or removes a `pbx-shared` key of this app, while the app runs.
   watch: func(on: bool);
-  /// Whether the store can be reached now.
+  /// Whether the PBX locations can be reached now.
   online: func() -> bool;
   /// The phone's user, once the PBX has said who it is (`none` before
-  /// the store was first reached since the phone started).
+  /// the PBX locations were first reached since the phone started).
   user: func() -> option<pbx-user>;
 }
 
@@ -805,7 +801,6 @@ world app {
   import storage;
   import config;
   import pbx;
-  import pbx-storage;
   import http;
   import calls;
   import presence;

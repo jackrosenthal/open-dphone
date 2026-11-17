@@ -15,13 +15,13 @@ mod common;
 
 use common::{Rig, staged, temp_dir};
 use dphone_apps::engine::Target;
-use dphone_apps::testutil::{FakeConfig, FakePbx, FakeStore, services_with_store};
+use dphone_apps::testutil::{FakeConfig, FakePbx, FakeStore, local_value, services_with_store};
 use dphone_apps::uishell::UiShell;
 use dphone_apps::{AppManager, DrawOp, ManagerConfig, StoreOp, StoreReply, StoreScope};
 use dphone_hal::{Hal, Screen};
 use dphone_state::{AccountId, Call, CallState, Calls, Direction, Key, Model, Party, Phase, Store, System};
 use dphone_ui::{Ui, UiConfig};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const APP: &str = "boxpusher";
 
@@ -42,8 +42,14 @@ fn canvases(r: &Rig) -> (String, String) {
     (format!("{:?}", drawn[0].1), format!("{:?}", drawn[1].1))
 }
 
+/// The value of one of the game's keys on the phone.
+fn local(nvdata: &Path, key: &str) -> Option<String> {
+    let value = local_value(&nvdata.join("appdata").join(APP), key)?;
+    Some(String::from_utf8(value).unwrap())
+}
+
 fn progress(r: &Rig) -> String {
-    std::fs::read_to_string(r.nvdata.join("appdata").join(APP).join("progress")).unwrap_or_default()
+    local(&r.nvdata, "progress").unwrap_or_default()
 }
 
 fn keys(r: &mut Rig, keys: &[Key]) {
@@ -281,7 +287,7 @@ fn it_plays_on_the_gray_screens_in_black_and_white() {
 fn it_is_a_built_in_app_that_can_be_switched_off() {
     assert_eq!(
         common::capabilities(APP),
-        ["ui", "storage", "pbx-storage", "canvas"],
+        ["ui", "storage", "canvas"],
         "no sound, no calls, no network but its keys on the PBX, no timers"
     );
     let config = FakeConfig::default();
@@ -375,13 +381,13 @@ fn a_reset_phone_and_a_second_phone_go_on_where_the_user_was() {
     // The steps in a level go when the game leaves the screen.
     assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=\n"));
     // What the phone keeps of the PBX's entry: whose, and which.
-    let known = std::fs::read_to_string(storage(&first).join("pbx")).unwrap();
+    let known = local(&first.nvdata, "pbx").unwrap();
     assert!(known.starts_with("user=101\nversion="), "{known}");
     assert!(known.ends_with("\nlevel=1\nsolved=1\nmoves=\n"), "{known}");
     first.softkey(APP, "Exit");
     assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=ur\n"));
     // The game stopped before the PBX's answer: what it sent is kept.
-    let known = std::fs::read_to_string(storage(&first).join("pbx")).unwrap();
+    let known = local(&first.nvdata, "pbx").unwrap();
     assert!(known.ends_with("\nmoves=\nsent:\nlevel=1\nsolved=1\nmoves=ur\n"), "{known}");
 
     // The phone after a reset, or another phone of the user: nothing of
@@ -665,6 +671,7 @@ fn a_phone_that_gets_another_user_keeps_each_users_progress_apart() {
     let mut files: Vec<String> = std::fs::read_dir(storage(&desk_101))
         .unwrap()
         .map(|f| f.unwrap().file_name().into_string().unwrap())
+        .filter(|name| !name.starts_with('.'))
         .collect();
     files.sort();
     assert_eq!(files, ["pbx", "progress"]);
@@ -840,7 +847,7 @@ fn pictures(model: Model) -> (Phone, Phone, Vec<u32>) {
     solved.tap(&[Key::Soft(3)]);
     solved.shot("levels");
     assert_eq!(
-        std::fs::read_to_string(solved.nvdata.join("appdata").join(APP).join("progress")).unwrap(),
+        local(&solved.nvdata, "progress").unwrap(),
         "level=14\nsolved=14\nmoves=\n"
     );
 
@@ -895,10 +902,9 @@ fn drawn_on_a_color_phone() {
     p.settle();
     assert_eq!(p.ui.screen_name(), "call");
     assert_ne!(p.pixels().0, game);
-    let file = p.nvdata.join("appdata").join(APP).join("progress");
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "level=13\nsolved=13\nmoves=ur\n");
+    assert_eq!(local(&p.nvdata, "progress").unwrap(), "level=13\nsolved=13\nmoves=ur\n");
     p.tap(&[Key::Left, Key::Digit(4)]);
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "level=13\nsolved=13\nmoves=ur\n");
+    assert_eq!(local(&p.nvdata, "progress").unwrap(), "level=13\nsolved=13\nmoves=ur\n");
     p.store.update::<Calls, _>(|c| {
         c.calls.clear();
         c.focused = None;

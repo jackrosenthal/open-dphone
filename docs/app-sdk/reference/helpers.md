@@ -6,9 +6,9 @@ Helpers call the interfaces on the other pages, and give the app the capabilitie
 
 `use dphone_app_sdk::prelude::*;` imports:
 
-- The trait `App`, the constant `ROOT`, and the types `Event`, `Widget`, `Rect`, `ListItem`, `Softkey`, `WidgetKind`, `WidgetEvent`, `Skin`, `PbxOutcome`, `PbxScope`, `PbxEntry`, `PbxStorageOutcome`, `TimeStyle`, `AppKind`, `Json`, `Form`, and `Message`.
+- The trait `App`, the constant `ROOT`, and the types `Event`, `Widget`, `Rect`, `ListItem`, `Softkey`, `WidgetKind`, `WidgetEvent`, `Skin`, `PbxOutcome`, `StorageLocation`, `StorageEntry`, `StorageOutcome`, `StorageReply`, `TimeStyle`, `AppKind`, `Json`, `Form`, and `Message`.
 - The functions `screen`, `content_rect`, and `row_height`.
-- The modules `audio`, `calls`, `config`, `events`, `http`, `l10n`, `pbx`, `pbx_storage`, `presence`, `runtime`, `storage`, `timers`, and `ui`.
+- The modules `audio`, `calls`, `config`, `events`, `http`, `l10n`, `pbx`, `presence`, `runtime`, `storage`, `timers`, and `ui`.
 
 ## Screens
 
@@ -80,7 +80,7 @@ pub fn read_string(key: &str) -> Option<String>
 
 The log functions call [`runtime::log`](runtime.md#log) with levels 0 to 3.
 
-`read_string` returns the value from [`storage::get`](storage.md#get) as a `String`, or `None` for a value that isn't valid UTF-8.
+`read_string` returns the value of a `StorageLocation::Local` key from [`storage::get`](storage.md#get) as a `String`, or `None` for a key that isn't set or a value that isn't valid UTF-8.
 
 ## PBX requests
 

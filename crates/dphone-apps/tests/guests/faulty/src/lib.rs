@@ -11,16 +11,33 @@ struct Faulty {
 }
 
 fn storage_report() -> String {
+    use StorageLocation::Local;
+    let done = |reply| match reply {
+        StorageReply::Done(outcome) => outcome,
+        StorageReply::Pending(_) => panic!("a local request is answered at once"),
+    };
+    let set = |key: &str, value: &[u8]| {
+        matches!(done(storage::set(Local, key, value, None)), StorageOutcome::Stored(_))
+    };
+    let get = |key: &str| match done(storage::get(Local, key)) {
+        StorageOutcome::Entry(e) => e.map(|e| e.value),
+        _ => None,
+    };
+    let remove = |key: &str| matches!(done(storage::remove(Local, key, None)), StorageOutcome::Removed);
+    let keys = || match done(storage::list(Local, "", "")) {
+        StorageOutcome::Entries((entries, _)) => entries.into_iter().map(|e| e.key).collect(),
+        _ => Vec::new(),
+    };
     let r = [
-        format!("set={}", storage::set("a.txt", b"hello").is_ok() && storage::set("b", b"2").is_ok()),
-        format!("get={}", storage::get("a.txt").is_some_and(|d| d == b"hello")),
-        format!("keys={}", storage::keys().join(",")),
-        format!("escape={}", storage::set("../b.txt", b"x").is_ok()),
-        format!("slash={}", storage::get("a/b").is_some()),
-        format!("dot={}", storage::set(".hidden", b"x").is_ok()),
-        format!("remove={}", storage::remove("a.txt").is_ok()),
-        format!("gone={}", storage::get("a.txt").is_none()),
-        format!("again={}", storage::remove("a.txt").is_ok()),
+        format!("set={}", set("a.txt", b"hello") && set("b", b"2")),
+        format!("get={}", get("a.txt").is_some_and(|d| d == b"hello")),
+        format!("keys={}", keys().join(",")),
+        format!("escape={}", set("../b.txt", b"x")),
+        format!("slash={}", get("a/b").is_some()),
+        format!("dot={}", set(".hidden", b"x")),
+        format!("remove={}", remove("a.txt")),
+        format!("gone={}", get("a.txt").is_none()),
+        format!("again={}", remove("a.txt")),
     ];
     r.join(" ")
 }

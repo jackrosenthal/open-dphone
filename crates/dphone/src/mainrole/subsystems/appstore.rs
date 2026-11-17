@@ -1,5 +1,5 @@
-//! The apps' store of keys and values on the PBX (the app interface
-//! `pbx-storage`), over DPMA's `AppDataRequest`.  The firmware keeps the
+//! The apps' store of keys and values on the PBX (the PBX locations of
+//! the app interface `storage`), over DPMA's `AppDataRequest`.  The firmware keeps the
 //! user's theme there too (`themesync`).
 //!
 //! The server knows the phone by its configuration token, so the store is

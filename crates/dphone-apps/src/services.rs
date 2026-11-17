@@ -108,7 +108,7 @@ pub enum StoreOp {
     },
 }
 
-/// How a [`StoreOp`] ended (`pbx-storage-outcome` of the app interface).
+/// How a [`StoreOp`] ended (`storage-outcome` of the app interface).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StoreReply {
     Entry(Option<StoreEntry>),

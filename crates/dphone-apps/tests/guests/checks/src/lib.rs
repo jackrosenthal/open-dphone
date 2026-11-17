@@ -32,6 +32,20 @@ fn state(s: CallState) -> &'static str {
     }
 }
 
+/// What a `local` storage request ended in, without the parts that
+/// change from run to run (the version and the time).
+fn stored(reply: StorageReply) -> String {
+    match reply {
+        StorageReply::Done(StorageOutcome::Stored(e)) => format!("stored {}", e.key),
+        StorageReply::Done(StorageOutcome::Entry(e)) => {
+            format!("entry {:?}", e.map(|e| String::from_utf8_lossy(&e.value).into_owned()))
+        }
+        StorageReply::Done(StorageOutcome::Refused(why)) => format!("refused: {why}"),
+        StorageReply::Done(StorageOutcome::Unreachable(why)) => format!("unreachable: {why}"),
+        other => format!("{other:?}"),
+    }
+}
+
 /// How many times `f` succeeds before it fails, and the failure.
 fn until_refused<E: core::fmt::Debug>(most: u32, mut f: impl FnMut(u32) -> Result<(), E>) -> String {
     for n in 0..most {
@@ -146,8 +160,8 @@ impl Checks {
             }
             "login" => format!("{:?}", hotdesk::login(arg, "0000")),
             "logout" => format!("{:?}", hotdesk::logout()),
-            "set" => format!("{:?}", storage::set(arg, b"v")),
-            "get" => format!("{:?}", storage::get(arg)),
+            "set" => stored(storage::set(StorageLocation::Local, arg, b"v", None)),
+            "get" => stored(storage::get(StorageLocation::Local, arg)),
             "panic" => panic!("{arg}"),
             "watch" => format!("{:?}", events::observe(arg)),
             "calls" => {
@@ -179,7 +193,7 @@ impl Checks {
             "lamps" => lamps::names().join(","),
             "long-key" => {
                 let key = "k".repeat(arg.parse().unwrap_or(0));
-                format!("{:?}", storage::set(&key, b"v"))
+                stored(storage::set(StorageLocation::Local, &key, b"v", None))
             }
             "play" => format!("{:?}", audio::play(TONE, 0)),
             "stop" => {

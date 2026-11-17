@@ -566,7 +566,7 @@ impl AppManager {
         let ctx = AppCtx {
             name: name.to_string(),
             generation: self.generation,
-            store_dir: self.cfg.nv_root.join(name),
+            local: crate::localstore::LocalStore::new(self.cfg.nv_root.join(name)),
             window,
             idle,
             idle_size: self.shell.idle_size(),
@@ -785,7 +785,7 @@ impl AppManager {
     /// Tells the PBX's store which apps watch it, when that has changed.
     fn sync_store_watch(&mut self) {
         let watching =
-            self.apps_where(|c| c.store_watch && c.has(Capability::PbxStorage));
+            self.apps_where(|c| c.store_watch && c.has(Capability::Storage));
         if watching != self.store_watch {
             self.services.store.watch(&watching);
             self.store_watch = watching;
@@ -798,8 +798,8 @@ impl AppManager {
         use crate::services::StoreSignal;
         match signal {
             StoreSignal::Online => {
-                for name in self.apps_where(|c| c.has(Capability::PbxStorage)) {
-                    self.deliver(&name, wit::Event::PbxStorageOnline);
+                for name in self.apps_where(|c| c.has(Capability::Storage)) {
+                    self.deliver(&name, wit::Event::StorageOnline);
                 }
             }
             StoreSignal::Changed { app, scope, key } => {
@@ -808,11 +808,11 @@ impl AppManager {
                     .get(&app)
                     .is_some_and(|r| r.store.data().store_watch);
                 if watching {
-                    let change = wit::PbxStorageChange {
-                        scope: host::pbx_scope(scope),
+                    let change = wit::StorageChange {
+                        location: host::location(scope),
                         key,
                     };
-                    self.deliver(&app, wit::Event::PbxStorageChanged(change));
+                    self.deliver(&app, wit::Event::StorageChanged(change));
                 }
             }
         }
@@ -1306,7 +1306,7 @@ impl AppManager {
                     generation,
                     id,
                     outcome,
-                } => (app, generation, id, wit::Event::PbxStorage((id, outcome))),
+                } => (app, generation, id, wit::Event::Storage((id, outcome))),
                 Inbound::Pbx {
                     app,
                     generation,

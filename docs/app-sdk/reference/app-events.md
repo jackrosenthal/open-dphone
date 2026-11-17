@@ -22,9 +22,9 @@ pub enum Event {
     ServerChange,
     PlaybackStopped(u32),
     Message((String, String)),
-    PbxStorage((u32, PbxStorageOutcome)),
-    PbxStorageChanged(PbxStorageChange),
-    PbxStorageOnline,
+    Storage((u32, StorageOutcome)),
+    StorageChanged(StorageChange),
+    StorageOnline,
     AlarmsChanged,
     HotdeskDone(Result<(), String>),
 }
@@ -196,25 +196,25 @@ Event::Message((name, payload))
 
 An app, possibly this app, called [`events::send`](events.md#send) with this app's name.  The event doesn't identify the sender.  Receiving needs no capability.
 
-## `PbxStorage`
+## `Storage`
 
 ```rust
-Event::PbxStorage((id, outcome))
+Event::Storage((id, outcome))
 ```
 
-The result of a [`pbx_storage`](pbx-storage.md) request.
+The result of a [`storage`](storage.md) request to a PBX location: exactly one for each `StorageReply::Pending(id)` that the app didn't cancel.
 
-## `PbxStorageChanged`
+## `StorageChanged`
 
 ```rust
-Event::PbxStorageChanged(change)
+Event::StorageChanged(change)
 ```
 
-Another phone set or removed the app's shared key `change.key`.  Sent after [`pbx_storage::watch(true)`](pbx-storage.md#watch).
+Another phone set or removed the app's `PbxShared` key `change.key`.  Sent after [`storage::watch(true)`](storage.md#watch).
 
-## `PbxStorageOnline`
+## `StorageOnline`
 
-The app's store on the PBX became reachable, for the first time or again.  Requests that ended in `Unreachable` can be retried, and earlier reads may be stale.  Every running app that uses `pbx_storage` receives the event.
+The PBX locations of [`storage`](storage.md) became reachable, for the first time or again.  Requests that ended in `Unreachable` can be retried, and earlier reads may be stale.  Every running app that uses `storage` receives the event.
 
 ## `AlarmsChanged`
 

@@ -4,7 +4,7 @@ By default, the phone stops an app when the app's window leaves the screen: afte
 
 ## Key-value storage
 
-[`storage`](../reference/storage.md) is each app's private key-value store on the phone.  The store survives app exits, phone restarts, and newer builds of the app.
+[`storage`](../reference/storage.md) is each app's private key-value store.  Keys in `StorageLocation::Local` are on the phone, and survive app exits, phone restarts, and newer builds of the app.
 
 At the top of the file, define the key:
 
@@ -23,18 +23,19 @@ fn load(&mut self) {
 
 /// Saves the brew time to the phone's store.
 fn save(&self) {
-    let result = match self.brewed {
-        Some(at) => storage::set(KEY, at.to_string().as_bytes()),
-        None => storage::remove(KEY),
+    let reply = match self.brewed {
+        Some(at) => storage::set(StorageLocation::Local, KEY, at.to_string().as_bytes(), None),
+        None => storage::remove(StorageLocation::Local, KEY, None),
     };
-    if let Err(e) = result {
-        log_warn(&format!("couldn't store the brew time: {e:?}"));
+    match reply {
+        StorageReply::Done(StorageOutcome::Stored(_) | StorageOutcome::Removed) => {}
+        other => log_warn(&format!("couldn't store the brew time: {other:?}")),
     }
 }
 ```
 
-- `read_string`, an SDK helper, returns a key's value as text, or `None` if the key isn't set.
-- [`storage::set`](../reference/storage.md#set) and [`storage::remove`](../reference/storage.md#remove) return a `Result` because a write fails when the flash is full.
+- `read_string`, an SDK helper, returns a `Local` key's value as text, or `None` if the key isn't set.
+- For `Local`, [`storage::set`](../reference/storage.md#set) and [`storage::remove`](../reference/storage.md#remove) return the outcome at once, as `StorageReply::Done`.  A write ends in `Refused` when the flash is full.  The last argument, `None`, makes the write unconditional.
 
 Add the helpers to the imports:
 
@@ -107,12 +108,13 @@ Save on each change, not on exit: the phone sends `Event::Exit` before an orderl
 
         /// Saves the brew time to the phone's store.
         fn save(&self) {
-            let result = match self.brewed {
-                Some(at) => storage::set(KEY, at.to_string().as_bytes()),
-                None => storage::remove(KEY),
+            let reply = match self.brewed {
+                Some(at) => storage::set(StorageLocation::Local, KEY, at.to_string().as_bytes(), None),
+                None => storage::remove(StorageLocation::Local, KEY, None),
             };
-            if let Err(e) = result {
-                log_warn(&format!("couldn't store the brew time: {e:?}"));
+            match reply {
+                StorageReply::Done(StorageOutcome::Stored(_) | StorageOutcome::Removed) => {}
+                other => log_warn(&format!("couldn't store the brew time: {other:?}")),
             }
         }
 

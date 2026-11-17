@@ -207,12 +207,13 @@ Event::Timer(_) | Event::Foreground => {}
 
         /// Saves the brew time to the phone's store.
         fn save(&self) {
-            let result = match self.brewed {
-                Some(at) => storage::set(KEY, at.to_string().as_bytes()),
-                None => storage::remove(KEY),
+            let reply = match self.brewed {
+                Some(at) => storage::set(StorageLocation::Local, KEY, at.to_string().as_bytes(), None),
+                None => storage::remove(StorageLocation::Local, KEY, None),
             };
-            if let Err(e) = result {
-                log_warn(&format!("couldn't store the brew time: {e:?}"));
+            match reply {
+                StorageReply::Done(StorageOutcome::Stored(_) | StorageOutcome::Removed) => {}
+                other => log_warn(&format!("couldn't store the brew time: {other:?}")),
             }
         }
 

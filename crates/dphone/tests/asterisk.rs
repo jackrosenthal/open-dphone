@@ -18,8 +18,8 @@
 //! the fetched configuration and reads back from the merged one.
 //!
 //! A second test has three phones on one server, each with an installed
-//! app that keeps data in its store on the PBX (the app interface
-//! `pbx-storage`, the server's app data): what the app writes on one phone,
+//! app that keeps data in its keys on the PBX (the PBX locations of the
+//! app interface `storage`, the server's app data): what the app writes on one phone,
 //! the app on a phone of the same tenant is told of and reads, with the
 //! name of the user who wrote it, and the app on a phone of another tenant
 //! does not.  Asterisk is then started again and the writer's phone reset:
@@ -630,11 +630,11 @@ fn an_app_writes_a_value_that_an_app_on_another_phone_reads() {
 
     // Bob's app is told of the shared key and reads it.  Alice's own key
     // is not Bob's.
-    bob.says("changed PbxScope::Shared greeting");
+    bob.says("changed StorageLocation::PbxShared greeting");
     bob.says("read greeting=\"hello from the writer\" by Alice Example");
     let said = bob.log();
     assert!(!said.contains("storeprobe: read progress="), "{said}");
-    assert!(!said.contains("changed PbxScope::User"), "{said}");
+    assert!(!said.contains("changed StorageLocation::PbxPrivate"), "{said}");
 
     // Carol's phone is of another tenant: for her app there is no such
     // key.

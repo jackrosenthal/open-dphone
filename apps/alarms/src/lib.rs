@@ -164,10 +164,8 @@ impl Alarms {
 
     fn show_error(&mut self, e: &Error) {
         self.screen = Screen::Error;
-        let why = match e {
-            Error::Invalid(why) | Error::Failed(why) => sentence(why),
-            _ => "The alarm clock did not answer.".to_string(),
-        };
+        let (Error::Invalid(why) | Error::Failed(why)) = e;
+        let why = sentence(why);
         Message::show("Alarms", &why, &[Softkey::new(SK_OK, "OK")]);
     }
 

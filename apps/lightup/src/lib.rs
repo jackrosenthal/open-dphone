@@ -37,6 +37,7 @@
 //! and like any app it leaves the screen to a call.
 
 use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::StorageLocation::{Local, PbxShared};
 use dphone_app_sdk::{Align, Font, canvas, read_string};
 use lightup_game::draw::{
     self, FontSize, Fonts, Layout, Look, Op, Painter, Palette, Rgb, TextFont,
@@ -317,7 +318,7 @@ fn centered(area: Rect, lines: &[&str]) {
 /// name to show.  A phone that has not reached the PBX does not know
 /// its user.
 fn player() -> Option<(String, String)> {
-    let user = pbx_storage::user()?;
+    let user = storage::user()?;
     let name = [&user.name, &user.extension, &user.id]
         .into_iter()
         .find(|n| !n.trim().is_empty())?
@@ -395,7 +396,12 @@ impl LightUp {
                 game.grid().to_text()
             ));
         }
-        if now != self.saved && storage::set(PUZZLE, now.as_bytes()).is_ok() {
+        if now == self.saved {
+            return;
+        }
+        if let StorageReply::Done(StorageOutcome::Stored(_)) =
+            storage::set(Local, PUZZLE, now.as_bytes(), None)
+        {
             self.saved = now;
         }
     }
@@ -450,10 +456,10 @@ impl LightUp {
     fn leave_screen(&mut self) {
         self.run_clock(false);
         if let Some(id) = self.reading.take() {
-            pbx_storage::cancel(id);
+            storage::cancel(id);
         }
         if self.screen == Screen::Scores {
-            pbx_storage::watch(false);
+            storage::watch(false);
         }
         self.board = None;
         self.list = None;
@@ -815,7 +821,7 @@ impl LightUp {
         self.shown = kind;
         self.reached = None;
         // Told of the times other phones write, the table is read again.
-        pbx_storage::watch(true);
+        storage::watch(true);
         self.read_shown();
         self.draw_scores();
     }
@@ -823,9 +829,11 @@ impl LightUp {
     /// Asks the PBX for the table on show.
     fn read_shown(&mut self) {
         if let Some(id) = self.reading.take() {
-            pbx_storage::cancel(id);
+            storage::cancel(id);
         }
-        self.reading = Some(pbx_storage::get(PbxScope::Shared, &self.shown.key()));
+        if let StorageReply::Pending(id) = storage::get(PbxShared, &self.shown.key()) {
+            self.reading = Some(id);
+        }
     }
 
     /// Draws the table on show: the rows the PBX last gave, with the
@@ -896,12 +904,12 @@ impl LightUp {
     /// Writes the times that wait down, to outlast the app.
     fn keep_pending(&mut self) {
         let kept = if self.pending.is_empty() {
-            storage::remove(TIMES)
+            storage::remove(Local, TIMES, None)
         } else {
-            storage::set(TIMES, self.pending.to_text().as_bytes())
+            storage::set(Local, TIMES, self.pending.to_text().as_bytes(), None)
         };
-        if let Err(e) = kept {
-            dphone_app_sdk::log_error(&format!("the times were not kept: {e:?}"));
+        if !matches!(kept, StorageReply::Done(StorageOutcome::Stored(_) | StorageOutcome::Removed)) {
+            dphone_app_sdk::log_error(&format!("the times were not kept: {kept:?}"));
         }
     }
 
@@ -929,23 +937,24 @@ impl LightUp {
             .times()
             .iter()
             .find(|(kind, _)| !self.refused.contains(kind));
-        if let Some(&(kind, ms)) = next {
-            let id = pbx_storage::get(PbxScope::Shared, &kind.key());
+        if let Some(&(kind, ms)) = next
+            && let StorageReply::Pending(id) = storage::get(PbxShared, &kind.key())
+        {
             self.writing = Some((kind, ms, id));
         }
     }
 
     /// The answer of the PBX's store to a request.
-    fn answered(&mut self, id: u32, outcome: PbxStorageOutcome) {
+    fn answered(&mut self, id: u32, outcome: StorageOutcome) {
         if self.reading == Some(id) {
             self.reading = None;
             match outcome {
-                PbxStorageOutcome::Entry(entry) => {
+                StorageOutcome::Entry(entry) => {
                     let table = entry.map(|e| Table::parse(&e.value)).unwrap_or_default();
                     self.learn(self.shown, table);
                 }
                 other => {
-                    if !matches!(other, PbxStorageOutcome::Unreachable(_)) {
+                    if !matches!(other, StorageOutcome::Unreachable(_)) {
                         dphone_app_sdk::log_warn(&format!("the table was not read: {other:?}"));
                     }
                     self.reached = Some(false);
@@ -966,7 +975,7 @@ impl LightUp {
         match outcome {
             // The table as it is: after a conflict, the one another phone
             // wrote meanwhile.
-            PbxStorageOutcome::Entry(current) | PbxStorageOutcome::Conflict(current) => {
+            StorageOutcome::Entry(current) | StorageOutcome::Conflict(current) => {
                 let (mut table, version) = match &current {
                     Some(entry) => (Table::parse(&entry.value), entry.version),
                     None => (Table::default(), 0),
@@ -978,13 +987,10 @@ impl LightUp {
                     return;
                 };
                 if table.add(ms, &player, &name) {
-                    let id = pbx_storage::set(
-                        PbxScope::Shared,
-                        &kind.key(),
-                        &table.to_bytes(),
-                        Some(version),
-                    );
-                    self.writing = Some((kind, ms, id));
+                    let reply = storage::set(PbxShared, &kind.key(), &table.to_bytes(), Some(version));
+                    if let StorageReply::Pending(id) = reply {
+                        self.writing = Some((kind, ms, id));
+                    }
                     return;
                 }
                 // The table has ten times as good, or has this one (it
@@ -994,14 +1000,14 @@ impl LightUp {
                     self.keep_pending();
                 }
             }
-            PbxStorageOutcome::Stored(entry) => {
+            StorageOutcome::Stored(entry) => {
                 if self.pending.done(kind, ms) {
                     self.keep_pending();
                 }
                 self.learn(kind, Table::parse(&entry.value));
             }
             // The time waits until the store is in reach.
-            PbxStorageOutcome::Unreachable(_) => return,
+            StorageOutcome::Unreachable(_) => return,
             other => {
                 dphone_app_sdk::log_warn(&format!(
                     "the table {} was not written: {other:?}",
@@ -1091,17 +1097,17 @@ impl App for LightUp {
                     self.work();
                 }
             }
-            Event::PbxStorage((id, outcome)) => self.answered(id, outcome),
-            Event::PbxStorageChanged(change) => {
+            Event::Storage((id, outcome)) => self.answered(id, outcome),
+            Event::StorageChanged(change) => {
                 // Another phone wrote the table on show.
                 if self.screen == Screen::Scores
-                    && matches!(change.scope, PbxScope::Shared)
+                    && matches!(change.location, PbxShared)
                     && change.key == self.shown.key()
                 {
                     self.read_shown();
                 }
             }
-            Event::PbxStorageOnline => {
+            Event::StorageOnline => {
                 self.sync();
                 if self.screen == Screen::Scores {
                     self.read_shown();

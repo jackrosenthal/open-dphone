@@ -28,6 +28,7 @@ pub mod build;
 pub mod engine;
 mod host;
 pub mod install;
+mod localstore;
 pub mod manager;
 pub mod manifest;
 mod prepare;

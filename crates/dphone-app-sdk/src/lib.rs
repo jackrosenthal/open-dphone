@@ -46,13 +46,14 @@ pub mod xml;
 
 pub use bindings::dphone::app::types::{
     AccountInfo, Align, CallInfo, CallState, Error, Event, Font, Header, HttpResponse, InputMode,
-    ListItem, Metrics, Mwi, PbxEntry, PbxOutcome, PbxScope, PbxStorageChange, PbxStorageOutcome,
-    PbxUser, Presence, Push, Rect, Size, Skin, Softkey, WidgetEvent, WidgetKind,
+    ListItem, Metrics, Mwi, PbxOutcome, PbxUser, Presence, Push, Rect, Size, Skin, Softkey,
+    StorageChange, StorageEntry, StorageLocation, StorageOutcome, StorageReply, WidgetEvent,
+    WidgetKind,
 };
 pub use bindings::dphone::app::l10n::TimeStyle;
 pub use bindings::dphone::app::{
     alarms, audio, calls, canvas, config, diagnostics, events, hotdesk, http, input, l10n, lamps, pbx,
-    pbx_storage, presence, runtime, storage, timers, ui,
+    presence, runtime, storage, timers, ui,
 };
 
 /// A widget handle.
@@ -168,9 +169,12 @@ pub fn screen(title: &str) -> Rect {
     )
 }
 
-/// The value of a storage key as UTF-8 text.
+/// The value of a `local` storage key as UTF-8 text.
 pub fn read_string(key: &str) -> Option<String> {
-    storage::get(key).and_then(|b| String::from_utf8(b).ok())
+    match storage::get(StorageLocation::Local, key) {
+        StorageReply::Done(StorageOutcome::Entry(Some(e))) => String::from_utf8(e.value).ok(),
+        _ => None,
+    }
 }
 
 pub mod prelude {
@@ -178,10 +182,10 @@ pub mod prelude {
     pub use crate::manifest::AppKind;
     pub use crate::nav::{Form, Message};
     pub use crate::{
-        App, Event, ListItem, PbxEntry, PbxOutcome, PbxScope, PbxStorageOutcome, ROOT, Rect,
-        Skin, Softkey, TimeStyle, Widget, WidgetEvent, WidgetKind, audio, calls, config, content_rect,
-        events, http, l10n, pbx, pbx_storage, presence, row_height, runtime, screen, storage,
-        timers, ui,
+        App, Event, ListItem, PbxOutcome, ROOT, Rect, Skin, Softkey, StorageEntry, StorageLocation,
+        StorageOutcome, StorageReply, TimeStyle, Widget, WidgetEvent, WidgetKind, audio, calls,
+        config, content_rect, events, http, l10n, pbx, presence, row_height, runtime, screen,
+        storage, timers, ui,
     };
 }
 

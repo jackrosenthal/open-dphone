@@ -186,43 +186,45 @@ fn the_lamps_are_those_the_model_has() {
 }
 
 #[test]
-fn a_key_too_long_to_store_is_a_bad_argument() {
+fn a_key_too_long_to_store_is_refused() {
     let mut r = rig();
     let answer = ask(&mut r, "long-key", "300");
-    assert!(answer.starts_with("Err(Error::Invalid("), "{answer}");
-    assert_eq!(ask(&mut r, "long-key", "40"), "Ok(())");
+    assert!(answer.starts_with("refused: "), "{answer}");
+    assert_eq!(ask(&mut r, "long-key", "40"), format!("stored {}", "k".repeat(40)));
 }
 
 #[test]
 fn a_storage_key_is_at_most_64_bytes() {
     let mut r = rig();
-    assert_eq!(ask(&mut r, "long-key", "64"), "Ok(())");
+    assert_eq!(ask(&mut r, "long-key", "64"), format!("stored {}", "k".repeat(64)));
     let answer = ask(&mut r, "long-key", "65");
-    assert!(answer.starts_with("Err(Error::Invalid(") && answer.contains("64 bytes"), "{answer}");
+    assert!(answer.starts_with("refused: ") && answer.contains("64 bytes"), "{answer}");
     // Bytes: 33 two-byte letters are 66.
     let answer = ask(&mut r, "set", &"\u{e9}".repeat(33));
-    assert!(answer.starts_with("Err(Error::Invalid("), "{answer}");
-    assert_eq!(ask(&mut r, "set", &"\u{e9}".repeat(32)), "Ok(())");
+    assert!(answer.starts_with("refused: "), "{answer}");
+    assert!(ask(&mut r, "set", &"\u{e9}".repeat(32)).starts_with("stored "));
     // Refused before the file system is touched: no file, and no file
     // that the phone made on the way to one.
     let store = r.nvdata.join("appdata/checks");
     let names: Vec<String> =
         std::fs::read_dir(&store).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
     assert_eq!(names.len(), 2, "{names:?}");
-    // A key that long reads as not set.
-    assert_eq!(ask(&mut r, "get", &"k".repeat(65)), "None");
+    let answer = ask(&mut r, "get", &"k".repeat(65));
+    assert!(answer.starts_with("refused: "), "{answer}");
+    assert_eq!(ask(&mut r, "get", &"k".repeat(64)), "entry Some(\"v\")");
 }
 
 #[cfg(unix)]
 #[test]
 fn a_key_whose_file_is_a_symbolic_link_fails_with_the_reason() {
     let mut r = rig();
-    assert_eq!(ask(&mut r, "set", "plain"), "Ok(())");
+    assert_eq!(ask(&mut r, "set", "plain"), "stored plain");
     let store = r.nvdata.join("appdata/checks");
     std::os::unix::fs::symlink(store.join("plain"), store.join("link")).unwrap();
     let answer = ask(&mut r, "set", "link");
-    assert!(answer.starts_with("Err(Error::Failed(") && answer.contains("symbolic link"), "{answer}");
-    assert_eq!(ask(&mut r, "get", "link"), "None");
+    assert!(answer.starts_with("unreachable: ") && answer.contains("symbolic link"), "{answer}");
+    let answer = ask(&mut r, "get", "link");
+    assert!(answer.starts_with("unreachable: ") && answer.contains("symbolic link"), "{answer}");
 }
 
 #[test]

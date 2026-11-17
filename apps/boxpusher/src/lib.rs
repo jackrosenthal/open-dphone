@@ -21,6 +21,7 @@ use boxpusher_game::draw::{Layout, Op, Painter, Palette, Rgb};
 use boxpusher_game::progress::{Known, Progress};
 use boxpusher_game::{Dir, Game, LEVELS, Level, Step};
 use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::StorageLocation::{Local, PbxPrivate};
 use dphone_app_sdk::{Align, Font, canvas, log_warn, read_string};
 
 const SK_UNDO: u32 = 1;
@@ -152,7 +153,7 @@ impl BoxPusher {
         self.saved = read_string(PROGRESS).unwrap_or_default();
         self.known = Known::parse(&read_string(KNOWN).unwrap_or_default());
         self.take(&Progress::parse(&self.saved));
-        if let Some(me) = pbx_storage::user() {
+        if let Some(me) = storage::user() {
             self.change_user(&me.id);
         }
     }
@@ -185,7 +186,11 @@ impl BoxPusher {
             return;
         }
         let now = self.progress().text();
-        if now != self.saved && storage::set(PROGRESS, now.as_bytes()).is_ok() {
+        if now == self.saved {
+            return;
+        }
+        let reply = storage::set(Local, PROGRESS, now.as_bytes(), None);
+        if let StorageReply::Done(StorageOutcome::Stored(_)) = reply {
             self.saved = now;
         }
     }
@@ -198,14 +203,14 @@ impl BoxPusher {
 
     /// Writes the progress file to the PBX, over the entry the phone
     /// knows, if the PBX is in reach and does not have it.  Out of reach,
-    /// the file waits for `Event::PbxStorageOnline`.
+    /// the file waits for `Event::StorageOnline`.
     fn send(&mut self) {
-        if self.screen == Screen::None || self.writing.is_some() || !pbx_storage::online() {
+        if self.screen == Screen::None || self.writing.is_some() || !storage::online() {
             return;
         }
         // Another user's progress is not written to this user's keys: the
         // PBX's answer to `ask` sorts that out first.
-        let me = pbx_storage::user().map(|u| u.id).unwrap_or_default();
+        let me = storage::user().map(|u| u.id).unwrap_or_default();
         if me.is_empty() || !(self.known.user.is_empty() || self.known.user == me) {
             return;
         }
@@ -213,16 +218,14 @@ impl BoxPusher {
         if now == self.known.progress {
             return;
         }
-        let id = pbx_storage::set(
-            PbxScope::User,
-            PROGRESS,
-            now.text().as_bytes(),
-            Some(self.known.version),
-        );
+        let reply = storage::set(PbxPrivate, PROGRESS, now.text().as_bytes(), Some(self.known.version));
+        let StorageReply::Pending(id) = reply else {
+            return;
+        };
         // The answer may not come (the game is left, or the PBX goes out
         // of reach): what was sent is kept until it does.
         self.known.sent = Some(now.clone());
-        let _ = storage::set(KNOWN, self.known.text().as_bytes());
+        let _ = storage::set(Local, KNOWN, self.known.text().as_bytes(), None);
         self.writing = Some((id, now));
     }
 
@@ -232,9 +235,11 @@ impl BoxPusher {
             return;
         }
         if let Some(earlier) = self.asked.take() {
-            pbx_storage::cancel(earlier);
+            storage::cancel(earlier);
         }
-        self.asked = Some(pbx_storage::get(PbxScope::User, PROGRESS));
+        if let StorageReply::Pending(id) = storage::get(PbxPrivate, PROGRESS) {
+            self.asked = Some(id);
+        }
     }
 
     /// Notes what the PBX has.
@@ -247,7 +252,7 @@ impl BoxPusher {
         };
         if known != self.known {
             self.known = known;
-            let _ = storage::set(KNOWN, self.known.text().as_bytes());
+            let _ = storage::set(Local, KNOWN, self.known.text().as_bytes(), None);
         }
     }
 
@@ -263,17 +268,17 @@ impl BoxPusher {
         self.keep();
         let (progress, known) = left_keys(&self.known.user);
         if Progress::parse(&self.saved) != self.known.progress {
-            let _ = storage::set(&progress, self.saved.as_bytes());
-            let _ = storage::set(&known, self.known.text().as_bytes());
+            let _ = storage::set(Local, &progress, self.saved.as_bytes(), None);
+            let _ = storage::set(Local, &known, self.known.text().as_bytes(), None);
         }
         let (progress, known) = left_keys(me);
         self.saved = read_string(&progress).unwrap_or_default();
         self.known = Known::parse(&read_string(&known).unwrap_or_default());
         self.known.user = me.to_string();
-        let _ = storage::set(PROGRESS, self.saved.as_bytes());
-        let _ = storage::set(KNOWN, self.known.text().as_bytes());
-        let _ = storage::remove(&progress);
-        let _ = storage::remove(&known);
+        let _ = storage::set(Local, PROGRESS, self.saved.as_bytes(), None);
+        let _ = storage::set(Local, KNOWN, self.known.text().as_bytes(), None);
+        let _ = storage::remove(Local, &progress, None);
+        let _ = storage::remove(Local, &known, None);
         self.take(&Progress::parse(&self.saved));
         true
     }
@@ -281,8 +286,8 @@ impl BoxPusher {
     /// The PBX has `entry` for the user: goes on with whichever of the
     /// phone's progress and the PBX's counts, and writes it where it is
     /// missing.
-    fn reconcile(&mut self, entry: Option<PbxEntry>) {
-        let Some(me) = pbx_storage::user() else {
+    fn reconcile(&mut self, entry: Option<StorageEntry>) {
+        let Some(me) = storage::user() else {
             return;
         };
         let changed = self.change_user(&me.id);
@@ -318,14 +323,14 @@ impl BoxPusher {
     }
 
     /// The answer to a request to the PBX.
-    fn answered(&mut self, id: u32, outcome: PbxStorageOutcome) {
+    fn answered(&mut self, id: u32, outcome: StorageOutcome) {
         if self.asked == Some(id) {
             self.asked = None;
             match outcome {
-                PbxStorageOutcome::Entry(entry) => self.reconcile(entry),
+                StorageOutcome::Entry(entry) => self.reconcile(entry),
                 // The progress stays on the phone until the PBX is in
                 // reach.
-                PbxStorageOutcome::Unreachable(_) => {}
+                StorageOutcome::Unreachable(_) => {}
                 other => log_warn(&format!("the progress was not read: {other:?}")),
             }
         } else if self.writing.as_ref().is_some_and(|w| w.0 == id) {
@@ -333,18 +338,18 @@ impl BoxPusher {
                 return;
             };
             match outcome {
-                PbxStorageOutcome::Stored(entry) => {
-                    let me = pbx_storage::user().map(|u| u.id).unwrap_or_default();
+                StorageOutcome::Stored(entry) => {
+                    let me = storage::user().map(|u| u.id).unwrap_or_default();
                     self.know(&me, entry.version, sent);
                     // What was played meanwhile.
                     self.send();
                 }
                 // Another phone of the user wrote first, or an earlier
                 // write whose answer was lost.
-                PbxStorageOutcome::Conflict(entry) => self.reconcile(entry),
+                StorageOutcome::Conflict(entry) => self.reconcile(entry),
                 // It may have arrived all the same: `ask`, when the PBX
                 // is in reach, shows.
-                PbxStorageOutcome::Unreachable(_) => {}
+                StorageOutcome::Unreachable(_) => {}
                 other => log_warn(&format!("the progress was not written: {other:?}")),
             }
         }
@@ -554,8 +559,8 @@ impl App for BoxPusher {
                 self.played = false;
                 self.ask();
             }
-            Event::PbxStorage((id, outcome)) => self.answered(id, outcome),
-            Event::PbxStorageOnline => self.ask(),
+            Event::Storage((id, outcome)) => self.answered(id, outcome),
+            Event::StorageOnline => self.ask(),
             Event::Background | Event::Exit => self.save(),
             Event::Softkey(SK_EXIT) => self.leave(),
             Event::Softkey(SK_LEVELS) => self.show_levels(),

@@ -15,7 +15,7 @@ mod common;
 
 use common::{Rig, staged, temp_dir};
 use dphone_apps::engine::Target;
-use dphone_apps::testutil::{FakeConfig, FakePbx, FakeStore, services_with_store};
+use dphone_apps::testutil::{FakeConfig, FakePbx, FakeStore, local_value, services_with_store};
 use dphone_apps::uishell::UiShell;
 use dphone_apps::{
     AppManager, AppWindow, Color, ColorRole, DrawOp, ManagerConfig, Rect, Shell, StoreOp,
@@ -411,7 +411,7 @@ fn points_the_best_score_and_the_seed() {
         r.ui.texts(APP),
         ["Game over", "Score 2   Best 2", BOARD_HINT]
     );
-    assert_eq!(std::fs::read_to_string(&best).unwrap(), "2");
+    assert_eq!(file(&r, "best").as_deref(), Some("2"));
 
     // A worse game leaves the best score alone, in a new run of the app
     // too.
@@ -426,7 +426,7 @@ fn points_the_best_score_and_the_seed() {
         r.ui.texts(APP),
         ["Game over", "Score 0   Best 17", BOARD_HINT]
     );
-    assert_eq!(std::fs::read_to_string(&best).unwrap(), "17");
+    assert_eq!(file(&r, "best").as_deref(), Some("17"));
 }
 
 #[test]
@@ -480,7 +480,7 @@ fn it_plays_on_the_gray_screens_in_gray() {
 fn it_needs_the_canvas_capability_and_can_be_switched_off() {
     assert_eq!(
         common::capabilities(APP),
-        ["ui", "timers", "storage", "pbx-storage", "canvas"],
+        ["ui", "timers", "storage", "canvas"],
         "no sound, no calls, no network but the PBX's store"
     );
     // An app is linked with the interfaces the phone's record of it lists
@@ -1017,9 +1017,9 @@ fn write_board(store: &FakeStore, value: &str, expect: Option<u64>) -> StoreRepl
     })
 }
 
-/// A file of the game's storage on the phone.
+/// The value of one of the game's keys on the phone.
 fn file(r: &Rig, name: &str) -> Option<String> {
-    std::fs::read_to_string(r.nvdata.join("appdata").join(APP).join(name)).ok()
+    String::from_utf8(local_value(&r.nvdata.join("appdata").join(APP), name)?).ok()
 }
 
 /// The scores that wait on the phone to be written to the PBX, without
@@ -1078,7 +1078,7 @@ fn down_shows_the_leaderboard_between_games() {
     assert_eq!(
         common::capabilities(APP)
             .iter()
-            .filter(|c| **c == "pbx-storage")
+            .filter(|c| **c == "storage")
             .count(),
         1
     );

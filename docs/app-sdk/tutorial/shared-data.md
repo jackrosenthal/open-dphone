@@ -8,11 +8,11 @@ The brew time moves to the PBX.  Pressing **Brewed** on any phone updates every 
 
 ## PBX storage
 
-[`pbx_storage`](../reference/pbx-storage.md) is a key-value store on the PBX.  The store requires a PBX running [Open DPMA](../../open-dpma/index.md) and no configuration.  Fresh Pot uses the `PbxScope::Shared` keys, which every phone running the app shares.
+[`storage`](../reference/storage.md) also keeps keys on the PBX.  The PBX locations require a PBX running [Open DPMA](../../open-dpma/index.md) and no configuration.  Fresh Pot uses `StorageLocation::PbxShared`, the keys that every phone running the app shares.
 
-Unlike `storage`:
+Unlike `Local`:
 
-- **Requests are asynchronous.**  `get`, `set`, and `remove` return a request ID, and the result arrives later as an `Event::PbxStorage` with that ID.
+- **Requests are asynchronous.**  `get`, `set`, and `remove` return `StorageReply::Pending` with a request ID, and the result arrives later as an `Event::Storage` with that ID.
 - **The PBX records the author of each entry**, from the user that the writing phone is provisioned for.
 
 ## Design
@@ -47,17 +47,25 @@ asked: u32,
 
 ## Requests and responses
 
-Add two functions to `impl FreshPot`:
+Add three functions to `impl FreshPot`:
 
 ```rust
 /// Requests the brew time from the PBX.
 fn ask(&mut self) {
-    self.asked = pbx_storage::get(PbxScope::Shared, KEY);
+    self.wait_for(storage::get(StorageLocation::PbxShared, KEY));
+}
+
+/// Notes the ID of a request to the PBX, whose answer arrives as an
+/// `Event::Storage`.
+fn wait_for(&mut self, reply: StorageReply) {
+    if let StorageReply::Pending(id) = reply {
+        self.asked = id;
+    }
 }
 
 /// Applies the PBX's answer: the key's entry, or `None` if the key
 /// isn't set.
-fn take(&mut self, entry: Option<PbxEntry>) {
+fn take(&mut self, entry: Option<StorageEntry>) {
     self.brewed = entry
         .as_ref()
         .and_then(|e| str::from_utf8(&e.value).ok()?.parse().ok());
@@ -66,7 +74,7 @@ fn take(&mut self, entry: Option<PbxEntry>) {
 }
 ```
 
-A [`PbxEntry`](../reference/pbx-storage.md#requests-and-outcomes) holds the bytes that a phone wrote in `value` (here, the time as text), and the writer's name, as recorded by the PBX, in `author_name`.
+A [`StorageEntry`](../reference/storage.md#outcomes) holds the bytes that a phone wrote in `value` (here, the time as text), and the writer's name, as recorded by the PBX, in `author_name`.
 
 In `show`, replace the line that sets the text of `self.age` with:
 
@@ -86,11 +94,11 @@ At the end of `start`, after rendering what the phone's store holds, subscribe t
 self.load();
 self.show();
 
-pbx_storage::watch(true);
+storage::watch(true);
 self.ask();
 ```
 
-After [`pbx_storage::watch(true)`](../reference/pbx-storage.md#watch), the app receives `Event::PbxStorageChanged` whenever another phone sets or removes one of the app's shared keys, while the app runs.
+After [`storage::watch(true)`](../reference/storage.md#watch), the app receives `Event::StorageChanged` whenever another phone sets or removes one of the app's `PbxShared` keys, while the app runs.
 
 ## Event handling
 
@@ -102,29 +110,31 @@ fn handle(&mut self, event: Event) {
         Event::Softkey(SK_BREWED) => {
             let now = timers::wall_time();
             self.brewed = Some(now);
-            self.by = pbx_storage::user()
-                .map(|user| user.name)
-                .unwrap_or_default();
+            self.by = storage::user().map(|user| user.name).unwrap_or_default();
             self.save();
-            self.asked =
-                pbx_storage::set(PbxScope::Shared, KEY, now.to_string().as_bytes(), None);
+            self.wait_for(storage::set(
+                StorageLocation::PbxShared,
+                KEY,
+                now.to_string().as_bytes(),
+                None,
+            ));
             log_info("a pot was brewed");
         }
         Event::Softkey(SK_EMPTY) => {
             self.brewed = None;
             self.save();
-            self.asked = pbx_storage::remove(PbxScope::Shared, KEY, None);
+            self.wait_for(storage::remove(StorageLocation::PbxShared, KEY, None));
         }
-        Event::PbxStorage((id, outcome)) if id == self.asked => match outcome {
-            PbxStorageOutcome::Entry(entry) => self.take(entry),
-            PbxStorageOutcome::Stored(entry) => self.take(Some(entry)),
-            PbxStorageOutcome::Removed => self.take(None),
+        Event::Storage((id, outcome)) if id == self.asked => match outcome {
+            StorageOutcome::Entry(entry) => self.take(entry),
+            StorageOutcome::Stored(entry) => self.take(Some(entry)),
+            StorageOutcome::Removed => self.take(None),
             // Keep showing what the phone's store holds.
-            PbxStorageOutcome::Unreachable(why) => log_info(&format!("not shared: {why}")),
+            StorageOutcome::Unreachable(why) => log_info(&format!("not shared: {why}")),
             other => log_warn(&format!("unexpected answer from the PBX: {other:?}")),
         },
         // Another phone changed the key, or the PBX is reachable again.
-        Event::PbxStorageChanged(_) | Event::PbxStorageOnline => return self.ask(),
+        Event::StorageChanged(_) | Event::StorageOnline => return self.ask(),
         Event::Softkey(SK_EXIT) => return runtime::exit(),
         Event::Key(key) if key == "cancel" => return runtime::exit(),
         // On a timer tick, or when the window returns to the screen
@@ -136,13 +146,13 @@ fn handle(&mut self, event: Event) {
 }
 ```
 
-The softkeys also write to the PBX.  For **Brewed**, [`pbx_storage::user`](../reference/pbx-storage.md#user) supplies the user's name before the PBX answers.  The last argument of `set`, `None`, makes the write unconditional: the latest press wins.
+The softkeys also write to the PBX.  For **Brewed**, [`storage::user`](../reference/storage.md#user) supplies the user's name before the PBX answers.  The last argument of `set`, `None`, makes the write unconditional: the latest press wins.
 
 The new arms:
 
-- `Event::PbxStorage` answers a request.  The guard `id == self.asked` ignores all but the latest request.  `Entry` answers `get`, `Stored` answers `set` with the entry as stored, and `Removed` answers `remove`.  `Unreachable` means that the request didn't reach the PBX or the PBX didn't answer.  Of the other outcomes, only `Refused` can follow these requests; the app logs a warning.
-- `Event::PbxStorageChanged` carries no value, so the app queries the PBX.
-- `Event::PbxStorageOnline` means that the store is reachable, for the first time or again.  Earlier reads may be stale, so the app queries the PBX.
+- `Event::Storage` answers a request.  The guard `id == self.asked` ignores all but the latest request.  `Entry` answers `get`, `Stored` answers `set` with the entry as stored, and `Removed` answers `remove`.  `Unreachable` means that the request didn't reach the PBX or the PBX didn't answer.  Of the other outcomes, only `Refused` can follow these requests; the app logs a warning.
+- `Event::StorageChanged` carries no value, so the app queries the PBX.
+- `Event::StorageOnline` means that the PBX is reachable, for the first time or again.  Earlier reads may be stale, so the app queries the PBX.
 
 !!! note "Pressing Brewed while the PBX is unreachable"
 
@@ -217,23 +227,32 @@ With one phone, the second line shows that phone's user after **Brewed**.  Witho
 
         /// Saves the brew time to the phone's store.
         fn save(&self) {
-            let result = match self.brewed {
-                Some(at) => storage::set(KEY, at.to_string().as_bytes()),
-                None => storage::remove(KEY),
+            let reply = match self.brewed {
+                Some(at) => storage::set(StorageLocation::Local, KEY, at.to_string().as_bytes(), None),
+                None => storage::remove(StorageLocation::Local, KEY, None),
             };
-            if let Err(e) = result {
-                log_warn(&format!("couldn't store the brew time: {e:?}"));
+            match reply {
+                StorageReply::Done(StorageOutcome::Stored(_) | StorageOutcome::Removed) => {}
+                other => log_warn(&format!("couldn't store the brew time: {other:?}")),
             }
         }
 
         /// Requests the brew time from the PBX.
         fn ask(&mut self) {
-            self.asked = pbx_storage::get(PbxScope::Shared, KEY);
+            self.wait_for(storage::get(StorageLocation::PbxShared, KEY));
+        }
+
+        /// Notes the ID of a request to the PBX, whose answer arrives as an
+        /// `Event::Storage`.
+        fn wait_for(&mut self, reply: StorageReply) {
+            if let StorageReply::Pending(id) = reply {
+                self.asked = id;
+            }
         }
 
         /// Applies the PBX's answer: the key's entry, or `None` if the key
         /// isn't set.
-        fn take(&mut self, entry: Option<PbxEntry>) {
+        fn take(&mut self, entry: Option<StorageEntry>) {
             self.brewed = entry
                 .as_ref()
                 .and_then(|e| str::from_utf8(&e.value).ok()?.parse().ok());
@@ -365,7 +384,7 @@ With one phone, the second line shows that phone's user after **Brewed**.  Witho
             self.load();
             self.show();
 
-            pbx_storage::watch(true);
+            storage::watch(true);
             self.ask();
         }
 
@@ -374,29 +393,31 @@ With one phone, the second line shows that phone's user after **Brewed**.  Witho
                 Event::Softkey(SK_BREWED) => {
                     let now = timers::wall_time();
                     self.brewed = Some(now);
-                    self.by = pbx_storage::user()
-                        .map(|user| user.name)
-                        .unwrap_or_default();
+                    self.by = storage::user().map(|user| user.name).unwrap_or_default();
                     self.save();
-                    self.asked =
-                        pbx_storage::set(PbxScope::Shared, KEY, now.to_string().as_bytes(), None);
+                    self.wait_for(storage::set(
+                        StorageLocation::PbxShared,
+                        KEY,
+                        now.to_string().as_bytes(),
+                        None,
+                    ));
                     log_info("a pot was brewed");
                 }
                 Event::Softkey(SK_EMPTY) => {
                     self.brewed = None;
                     self.save();
-                    self.asked = pbx_storage::remove(PbxScope::Shared, KEY, None);
+                    self.wait_for(storage::remove(StorageLocation::PbxShared, KEY, None));
                 }
-                Event::PbxStorage((id, outcome)) if id == self.asked => match outcome {
-                    PbxStorageOutcome::Entry(entry) => self.take(entry),
-                    PbxStorageOutcome::Stored(entry) => self.take(Some(entry)),
-                    PbxStorageOutcome::Removed => self.take(None),
+                Event::Storage((id, outcome)) if id == self.asked => match outcome {
+                    StorageOutcome::Entry(entry) => self.take(entry),
+                    StorageOutcome::Stored(entry) => self.take(Some(entry)),
+                    StorageOutcome::Removed => self.take(None),
                     // Keep showing what the phone's store holds.
-                    PbxStorageOutcome::Unreachable(why) => log_info(&format!("not shared: {why}")),
+                    StorageOutcome::Unreachable(why) => log_info(&format!("not shared: {why}")),
                     other => log_warn(&format!("unexpected answer from the PBX: {other:?}")),
                 },
                 // Another phone changed the key, or the PBX is reachable again.
-                Event::PbxStorageChanged(_) | Event::PbxStorageOnline => return self.ask(),
+                Event::StorageChanged(_) | Event::StorageOnline => return self.ask(),
                 Event::Softkey(SK_EXIT) => return runtime::exit(),
                 Event::Key(key) if key == "cancel" => return runtime::exit(),
                 // On a timer tick, or when the window returns to the screen

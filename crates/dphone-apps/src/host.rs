@@ -2,6 +2,7 @@
 //! (`crates/dphone-app-sdk/wit/app.wit`): per-app context and the
 //! implementation of every imported interface.
 
+use crate::localstore::LocalStore;
 use crate::manifest::{Capability, Manifest};
 use crate::services::{
     APP_VISIBLE_SETTINGS, Completion, HttpRequest, PbxRequest, Services, StoreEntry, StoreOp,
@@ -13,7 +14,7 @@ use dphone_state::{
     Key, LampColor, PresenceStatus, Reply, Store,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
@@ -79,7 +80,7 @@ pub(crate) enum Inbound {
         app: String,
         generation: u64,
         id: u32,
-        outcome: PbxStorageOutcome,
+        outcome: StorageOutcome,
     },
     /// The PBX's store came within reach, or a key changed there.
     StoreSignal(StoreSignal),
@@ -176,8 +177,8 @@ pub(crate) struct AppCtx {
     /// Distinguishes this instance from an earlier one of the same app, so
     /// late replies for a dead instance are dropped.
     pub generation: u64,
-    /// The app's store (`/nvdata/appdata/<name>`): a file for each key.
-    pub store_dir: PathBuf,
+    /// The app's keys on the phone (`/nvdata/appdata/<name>`).
+    pub local: LocalStore,
     pub window: Box<dyn AppWindow>,
     pub idle: Option<Box<dyn AppWindow>>,
     pub idle_size: Size,
@@ -191,7 +192,7 @@ pub(crate) struct AppCtx {
     pub pending: HashSet<u32>,
     pub observed: HashSet<String>,
     pub observe_calls: bool,
-    /// The app wants `event.pbx-storage-changed`.
+    /// The app wants `event.storage-changed`.
     pub store_watch: bool,
     /// The presence targets the app observes.
     pub presence_observed: HashSet<String>,
@@ -228,24 +229,6 @@ const IMAGES_MAX: usize = 32;
 
 fn bad_name(name: &str) -> bool {
     name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0'])
-}
-
-/// The largest value of a storage key.
-const VALUE_MAX: usize = 1 << 20;
-/// The longest storage key, in bytes: as long as a key of the store on
-/// the PBX may be.
-pub(crate) const KEY_MAX: usize = 64;
-
-fn bad_key(key: &str) -> bool {
-    bad_name(key) || key.starts_with('.') || key.len() > KEY_MAX
-}
-
-fn io_error(e: std::io::Error) -> Error {
-    match e.kind() {
-        std::io::ErrorKind::NotFound => Error::NotFound,
-        std::io::ErrorKind::StorageFull => Error::NoSpace,
-        _ => Error::Failed(e.to_string()),
-    }
 }
 
 /// Bytes a write may still use, honoring the reserve.
@@ -406,29 +389,6 @@ impl AppCtx {
         if let Some((win, Some(id))) = self.win(w) {
             f(win, id);
         }
-    }
-
-    /// The file of a storage key.
-    fn key_path(&self, key: &str) -> Result<PathBuf, Error> {
-        // Before the file system is asked anything.
-        if key.len() > KEY_MAX {
-            return Err(Error::Invalid(format!("a key is at most {KEY_MAX} bytes")));
-        }
-        if bad_key(key) {
-            return Err(Error::Invalid(
-                "a key cannot be empty, start with `.`, or contain a path separator".into(),
-            ));
-        }
-        let path = self.store_dir.join(key);
-        if let Ok(meta) = std::fs::symlink_metadata(&path)
-            && meta.file_type().is_symlink()
-        {
-            return Err(Error::Failed(
-                "the key's file in the store is a symbolic link, which the phone does not follow"
-                    .into(),
-            ));
-        }
-        Ok(path)
     }
 
     /// Hands the window the picture the app defined as `name`, the first
@@ -703,61 +663,6 @@ impl api::timers::Host for AppCtx {
     }
 }
 
-impl api::storage::Host for AppCtx {
-    fn get(&mut self, key: String) -> Option<Vec<u8>> {
-        let path = self.key_path(&key).ok()?;
-        let meta = std::fs::metadata(&path).ok()?;
-        // `set` never stores more than this.
-        if !meta.is_file() || meta.len() > VALUE_MAX as u64 {
-            return None;
-        }
-        std::fs::read(&path).ok()
-    }
-    fn set(&mut self, key: String, value: Vec<u8>) -> Result<(), Error> {
-        let path = self.key_path(&key)?;
-        if value.len() > VALUE_MAX {
-            return Err(Error::Invalid("a value is at most 1 MiB".into()));
-        }
-        let dir = &self.store_dir;
-        std::fs::create_dir_all(dir).map_err(io_error)?;
-        let old = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-        if (value.len() as u64).saturating_sub(old) > usable_space(dir) {
-            return Err(Error::NoSpace);
-        }
-        let tmp = dir.join(format!(".{key}.tmp"));
-        let result = (|| {
-            use std::io::Write;
-            let mut f = std::fs::File::create(&tmp)?;
-            f.write_all(&value)?;
-            f.sync_all()?;
-            std::fs::rename(&tmp, &path)
-        })();
-        if result.is_err() {
-            let _ = std::fs::remove_file(&tmp);
-        }
-        result.map_err(io_error)
-    }
-    fn remove(&mut self, key: String) -> Result<(), Error> {
-        let path = self.key_path(&key)?;
-        match std::fs::remove_file(path) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io_error(e)),
-            _ => Ok(()),
-        }
-    }
-    fn keys(&mut self) -> Vec<String> {
-        let mut names = Vec::new();
-        for e in std::fs::read_dir(&self.store_dir).into_iter().flatten().flatten() {
-            let name = e.file_name().to_string_lossy().into_owned();
-            let is_file = e.file_type().map(|t| t.is_file()).unwrap_or(false);
-            if is_file && !bad_key(&name) {
-                names.push(name);
-            }
-        }
-        names.sort();
-        names
-    }
-}
-
 impl api::config::Host for AppCtx {
     fn app_config(&mut self) -> String {
         self.services.config.app_config_xml(&self.name)
@@ -907,22 +812,24 @@ impl api::pbx::Host for AppCtx {
     }
 }
 
-fn store_scope(scope: PbxScope) -> StoreScope {
-    match scope {
-        PbxScope::Shared => StoreScope::Shared,
-        PbxScope::User => StoreScope::User,
+/// The PBX's scope of a location on the PBX.
+fn store_scope(location: StorageLocation) -> Option<StoreScope> {
+    match location {
+        StorageLocation::Local => None,
+        StorageLocation::PbxPrivate => Some(StoreScope::User),
+        StorageLocation::PbxShared => Some(StoreScope::Shared),
     }
 }
 
-pub(crate) fn pbx_scope(scope: StoreScope) -> PbxScope {
+pub(crate) fn location(scope: StoreScope) -> StorageLocation {
     match scope {
-        StoreScope::Shared => PbxScope::Shared,
-        StoreScope::User => PbxScope::User,
+        StoreScope::Shared => StorageLocation::PbxShared,
+        StoreScope::User => StorageLocation::PbxPrivate,
     }
 }
 
-fn pbx_entry(e: StoreEntry) -> PbxEntry {
-    PbxEntry {
+fn storage_entry(e: StoreEntry) -> StorageEntry {
+    StorageEntry {
         key: e.key,
         value: e.value,
         version: e.version,
@@ -932,26 +839,26 @@ fn pbx_entry(e: StoreEntry) -> PbxEntry {
     }
 }
 
-/// What the app gets for a reply of the PBX's store.
-pub(crate) fn storage_outcome(reply: StoreReply) -> PbxStorageOutcome {
+/// What the app gets for a reply of a store.
+pub(crate) fn storage_outcome(reply: StoreReply) -> StorageOutcome {
     match reply {
-        StoreReply::Entry(e) => PbxStorageOutcome::Entry(e.map(pbx_entry)),
+        StoreReply::Entry(e) => StorageOutcome::Entry(e.map(storage_entry)),
         StoreReply::Entries(list, more) => {
-            PbxStorageOutcome::Entries((list.into_iter().map(pbx_entry).collect(), more))
+            StorageOutcome::Entries((list.into_iter().map(storage_entry).collect(), more))
         }
-        StoreReply::Stored(e) => PbxStorageOutcome::Stored(pbx_entry(e)),
-        StoreReply::Removed => PbxStorageOutcome::Removed,
-        StoreReply::Conflict(e) => PbxStorageOutcome::Conflict(e.map(pbx_entry)),
-        StoreReply::Unreachable(why) => PbxStorageOutcome::Unreachable(why),
-        StoreReply::Refused(why) => PbxStorageOutcome::Refused(why),
+        StoreReply::Stored(e) => StorageOutcome::Stored(storage_entry(e)),
+        StoreReply::Removed => StorageOutcome::Removed,
+        StoreReply::Conflict(e) => StorageOutcome::Conflict(e.map(storage_entry)),
+        StoreReply::Unreachable(why) => StorageOutcome::Unreachable(why),
+        StoreReply::Refused(why) => StorageOutcome::Refused(why),
     }
 }
 
 impl AppCtx {
     /// Sends a request to the PBX's store; the reply comes to the app as
-    /// `event.pbx-storage`.  The app's name goes with it from here, so an
-    /// app reaches no keys but its own.
-    fn store_request(&mut self, op: impl FnOnce(String) -> StoreOp) -> u32 {
+    /// `event.storage`.  The app's name goes with it from here, so an app
+    /// reaches no keys but its own.
+    fn store_request(&mut self, op: impl FnOnce(String) -> StoreOp) -> StorageReply {
         let id = self.next_request();
         let inbox = self.inbox.clone();
         let (app, generation) = (self.name.clone(), self.generation);
@@ -964,42 +871,57 @@ impl AppCtx {
             })
         });
         self.services.store.request(op(self.name.clone()), done);
-        id
+        StorageReply::Pending(id)
     }
 }
 
-impl api::pbx_storage::Host for AppCtx {
-    fn get(&mut self, scope: PbxScope, key: String) -> u32 {
-        let scope = store_scope(scope);
-        self.store_request(|app| StoreOp::Get { app, scope, key })
+/// `local` is answered at once; the PBX locations, by `event.storage`.
+impl api::storage::Host for AppCtx {
+    fn get(&mut self, location: StorageLocation, key: String) -> StorageReply {
+        match store_scope(location) {
+            None => StorageReply::Done(storage_outcome(self.local.get(&key))),
+            Some(scope) => self.store_request(|app| StoreOp::Get { app, scope, key }),
+        }
     }
-    fn list(&mut self, scope: PbxScope, prefix: String, after: String) -> u32 {
-        let scope = store_scope(scope);
-        self.store_request(|app| StoreOp::List {
-            app,
-            scope,
-            prefix,
-            after,
-        })
+    fn list(&mut self, location: StorageLocation, prefix: String, after: String) -> StorageReply {
+        match store_scope(location) {
+            None => StorageReply::Done(storage_outcome(self.local.list(&prefix, &after))),
+            Some(scope) => self.store_request(|app| StoreOp::List {
+                app,
+                scope,
+                prefix,
+                after,
+            }),
+        }
     }
-    fn set(&mut self, scope: PbxScope, key: String, value: Vec<u8>, expect: Option<u64>) -> u32 {
-        let scope = store_scope(scope);
-        self.store_request(|app| StoreOp::Set {
-            app,
-            scope,
-            key,
-            value,
-            expect,
-        })
+    fn set(
+        &mut self,
+        location: StorageLocation,
+        key: String,
+        value: Vec<u8>,
+        expect: Option<u64>,
+    ) -> StorageReply {
+        match store_scope(location) {
+            None => StorageReply::Done(storage_outcome(self.local.set(&key, &value, expect))),
+            Some(scope) => self.store_request(|app| StoreOp::Set {
+                app,
+                scope,
+                key,
+                value,
+                expect,
+            }),
+        }
     }
-    fn remove(&mut self, scope: PbxScope, key: String, expect: Option<u64>) -> u32 {
-        let scope = store_scope(scope);
-        self.store_request(|app| StoreOp::Remove {
-            app,
-            scope,
-            key,
-            expect,
-        })
+    fn remove(&mut self, location: StorageLocation, key: String, expect: Option<u64>) -> StorageReply {
+        match store_scope(location) {
+            None => StorageReply::Done(storage_outcome(self.local.remove(&key, expect))),
+            Some(scope) => self.store_request(|app| StoreOp::Remove {
+                app,
+                scope,
+                key,
+                expect,
+            }),
+        }
     }
     fn cancel(&mut self, id: u32) {
         self.pending.remove(&id);
@@ -1516,7 +1438,6 @@ pub(crate) fn link(
             Capability::Storage => api::storage::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Config => api::config::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Pbx => api::pbx::add_to_linker::<_, H>(linker, |c| c)?,
-            Capability::PbxStorage => api::pbx_storage::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Http => api::http::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Calls => api::calls::add_to_linker::<_, H>(linker, |c| c)?,
             Capability::Presence => api::presence::add_to_linker::<_, H>(linker, |c| c)?,
@@ -1651,14 +1572,5 @@ mod tests {
             assert!(bad_name(n), "{n}");
         }
         assert!(!bad_name("settings.json"));
-    }
-
-    #[test]
-    fn a_storage_key_is_at_most_64_bytes() {
-        assert!(!bad_key(&"k".repeat(64)));
-        assert!(bad_key(&"k".repeat(65)));
-        // Bytes, not characters.
-        assert!(!bad_key(&"\u{e9}".repeat(32)));
-        assert!(bad_key(&"\u{e9}".repeat(33)));
     }
 }

@@ -18,7 +18,7 @@ mod common;
 
 use common::{Rig, staged, temp_dir};
 use dphone_apps::engine::Target;
-use dphone_apps::testutil::{FakeConfig, FakePbx, FakeStore, services_with_store};
+use dphone_apps::testutil::{FakeConfig, FakePbx, FakeStore, local_value, services_with_store};
 use dphone_apps::uishell::UiShell;
 use dphone_apps::{AppManager, DrawOp, ManagerConfig, StoreScope};
 use dphone_hal::{Hal, Screen};
@@ -47,6 +47,11 @@ fn storage(nvdata: &Path) -> PathBuf {
     nvdata.join("appdata").join(APP)
 }
 
+/// The value of one of the app's keys on the phone, or "".
+fn local(nvdata: &Path, key: &str) -> String {
+    local_value(&storage(nvdata), key).map(|v| String::from_utf8(v).unwrap()).unwrap_or_default()
+}
+
 /// A rig whose app makes its puzzles from this seed on.
 fn rig(model: Model, seed: u64) -> Rig {
     listen();
@@ -72,7 +77,7 @@ fn rig_with(model: Model, puzzle: &str) -> Rig {
 }
 
 fn file(r: &Rig) -> String {
-    std::fs::read_to_string(storage(&r.nvdata).join("puzzle")).unwrap_or_default()
+    local(&r.nvdata, "puzzle")
 }
 
 /// The grid and the cursor of a puzzle file.
@@ -1122,7 +1127,7 @@ fn every_size_is_made_and_drawn_on_every_kind_of_display() {
 fn it_is_a_built_in_app_that_can_be_switched_off() {
     assert_eq!(
         common::capabilities(APP),
-        ["ui", "timers", "storage", "pbx-storage", "canvas"],
+        ["ui", "timers", "storage", "canvas"],
         "no sound, no calls, no network but the store on the PBX"
     );
     let config = FakeConfig::default();
@@ -1425,7 +1430,7 @@ impl Phone {
     }
 
     fn file(&self) -> String {
-        std::fs::read_to_string(storage(&self.nvdata).join("puzzle")).unwrap_or_default()
+        local(&self.nvdata, "puzzle")
     }
 
     /// The pixels of the frame as 0xRRGGBB, and the frame's width.
@@ -1887,7 +1892,7 @@ fn rig_on(app_data: FakeStore, puzzle: &str) -> Rig {
 
 /// The times the phone has yet to write to the PBX, as it keeps them.
 fn waiting(r: &Rig) -> String {
-    std::fs::read_to_string(storage(&r.nvdata).join("times")).unwrap_or_default()
+    local(&r.nvdata, "times")
 }
 
 /// The table of a kind of puzzle as the PBX has it.

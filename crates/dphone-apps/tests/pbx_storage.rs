@@ -1,6 +1,7 @@
-//! The app interface `pbx-storage` end to end on this machine: the test
-//! guest `probe` on two phones of one PBX, whose store of app data is
-//! `FakeStore` (the keys kept as the DPMA module keeps them).
+//! The PBX locations of the app interface `storage` end to end on this
+//! machine: the test guest `probe` on two phones of one PBX, whose store
+//! of app data is `FakeStore` (the keys kept as the DPMA module keeps
+//! them).
 
 mod common;
 
@@ -30,9 +31,9 @@ fn set(store: &FakeStore, scope: StoreScope, key: &str, value: &str, expect: Opt
 
 #[test]
 fn the_probe_uses_the_interface() {
-    assert!(common::capabilities("probe").contains(&"pbx-storage"));
+    assert!(common::capabilities("probe").contains(&"storage"));
     // An app that does not call it does not have it.
-    assert!(!common::capabilities("diagnostics").contains(&"pbx-storage"));
+    assert!(!common::capabilities("diagnostics").contains(&"storage"));
 }
 
 #[test]
@@ -173,7 +174,7 @@ fn a_watching_app_hears_of_another_phones_change() {
     bob.softkey("probe", "Top");
     assert_eq!(bob.ui.texts("probe"), ["top=Bob"]);
     alice.settle();
-    assert_eq!(alice.ui.texts("probe"), ["changed=PbxScope::Shared:best/top"]);
+    assert_eq!(alice.ui.texts("probe"), ["changed=StorageLocation::PbxShared:best/top"]);
     // Bob's app does not watch, and a phone does not hear of its own
     // writes or of a user's keys.
     alice.softkey("probe", "Top");

@@ -316,7 +316,8 @@ fn an_app_has_a_store_of_keys_and_values() {
         ]
     );
     // A key is a file in the app's directory, and nowhere else.
-    assert_eq!(std::fs::read(r.nvdata.join("appdata/faulty/b")).unwrap(), b"2");
+    let dir = r.nvdata.join("appdata/faulty");
+    assert_eq!(dphone_apps::testutil::local_value(&dir, "b").as_deref(), Some(&b"2"[..]));
     assert!(!r.nvdata.join("appdata/faulty/a.txt").exists());
     assert!(r.nvdata.join("appdata/faulty").is_dir());
     assert!(!r.nvdata.join("appdata/b.txt").exists());
