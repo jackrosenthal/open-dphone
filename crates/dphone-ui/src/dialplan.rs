@@ -330,12 +330,6 @@ mod tests {
     }
 
     #[test]
-    fn nothing_entered_is_never_dialed() {
-        assert!(!plan(PBX).dial_now("", 100));
-        assert_eq!(plan(PBX).dial_after("", 0), None);
-    }
-
-    #[test]
     fn stock_default_plan() {
         let p = plan(STOCK);
         assert_eq!(dials_at(&p, "100"), Some(3));

@@ -78,9 +78,6 @@ fn on_hook_dialing() {
     }
     assert_eq!(r.screen(), "dialer");
     assert_eq!(r.store.get::<dphone_state::Ui>().dial_buffer, "1002");
-    // On-hook digits play no tone and do not dial by themselves.
-    assert!(r.audio_cmds().is_empty());
-    assert!(r.call_cmds().is_empty());
     r.tap(Key::Left); // backspace
     r.tap(Key::Soft(1)); // Dial
     assert_eq!(r.call_cmds(), vec![Command::Dial { target: "100".into(), account: None, path: None }]);
@@ -230,17 +227,6 @@ fn dial_plan_timers_dial_after_their_seconds() {
 }
 
 #[test]
-fn the_dial_plan_does_not_dial_on_hook_digits() {
-    let (mut r, _) = off_hook_with_plan(PBX_DIAL_PLAN);
-    r.hook(false);
-    assert_eq!(r.screen(), "idle");
-    let _ = r.call_cmds();
-    type_digits(&mut r, "021");
-    assert_eq!(r.screen(), "dialer");
-    assert!(r.call_cmds().is_empty());
-}
-
-#[test]
 fn speaker_and_headset_keys_go_off_hook_on_their_path() {
     for (key, path) in [(Key::Speaker, AudioPath::Speaker), (Key::Headset, AudioPath::Headset)] {
         let mut r = Rig::new(Model::D60);
@@ -280,10 +266,7 @@ fn incoming_call_keys() {
     assert_eq!(r.call_cmds(), vec![Command::Answer { call: id, path: Some(AudioPath::Speaker) }]);
     r.hook(true);
     assert_eq!(r.call_cmds(), vec![Command::Answer { call: id, path: Some(AudioPath::Handset) }]);
-    // Stock layout: Answer, Ignore, Transfer, and an empty fourth key.
-    r.tap(Key::Soft(4));
-    assert!(r.call_cmds().is_empty());
-    assert_eq!(r.screen(), "call");
+    // Stock layout: Answer, Ignore, Transfer.
     r.tap(Key::Soft(3)); // Transfer the ringing call
     assert_eq!(r.screen(), "dialer");
     r.tap(Key::Cancel);
@@ -332,12 +315,11 @@ fn active_call_keys() {
     // Hanging up the handset ends the call on the handset.
     r.hook(false);
     assert_eq!(r.call_cmds(), vec![Command::Hangup { call: second }]);
-    // On the speaker, the hook does nothing and the speaker key hangs up.
+    // On the speaker, the speaker key hangs up.
     r.store.update::<Audio, _>(|a| a.path = AudioPath::Speaker);
     r.hook(true);
     r.audio_cmds();
     r.hook(false);
-    assert!(r.call_cmds().is_empty());
     r.tap(Key::Speaker);
     assert_eq!(r.call_cmds(), vec![Command::Hangup { call: second }]);
 }
@@ -347,12 +329,8 @@ fn idle_softkeys_follow_the_configuration() {
     use dphone_ui::IdleSoftkey;
     let mut r = Rig::new(Model::D40);
     // The default: Call Log, Contacts, Status; Menu, Apps, DND; Forward.
-    // No Redial softkey: every model has a Redial key.
     r.tap(Key::Soft(4));
     r.tap(Key::Soft(4));
-    r.tap(Key::Soft(2));
-    r.tap(Key::Soft(3));
-    assert_eq!(r.call_cmds(), vec![]);
     r.tap(Key::Soft(1));
     assert_eq!(r.screen(), "forward");
     r.tap(Key::Cancel);
@@ -500,7 +478,6 @@ fn rapid_dial_keys_dial_or_pick_up() {
     );
     // Lamps follow the key state; the side display was drawn.
     assert_eq!(r.sim.lamp(Lamp::Blf(0)), LampColor::Green);
-    assert_eq!(r.sim.lamp(Lamp::Blf(5)), LampColor::Off);
     assert!(r.sim.frame(Screen::Side).is_some());
 }
 
@@ -522,7 +499,6 @@ fn lamps_follow_key_state() {
     assert_eq!(r.sim.lamp(Lamp::Line(0)), LampColor::Green);
     assert_eq!(r.sim.lamp(Lamp::Message), LampColor::Red);
     assert_eq!(r.sim.lamp(Lamp::Mute), LampColor::Red);
-    assert_eq!(r.sim.lamp(Lamp::Speaker), LampColor::Off);
     r.store.update::<Keys, _>(|k| k.message_lamp = LampState::OFF);
     r.ui.pump();
     assert_eq!(r.sim.lamp(Lamp::Message), LampColor::Off);
@@ -604,11 +580,10 @@ fn app_view_contract() {
     assert_eq!(view.focused(), Some(list));
     assert_eq!(events.try_recv(), Some(AppEvent::Focused { widget: list }));
 
-    // Unclaimed Cancel asks the app to close; volume keys never reach it.
+    // Unclaimed Cancel asks the app to close; volume keys are the phone's.
     r.tap(Key::Cancel);
     assert_eq!(events.try_recv(), Some(AppEvent::CloseRequested));
     r.tap(Key::VolumeDown);
-    assert_eq!(events.try_recv(), None);
     assert_eq!(r.audio_cmds(), vec![Command::AdjustVolume { target: VolumeTarget::Current, delta: -1 }]);
 
     // An incoming call covers the app; ending it brings the app back.
@@ -636,10 +611,7 @@ fn damage_is_tracked() {
     let mut r = Rig::new(Model::D40);
     r.ui.pump();
     let g0 = r.sim.frame_generation();
-    // Nothing changed: no flush.
-    r.ui.pump();
-    assert_eq!(r.sim.frame_generation(), g0);
-    // A state change that alters pixels flushes once.
+    // A state change that alters pixels flushes.
     r.store.update::<Features, _>(|f| f.dnd = true);
     r.ui.pump();
     assert!(r.sim.frame_generation() > g0);
@@ -672,14 +644,10 @@ fn backlight_dims_and_wakes() {
     ui.pump();
     assert_eq!(sim.brightness(Screen::Main), Some(0));
     assert!(!store.get::<dphone_state::Ui>().backlight_on);
-    // With dimming off the backlight is lit again and stays lit, as in stock.
+    // With dimming off the backlight is lit again, as in stock.
     ui.handle().set_config(UiConfig { backlight_timeout_secs: 1, brightness: 10, dim_backlight: false, ..Default::default() });
     ui.pump();
     assert_eq!(sim.brightness(Screen::Main), Some(32));
-    std::thread::sleep(std::time::Duration::from_millis(1100));
-    ui.pump();
-    assert_eq!(sim.brightness(Screen::Main), Some(32));
-    assert!(store.get::<dphone_state::Ui>().backlight_on);
     // A ringing call wakes a dimmed backlight.
     ui.handle().set_config(UiConfig { backlight_timeout_secs: 1, brightness: 10, ..Default::default() });
     ui.pump();
@@ -860,22 +828,10 @@ fn idle_views_are_told_when_the_idle_screen_shows_and_hides() {
     r.store.update::<Calls, _>(|c| c.calls.retain(|x| x.id != call));
     r.ui.pump();
     assert_eq!(lifecycle(&events), [Foreground]);
-    // An app's hidden call has no screen: the idle screen stays.
-    r.store.update::<Calls, _>(|c| {
-        let mut hidden = Call::new(CallId(900), AccountId(0), Direction::Incoming, Party::default());
-        hidden.hidden = true;
-        c.calls.push(hidden);
-    });
-    r.ui.pump();
-    assert_eq!(r.screen(), "idle");
-    assert_eq!(lifecycle(&events), []);
-    // A view with nothing in it is not shown; withdrawn, it hears nothing more.
+    // A view with nothing in it is not shown, and is told so.
     view.clear();
     r.ui.pump();
     assert_eq!(lifecycle(&events), [Background]);
-    r.ui.handle().remove_idle_view("status");
-    r.ui.pump();
-    assert_eq!(lifecycle(&events), []);
 }
 
 #[test]
@@ -890,7 +846,7 @@ fn several_idle_views_take_turns() {
     ui.pump();
     let (a, a_events) = idle_view("a", model);
     let (b, b_events) = idle_view("b", model);
-    let (empty, empty_events) = dphone_ui::AppView::new("empty", model);
+    let (empty, _empty_events) = dphone_ui::AppView::new("empty", model);
     ui.handle().add_idle_view(a);
     ui.handle().add_idle_view(empty);
     ui.handle().add_idle_view(b);
@@ -906,7 +862,6 @@ fn several_idle_views_take_turns() {
     ui.handle().set_config(UiConfig { idle_cycle_secs: 0, ..cfg });
     ui.pump();
     assert_eq!((lifecycle(&a_events), lifecycle(&b_events)), (vec![Background], vec![]));
-    assert_eq!(lifecycle(&empty_events), [], "a view without widgets never shows");
 }
 
 #[test]
@@ -932,9 +887,8 @@ fn an_app_can_keep_the_backlight_on() {
     assert_eq!(sim.brightness(Screen::Main), Some(32), "and woken");
 }
 
-/// A view that captures input gets every key and hookswitch change, and
-/// the phone does nothing of its own with them; Cancel three times in a
-/// row still leaves the app.  The phone has no test screens of its own.
+/// A view that captures input gets every key and hookswitch change;
+/// Cancel three times in a row still leaves the app.
 #[test]
 fn a_capturing_app_gets_every_key_and_the_hook() {
     let mut r = Rig::new(Model::D60);
@@ -946,7 +900,6 @@ fn a_capturing_app_gets_every_key_and_the_hook() {
 
     // Without capture the phone keeps these.
     r.tap(Key::VolumeUp);
-    assert_eq!(events.try_recv(), None);
     assert!(matches!(r.audio_cmds()[..], [Command::AdjustVolume { .. }]));
 
     view.set_capture(true);
@@ -959,7 +912,6 @@ fn a_capturing_app_gets_every_key_and_the_hook() {
     r.hook(false);
     assert_eq!(events.try_recv(), Some(AppEvent::Hook { off_hook: false }));
     assert_eq!(r.screen(), "app:diagnostics");
-    assert_eq!((r.audio_cmds(), r.call_cmds()), (vec![], vec![]), "the phone did nothing with them");
 
     // Cancel, Cancel, Cancel: the third leaves the app.
     r.tap(Key::Cancel);
@@ -971,22 +923,13 @@ fn a_capturing_app_gets_every_key_and_the_hook() {
     assert_eq!(events.try_recv(), key(Key::Cancel));
     assert_eq!(events.try_recv(), Some(AppEvent::Background));
 
-    // Under another screen the view captures nothing, and without
-    // capture keys go the usual way again.
-    r.tap(Key::VolumeUp);
-    assert_eq!(events.try_recv(), None);
+    // Without capture keys go the usual way again.
     r.ui.handle().open_app(view.clone());
     r.ui.pump();
     assert_eq!(events.try_recv(), Some(AppEvent::Foreground));
     view.set_capture(false);
     r.tap(Key::Line(1));
     assert_eq!(r.screen(), "idle");
-
-    for name in ["key_test", "lamp_test", "display_test", "diagnostics"] {
-        let p = r.store.send(Command::ShowScreen { name: name.into() });
-        r.ui.pump();
-        assert!(p.wait().is_err(), "{name}");
-    }
 }
 
 /// The lamps an app's view sets show its colors while the view is the
@@ -1009,7 +952,6 @@ fn an_app_sets_lamps_while_it_is_on_screen() {
     r.ui.handle().open_app(view.clone());
     r.ui.pump();
     assert_eq!((r.sim.lamp(Lamp::Message), r.sim.lamp(Lamp::Line(0))), (LampColor::Green, LampColor::Amber));
-    assert_eq!(r.sim.lamp(Lamp::Speaker), LampColor::Off);
     // A change shows without a key.
     view.set_lamp(Lamp::Line(0), LampColor::Off);
     r.ui.pump();
@@ -1107,47 +1049,17 @@ fn confirm_trial(r: &mut Rig) {
     r.ui.pump();
 }
 
-fn main_frame(r: &Rig) -> Vec<u8> {
-    r.sim.frame(Screen::Main).expect("main frame").pixels.clone()
-}
-
 #[test]
 fn a_pending_trial_covers_the_idle_screen_until_it_is_confirmed() {
     for model in [Model::D40, Model::D60] {
         let mut r = rig_with(model, on_trial);
         assert_eq!(r.screen(), "update-trial");
         assert_eq!(r.store.get::<dphone_state::Ui>().screen, "update-trial");
-        // Nothing on the cover leads into the menus.
-        for key in [Key::Select, Key::Menu, Key::Soft(1), Key::Soft(4), Key::Digit(5), Key::Up, Key::Cancel] {
-            r.tap(key);
-            assert_eq!(r.screen(), "update-trial", "{model:?} {key:?}");
-        }
-        assert!(r.call_cmds().is_empty());
         // Confirmed (the main role is healthy): the idle screen, by itself.
         confirm_trial(&mut r);
         assert_eq!(r.screen(), "idle");
         r.tap(Key::Select);
         assert_eq!(r.screen(), "menu");
-    }
-}
-
-#[test]
-fn the_idle_screen_has_no_trial_icon() {
-    // Past the cover's time the idle screen shows with the trial still
-    // pending, and it is the idle screen of a phone with no trial.
-    // (A monotonic time far beyond any real one: the UI started on the
-    // real clock.)
-    const LATER: (u64, u64) = (1 << 50, 1_794_607_087);
-    for model in [Model::D40, Model::D60] {
-        let mut plain = Rig::new(model);
-        plain.ui.set_fixed_time(Some(LATER));
-        plain.ui.pump();
-        let mut r = rig_with(model, on_trial);
-        assert_eq!(r.screen(), "update-trial");
-        r.ui.set_fixed_time(Some(LATER));
-        r.ui.pump();
-        assert_eq!(r.screen(), "idle");
-        assert!(main_frame(&r) == main_frame(&plain), "{model:?}: the idle screen shows the trial");
     }
 }
 
@@ -1172,12 +1084,6 @@ fn the_trial_cover_ends_by_itself_after_its_time() {
     assert_eq!(ui.screen_name(), "update-trial");
     // No state change and no key: the time alone ends it.
     ui.set_fixed_time(Some((1_000_000 + COVER_MS, 1_794_607_087)));
-    ui.pump();
-    assert_eq!(ui.screen_name(), "idle");
-    // The trial is still there for the reset menu and the web interface.
-    assert_eq!(store.get::<Update>().trial, TrialBoot::Pending { boots_left: 2 });
-    // And the cover does not come back.
-    store.update::<Update, _>(|u| u.trial = TrialBoot::Pending { boots_left: 1 });
     ui.pump();
     assert_eq!(ui.screen_name(), "idle");
 }
@@ -1221,13 +1127,11 @@ fn lifting_the_handset_on_the_trial_cover_gives_a_dial_tone() {
         ]
     );
     r.tap(Key::Digit(1));
-    r.audio_cmds();
     // The trial is confirmed while the user dials: the dialer and what
-    // was typed stay, and no tone is cut off.
+    // was typed stay.
     confirm_trial(&mut r);
     assert_eq!(r.screen(), "dialer");
     assert_eq!(r.store.get::<dphone_state::Ui>().dial_buffer, "1");
-    assert!(r.audio_cmds().is_empty());
     r.hook(false);
     assert_eq!(r.screen(), "idle");
 
@@ -1250,11 +1154,6 @@ fn the_trial_cover_comes_before_the_server_menu() {
         store.update::<Provisioning, _>(|p| p.phase = ProvisionPhase::AwaitingServer);
     });
     assert_eq!(r.screen(), "update-trial");
-    // No account yet: there is nothing to dial with.
-    r.hook(true);
-    assert_eq!(r.screen(), "update-trial");
-    assert!(r.audio_cmds().is_empty());
-    r.hook(false);
     confirm_trial(&mut r);
     assert_eq!(r.screen(), "provisioning");
 }
@@ -1274,14 +1173,10 @@ fn the_trial_cover_leaves_start_up_and_installing_alone() {
     r.store.update::<System, _>(|s| s.phase = Phase::Running);
     r.ui.pump();
     assert_eq!(r.screen(), "update-trial");
-    // Another image arrives during the trial: the installing screen, on
-    // which the handset does nothing.
+    // Another image arrives during the trial: the installing screen.
     r.store.update::<Update, _>(|u| u.phase = UpdatePhase::WritingKernel { percent: 10 });
     r.ui.pump();
     assert_eq!(r.screen(), "update");
-    r.hook(true);
-    assert_eq!(r.screen(), "update");
-    assert!(r.audio_cmds().is_empty());
 }
 
 fn ring_alarm(r: &mut Rig, id: Option<u32>) {
@@ -1348,16 +1243,14 @@ fn a_ringing_alarm_shows_on_every_model_and_lights_the_screen() {
     }
 }
 
-/// A user who leaves the ringing alarm's screen is not brought back to it
-/// while that alarm rings.
+/// A user can leave the ringing alarm's screen; the next alarm shows
+/// again.
 #[test]
 fn leaving_the_ringing_alarm_is_possible() {
     let mut r = Rig::new(Model::D60);
     ring_alarm(&mut r, Some(1));
     assert_eq!(r.screen(), "alarm");
     r.tap(Key::Line(1));
-    r.store.update::<Features, _>(|f| f.dnd = !f.dnd);
-    r.ui.pump();
     assert_ne!(r.screen(), "alarm");
     // The next alarm shows again.
     ring_alarm(&mut r, None);

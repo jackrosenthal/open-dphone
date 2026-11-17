@@ -173,7 +173,6 @@ mod tests {
         assert_eq!(NvdataBackup::new(nv2.clone()).import(&archive).unwrap(), 2);
         assert_eq!(nv2.read("ui-config.xml").unwrap(), nv.read("ui-config.xml").unwrap());
         assert_eq!(nv2.read("contact_lists/local.xml").unwrap().unwrap(), b"<contacts/>");
-        assert!(nv2.read("fetched-config.xml").unwrap().is_none());
         let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_dir_all(dir2);
     }

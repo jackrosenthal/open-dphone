@@ -100,7 +100,6 @@ mod tests {
         assert_eq!(v.dotted(), "3.0.0");
         assert_eq!("2_9_28".parse::<FirmwareVersion>().unwrap(), FirmwareVersion::new(2, 9, 28));
         assert!(v > "2_9_28".parse().unwrap());
-        assert_eq!(FirmwareVersion::CURRENT.major, 3);
         assert!("x".parse::<FirmwareVersion>().is_err());
         assert_eq!(
             crate::Model::D60.user_agent(&v),

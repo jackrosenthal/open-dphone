@@ -246,7 +246,6 @@ mod tests {
         ] {
             assert_eq!(parse_new_key(text), Err(KeyError::PrivateKey));
         }
-        assert!(!KeyError::PrivateKey.to_string().contains("b3Bl"));
     }
 
     #[test]

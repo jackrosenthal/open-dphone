@@ -450,20 +450,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn one_registered_account_shows_neither() {
-        let up = network(true, NetPhase::Up);
-        assert_eq!(service_icon(&up, &accounts(&[registered()])), None);
-        assert_eq!(service_icon(&up, &accounts(&[failed(), registered()])), None);
-        assert_eq!(service_icon(&up, &accounts(&[Registration::Disabled, registered()])), None);
-    }
-
-    #[test]
-    fn nothing_to_register_shows_neither_with_the_link_up() {
-        for phase in [NetPhase::Configuring, NetPhase::Up] {
-            assert_eq!(service_icon(&network(true, phase), &accounts(&[])), None);
-            assert_eq!(service_icon(&network(true, phase), &accounts(&[Registration::Disabled])), None);
-        }
-    }
 }

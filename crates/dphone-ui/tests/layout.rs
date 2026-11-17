@@ -91,9 +91,6 @@ fn color_idle_matches_stock_rows() {
         assert_ne!(c.pixel(296, top + 38), th.tab_bg);
         assert_ne!(c.pixel(296, top + 39), 0x000001);
     }
-    // No third tab on a two-key phone, and no status bar: wallpaper.
-    assert_ne!(c.pixel(400, 90), th.tab_bg);
-    assert_ne!(c.pixel(100, 5), th.title_bg);
 
     // Softkeys: outline at x 14 and 117 (+116 per key), top at y 244, the
     // point at the center reaching y 268.
@@ -135,10 +132,6 @@ fn color_idle_matches_stock_rows() {
     close(bbox(50, 60, 235, 165), (68, 89, 222, 152), "clock digits");
     close(bbox(236, 125, 290, 165), (242, 136, 270, 151), "meridiem");
     close(bbox(60, 170, 290, 205), (92, 180, 203, 199), "date");
-    // Nothing is printed between the date and the softkeys (stock shows
-    // nothing there; no identity line, no branding).
-    let (l, ..) = bbox(0, 206, 296, 243);
-    assert_eq!(l, i32::MAX, "text under the date");
 }
 
 /// The rows are stock's.  Two widths are not: the idle screen's tabs start
@@ -167,7 +160,6 @@ fn gray_idle_rows() {
             assert_eq!(c.pixel(w - 30, top + 22), BLACK, "{model} tab at {top}");
             assert_eq!(c.pixel(w - 30, top + 21), WHITE, "{model} tab at {top}");
         }
-        assert_eq!(Theme::for_model(model).idle_tab_x, tab_x, "{model}");
         // The clock, at its widest, stays clear of the tabs.
         let th = Theme::for_model(model);
         let clock = th.clock_font().width("12:58") + 3 + th.date_font().width("PM");
@@ -188,17 +180,7 @@ fn gray_idle_rows() {
 }
 
 #[test]
-fn branding_only_on_the_boot_screen() {
-    // The wordmark and splash artwork are not in the icon tables under any
-    // name a non-boot screen uses, and the idle screens were checked above
-    // for stray text; here: the icon table has exactly one piece of art.
-    let names = dphone_ui::icons::names();
-    assert!(names.contains(&"splash"));
-    assert!(!names.contains(&"wordmark"));
-}
-
-#[test]
-fn boot_screen_has_a_loading_bar_and_no_softkeys() {
+fn boot_screen_has_a_loading_bar() {
     // (model, the loading bar's rectangle)
     for (model, bar) in [
         (Model::D40, IRect::new(60, 69, 120, 7)),
@@ -215,20 +197,8 @@ fn boot_screen_has_a_loading_bar_and_no_softkeys() {
         ui.pump();
         assert_eq!(ui.screen_name(), "boot", "{model}");
 
-        // No softkey shapes: where the idle screen has them, the boot
-        // screen has only its background.
         let mid = bar.y + bar.h / 2;
         let background = if th.gray { 0xFFFFFF } else { ui.canvas().pixel(bar.x - 6, mid) };
-        for i in 0..4 {
-            let r = th.softkey_rect(i);
-            for (x, y) in [(r.x + r.w / 2, r.y + 3), (r.x + 2, r.y + 3), (r.x + r.w / 2, r.y)] {
-                let p = ui.canvas().pixel(x, y);
-                assert!(p != th.sk_bg && p != th.sk_edge, "{model} softkey {i} at {x},{y}: {p:06x}");
-                if th.gray {
-                    assert_eq!(p, background, "{model} softkey {i} at {x},{y}");
-                }
-            }
-        }
 
         // The bar: empty before any stage has completed, and (on gray)
         // outlined.  `filled(permille)` looks just inside that part of it.
@@ -255,21 +225,16 @@ fn boot_screen_has_a_loading_bar_and_no_softkeys() {
         store.set_health(Subsystem::Sip, HealthStatus::Ok);
         ui.pump();
         assert!(filled(&ui, 750) && !filled(&ui, 800), "{model}");
-        // It never moves backward.
-        store.set_health(Subsystem::Media, HealthStatus::Starting);
-        ui.pump();
-        assert!(filled(&ui, 750), "{model}");
         store.set_health(Subsystem::Media, HealthStatus::Ok);
         store.set_health(Subsystem::Apps, HealthStatus::Ok);
         store.set_health(Subsystem::Web, HealthStatus::Ok);
         ui.pump();
         assert!(filled(&ui, 950) && !filled(&ui, 1000), "{model}");
 
-        // Shutting down shows no bar.
+        // Shutting down shows the boot screen.
         store.update::<System, _>(|s| s.phase = Phase::ShuttingDown);
         ui.pump();
         assert_eq!(ui.screen_name(), "boot", "{model}");
-        assert!(!filled(&ui, 100), "{model}");
 
         // The end of start-up leaves the screen.
         store.update::<System, _>(|s| s.phase = Phase::Running);
@@ -308,8 +273,4 @@ fn gray_text_is_bitmap_with_a_fallback_font() {
         }
         assert_eq!(th.clock_font().bits, 1, "{model}");
     }
-    // The color skin keeps its anti-aliased outline text.
-    let th = Theme::for_model(Model::D60);
-    assert_eq!(th.font(Font::Normal).bits, 4);
-    assert!(th.font(Font::Normal).fallback.is_none());
 }

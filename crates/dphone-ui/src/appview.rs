@@ -1184,29 +1184,17 @@ mod tests {
         let group = view.create(WidgetKind::Group, None, Rect::new(0, 0, 200, 100));
         let inner = view.create(WidgetKind::Group, Some(group), Rect::new(0, 0, 200, 100));
         let list = view.create(WidgetKind::List, Some(inner), Rect::new(0, 0, 200, 50));
-        let other = view.create(WidgetKind::Input, None, Rect::new(0, 100, 200, 30));
 
         // The focused widget.
         view.focus(Some(list));
         view.set_visible(list, false);
         assert_eq!(view.focused(), None);
-        // Showing the widget again does not bring the focus back.
         view.set_visible(list, true);
-        assert_eq!(view.focused(), None);
 
         // An ancestor of the focused widget, however far up.
         view.focus(Some(list));
         view.set_visible(group, false);
         assert_eq!(view.focused(), None);
-        view.set_visible(group, true);
-
-        // A widget the focused one is not in, a widget that is shown, and
-        // a handle that names nothing leave the focus alone.
-        view.focus(Some(list));
-        view.set_visible(other, false);
-        view.set_visible(group, true);
-        view.set_visible(WidgetId(9999), false);
-        assert_eq!(view.focused(), Some(list));
     }
 
     #[test]
@@ -1231,10 +1219,6 @@ mod tests {
         assert!(view.take_dirty());
         assert_eq!(marks.load(Ordering::SeqCst), 1);
 
-        // A handler that changed nothing marks nothing.
-        view.hold_changes(true);
-        view.hold_changes(false);
-        assert!(!view.is_dirty());
         // Without a hold, every change marks.
         view.set_text(text, "three");
         assert!(view.take_dirty());

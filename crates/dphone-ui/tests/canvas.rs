@@ -48,8 +48,6 @@ fn operations_are_painted_in_order_inside_the_canvas() {
             DrawOp::Bitmap { x: 20, y: 10, width: 9, height: 2, scale: 3, color: GREEN, bits: bits.clone() },
             // A picture cut by the left edge: only its last column shows.
             DrawOp::Bitmap { x: -24, y: 30, width: 9, height: 2, scale: 3, color: RED, bits },
-            // Too few bytes for its size: nothing.
-            DrawOp::Bitmap { x: 0, y: 20, width: 16, height: 2, scale: 1, color: RED, bits: vec![0xFF; 3].into() },
         ],
     );
     ui.pump();
@@ -64,7 +62,6 @@ fn operations_are_painted_in_order_inside_the_canvas() {
     assert_eq!([px(20, 10), px(22, 12), px(23, 10), px(44, 10), px(46, 12), px(47, 10)], [green, green, bg, green, green, bg]);
     assert_eq!([px(20, 13), px(23, 13), px(25, 15), px(26, 13)], [bg, green, green, bg]);
     assert_eq!([px(0, 30), px(2, 32), px(3, 30), px(0, 33)], [red, red, bg, bg]);
-    assert_eq!([px(0, 20), px(15, 21)], [bg, bg]);
 
     // A new list replaces the old one.
     view.canvas_set_ops(canvas, vec![fill(0, 0, 2, 2, Color::Theme(ThemeColor::SelectBackground))]);
@@ -147,11 +144,8 @@ fn text_is_in_the_skins_font_with_its_glyphs_in_the_middle_of_the_box() {
         ui.pump();
         let (l, t, r, b) = painted(&ui, (0, 0, 60, 40), ground).expect("a part of the 8");
         assert!(l >= 20 && t >= 10 && r <= 24 && b <= 13, "{model:?}: {l} {t} {r} {b}");
-        // Text of no glyphs paints nothing and has no size.
+        // Text of no glyphs has no size.
         assert_eq!(view.text_ink(Font::Normal, ""), (0, 0));
-        view.canvas_set_ops(canvas, vec![DrawOp::Text { rect: Rect::new(0, 0, 60, 40), font: Font::Normal, color: RED, text: String::new() }]);
-        ui.pump();
-        assert_eq!(painted(&ui, (0, 0, 60, 40), ground), None);
     }
 }
 

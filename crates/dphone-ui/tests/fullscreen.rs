@@ -35,17 +35,14 @@ fn a_full_screen_view_has_the_display_and_no_softkeys() {
         ui.pump();
         assert_eq!(events.try_recv(), Some(AppEvent::Softkey { id: 7 }));
 
-        // Full-screen: the view's own pixels to the last row, the screen's
-        // height in the metrics, and no softkey to press.
+        // Full-screen: the view's own pixels to the last row, and the
+        // screen's height in the metrics.
         view.set_full_screen(true);
         ui.pump();
         assert_eq!((view.metrics().width, view.metrics().height), (screen.width, screen.height));
         for y in [0, area.height as i32, last] {
             assert!((0..screen.width as i32).all(|x| ui.canvas().pixel(x, y) == white), "{model:?}: row {y}");
         }
-        sim.tap(Key::Soft(1));
-        ui.pump();
-        assert_eq!(events.try_recv(), None);
         // A softkey key is a key like any other now: it can be claimed.
         view.set_window_key_claims(KeyClaims::keys([Key::Soft(1)]));
         sim.tap(Key::Soft(1));

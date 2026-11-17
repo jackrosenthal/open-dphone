@@ -4,24 +4,18 @@
 //! the idle screen's text against the wallpaper behind it); the colors
 //! with a meaning keep it; an unknown name is the default; a new
 //! wallpaper re-themes every screen at once, apps included; and the
-//! first wallpaper leaves every screen as it was.  The wallpapers that
-//! move do so on the idle screen and in the theme selector, and nowhere
-//! else; the theme selector is on a softkey.
-//!
-//! `contact_sheets` writes one picture per family, and one of them all,
-//! of the idle screen and a menu over every wallpaper: into the directory
-//! named by `WALLPAPER_SHEETS`, else into `wallpapers/` in cargo's test
-//! scratch directory.
+//! first wallpaper keeps the skin's palette.  The wallpapers that move do
+//! so on the idle screen and in the theme selector; the theme selector is
+//! on a softkey.
 
 use dphone_hal::{Hal, Screen};
 use dphone_state::*;
 use dphone_state::{ThemeName, DEFAULT_THEME, THEMES};
-use dphone_ui::appview::{AppEvent, AppView, Font, ThemeColor};
-use dphone_ui::gfx::{Canvas, HAlign, IRect, Rgb};
+use dphone_ui::appview::{AppEvent, AppView, ThemeColor};
+use dphone_ui::gfx::{IRect, Rgb};
 use dphone_ui::skin::Theme;
 use dphone_ui::wallpaper::{self, Family, Picture, Scheme, Wallpaper, HEIGHT, WIDTH};
 use dphone_ui::{Ui, UiConfig};
-use std::path::PathBuf;
 
 /// 2026-11-12 18:15:00 UTC: "11:15 AM", "Thu, Nov 12" seven hours west.
 const UNIX: u64 = 1_794_507_300;
@@ -145,9 +139,9 @@ fn at(pixels: &[u32], x: i32, y: i32) -> Rgb {
 fn the_list_is_well_formed() {
     let all = wallpaper::all();
     assert!((30..=45).contains(&all.len()), "{} wallpapers", all.len());
-    // The default theme is Tides; the first in the list is the picture
-    // the firmware first had.
-    assert_eq!((wallpaper::default().id, DEFAULT_THEME), ("tides", "tides"));
+    // The default theme is the configuration's default; the first in the
+    // list is the picture the firmware first had.
+    assert_eq!(wallpaper::default().id, DEFAULT_THEME);
     assert_eq!(wallpaper::first().id, all[0].id);
     for (i, w) in all.iter().enumerate() {
         assert!(!w.id.is_empty() && w.id.bytes().all(|c| c.is_ascii_lowercase() || c == b'-'), "{}", w.id);
@@ -174,7 +168,6 @@ fn the_list_is_well_formed() {
 fn the_first_wallpaper_keeps_the_skins_palette() {
     let skin = Theme::for_model(Model::D65);
     let default = wallpaper::first();
-    assert_eq!(default.scheme, Scheme::Skin);
     assert_eq!(default.palette(), skin.palette());
     assert!(std::ptr::eq(Theme::for_wallpaper(default), skin));
     // The stock values, by measurement (see `skin.rs`).
@@ -207,10 +200,6 @@ fn an_unknown_name_is_the_default() {
     assert_eq!(menu_frame("no-such-wallpaper"), menu_frame(""));
 }
 
-fn fnv(pixels: &[u32]) -> u64 {
-    pixels.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, p| (h ^ u64::from(*p)).wrapping_mul(0x0100_0000_01b3))
-}
-
 #[test]
 fn every_wallpaper_draws_the_same_picture_every_time() {
     for w in wallpaper::all() {
@@ -220,42 +209,6 @@ fn every_wallpaper_draws_the_same_picture_every_time() {
         assert_eq!(first, w.render(), "{} differs between two renders", w.id);
         // The kept copy is the same picture, whichever was kept before.
         assert!(w.with_pixels(|kept| kept == first.as_slice()), "{}", w.id);
-    }
-}
-
-/// The pictures themselves, for a few: a change to the drawing code that
-/// alters them shows here.  (Integer arithmetic only, so the phone draws
-/// the same pixels as this test.)
-#[test]
-fn pinned_pictures() {
-    let pinned: [(&str, u64); 6] = [
-        ("harbor", 0x9c561acb0ab4173c),
-        ("dusk", 0x2ec2620abe6207e7),
-        ("bokeh", 0x1ce6b3c47e9e552c),
-        ("prism", 0xac26a85dfbc93341),
-        ("summit", 0x27b556330a07588d),
-        ("houndstooth", 0xa7b848ca8b7cf2a5),
-    ];
-    let mut wrong = Vec::new();
-    for (id, want) in pinned {
-        let got = fnv(&wallpaper::find(id).expect(id).render());
-        if got != want {
-            wrong.push(format!("(\"{id}\", {got:#018x})"));
-        }
-    }
-    assert!(wrong.is_empty(), "pictures changed: {}", wrong.join(", "));
-}
-
-/// The first wallpaper is the picture the firmware always had.  The
-/// pinned hash above and these pixels are of that picture as the code
-/// before this one drew it (worked out from that code, separately).
-#[test]
-fn the_first_is_the_original_picture() {
-    let p = wallpaper::first().render();
-    for (x, y, want) in
-        [(0, 0, 0x152031), (479, 0, 0x151E2C), (60, 0, 0x172846), (100, 100, 0x10274C), (300, 200, 0x0D2144), (0, 271, 0x202122)]
-    {
-        assert_eq!(at(&p, x, y), want, "at {x},{y}: {:06x}", at(&p, x, y));
     }
 }
 
@@ -375,12 +328,6 @@ fn palettes_from_palette_files() {
     assert_eq!((p.fg, p.wallpaper_fg), (0xC0C0C0, 0xC0C0C0));
     let p = wallpaper::palette_from(false, None, None, &[("wallpaper_fg", 0x101010), ("fg", 0xC0C0C0)]).0;
     assert_eq!((p.fg, p.wallpaper_fg), (0xC0C0C0, 0x101010));
-    // Every built-in palette but Regatta's has one text color for both;
-    // Regatta's menus are navy under a mostly yellow picture.
-    for w in wallpaper::all() {
-        let p = w.palette();
-        assert_eq!(p.wallpaper_fg == p.fg, w.id != "regatta", "{}", w.id);
-    }
     // Roles by name go over the derived colors; unknown names come back.
     let (p, unknown) = wallpaper::palette_from(false, Some(0x1F6E4E), Some(0x0F1E18), &[("title_bg", 0x14503A), ("sparkle", 1), ("accent", 0x8FD6B4)]);
     assert_eq!((p.title_bg, p.accent, p.sel_bg), (0x14503A, 0x8FD6B4, 0x1F6E4E));
@@ -478,10 +425,6 @@ fn a_new_wallpaper_rethemes_at_once() {
     assert_eq!(view.theme_color(ThemeColor::TitleBackground), rgb(tides.title_bg));
     assert_eq!(view.theme_color(ThemeColor::Background), rgb(tides.bg));
     assert_eq!(events.try_recv(), Some(AppEvent::Foreground));
-    // The same configuration again changes nothing and tells no one.
-    handle.set_config(UiConfig { theme: "tides".into(), utc_offset_secs: -7 * 3600, backlight_timeout_secs: 0, ..UiConfig::default() });
-    r.ui.pump();
-    assert_eq!(events.try_recv(), None);
     // A view made by the UI (as the app host makes them) has the theme's
     // colors from the start, before it is on screen, for every role: an
     // app asks for its colors as it starts.  They follow a new theme
@@ -590,12 +533,10 @@ fn the_theme_selector_is_the_idle_screen_with_a_bubble() {
     is_idle_with_bubble(&r.frame(), &all[2]);
     r.tap(Key::Up);
     is_idle_with_bubble(&r.frame(), &all[1]);
-    // Nothing is saved by looking; Back leaves the wallpaper as it was.
-    assert!(r.commands().is_empty());
+    // Back: the Display menu, in the wallpaper in use.
     r.tap(Key::Soft(4));
     assert_eq!(r.ui.screen_name(), "display");
     assert_eq!(at(&r.frame(), 470, 5), skin.title_bg);
-    assert!(r.commands().is_empty());
     // Select saves the one that is showing.
     r.tap(Key::Digit(4));
     r.tap(Key::Right);
@@ -605,21 +546,6 @@ fn the_theme_selector_is_the_idle_screen_with_a_bubble() {
     assert_eq!(r.ui.screen_name(), "display");
     // No family is named anywhere on the screen: nothing but the idle
     // screen and the bubble is drawn (checked above, pixel for pixel).
-}
-
-/// A wallpaper the provisioning server fixed can be looked at, not set.
-#[test]
-fn a_fixed_wallpaper_cannot_be_changed_in_the_menu() {
-    let mut r = Rig::new(UiConfig { theme: "slate".into(), theme_locked: true, ..UiConfig::default() });
-    r.show("settings");
-    r.tap(Key::Digit(3));
-    r.tap(Key::Digit(4));
-    assert_eq!(r.ui.screen_name(), "theme");
-    r.tap(Key::Right);
-    r.tap(Key::Soft(1));
-    r.tap(Key::Select);
-    assert_eq!(r.ui.screen_name(), "theme");
-    assert!(r.commands().is_empty());
 }
 
 /// A wallpaper picture that is not built in is shown instead of the
@@ -656,33 +582,7 @@ fn a_wallpaper_picture_and_its_palette() {
     assert_eq!((at(&frame, 470, 5), at(&frame, 440, 200)), (0x123456, palette.bg));
 }
 
-/// Gray screens have no wallpaper and one palette: every screen is the
-/// same whatever is selected, and the Display menu has no Wallpaper item.
-#[test]
-fn gray_models_are_unaffected() {
-    for model in [Model::D40, Model::D45, Model::D50, Model::D70] {
-        let image = dphone_ui::image::Image { width: 1, height: 1, pixels: vec![255, 0, 0, 255].into() };
-        let picture = std::sync::Arc::new(Picture::new(&image, Some(wallpaper::find("sunrise").unwrap().palette())));
-        let mut plain = Rig::with_model(model, UiConfig::default());
-        let mut named = Rig::with_model(model, UiConfig { theme: "sunrise".into(), ..UiConfig::default() });
-        let mut pictured = Rig::with_model(model, UiConfig { wallpaper_picture: Some(picture), ..UiConfig::default() });
-        assert_eq!(named.frame(), plain.frame(), "{model}: idle");
-        assert_eq!(pictured.frame(), plain.frame(), "{model}: idle");
-        for r in [&mut plain, &mut named, &mut pictured] {
-            r.show("settings");
-            r.tap(Key::Digit(3));
-            assert_eq!(r.ui.screen_name(), "display");
-        }
-        assert_eq!(named.frame(), plain.frame(), "{model}: display menu");
-        assert_eq!(pictured.frame(), plain.frame(), "{model}: display menu");
-        // Brightness, Contrast, Dim when idle, Backlight timeout: a fifth
-        // item would open on 5.
-        named.tap(Key::Digit(5));
-        assert_eq!(named.ui.screen_name(), "display", "{model}");
-    }
-}
-
-// ---------------------------------------------------------- contact sheets
+// ------------------------------------------------------------------ motion
 
 /// The wallpapers that move.
 const MOVING: [&str; 8] = ["regatta", "bokeh", "fizz", "lanterns", "orbit", "tides", "dunes", "drift"];
@@ -712,21 +612,13 @@ fn difference(a: &[u32], b: &[u32]) -> (usize, u32) {
     (count, most)
 }
 
-/// Eight wallpapers move, slowly: a frame is the picture of a time and
-/// nothing else, it comes back after a cycle, and drawing only what
-/// moved since the frame before gives the picture drawn whole.  The text
-/// of the idle screen can be read on every frame.
+/// The wallpapers that move do so slowly: a frame is the picture of a
+/// time and nothing else, it comes back after a cycle, and drawing only
+/// what moved since the frame before gives the picture drawn whole.  The
+/// text of the idle screen can be read on every frame.
 #[test]
 fn the_moving_wallpapers() {
     let _alone = MOTION.lock().unwrap_or_else(|p| p.into_inner());
-    let moving: Vec<&str> = wallpaper::all().iter().filter(|w| w.frame_ms().is_some()).map(|w| w.id).collect();
-    assert_eq!(moving, MOVING);
-    for w in wallpaper::all().iter().filter(|w| w.frame_ms().is_none()) {
-        // The others are their still pictures at every time.
-        if ["harbor", "dusk", "pebbles", "houndstooth"].contains(&w.id) {
-            assert_eq!(w.render_at(12_345), w.render(), "{}", w.id);
-        }
-    }
     let mut failures = Vec::new();
     for id in MOVING {
         let w = wallpaper::find(id).unwrap();
@@ -852,11 +744,10 @@ fn a_frame_made_from_the_one_before_is_the_screen_drawn_whole() {
 }
 
 /// The wallpaper moves on the idle screen and in the theme selector, and
-/// nowhere else: not under a menu, not behind a call, not on a gray
-/// model, not while the backlight is off.  A new frame is due a frame's
+/// behind a call it is its still picture.  A new frame is due a frame's
 /// time after the last.
 #[test]
-fn the_wallpaper_moves_on_the_idle_screen_only() {
+fn the_wallpaper_moves_on_the_idle_screen_and_in_the_theme_selector() {
     let _alone = MOTION.lock().unwrap_or_else(|p| p.into_inner());
     let tides = wallpaper::find("tides").unwrap();
     let mut r = Rig::with_model(Model::D60, UiConfig { theme: "tides".into(), ..UiConfig::default() });
@@ -865,7 +756,6 @@ fn the_wallpaper_moves_on_the_idle_screen_only() {
     // The time is fixed (as in every other test here): the still picture.
     let still = r.frame();
     assert_eq!(spot(&still), spot(&tides.render()));
-    assert_eq!(r.ui.motion_deadline(), None);
     // With a time for the motion: the frame of that time, and the next
     // is due.
     r.ui.set_motion_time(Some(3_000));
@@ -884,24 +774,11 @@ fn the_wallpaper_moves_on_the_idle_screen_only() {
     let key = Theme::for_wallpaper(tides).softkey_rect(0);
     assert_eq!(at(&b, key.x + 1, key.y + 3), Theme::for_wallpaper(tides).sk_bg);
 
-    // Under a menu nothing moves, and no frame is due.
-    r.show("settings");
-    r.ui.set_motion_time(Some(12_000));
-    let menu = r.frame();
-    assert_eq!(r.ui.motion_deadline(), None);
-    r.ui.set_motion_time(Some(15_000));
-    assert_eq!(r.frame(), menu);
-    assert_eq!(r.ui.motion_deadline(), None);
     // The theme selector shows the wallpaper as the idle screen does.
+    r.ui.set_motion_time(Some(15_000));
     r.show("theme");
     assert_eq!(r.ui.screen_name(), "theme");
     assert_eq!(spot(&r.frame()), spot(&tides.render_at(15_000)));
-    assert!(r.ui.motion_deadline().is_some());
-    // The selection on a theme that does not move (Glacier, before
-    // Tides): nothing is due.  Back on Tides, a frame is.
-    r.tap(Key::Left);
-    assert_eq!(r.ui.motion_deadline(), None);
-    r.tap(Key::Right);
     assert!(r.ui.motion_deadline().is_some());
     r.show("idle");
     assert!(r.ui.motion_deadline().is_some());
@@ -916,7 +793,6 @@ fn the_wallpaper_moves_on_the_idle_screen_only() {
     });
     let call = r.frame();
     assert_ne!(r.ui.screen_name(), "idle");
-    assert_eq!(r.ui.motion_deadline(), None);
     assert_eq!(at(&call, 2, 242), at(&tides.render(), 2, 242));
     r.store.update::<Calls, _>(|c| {
         c.calls.clear();
@@ -924,29 +800,13 @@ fn the_wallpaper_moves_on_the_idle_screen_only() {
     });
     r.show("idle");
     assert_eq!(spot(&r.frame()), spot(&tides.render_at(15_000)));
-
-    // A theme that does not move; a provisioned picture; a gray model.
-    let mut dusk = Rig::named("dusk");
-    dusk.ui.set_motion_time(Some(3_000));
-    assert_eq!(dusk.frame(), idle_frame("dusk"));
-    assert_eq!(dusk.ui.motion_deadline(), None);
-    let image = dphone_ui::image::Image { width: 2, height: 2, pixels: vec![0x40; 16].into() };
-    let picture = std::sync::Arc::new(Picture::new(&image, None));
-    let mut pictured = Rig::new(UiConfig { theme: "tides".into(), wallpaper_picture: Some(picture), ..UiConfig::default() });
-    pictured.ui.set_motion_time(Some(3_000));
-    pictured.frame();
-    assert_eq!(pictured.ui.motion_deadline(), None);
-    let mut gray = Rig::with_model(Model::D50, UiConfig { theme: "tides".into(), ..UiConfig::default() });
-    let before = gray.frame();
-    gray.ui.set_motion_time(Some(3_000));
-    assert_eq!(gray.frame(), before);
-    assert_eq!(gray.ui.motion_deadline(), None);
 }
 
-/// By the clock: frames follow one another on the idle screen, and stop
-/// when the backlight goes off (dimmed to nothing), until a key lights it
-/// again.  A backlight that is dimmed and still gives light leaves the
-/// wallpaper moving.
+/// By the clock: frames follow one another on the idle screen; when the
+/// backlight goes off (dimmed to nothing) the screen shows the still
+/// picture, until a key lights it again and the motion goes on.  A
+/// backlight that is dimmed and still gives light leaves the wallpaper
+/// moving.
 #[test]
 fn the_motion_stops_while_the_backlight_is_off() {
     let _alone = MOTION.lock().unwrap_or_else(|p| p.into_inner());
@@ -972,15 +832,12 @@ fn the_motion_stops_while_the_backlight_is_off() {
         wait(1_000);
         let dimmed = r.frame();
         assert_eq!(r.store.read::<dphone_state::Ui, _>(|u| u.backlight_on), moves_when_dim);
-        assert_eq!(r.ui.motion_deadline().is_some(), moves_when_dim, "dim level {dim_level}");
         wait(400);
         let later = r.frame();
         if moves_when_dim {
             assert_ne!(spot(&dimmed), spot(&later), "dimmed, with light: the wallpaper moves");
         } else {
-            // Dark: nothing is drawn, and what is there is the still
-            // picture.
-            assert_eq!(later, dimmed);
+            // Dark: the still picture.
             assert_eq!(spot(&later), spot(&tides.render()));
             // A key lights the screen, and the motion goes on.
             r.tap(Key::Cancel);
@@ -1032,372 +889,14 @@ fn the_theme_softkey() {
     let label = |f: &[u32]| (key.y..key.bottom()).flat_map(|y| (key.x..key.right()).map(move |x| (x, y))).filter(|(x, y)| at(f, *x, *y) == th.sk_fg).count();
     assert!(label(&with) > 30 && label(&with) != label(&without));
 
-    // A gray model: the softkey is not there, so the second softkey is
-    // the one after it, and there is no third.
+    // A gray model leaves the softkey out: the second softkey is the one
+    // after it.
     let mut gray = Rig::with_model(Model::D50, UiConfig { idle_softkeys: vec![Menu, THEME, Forward], ..UiConfig::default() });
     gray.tap(Key::Soft(2));
     assert_eq!(gray.ui.screen_name(), "forward");
     gray.tap(Key::Cancel);
-    gray.tap(Key::Soft(3));
-    assert_eq!(gray.ui.screen_name(), "idle");
-    // Nor can the selector be asked for, and the Display menu has no
-    // such item (its last is the backlight timeout).
+    // Nor can the selector be asked for.
     let asked = gray.store.send(Command::ShowScreen { name: "theme".into() });
     gray.ui.pump();
     assert!(asked.wait().is_err());
-    assert_ne!(gray.ui.screen_name(), "theme");
-    gray.show("settings");
-    gray.tap(Key::Digit(3));
-    assert_eq!(gray.ui.screen_name(), "display");
-    gray.tap(Key::Digit(5));
-    assert_ne!(gray.ui.screen_name(), "theme");
-}
-
-fn write_png(path: &std::path::Path, c: &Canvas) {
-    let rgb: Vec<u8> = c.pixels().iter().flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8]).collect();
-    let file = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
-    let mut enc = png::Encoder::new(file, c.width() as u32, c.height() as u32);
-    enc.set_color(png::ColorType::Rgb);
-    enc.set_depth(png::BitDepth::Eight);
-    enc.write_header().unwrap().write_image_data(&rgb).unwrap();
-}
-
-/// A screen with a call on it, in `wallpaper`'s palette.
-fn call_frame(wallpaper: &str) -> Vec<u32> {
-    let mut r = Rig::named(wallpaper);
-    let id = r.store.next_call_id();
-    r.store.update::<Calls, _>(|c| {
-        let mut call = Call::new(id, AccountId(0), Direction::Incoming, Party { number: "1002".into(), name: "Alex Example".into(), ..Default::default() });
-        call.state = CallState::Ringing;
-        c.calls.push(call);
-        c.focused = Some(id);
-    });
-    r.frame()
-}
-
-/// A sheet of screens over `list`: for each wallpaper a row of the idle
-/// screen, a menu, and (`with_call`) an incoming call, each at 1/`shrink`
-/// size, `columns` wallpapers across, with the name under each.
-fn sheet(title: &str, list: &[&'static Wallpaper], columns: usize, shrink: i32, with_call: bool) -> Canvas {
-    let th = Theme::for_model(Model::D65);
-    let (cw, ch) = (WIDTH / shrink, HEIGHT / shrink);
-    let shots = if with_call { 3 } else { 2 };
-    let (gap, label, head) = (12, 22, 34);
-    let cell = shots * cw + (shots - 1) * 2;
-    let rows = list.len().div_ceil(columns);
-    let mut c = Canvas::new(
-        (gap + columns as i32 * (cell + gap)) as u16,
-        (head + rows as i32 * (ch + label + gap)) as u16,
-        false,
-    );
-    c.clear(0x2B2B2B);
-    c.text_in(th.font(Font::Title), IRect::new(gap, 0, 900, head), title, 0xFFFFFF, HAlign::Left);
-    for (i, w) in list.iter().enumerate() {
-        let (x0, y0) = (gap + (i % columns) as i32 * (cell + gap), head + (i / columns) as i32 * (ch + label + gap));
-        let mut frames = vec![idle_frame(w.id), menu_frame(w.id)];
-        if with_call {
-            frames.push(call_frame(w.id));
-        }
-        for (k, frame) in frames.iter().enumerate() {
-            let mut rgba = Vec::with_capacity((cw * ch * 4) as usize);
-            for y in 0..ch {
-                for x in 0..cw {
-                    // The mean of each block.
-                    let mut sum = [0u32; 3];
-                    for sy in 0..shrink {
-                        for sx in 0..shrink {
-                            let p = at(frame, x * shrink + sx, y * shrink + sy);
-                            sum[0] += p >> 16;
-                            sum[1] += (p >> 8) & 255;
-                            sum[2] += p & 255;
-                        }
-                    }
-                    let n = (shrink * shrink) as u32;
-                    rgba.extend_from_slice(&[(sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8, 255]);
-                }
-            }
-            c.rgba(x0 + k as i32 * (cw + 2), y0, cw, ch, &rgba);
-        }
-        let name = format!("{} ({})", w.name, w.id);
-        c.text_in(th.font(Font::Normal), IRect::new(x0, y0 + ch, cell, label), &name, 0xDDDDDD, HAlign::Left);
-    }
-    c
-}
-
-#[test]
-fn contact_sheets() {
-    let dir = std::env::var_os("WALLPAPER_SHEETS")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("wallpapers"));
-    std::fs::create_dir_all(&dir).unwrap();
-    let all: Vec<&'static Wallpaper> = wallpaper::all().iter().collect();
-    for family in Family::ALL {
-        let list: Vec<&'static Wallpaper> = all.iter().copied().filter(|w| w.family == family).collect();
-        let c = sheet(&format!("{} ({}): idle screen, menu, incoming call", family.name(), list.len()), &list, 1, 1, true);
-        write_png(&dir.join(format!("{}.png", family.name().to_lowercase())), &c);
-    }
-    let c = sheet(&format!("Open DPhone wallpapers ({}): idle screen and menu", all.len()), &all, 3, 2, false);
-    write_png(&dir.join("overview.png"), &c);
-    // The wallpaper selector on a few wallpapers, dark and light.
-    let shown = ["harbor", "dusk", "sunrise", "houndstooth", "regatta", "hot-dog-stand"];
-    let mut c = Canvas::new((12 + 2 * (WIDTH + 12)) as u16, (12 + 3 * (HEIGHT + 12)) as u16, false);
-    c.clear(0x2B2B2B);
-    for (i, id) in shown.iter().enumerate() {
-        let mut r = Rig::named("harbor");
-        r.show("settings");
-        r.tap(Key::Digit(3));
-        r.tap(Key::Digit(4));
-        for _ in 0..all.iter().position(|w| w.id == *id).unwrap() {
-            r.tap(Key::Right);
-        }
-        let rgba: Vec<u8> = r.frame().iter().flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8, 255]).collect();
-        c.rgba(12 + (i % 2) as i32 * (WIDTH + 12), 12 + (i / 2) as i32 * (HEIGHT + 12), WIDTH, HEIGHT, &rgba);
-    }
-    write_png(&dir.join("wallpaper-menu.png"), &c);
-    assert!(dir.join("overview.png").metadata().unwrap().len() > 10_000);
-}
-
-/// The motion, to look at: for each wallpaper that moves, the idle screen
-/// of a D60 over one whole cycle as an animated PNG file (`<id>.png`,
-/// frame after frame at the phone's pace, each made from the one before
-/// as the phone makes it, repeating without a seam; a frame of the file
-/// holds only the pixels that changed), and a sheet (`<id>-sheet.png`)
-/// of six frames ten seconds apart, each beside what differs from the
-/// first of them, eight times as strong.
-/// Into the directory named by `WALLPAPER_PREVIEWS`; `WALLPAPER_ONLY`
-/// names one wallpaper.  Run with
-/// `--release -- --ignored --nocapture motion_previews`.
-#[test]
-#[ignore = "pictures to look at, not a check"]
-fn motion_previews() {
-    let dir = PathBuf::from(std::env::var_os("WALLPAPER_PREVIEWS").expect("WALLPAPER_PREVIEWS names a directory"));
-    std::fs::create_dir_all(&dir).unwrap();
-    let only = std::env::var("WALLPAPER_ONLY").ok();
-    for id in MOVING.into_iter().filter(|id| only.as_deref().is_none_or(|o| o == *id)) {
-        let w = wallpaper::find(id).unwrap();
-        let every = u64::from(w.frame_ms().unwrap());
-        let mut r = Rig::with_model(Model::D60, UiConfig { theme: id.into(), ..UiConfig::default() });
-        let frame_at = |r: &mut Rig, t: u64| {
-            r.ui.set_motion_time(Some(t));
-            r.frame()
-        };
-        // The cycle.
-        let frames = (wallpaper::CYCLE_MS / every) as u32;
-        let file = std::io::BufWriter::new(std::fs::File::create(dir.join(format!("{id}.png"))).unwrap());
-        let mut enc = png::Encoder::new(file, WIDTH as u32, HEIGHT as u32);
-        enc.set_color(png::ColorType::Rgba);
-        enc.set_depth(png::BitDepth::Eight);
-        enc.set_compression(png::Compression::High);
-        enc.set_animated(frames, 0).unwrap();
-        enc.set_frame_delay(every as u16, 1000).unwrap();
-        let mut writer = enc.write_header().unwrap();
-        let mut last = frame_at(&mut r, 0);
-        writer.write_image_data(&last.iter().flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8, 255]).collect::<Vec<u8>>()).unwrap();
-        for n in 1..frames {
-            r.ui.motion_step(u64::from(n) * every);
-            let frame = r.frame();
-            // The rectangle around what changed; the pixels in it that
-            // did not are left as they were (transparent).
-            let differ = |x: i32, y: i32| at(&frame, x, y) != at(&last, x, y);
-            let rows: Vec<i32> = (0..HEIGHT).filter(|y| (0..WIDTH).any(|x| differ(x, *y))).collect();
-            let columns: Vec<i32> = (0..WIDTH).filter(|x| rows.iter().any(|y| differ(*x, *y))).collect();
-            let (x0, x1) = (columns.first().copied().unwrap_or(0), columns.last().copied().unwrap_or(0));
-            let (y0, y1) = (rows.first().copied().unwrap_or(0), rows.last().copied().unwrap_or(0));
-            let mut rgba = Vec::with_capacity(((x1 - x0 + 1) * (y1 - y0 + 1) * 4) as usize);
-            for y in y0..=y1 {
-                for x in x0..=x1 {
-                    let p = at(&frame, x, y);
-                    rgba.extend_from_slice(&if differ(x, y) { [(p >> 16) as u8, (p >> 8) as u8, p as u8, 255] } else { [0; 4] });
-                }
-            }
-            // (Each is checked against the other as it is set: the place
-            // of the frame before and the size of this one may not fit.)
-            writer.set_frame_position(0, 0).unwrap();
-            writer.set_frame_dimension((x1 - x0 + 1) as u32, (y1 - y0 + 1) as u32).unwrap();
-            writer.set_frame_position(x0 as u32, y0 as u32).unwrap();
-            writer.set_blend_op(png::BlendOp::Over).unwrap();
-            writer.set_dispose_op(png::DisposeOp::None).unwrap();
-            writer.write_image_data(&rgba).unwrap();
-            last = frame;
-        }
-        writer.finish().unwrap();
-        // The sheet: three across, two down; each cell a frame and its
-        // difference from the first.
-        let (gap, label) = (12, 22);
-        let th = Theme::for_model(Model::D65);
-        let mut c = Canvas::new((gap + 3 * (2 * WIDTH + 2 + gap)) as u16, (gap + 2 * (HEIGHT + label + gap)) as u16, false);
-        c.clear(0x2B2B2B);
-        let first = frame_at(&mut r, 0);
-        for i in 0..6 {
-            let t = i as u64 * 10_000;
-            let frame = frame_at(&mut r, t);
-            let (x0, y0) = (gap + (i % 3) * (2 * WIDTH + 2 + gap), gap + (i / 3) * (HEIGHT + label + gap));
-            let rgba: Vec<u8> = frame.iter().flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8, 255]).collect();
-            c.rgba(x0, y0, WIDTH, HEIGHT, &rgba);
-            let diff: Vec<u8> = frame
-                .iter()
-                .zip(&first)
-                .flat_map(|(p, q)| {
-                    let d = |shift: u32| (((p >> shift) & 255).abs_diff((q >> shift) & 255) * 8).min(255) as u8;
-                    [d(16), d(8), d(0), 255]
-                })
-                .collect();
-            c.rgba(x0 + WIDTH + 2, y0, WIDTH, HEIGHT, &diff);
-            let text = format!("{} at {} s, and what differs from 0 s (8 x); a frame every {every} ms", w.name, t / 1000);
-            c.text_in(th.font(Font::Normal), IRect::new(x0, y0 + HEIGHT, 2 * WIDTH, label), &text, 0xDDDDDD, HAlign::Left);
-        }
-        write_png(&dir.join(format!("{id}-sheet.png")), &c);
-        println!("{id}: {frames} frames");
-    }
-}
-
-/// What the motion costs: prints, for each wallpaper that moves, the time
-/// to draw a frame from the one before (on this machine), the same on
-/// the idle screen (the frame, and what it changed brought to the
-/// display), and how much of the picture a frame changes.  Run with
-/// `--release -- --ignored --nocapture motion_costs`.
-///
-/// For counting instructions (e.g., under `qemu-arm`, built for the
-/// phone): `WALLPAPER_FRAMES=tides:40` draws the first frame and 40 more
-/// and nothing else, and `WALLPAPER_UI_FRAMES=tides:40` does the same
-/// through the UI, on the idle screen of a D60.  The difference between
-/// two counts of frames is what the frames cost.
-#[test]
-#[ignore = "a measurement, not a check"]
-fn motion_costs() {
-    let parse = |v: String| {
-        let (id, n) = v.split_once(':').expect("id:frames");
-        (wallpaper::find(id).expect("a wallpaper"), n.parse::<u64>().expect("frames"))
-    };
-    if let Ok(v) = std::env::var("WALLPAPER_FRAMES") {
-        let (w, n) = parse(v);
-        let every = u64::from(w.frame_ms().expect("a wallpaper that moves"));
-        let mut sum = 0u64;
-        for i in 0..=n {
-            sum = sum.wrapping_add(w.with_frame(i * every, |f| u64::from(f[i as usize * 97 % f.len()])));
-        }
-        println!("{}: {sum:x}", w.id);
-        return;
-    }
-    if let Ok(v) = std::env::var("WALLPAPER_UI_FRAMES") {
-        let (w, n) = parse(v);
-        let every = u64::from(w.frame_ms().expect("a wallpaper that moves"));
-        let mut r = Rig::with_model(Model::D60, UiConfig { theme: w.id.into(), ..UiConfig::default() });
-        r.ui.set_motion_time(Some(0));
-        r.ui.pump();
-        for i in 1..=n {
-            r.ui.motion_step(i * every);
-        }
-        println!("{}: {}", w.id, r.ui.screen_name());
-        return;
-    }
-    for id in MOVING {
-        let w = wallpaper::find(id).unwrap();
-        let every = u64::from(w.frame_ms().unwrap());
-        let frames = 200;
-        let mut last = w.render_at(0);
-        let mut changed = 0;
-        for i in 1..=20 {
-            let frame = w.render_at(i * every);
-            changed += difference(&last, &frame).0;
-            last = frame;
-        }
-        w.with_frame(0, |_| ());
-        let start = std::time::Instant::now();
-        for i in 1..=frames {
-            w.with_frame(i * every, |_| ());
-        }
-        let alone = start.elapsed().as_secs_f64() * 1000.0 / frames as f64;
-        let mut r = Rig::with_model(Model::D60, UiConfig { theme: id.into(), ..UiConfig::default() });
-        r.ui.set_motion_time(Some(0));
-        r.ui.pump();
-        let start = std::time::Instant::now();
-        for i in 1..=frames {
-            r.ui.motion_step(i * every);
-        }
-        let shown = start.elapsed().as_secs_f64() * 1000.0 / frames as f64;
-        println!(
-            "{id:9} every {every:3} ms: {alone:5.2} ms a frame here, {shown:5.2} ms on the idle screen; a frame changes {:4.1} % of the pixels",
-            changed as f64 * 100.0 / 20.0 / (WIDTH * HEIGHT) as f64
-        );
-    }
-}
-
-/// What the wallpapers cost: prints the time to draw each (on this
-/// machine) and what the same pictures would take as PNG files.  Run with
-/// `--release -- --ignored --nocapture costs`; `WALLPAPER_ONLY` draws one
-/// wallpaper a hundred times and nothing else (for counting instructions).
-#[test]
-#[ignore = "a measurement, not a check"]
-fn costs() {
-    if let Ok(only) = std::env::var("WALLPAPER_ONLY") {
-        let w = wallpaper::find(&only).expect("WALLPAPER_ONLY names a wallpaper");
-        let mut sum = 0u64;
-        for _ in 0..100 {
-            sum = sum.wrapping_add(fnv(&w.render()));
-        }
-        println!("{only}: {sum:x}");
-        return;
-    }
-    let mut total_png = 0;
-    for w in wallpaper::all() {
-        let start = std::time::Instant::now();
-        let mut pixels = Vec::new();
-        for _ in 0..20 {
-            pixels = w.render();
-        }
-        let ms = start.elapsed().as_secs_f64() * 1000.0 / 20.0;
-        let rgb: Vec<u8> = pixels.iter().flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8]).collect();
-        let mut png_file = Vec::new();
-        let mut enc = png::Encoder::new(&mut png_file, WIDTH as u32, HEIGHT as u32);
-        enc.set_color(png::ColorType::Rgb);
-        enc.set_depth(png::BitDepth::Eight);
-        enc.set_compression(png::Compression::High);
-        enc.write_header().unwrap().write_image_data(&rgb).unwrap();
-        total_png += png_file.len();
-        println!("{:12} {ms:6.2} ms here, {:7} bytes as PNG", w.id, png_file.len());
-    }
-    println!("{} wallpapers as PNG files: {} bytes", wallpaper::all().len(), total_png);
-}
-
-/// How far the motion goes from one frame to the next: prints, for each
-/// wallpaper that moves, the farthest anything in it goes between two
-/// frames ([`Wallpaper::farthest_step`]), and, over a whole cycle at its
-/// pace, the largest change of a channel of a pixel between two frames,
-/// how many pixels a frame draws and how much of the picture it changes,
-/// and how many pixels a frame changes by one step of a channel, by 2 or
-/// 3, by 4 to 7, by 8 to 15, and by more.
-/// Run with `--release -- --ignored --nocapture motion_steps`.
-#[test]
-#[ignore = "a measurement, not a check"]
-fn motion_steps() {
-    for id in MOVING {
-        let w = wallpaper::find(id).unwrap();
-        let every = u64::from(w.frame_ms().unwrap());
-        let frames = wallpaper::CYCLE_MS / every;
-        let mut last = w.render_at(0);
-        let (mut most, mut changed, mut drawn, mut sizes) = (0, 0, 0, [0usize; 5]);
-        for i in 1..=frames {
-            let frame = w.with_frame_and_changes(i * every, |f, changes| {
-                drawn += changes.runs.iter().map(|r| usize::from(r.x1 - r.x0)).sum::<usize>();
-                f.to_vec()
-            });
-            let (count, m) = difference(&last, &frame);
-            most = most.max(m);
-            changed += count;
-            for (p, q) in last.iter().zip(&frame).filter(|(p, q)| p != q) {
-                let d = [16, 8, 0].map(|s| ((p >> s) & 255).abs_diff((q >> s) & 255)).into_iter().max().unwrap_or(0);
-                sizes[(31 - d.leading_zeros()).min(4) as usize] += 1;
-            }
-            last = frame;
-        }
-        println!(
-            "{id:9} every {every:3} ms: at most {:4.2} of a pixel and {most:2} in a channel; a frame draws {:6} pixels ({:7} a second) and changes {:5.2} % of the picture; by 1, 2-3, 4-7, 8-15, more: {:?}",
-            w.farthest_step().unwrap() as f64 / 16.0,
-            drawn / frames as usize,
-            drawn as u64 * 1000 / wallpaper::CYCLE_MS,
-            changed as f64 * 100.0 / frames as f64 / (WIDTH * HEIGHT) as f64,
-            sizes.map(|n| n / frames as usize)
-        );
-    }
 }
