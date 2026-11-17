@@ -771,43 +771,29 @@ fn paging_screen_pages_a_group_and_stops_a_page() {
     }
 }
 
-#[test]
-fn bluetooth_application_asks_before_pairing() {
+/// A D65 with a Bluetooth controller in the state `f` makes, showing the
+/// Bluetooth application; returns the rig and the Bluetooth domain's
+/// commands, with the search the application starts already taken.
+fn bluetooth_rig(f: impl FnOnce(&mut Bluetooth)) -> (Rig, CommandReceiver) {
     let mut r = Rig::new(Model::D65);
     let bt = r.store.handle(Domain::Bluetooth);
-    let show = |r: &mut Rig| {
-        let shown = r.store.send(Command::ShowScreen { name: "bluetooth".into() });
-        r.ui.pump();
-        assert_eq!(shown.wait(), Ok(Reply::Done));
-    };
-    // A headset asks to pair: the question is the first row, with the six
-    // digits to compare; selecting it accepts, the next row refuses.
-    let addr = "00:1B:DC:0F:A1:02".to_string();
     r.store.update::<Bluetooth, _>(|b| {
         b.present = true;
-        b.pairing = Some(BluetoothPairing { addr: addr.clone(), name: "Headset".into(), passkey: Some(42), pin_needed: false });
+        f(b);
     });
-    show(&mut r);
-    assert_eq!(r.screen(), "bluetooth");
-    r.tap(Key::Select);
-    assert_eq!(Rig::drain(&bt), [Command::BluetoothAnswerPairing { addr: addr.clone(), accept: true, pin: None }]);
-    r.tap(Key::Down);
-    r.tap(Key::Select);
-    assert_eq!(Rig::drain(&bt), [Command::BluetoothAnswerPairing { addr: addr.clone(), accept: false, pin: None }]);
-
-    // An old device needs a PIN: it is typed, not assumed.
-    r.store.update::<Bluetooth, _>(|b| b.pairing.as_mut().unwrap().pin_needed = true);
+    let shown = r.store.send(Command::ShowScreen { name: "bluetooth".into() });
     r.ui.pump();
-    r.tap(Key::Up);
-    r.tap(Key::Select);
-    assert_eq!(r.screen(), "bluetooth-pin");
-    for d in [1, 2, 3, 4] {
-        r.tap(Key::Digit(d));
-    }
-    r.tap(Key::Select);
-    assert_eq!(Rig::drain(&bt), [Command::BluetoothAnswerPairing { addr, accept: true, pin: Some("1234".into()) }]);
+    assert_eq!(shown.wait(), Ok(Reply::Done));
     assert_eq!(r.screen(), "bluetooth");
+    Rig::drain(&bt);
+    (r, bt)
 }
+
+fn bt_device(addr: &str, name: &str) -> BluetoothDevice {
+    BluetoothDevice { addr: addr.into(), name: name.into(), rssi: -60 }
+}
+
+const HEADSET: &str = "00:1B:DC:0F:A1:02";
 
 #[test]
 fn bluetooth_application_searches_when_opened() {
@@ -818,6 +804,77 @@ fn bluetooth_application_searches_when_opened() {
     r.ui.pump();
     assert_eq!(shown.wait(), Ok(Reply::Done));
     assert_eq!(Rig::drain(&bt), [Command::BluetoothDiscovery { on: true }]);
+}
+
+#[test]
+fn bluetooth_application_searches_again_with_the_search_softkey() {
+    // The search ended and found nothing.
+    let (mut r, bt) = bluetooth_rig(|_| {});
+    r.tap(Key::Soft(1));
+    assert_eq!(Rig::drain(&bt), [Command::BluetoothDiscovery { on: true }]);
+}
+
+#[test]
+fn bluetooth_application_pairs_with_the_device_selected() {
+    let (mut r, bt) = bluetooth_rig(|b| b.found = vec![bt_device("5C:F3:70:11:22:33", "Voyager"), bt_device(HEADSET, "Evolve")]);
+    r.tap(Key::Down);
+    r.tap(Key::Select);
+    assert_eq!(Rig::drain(&bt), [Command::BluetoothDiscovery { on: false }, Command::BluetoothPair { addr: HEADSET.into() }]);
+}
+
+#[test]
+fn bluetooth_highlight_stays_on_its_device_as_others_are_found() {
+    let (mut r, bt) = bluetooth_rig(|b| b.found = vec![bt_device(HEADSET, "Evolve")]);
+    // A stronger device comes first.
+    r.store.update::<Bluetooth, _>(|b| b.found.insert(0, bt_device("5C:F3:70:11:22:33", "Voyager")));
+    r.ui.pump();
+    r.tap(Key::Select);
+    assert_eq!(Rig::drain(&bt), [Command::BluetoothDiscovery { on: false }, Command::BluetoothPair { addr: HEADSET.into() }]);
+}
+
+#[test]
+fn bluetooth_application_connects_and_disconnects_a_paired_headset() {
+    let (mut r, bt) = bluetooth_rig(|b| b.paired = vec![bt_device(HEADSET, "Evolve")]);
+    r.tap(Key::Select);
+    assert_eq!(Rig::drain(&bt), [Command::BluetoothConnect { addr: HEADSET.into() }]);
+    r.store.update::<Bluetooth, _>(|b| b.connected = HEADSET.into());
+    r.ui.pump();
+    r.tap(Key::Select);
+    assert_eq!(Rig::drain(&bt), [Command::BluetoothDisconnect]);
+}
+
+#[test]
+fn bluetooth_application_forgets_a_paired_headset_once_confirmed() {
+    let (mut r, bt) = bluetooth_rig(|b| b.paired = vec![bt_device(HEADSET, "Evolve")]);
+    r.tap(Key::Soft(3)); // Forget
+    assert_eq!(r.screen(), "confirm");
+    r.tap(Key::Soft(1)); // Yes
+    assert_eq!(Rig::drain(&bt), [Command::BluetoothUnpair { addr: HEADSET.into() }]);
+    assert_eq!(r.screen(), "bluetooth");
+}
+
+#[test]
+fn bluetooth_pairing_question_is_answered_with_select_or_cancel() {
+    // A headset asks to pair, with six digits to compare.
+    let question = BluetoothPairing { addr: HEADSET.into(), name: "Evolve".into(), passkey: Some(42), pin_needed: false };
+    let (mut r, bt) = bluetooth_rig(|b| b.pairing = Some(question));
+    r.tap(Key::Select);
+    assert_eq!(Rig::drain(&bt), [Command::BluetoothAnswerPairing { addr: HEADSET.into(), accept: true, pin: None }]);
+    r.tap(Key::Cancel);
+    assert_eq!(Rig::drain(&bt), [Command::BluetoothAnswerPairing { addr: HEADSET.into(), accept: false, pin: None }]);
+}
+
+#[test]
+fn bluetooth_pin_is_typed_for_a_device_that_needs_one() {
+    let question = BluetoothPairing { addr: HEADSET.into(), name: "Evolve".into(), passkey: None, pin_needed: true };
+    let (mut r, bt) = bluetooth_rig(|b| b.pairing = Some(question));
+    for d in [1, 2, 3, 5] {
+        r.tap(Key::Digit(d));
+    }
+    r.tap(Key::Left);
+    r.tap(Key::Digit(4));
+    r.tap(Key::Select);
+    assert_eq!(Rig::drain(&bt), [Command::BluetoothAnswerPairing { addr: HEADSET.into(), accept: true, pin: Some("1234".into()) }]);
 }
 
 /// A view with one text widget, for the idle screen.

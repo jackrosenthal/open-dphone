@@ -150,10 +150,12 @@ impl Service {
             }
             BtEvent::PairFailed { addr } => {
                 warn!("bluetooth: pairing with {addr} failed");
+                let name = self.name_of(addr);
+                let who = if name.is_empty() { addr.to_string() } else { name };
                 self.update(|s| {
                     s.pairing = None;
                     s.pairing_with.clear();
-                    s.error = format!("pairing with {addr} failed");
+                    s.error = format!("pairing with {who} failed");
                 });
             }
             BtEvent::Unpaired { .. } => self.publish_paired(),
@@ -266,8 +268,13 @@ impl Service {
         let addr = |text: &str| text.parse::<Addr>().map_err(|()| CommandError::Invalid(format!("'{text}' is not a Bluetooth address")));
         match cmd {
             Command::BluetoothDiscovery { on } => {
+                // A new search starts afresh: the devices of the last one
+                // and why the last pairing failed go.
                 if on {
-                    self.update(|s| s.found.clear());
+                    self.update(|s| {
+                        s.found.clear();
+                        s.error.clear();
+                    });
                 }
                 self.bt.send(if on { Bt::StartDiscovery } else { Bt::StopDiscovery });
             }

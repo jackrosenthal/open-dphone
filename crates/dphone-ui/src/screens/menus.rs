@@ -28,7 +28,7 @@ pub(crate) fn main_menu() -> Box<dyn Screen> {
             Item::new(tr::STATUS, |_| Nav::Push(status_menu())).icon("info"),
         ];
         if cx.st.system.model.bluetooth() {
-            v.insert(5, Item::new(tr::BLUETOOTH, |_| Nav::Push(bluetooth::menu())).icon("headset"));
+            v.insert(5, Item::new(tr::BLUETOOTH, |_| Nav::Push(bluetooth::screen())).icon("headset"));
         }
         v
     })

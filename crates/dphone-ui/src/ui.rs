@@ -1253,7 +1253,7 @@ impl Ui {
                     "apps" => Some(Some(menus::launcher())),
                     "forward" => Some(Some(menus::forward_menu())),
                     "paging" => Some(Some(menus::paging())),
-                    "bluetooth" => Some(Some(crate::screens::bluetooth::menu())),
+                    "bluetooth" => Some(Some(crate::screens::bluetooth::screen())),
                     "settings" => Some(Some(menus::settings())),
                     // A gray model has no themes.
                     "theme" if !self.th.gray => Some(Some(menus::themes(&self.cfg))),
