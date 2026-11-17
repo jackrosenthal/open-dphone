@@ -67,6 +67,10 @@ The built-in certificates are the original module's, which D-series phones trust
 | `mac_pin` | The MAC address, the chosen user, and a PIN. | The section has that `mac`, and the PIN matches the section's `pin`. |
 | `mac_globalpin` | The MAC address, the chosen user, and a PIN. | The section has that `mac`, and the PIN matches `globalpin` or the section's `group_pin`. |
 
+!!! warning "A section without a PIN accepts an empty PIN"
+
+    A phone section without a PIN (`pin` missing or misspelled, or `pin=voicemail` with no voicemail password) accepts an empty PIN.  Under `config_auth=pin`, a phone that sends no PIN gets the section's configuration; under `mac_pin`, a phone that sends the section's MAC address and no PIN does.  Under every `config_auth` value, the section's app account accepts an empty password.  `userlist_auth=globalpin` with no `globalpin` gives the list of all phone sections to a phone that sends no PIN.
+
 !!! warning "A misspelled value refuses requests"
 
     A `config_auth` value not listed above, including an empty value, makes the module refuse every configuration token request until the value is corrected and the module reloaded.  An invalid `userlist_auth` value refuses every user list request the same way.  A phone without a token gets no configuration.  A phone with a token keeps getting the section's configuration, as with every listed value.  The module logs an error, e.g., `Invalid value '<value>' for config_auth at line <n> of res_digium_phone.conf: configuration token requests are refused ...`, and `digium_phones show settings` shows the value under `Config Authentication` or `Userlist Authentication`.  To choose a value, see [Authentication](administration.md#authentication).
