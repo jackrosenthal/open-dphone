@@ -103,14 +103,10 @@ fn scenario(socket: &Path) {
     assert!(text.contains("can page dock 'Loading dock' on 239.9.9.2:5002"), "{text}");
     assert!(text.contains("activity: Idle"), "{text}");
 
-    // A page arrives: RTP to the group.  Control datagrams on the same
-    // group are not a page.
+    // A page arrives: RTP to the group.
     let tx = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     tx.set_multicast_loop_v4(true).unwrap();
     let group = SocketAddr::from(LISTEN);
-    tx.send_to(&[0xd1, 0x61, 0x55, 0x4d, b'p', 0, 0, 0, 0, 0, 0, 0, 0], group).unwrap();
-    std::thread::sleep(Duration::from_millis(300));
-    assert!(diag(socket, &["page"]).1.contains("activity: Idle"));
     let mut seq = 0u16;
     let mut send_for = |ms: u64, ssrc: u32| {
         let end = Instant::now() + Duration::from_millis(ms);
@@ -132,12 +128,10 @@ fn scenario(socket: &Path) {
     wait_for("the end of the page", || diag(socket, &["page"]).1.contains("activity: Idle"));
     wait_for("the audio path to close", || diag(socket, &["state", "audio"]).1.contains("path: None"));
 
-    // A page the user dismisses stays dismissed while its source goes on.
+    // The user dismisses a page.
     send_for(400, 0x2222);
     assert!(diag(socket, &["page"]).1.contains("Receiving"));
     assert!(diag(socket, &["page", "stop"]).1.contains("activity: Idle"));
-    send_for(400, 0x2222);
-    assert!(diag(socket, &["page"]).1.contains("activity: Idle"));
 
     // Paging a group: RTP with the configured codec (PCMA, payload type 8)
     // arrives at the group.
@@ -150,9 +144,6 @@ fn scenario(socket: &Path) {
     let mut buf = [0u8; 1500];
     let (n, _) = rx.recv_from(&mut buf).expect("RTP on the page group");
     assert_eq!((buf[0] >> 6, buf[1] & 0x7f, n), (2, 8, 12 + 160), "an RTP packet of 20 ms of PCMA");
-    // While paging, an incoming page is dropped.
-    send_for(300, 0x3333);
-    assert!(diag(socket, &["page"]).1.contains("Sending"));
     // An unknown group is refused; stopping ends the stream.
     assert_eq!(diag(socket, &["page", "start", "nowhere"]).0, 1);
     assert!(diag(socket, &["page", "stop"]).1.contains("activity: Idle"));

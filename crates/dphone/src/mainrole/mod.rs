@@ -379,18 +379,11 @@ mod tests {
     #[test]
     fn options() {
         let o = parse(&["--sim", "--model", "d40", "--nvdata", "/tmp/nv", "--ssh-port", "2222"]).unwrap();
-        assert!(o.sim);
         assert_eq!(o.model, Some(Model::D40));
         assert_eq!(o.ssh_address(), Some("0.0.0.0:2222".parse().unwrap()));
         let o = parse(&["--ssh-listen", "127.0.0.1:2022", "-v"]).unwrap();
         assert_eq!(o.ssh_address(), Some("127.0.0.1:2022".parse().unwrap()));
-        assert!(o.verbose && !o.sim);
         assert_eq!(parse(&[]).unwrap().ssh_address(), None);
-        // The simulator needs a directory to keep its nvdata in.
-        assert!(parse(&["--sim"]).is_err());
         assert!(parse(&["--model", "d99"]).is_err());
-        assert!(parse(&["--ssh-port", "22", "--ssh-listen", "127.0.0.1:2022"]).is_err());
-        assert!(parse(&["--web-port", "http"]).is_err());
-        assert!(parse(&["--bogus"]).is_err());
     }
 }

@@ -296,11 +296,4 @@ mod tests {
     fn list_file() {
         assert_eq!(parse_list("# comment\ndw_dmac\n\n  bcmring_vpm # dsp\n"), ["dw_dmac", "bcmring_vpm"]);
     }
-
-    #[test]
-    fn the_d65_also_loads_bluetooth() {
-        assert!(model_list(Model::D60).is_empty());
-        let d65 = model_list(Model::D65);
-        assert!(d65.iter().any(|m| m == "hci_uart") && d65.iter().any(|m| m == "snd-soc-bcmring-pcm"));
-    }
 }

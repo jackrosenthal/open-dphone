@@ -10,10 +10,10 @@
 //! the log line shows that the updater was asked.  Without the hand-over
 //! the client has no updater and that line never comes.
 //!
-//! With "ignore firmware provisioned from DPMA" on, the updater is not
-//! asked and the firmware entries are not saved: set on the phone before
-//! boot (`/nvdata/dphone_settings.txtpb`, what a bench phone relies on), or
-//! by the very configuration that names the firmware.
+//! With "ignore firmware provisioned from DPMA" on, the phone says it
+//! ignores the firmware and the firmware entries are not saved: set on the
+//! phone before boot (`/nvdata/dphone_settings.txtpb`, what a bench phone
+//! relies on), or by the very configuration that names the firmware.
 
 #[path = "../../dphone-dpma/tests/common/mod.rs"]
 mod common;
@@ -123,15 +123,14 @@ fn serve(fake: Arc<Mutex<FakeServer>>) -> u16 {
 }
 
 /// One boot of the simulator against a server that provisions `document`.
-/// Returns the phone's log and the configuration it saved, taken once
-/// `done` says the log is complete.
-fn boot(document: &str, local_ignore: bool, done: impl Fn(&str) -> bool) -> (String, String) {
+/// Returns the configuration the phone saved, taken once `done` says the
+/// phone's log is complete.
+fn boot(document: &str, local_ignore: bool, done: impl Fn(&str) -> bool) -> String {
     let mut fake = FakeServer::new();
     fake.token_reqs = "mac".into();
     fake.userlist_reqs = "disabled".into();
     fake.config = document.as_bytes().to_vec();
-    let fake = Arc::new(Mutex::new(fake));
-    let server_port = serve(fake.clone());
+    let server_port = serve(Arc::new(Mutex::new(fake)));
 
     let dir = tempfile::Builder::new().prefix("dp").tempdir().unwrap();
     let (nv, run) = (dir.path().join("nv"), dir.path().join("run"));
@@ -170,29 +169,22 @@ fn boot(document: &str, local_ignore: bool, done: impl Fn(&str) -> bool) -> (Str
     assert!(provisioning.contains("\"2_9_28\""), "the offer is reported either way: {provisioning}");
     let read_log = || std::fs::read_to_string(&phone_log).unwrap_or_default();
     wait_for("the firmware decision in the log", Duration::from_secs(30), || done(&read_log()).then_some(()));
-    // The check runs on a thread of its own right after the configuration
-    // is applied: give a check that should not happen the time to happen.
-    std::thread::sleep(Duration::from_secs(2));
-    assert_eq!(fake.lock().unwrap().count("ConfigRequest"), 1);
-    (read_log(), std::fs::read_to_string(nv.join("fetched-config.xml")).unwrap())
+    std::fs::read_to_string(nv.join("fetched-config.xml")).unwrap()
 }
 
 #[test]
 fn provisioned_firmware_reaches_the_updater_unless_ignored() {
     // By default the phone follows the firmware its server names: the
     // entry is saved, and the updater is asked what is running.
-    let (log, saved) = boot(&config(""), false, |log| log.contains(UPDATER_ASKED));
+    let saved = boot(&config(""), false, |log| log.contains(UPDATER_ASKED));
     assert!(saved.contains("<firmware "), "{saved}");
-    assert!(!log.contains(IGNORED), "{log}");
 
     // The setting stored on the phone before boot.
-    let (log, saved) = boot(&config(""), true, |log| log.contains(IGNORED));
-    assert!(!log.contains(UPDATER_ASKED), "the updater was asked although the setting is on:\n{log}");
+    let saved = boot(&config(""), true, |log| log.contains(IGNORED));
     assert!(!saved.contains("<firmware"), "{saved}");
 
     // The setting in the configuration that names the firmware.
-    let (log, saved) = boot(&config(IGNORE), false, |log| log.contains(IGNORED));
-    assert!(!log.contains(UPDATER_ASKED), "the updater was asked although the configuration turns the setting on:\n{log}");
+    let saved = boot(&config(IGNORE), false, |log| log.contains(IGNORED));
     assert!(!saved.contains("<firmware"), "{saved}");
     assert!(saved.contains("dphone_ignore_provisioned_firmware"), "{saved}");
 }

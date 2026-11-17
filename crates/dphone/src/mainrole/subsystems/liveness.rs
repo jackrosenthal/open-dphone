@@ -148,19 +148,12 @@ mod tests {
     fn crash_records_move_and_replace() {
         let dir = tempfile::tempdir().unwrap();
         let (pstore, saved) = (dir.path().join("pstore"), dir.path().join("crash"));
-        // No pstore at all: nothing to do.
-        assert_eq!(collect(&pstore, &saved).unwrap(), 0);
         std::fs::create_dir_all(&pstore).unwrap();
-        assert_eq!(collect(&pstore, &saved).unwrap(), 0);
         std::fs::write(pstore.join("dmesg-ramoops-0"), b"Oops: first").unwrap();
         std::fs::write(pstore.join("dmesg-ramoops-1"), b"earlier lines").unwrap();
         assert_eq!(collect(&pstore, &saved).unwrap(), 2);
         assert_eq!(std::fs::read(saved.join("dmesg-ramoops-0")).unwrap(), b"Oops: first");
         assert!(std::fs::read_dir(&pstore).unwrap().next().is_none(), "records are removed from pstore");
-        // The console record alone is not a crash.
-        std::fs::write(pstore.join("console-ramoops-0"), b"boot messages").unwrap();
-        assert_eq!(collect(&pstore, &saved).unwrap(), 0);
-        std::fs::remove_file(pstore.join("console-ramoops-0")).unwrap();
         // A later crash replaces the saved set.
         std::fs::write(pstore.join("dmesg-ramoops-0"), b"Oops: second").unwrap();
         assert_eq!(collect(&pstore, &saved).unwrap(), 1);

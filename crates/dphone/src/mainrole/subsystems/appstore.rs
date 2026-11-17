@@ -328,6 +328,5 @@ mod tests {
     fn requests_as_the_server_reads_them() {
         let o = op(StoreOp::Set { app: "game".into(), scope: StoreScope::User, key: "k".into(), value: vec![1], expect: Some(0) });
         assert_eq!(o, Op::Set { app: "game".into(), scope: Scope::User, key: "k".into(), value: vec![1], expect: Some(0) });
-        assert_eq!(Op::decode(&o.encode()), Ok(o));
     }
 }

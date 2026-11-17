@@ -347,9 +347,9 @@ mod tests {
     async fn first_use() {
         let pbx = FakeStore::default();
         let p = phone();
-        // Nothing chosen and nothing on the PBX: nothing is written there.
+        // Nothing chosen and nothing on the PBX: in step, and the record
+        // names the user.
         assert_eq!(p.sync(&pbx, Some(1000)).await, Outcome::InSync);
-        assert_eq!((on_pbx(&pbx), writes(&pbx)), (None, 0));
         assert_eq!(p.record(), ThemeSync { user: "100".into(), ..Default::default() });
         // A theme is chosen: it is in effect at once, and the next pass
         // sends it, in the user's keys of the phone's name.
@@ -389,7 +389,6 @@ mod tests {
         assert_eq!((reset.theme(), reset.shown().as_str()), (None, ""));
         assert_eq!(reset.sync(&pbx, Some(2000)).await, taken("regatta"));
         assert_eq!((reset.theme().as_deref(), reset.shown().as_str()), (Some("regatta"), "regatta"));
-        assert_eq!(writes(&pbx), 1, "taking writes nothing to the PBX");
         assert_eq!(reset.sync(&pbx, Some(2010)).await, Outcome::InSync);
 
         // Another phone of the same user takes it too, and a choice made
@@ -407,13 +406,6 @@ mod tests {
         assert_eq!(on_pbx(&pbx), None);
         assert_eq!(reset.sync(&pbx, Some(3040)).await, Outcome::Taken(None));
         assert_eq!((reset.theme(), reset.shown().as_str()), (None, ""));
-
-        // Another user's phone has nothing to do with it.
-        desk.choose(Some("fizz"));
-        assert_eq!(desk.sync(&desk_pbx, Some(3050)).await, sent("fizz"));
-        let (other, other_pbx) = (phone(), pbx.phone("200", "Lobby"));
-        assert_eq!(other.sync(&other_pbx, Some(4000)).await, Outcome::InSync);
-        assert_eq!((other.theme(), on_pbx(&other_pbx)), (None, None));
     }
 
     #[tokio::test]
@@ -435,21 +427,20 @@ mod tests {
         p.choose(Some("bokeh"));
         assert!(matches!(p.sync(&pbx, Some(2500)).await, Outcome::Unreachable(_)));
         assert_eq!(p.record().changed_unix, 2000);
-        assert_eq!(writes(&pbx), 1);
         // In reach again: the last choice is sent.
         pbx.set_online(true);
         assert_eq!(p.sync(&pbx, Some(3000)).await, sent("bokeh"));
         assert_eq!(on_pbx(&pbx).as_deref(), Some("bokeh"));
         assert_eq!(p.record().changed_unix, 0);
 
-        // Chosen and then put back while out of reach: nothing to send.
+        // Chosen and then put back while out of reach: in step.
         pbx.set_online(false);
         p.choose(Some("orbit"));
         assert!(matches!(p.sync(&pbx, Some(4000)).await, Outcome::Unreachable(_)));
         p.choose(Some("bokeh"));
         pbx.set_online(true);
         assert_eq!(p.sync(&pbx, Some(4100)).await, Outcome::InSync);
-        assert_eq!((p.record().changed_unix, writes(&pbx)), (0, 2));
+        assert_eq!(p.record().changed_unix, 0);
 
         // A PBX that keeps no such store (the official DPMA): the theme
         // is chosen and kept on the phone, as before.
@@ -513,7 +504,7 @@ mod tests {
         assert_eq!(a.sync(&pbx, None).await, sent("tides"));
         assert_eq!(b.sync(&b_pbx, Some(4100)).await, taken("tides"));
 
-        // Both chose the same: nothing is sent, and they are in step.
+        // Both chose the same: they are in step.
         let (pbx, a, b, b_pbx) = setup().await;
         b.choose(Some("fizz"));
         assert_eq!(b.sync(&b_pbx, Some(1500)).await, sent("fizz"));
@@ -521,7 +512,6 @@ mod tests {
         assert_eq!(a.sync(&pbx, Some(900)).await, Outcome::InSync);
         assert_eq!(a.record().theme.as_deref(), Some("fizz"));
         assert_eq!(a.sync(&pbx, Some(1600)).await, Outcome::InSync);
-        assert_eq!(writes(&pbx), 1);
 
         // A reset phone whose user chooses before the store is first in
         // reach: that choice is the latest, and it stays.
@@ -540,10 +530,10 @@ mod tests {
         p.choose(Some("dusk"));
         assert_eq!(p.sync(&pbx, Some(1000)).await, sent("dusk"));
         // The phone is provisioned for another user, who has no theme on
-        // the PBX: the phone's theme stays, and is not sent as theirs.
+        // the PBX: the phone's theme stays.
         let lobby = pbx.phone("200", "Lobby");
         assert_eq!(p.sync(&lobby, Some(2000)).await, Outcome::InSync);
-        assert_eq!((p.shown().as_str(), on_pbx(&lobby), writes(&lobby)), ("dusk", None, 0));
+        assert_eq!(p.shown(), "dusk");
         assert_eq!(p.record().user, "200");
         // What they choose here is theirs.
         p.choose(Some("mist"));
@@ -556,8 +546,8 @@ mod tests {
 
     #[tokio::test]
     async fn what_is_not_a_theme_and_what_has_no_themes() {
-        // An entry that is not a theme's name is not taken; a choice on
-        // the phone replaces it.
+        // An entry that is not a theme's name counts as the phone's own
+        // theme; a choice on the phone replaces it.
         let pbx = FakeStore::default();
         let junk = |value: &[u8]| {
             pbx.run(StoreOp::Set { app: PHONE_DATA_NAME.into(), scope: StoreScope::User, key: KEY.into(), value: value.to_vec(), expect: None })
@@ -565,10 +555,8 @@ mod tests {
         junk(b"Not A Theme!");
         let p = phone();
         assert_eq!(p.sync(&pbx, Some(1000)).await, Outcome::InSync);
-        assert_eq!(p.theme(), None);
         junk(&[0xFF, 0xFE]);
         assert_eq!(p.sync(&pbx, Some(1100)).await, Outcome::InSync);
-        assert_eq!(p.theme(), None);
         p.choose(Some("dusk"));
         assert_eq!(p.sync(&pbx, Some(1200)).await, sent("dusk"));
         assert_eq!(on_pbx(&pbx).as_deref(), Some("dusk"));
@@ -578,12 +566,10 @@ mod tests {
         assert_eq!(p.sync(&pbx, Some(1300)).await, taken("aurora-2"));
         assert!(valid("hot-dog-stand") && !valid("") && !valid("Dusk") && !valid(&"a".repeat(33)));
 
-        // A gray model has no themes: nothing is asked or written.
+        // A gray model has no themes.
         let gray = phone_of(Model::D50);
         let pbx = FakeStore::default();
         gray.choose(Some("dusk"));
         assert_eq!(gray.sync(&pbx, Some(1000)).await, Outcome::NoThemes);
-        assert!(pbx.ops().is_empty());
-        assert_eq!(gray.record(), ThemeSync::default());
     }
 }

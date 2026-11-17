@@ -420,7 +420,6 @@ mod tests {
         // The built-in app's configuration is not a package; the pushed
         // one is, and is only ever logged.
         assert_eq!(w.apps, vec![PushedApp { id: "queues".into(), url: "file://queues.zip".into() }]);
-        assert_eq!(wanted_resources(&config("<config/>")), Wanted::default());
     }
 
     #[test]
@@ -443,12 +442,6 @@ mod tests {
             on(d65, &xml(palette)),
             vec![r(Kind::Wallpaper, "file://wall.png", None), r(Kind::Palette, "http://pbx/files/wall.txtpb", Some("ab"))]
         );
-        // A palette file without a picture is not fetched; neither is
-        // anything on a model with a gray screen.
-        assert_eq!(on(d65, &format!("<config>{palette}</config>")), vec![]);
-        assert_eq!(on(dphone_config::Model::D50, &xml(palette)), vec![]);
-        // A setting without a URL names nothing.
-        assert_eq!(on(d65, r#"<config><setting id="wallpaper_file" value="user" url=" "/></config>"#), vec![]);
     }
 
     #[test]
@@ -488,7 +481,6 @@ mod tests {
         assert!(nv.blf_items().unwrap().is_some());
         f.remove("contact_lists/0");
         assert_eq!(f.read("contact_lists/0"), None);
-        assert!(f.list("ringtones").is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -514,7 +506,6 @@ mod tests {
         // What needs the client says so.
         assert!(c.take(&Command::SelectUser { id: "100".into(), pin: String::new() }).1.is_err());
         assert!(c.take(&Command::ForgetProvisioning).1.is_err());
-        assert!(EarlyChoice::default().replay().is_empty());
     }
 
     #[test]

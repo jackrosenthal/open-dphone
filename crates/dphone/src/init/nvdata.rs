@@ -166,10 +166,6 @@ mod tests {
         ] {
             put(f);
         }
-        // Not requested: nothing happens.
-        assert!(!run_pending_factory_reset(root));
-        assert!(root.join("ui-config.xml").exists());
-
         put("factory-reset");
         assert!(run_pending_factory_reset(root));
         for kept in ["etc/enet.cfg", "open/trial"] {

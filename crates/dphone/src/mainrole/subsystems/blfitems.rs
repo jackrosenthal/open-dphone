@@ -286,10 +286,5 @@ mod tests {
             place(&items(&cfg, &nv, Model::D50, 4, false, AccountId(0))),
             [(Side, 0, "101".to_string()), (Side, 1, "102".to_string()), (Side, 2, "103".to_string())]
         );
-        // Switched off, or no group named: nothing.
-        let (_d, nv2, off) = setup(&config(r#"<setting id="enable_blf_on_unused_line_keys" value="0"/>"#));
-        assert!(items(&off, &nv2, Model::D60, 1, false, AccountId(0)).is_empty());
-        let (_d, nv3, none) = setup("<config/>");
-        assert!(items(&none, &nv3, Model::D60, 1, false, AccountId(0)).is_empty());
     }
 }

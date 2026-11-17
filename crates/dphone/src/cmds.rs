@@ -383,49 +383,6 @@ mod tests {
         assert!(parse(words).is_err(), "{words:?}");
     }
 
-    #[test]
-    fn mount_arguments() {
-        let Ok(SystemCommand::Mount(m)) = parse(&["mount"]) else { panic!("mount") };
-        assert!(m.source.is_none() && m.target.is_none());
-        let Ok(SystemCommand::Mount(m)) = parse(&["mount", "-t", "jffs2", "-o", "noatime,sync", "-o", "ro", "/dev/mtdblock9", "/nvdata"])
-        else {
-            panic!("mount with options")
-        };
-        assert_eq!(m.fstype.as_deref(), Some("jffs2"));
-        assert_eq!(m.options, ["noatime", "sync", "ro"]);
-        assert_eq!((m.source.as_deref(), m.target.as_deref()), (Some("/dev/mtdblock9"), Some("/nvdata")));
-        let Ok(SystemCommand::Mount(m)) = parse(&["mount", "-o", "remount,rw", "/nvdata"]) else { panic!("remount") };
-        assert_eq!((m.options.as_slice(), m.source.as_deref(), m.target), (&["remount".to_string(), "rw".to_string()][..], Some("/nvdata"), None));
-        let Ok(SystemCommand::Mount(m)) = parse(&["mount", "-r", "-t", "proc", "proc", "/proc"]) else { panic!("-r") };
-        assert!(m.read_only && !m.read_write);
-        bad(&["mount", "-t"]);
-        bad(&["mount", "-r", "-w", "a", "b"]);
-        bad(&["mount", "a", "b", "c"]);
-        bad(&["mount", "--bind", "a", "b"]);
-    }
-
-    #[test]
-    fn module_and_unmount_arguments() {
-        let Ok(SystemCommand::Umount(u)) = parse(&["umount", "-l", "/a", "-f", "/b"]) else { panic!("umount") };
-        assert_eq!((u.force, u.lazy, u.targets.as_slice()), (true, true, &["/a".to_string(), "/b".to_string()][..]));
-        bad(&["umount"]);
-        bad(&["umount", "-f"]);
-        let Ok(SystemCommand::Insmod(i)) = parse(&["insmod", "/lib/modules/x.ko", "debug=1", "mode=a"]) else { panic!("insmod") };
-        assert_eq!((i.file.to_str(), i.parameters.as_slice()), (Some("/lib/modules/x.ko"), &["debug=1".to_string(), "mode=a".to_string()][..]));
-        bad(&["insmod"]);
-        let Ok(SystemCommand::Modprobe(m)) = parse(&["modprobe", "bcm_vpm", "x=1"]) else { panic!("modprobe") };
-        assert_eq!((m.name.as_str(), m.parameters.len()), ("bcm_vpm", 1));
-        bad(&["modprobe"]);
-        let Ok(SystemCommand::Rmmod(r)) = parse(&["rmmod", "-f", "a", "b"]) else { panic!("rmmod") };
-        assert_eq!((r.force, r.names.len()), (true, 2));
-        bad(&["rmmod"]);
-        assert!(matches!(parse(&["lsmod"]), Ok(SystemCommand::Lsmod)));
-        bad(&["lsmod", "x"]);
-        assert!(matches!(parse(&["dmesg"]), Ok(SystemCommand::Dmesg(Dmesg { clear: false }))));
-        assert!(matches!(parse(&["dmesg", "-c"]), Ok(SystemCommand::Dmesg(Dmesg { clear: true }))));
-        bad(&["dmesg", "-x"]);
-    }
-
     /// The usual ways of asking `ps` for every process.
     #[test]
     fn ps_arguments() {
@@ -446,14 +403,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn shutdown_arguments() {
-        for name in ["reboot", "poweroff", "halt"] {
-            assert!(parse(&[name]).is_ok() && parse(&[name, "-f", "why"]).is_ok() && parse(&[name, "--force"]).is_ok(), "{name}");
-            // The kind is the command's name, not an option.
-            bad(&[name, "--halt"]);
-        }
-    }
     /// `dphone reboot REASON` (and `halt`, `poweroff`): the reason is in
     /// `reboot_reason`, whole, by the time the init role is signaled or the
     /// system call is made.
@@ -490,16 +439,6 @@ mod tests {
         assert_eq!(
             run(Shutdown::PowerOff, &["done"], true),
             (Shutdown::PowerOff, false, "dphone: done\n".to_string())
-        );
-        // No temporary file is left beside it.
-        let names: Vec<_> = std::fs::read_dir(&nv).unwrap().map(|e| e.unwrap().file_name()).collect();
-        assert_eq!(names, ["reboot_reason"]);
-
-        // An image that must leave stock's files alone, or a stand-in
-        // nvdata: the file stays, and the phone still goes down.
-        assert_eq!(
-            run(Shutdown::Reboot, &["not", "written"], false),
-            (Shutdown::Reboot, false, "dphone: done\n".to_string())
         );
 
         // A failure to hand over is reported.

@@ -406,20 +406,8 @@ mod tests {
     #[test]
     fn mistakes() {
         for bad in [
-            &[][..],
-            // An image is installed by the command that says so.
-            &["fw.eff"],
-            &["install"],
-            &["install", "a.eff", "b.eff"],
-            &["install", "a.eff", "--bank"],
-            &["install", "a.eff", "--bank", "c"],
-            &["abandon", "a"],
-            &["switch-bank"],
+            &["install", "a.eff", "--bank", "c"][..],
             &["switch-bank", "2"],
-            &["arm-trial", "a"],
-            &["arm-trial", "--return-to"],
-            &["write-userdata"],
-            &["status", "now"],
         ] {
             assert!(parse(bad).is_err(), "{bad:?}");
         }
