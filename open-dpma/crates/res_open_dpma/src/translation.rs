@@ -1,5 +1,4 @@
-//! Voicemail folder translation tables (`type=translation` sections),
-//! the official DPMA's phone_translation.c.
+//! Voicemail folder translation tables (`type=translation` sections).
 
 use crate::util::NamedMap;
 use dpma_ast::cli::{complete_from, CliArgs, CliCommand, CliResult, CompleteArgs};

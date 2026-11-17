@@ -1,5 +1,5 @@
-//! AMI action `DPMAShowPhones` (`action_dpma_show_phones` FUN_001500d0),
-//! with the phone user details of FUN_0016aa10.
+//! AMI action `DPMAShowPhones`, with the phone user details of each
+//! session.
 
 use super::now;
 use crate::ami::AmiAction;
@@ -14,9 +14,8 @@ fn one_zero(b: bool) -> &'static str {
     }
 }
 
-/// `phone_user_for_last_token_mac` (0x170560) plus FUN_0016aa10: the
-/// "Username" and "TokenURI" lines of the first phone (in container order)
-/// whose last token MAC equals `mac`, ignoring case.
+/// The "Username" and "TokenURI" lines of the first phone (in container
+/// order) whose last token MAC equals `mac`, ignoring case.
 fn user_details(mac: &[u8]) -> Option<Vec<u8>> {
     if mac.is_empty() {
         return None;
@@ -34,7 +33,7 @@ fn user_details(mac: &[u8]) -> Option<Vec<u8>> {
     ))
 }
 
-/// `action_dpma_show_phones`: one `DPMAShowPhonesList` event per session.
+/// One `DPMAShowPhonesList` event per session.
 fn action_show_phones(r: &Request) -> i32 {
     let id = r.header("ActionID");
     // snprintf into an 80-byte buffer.

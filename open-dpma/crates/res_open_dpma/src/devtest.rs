@@ -10,8 +10,7 @@ use dpma_ast::cli::{CliArgs, CliCommand, CliResult};
 
 /// `dpmadev proto selftest`: exercise dpma-proto inside Asterisk, in
 /// particular its log hook (the bad salt and the URI without a supported
-/// scheme log through it to the DPMA level as phone_crypto.c and
-/// reqresp_parser.c).
+/// scheme log through it to the DPMA level).
 fn proto_selftest(a: &CliArgs) -> CliResult {
     use dpma_proto::{crypto, framing, uri};
     let pass = match crypto::new_common_password() {

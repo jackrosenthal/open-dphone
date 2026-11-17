@@ -1,7 +1,6 @@
-//! Reassembly of incoming chunks (incoming_add_msg,
-//! incoming_check_finalize, prune_inactive in FUN_0014f280).  Sends
-//! hand-made Echo chunks.  Pruning runs at the start of a read cycle, so
-//! the age checks backdate the incomplete transactions (`dpmadev session
+//! Reassembly of incoming chunks, and pruning of incomplete transactions.
+//! Sends hand-made Echo chunks.  Pruning runs at the start of a read cycle,
+//! so the age checks backdate the incomplete transactions (`dpmadev session
 //! txage`, which also lets the next cycle prune at once) and complete an
 //! Echo to start a new cycle.
 

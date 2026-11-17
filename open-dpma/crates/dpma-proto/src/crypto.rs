@@ -1,8 +1,8 @@
-//! Message encryption (phone_crypto.c) and the handshake common password.
+//! Message encryption and the handshake common password.
 //!
 //! * Cipher: AES-128-CBC with PKCS#7 padding.
 //! * Key and IV: `EVP_BytesToKey(aes-128-cbc, SHA-1, salt, password,
-//!   count = 1)` (the EVP_MD at 0x5bd8a0 is NID 64, SHA-1).
+//!   count = 1)`.
 //! * Password: the 40 random bytes ("common password") chosen by the
 //!   server during the handshake and sent to the phone RSA-encrypted
 //!   (PKCS#1 v1.5) with the phone certificate's public key, base64 encoded,
@@ -35,14 +35,13 @@ pub const SALT_LEN: usize = 8;
 /// AES block size.
 pub const BLOCK_LEN: usize = 16;
 /// Size of the buffers the official DPMA base64 encodes ciphertext into
-/// (`send_encrypt_hdr_helper` and the body chunks): at most 0x514
+/// (encrypted header values and the body chunks): at most 0x514
 /// characters are produced.
 pub const CIPHERTEXT_B64_BUF: usize = 0x515;
 /// Size of the buffer the RSA-encrypted common password is base64 encoded
-/// into (`phone_msg_set_common_password`).
+/// into.
 pub const COMMON_PASSWORD_B64_BUF: usize = 0x3ff;
-/// Size of the buffers incoming header fields are decrypted into
-/// (`incoming_check_finalize`).
+/// Size of the buffers incoming header fields are decrypted into.
 pub const HEADER_FIELD_BUF: usize = 0x80;
 
 /// Log `msg` and return it as an error.
@@ -87,7 +86,7 @@ pub fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
         .into()
 }
 
-/// Generate a new message salt (FUN_00151840): 8 random bytes.
+/// Generate a new message salt: 8 random bytes.
 pub fn new_salt() -> Result<[u8; SALT_LEN]> {
     let mut salt = [0u8; SALT_LEN];
     random_bytes(&mut salt).map_err(|e| fail(e.message()))?;
@@ -99,11 +98,11 @@ pub fn salt_to_hex(salt: &[u8; SALT_LEN]) -> String {
     salt.iter().map(|b| format!("{:02X}", b)).collect()
 }
 
-/// `set_hex` (FUN_001512b0): fill `out` from at most `2 * out.len()` hex
-/// digits (either case).  `out` is zeroed first and filled from the left,
-/// a nibble per digit, so short (and odd-length) strings leave the rest
-/// zero: "A" gives `A0 00 ...`.  On an invalid digit `out` keeps what was
-/// filled so far, as in the official DPMA.
+/// Fill `out` from at most `2 * out.len()` hex digits (either case).
+/// `out` is zeroed first and filled from the left, a nibble per digit, so
+/// short (and odd-length) strings leave the rest zero: "A" gives
+/// `A0 00 ...`.  On an invalid digit `out` keeps what was filled so far,
+/// as in the official DPMA.
 pub fn set_hex(hex: impl AsRef<[u8]>, out: &mut [u8]) -> Result<()> {
     let digits = c_bytes(hex.as_ref());
     if digits.len() > out.len() * 2 {
@@ -165,10 +164,9 @@ pub fn derive_key_iv(password: &[u8], salt: &[u8; SALT_LEN]) -> ([u8; 16], [u8; 
     (key, iv)
 }
 
-/// Streaming encryptor matching `init_encryption` / `encrypt_data` /
-/// `encrypt_final` (`EVP_EncryptUpdate` and `EVP_EncryptFinal_ex` with
-/// AES-128-CBC): one CBC stream per outgoing message, fed chunk by chunk;
-/// each chunk's output is base64 encoded separately.
+/// Streaming encryptor (`EVP_EncryptUpdate` and `EVP_EncryptFinal_ex`
+/// with AES-128-CBC): one CBC stream per outgoing message, fed chunk by
+/// chunk; each chunk's output is base64 encoded separately.
 pub struct Encryptor {
     cipher: Aes128CbcEnc,
     /// Plaintext not yet making a whole block.
@@ -176,8 +174,8 @@ pub struct Encryptor {
 }
 
 impl Encryptor {
-    /// Start a stream with `password` and `salt` (`init_encryption`,
-    /// FUN_001515c0).  Fails without a password, as the official DPMA does.
+    /// Start a stream with `password` and `salt`.  Fails without a
+    /// password, as the official DPMA does.
     pub fn new(password: &[u8], salt: &[u8; SALT_LEN]) -> Result<Encryptor> {
         if password.is_empty() {
             return Err(fail("Unable to initialize encryption without common pass"));
@@ -189,8 +187,8 @@ impl Encryptor {
         })
     }
 
-    /// Encrypt more plaintext (`encrypt_data`); returns the ciphertext
-    /// produced so far (whole blocks only).
+    /// Encrypt more plaintext; returns the ciphertext produced so far
+    /// (whole blocks only).
     pub fn update(&mut self, plain: &[u8]) -> Result<Vec<u8>> {
         self.buf.extend_from_slice(plain);
         let whole = self.buf.len() / BLOCK_LEN * BLOCK_LEN;
@@ -201,7 +199,7 @@ impl Encryptor {
         Ok(out)
     }
 
-    /// Finish the stream (`encrypt_final`): the last block, PKCS#7 padded.
+    /// Finish the stream: the last block, PKCS#7 padded.
     pub fn finish(mut self) -> Result<Vec<u8>> {
         let n = BLOCK_LEN - self.buf.len();
         let mut block = std::mem::take(&mut self.buf);
@@ -219,10 +217,10 @@ pub fn encrypt(password: &[u8], salt: &[u8; SALT_LEN], plain: &[u8]) -> Result<V
     Ok(out)
 }
 
-/// Decrypt `cipher` as one stream (FUN_001513e0, FUN_00151520,
-/// FUN_00151560: `EVP_DecryptUpdate` and `EVP_DecryptFinal_ex`).  Unlike
-/// encryption, an empty password is accepted.  A ciphertext that is not a
-/// whole number of blocks, or whose last block's padding is wrong, fails.
+/// Decrypt `cipher` as one stream (`EVP_DecryptUpdate` and
+/// `EVP_DecryptFinal_ex`).  Unlike encryption, an empty password is
+/// accepted.  A ciphertext that is not a whole number of blocks, or whose
+/// last block's padding is wrong, fails.
 pub fn decrypt(password: &[u8], salt: &[u8; SALT_LEN], cipher: &[u8]) -> Result<Vec<u8>> {
     let (key, iv) = derive_key_iv(password, salt);
     let mut dec = Aes128CbcDec::new(&key.into(), &iv.into());
@@ -245,11 +243,11 @@ pub fn decrypt(password: &[u8], salt: &[u8; SALT_LEN], cipher: &[u8]) -> Result<
     Ok(out)
 }
 
-/// `decrypt_msg_field` (FUN_00151870) with an output buffer of `buf_len`
-/// bytes: base64 decode at most `buf_len - 1` bytes of `field_b64` (as
-/// `ast_base64decode` does), then decrypt with `password` and the hex
-/// `salt`.  Returns the plaintext bytes; the official DPMA uses them as a C
-/// string (see [`c_str`]).
+/// Decrypt a message field into an output buffer of `buf_len` bytes, as the
+/// official DPMA does: base64 decode at most `buf_len - 1` bytes of
+/// `field_b64` (as `ast_base64decode` does), then decrypt with `password`
+/// and the hex `salt`.  Returns the plaintext bytes; the official DPMA uses
+/// them as a C string (see [`c_str`]).
 pub fn decrypt_field_limited(
     password: &[u8],
     salt_hex: impl AsRef<[u8]>,
@@ -306,9 +304,8 @@ pub fn decrypt_header_field(
     Ok(c_str(&plain).to_vec())
 }
 
-/// Encrypt a header value for sending (`send_encrypt_hdr_helper`,
-/// FUN_001490b0): base64 of the AES-128-CBC ciphertext under
-/// `password`/`salt`, in a 0x515-byte buffer.
+/// Encrypt a header value for sending: base64 of the AES-128-CBC
+/// ciphertext under `password`/`salt`, in a 0x515-byte buffer.
 pub fn encrypt_field(password: &[u8], salt: &[u8; SALT_LEN], plain: &[u8]) -> Result<String> {
     let cipher = encrypt(password, salt, plain)?;
     Ok(base64_encode_max(&cipher, CIPHERTEXT_B64_BUF))
@@ -321,9 +318,8 @@ pub fn c_str(bytes: &[u8]) -> &[u8] {
 }
 
 /// RSA (PKCS#1 v1.5) encrypt the common password with the phone's public
-/// key and base64 encode it (`phone_msg_set_common_password`,
-/// FUN_0014bb00).  Keys that are not RSA, and keys that are too small for
-/// the password, fail.
+/// key and base64 encode it.  Keys that are not RSA, and keys that are too
+/// small for the password, fail.
 pub fn encrypt_common_password(phone_key: &PublicKey, password: &[u8]) -> Result<String> {
     let rsa = phone_key.rsa().ok_or_else(|| {
         let msg = "failed to get rsa during common password generation";

@@ -15,8 +15,8 @@ use dpma_proto::{framing, headers as h};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-/// Send `out` to the phone of `session` (or log that there is none), as
-/// `phone_msg_outgoing_send` does when called with a NULL session.
+/// Send `out` to the phone of `session` (or log that there is none, as
+/// the official DPMA does).
 pub fn send_maybe(out: &Outgoing, session: Option<&Arc<Session>>) -> Result<(), ()> {
     match session {
         Some(s) => send(out, s),
@@ -32,8 +32,7 @@ pub fn send_maybe(out: &Outgoing, session: Option<&Arc<Session>>) -> Result<(), 
     }
 }
 
-/// `phone_msg_outgoing_send` (FUN_0014c6b0): send `out` to the phone of
-/// `session`.
+/// Send `out` to the phone of `session`.
 pub fn send(out: &Outgoing, session: &Arc<Session>) -> Result<(), ()> {
     let Some(type_name) = out.message_type() else {
         dpma_log!("Outgoing message is not request, response, or event type");
@@ -106,10 +105,9 @@ pub fn send(out: &Outgoing, session: &Arc<Session>) -> Result<(), ()> {
     Ok(())
 }
 
-/// `phone_msg_send_and_destroy` (FUN_0014e590): apply the transaction's
-/// configured / unconfigured requests to the session (saving it when that
-/// changes it), then send the transaction's outgoing message with its
-/// session.
+/// Apply the transaction's configured / unconfigured requests to the
+/// session (saving it when that changes it), then send the transaction's
+/// outgoing message with its session.
 pub fn send_and_destroy(tx: &Arc<Transaction>) {
     let Some(session) = tx.session.as_ref() else {
         dpma_log!("Transaction missing session");
@@ -137,9 +135,8 @@ pub fn send_and_destroy(tx: &Arc<Transaction>) {
     }
 }
 
-/// `phone_msg_send_timeout` (FUN_0014e7e0): answer `msg`, whose session
-/// failed validation, with "Session Timeout" (-398) in the response type
-/// of its request type.
+/// Answer `msg`, whose session failed validation, with "Session Timeout"
+/// (-398) in the response type of its request type.
 ///
 /// Deviation: the reply goes over the transport of the request it
 /// answers, `;transport=<PJSIP_TRANSPORT>` appended to the Response-URI
@@ -171,10 +168,10 @@ pub fn send_timeout(msg: &Msg, session: &Arc<Session>) -> Result<(), ()> {
     Ok(())
 }
 
-/// `phone_msg_send_event` (FUN_0014e030): send an event with `body` to the
-/// session's phone.  `digium.assignment.update` goes out as the official
-/// DPMA sends it: no event name, ID `bootcReset`, and Error-ID -398.  The
-/// error text matches the official DPMA's error buffer.
+/// Send an event with `body` to the session's phone.
+/// `digium.assignment.update` goes out as the official DPMA sends it: no
+/// event name, ID `bootcReset`, and Error-ID -398.  The error text
+/// matches the official DPMA's error buffer.
 pub fn send_event(session: &Arc<Session>, event: &[u8], body: &[u8]) -> Result<(), &'static str> {
     let mut out = Outgoing::new();
     {
@@ -196,9 +193,9 @@ pub fn send_event(session: &Arc<Session>, event: &[u8], body: &[u8]) -> Result<(
     Ok(())
 }
 
-/// FUN_0014bf10 (`phone_msg_outgoing_send_handshake_error`): reply
-/// `HandshakeResponse` with Error-ID -398, unencrypted and unchunked, to a
-/// message for an unknown session, so the phone handshakes again.
+/// Reply `HandshakeResponse` with Error-ID -398, unencrypted and
+/// unchunked, to a message for an unknown session, so the phone
+/// handshakes again.
 pub fn send_handshake_required(
     id: &[u8],
     response_uri: &[u8],

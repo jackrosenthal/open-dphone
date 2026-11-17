@@ -1,4 +1,4 @@
-//! `digium_phones show sessions` (`handle_cli_show_sessions` FUN_00148e40).
+//! `digium_phones show sessions`.
 
 use super::now;
 use dpma_ast::bformat;
@@ -21,7 +21,7 @@ fn yes_no(b: bool) -> &'static str {
     }
 }
 
-/// `handle_cli_show_sessions`: one line per session, in container order.
+/// One line per session, in container order.
 fn show_sessions(a: &CliArgs) -> CliResult {
     let t = now();
     a.out("---- Digium Phone Module Active Sessions ---- \n");
@@ -48,7 +48,7 @@ fn show_sessions(a: &CliArgs) -> CliResult {
     CliResult::Success
 }
 
-/// Commands registered by `phone_msg_load`.
+/// Commands registered at load.
 pub fn commands() -> Vec<CliCommand> {
     vec![CliCommand {
         command: "digium_phones show sessions",

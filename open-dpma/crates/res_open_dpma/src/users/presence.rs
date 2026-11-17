@@ -1,10 +1,8 @@
-//! Per-user presence options and current presence (phone_users.c
-//! `phone_presence_*` 0x160740..0x1610e0, `phone_pres_destroy_cb`
-//! 0x151fb0, `phone_presence_user_application_sync` 0x1648d0).
+//! Per-user presence options and current presence.
 //!
-//! Every phone has a list of presence options (the official DPMA's ao2 hash
-//! container at +0x8e8, keyed by the option id): the states a user can
-//! pick on the phone, each with an optional sub-state.
+//! Every phone has a list of presence options (in the official DPMA, a
+//! hash container keyed by the option id): the states a user can pick on
+//! the phone, each with an optional sub-state.
 //! `set_user_defaults` installs the standard states; the first
 //! `user_application_sync` that finds one of the phone's status
 //! applications replaces them with the states of the phone's status
@@ -24,22 +22,22 @@ pub const OWNER_USER: i32 = 0;
 /// `owner` of the default options and of the status applications' options.
 pub const OWNER_SYSTEM: i32 = 1;
 
-/// One presence option (`struct phone_presence_option`).
+/// One presence option.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PresenceOption {
-    /// Presence state (`dpma_ast::presence`) (+0x00).
+    /// Presence state (`dpma_ast::presence`).
     pub state: i32,
-    /// `OWNER_USER` or `OWNER_SYSTEM` (+0x04).
+    /// `OWNER_USER` or `OWNER_SYSTEM`.
     pub owner: i32,
-    /// Sub-state (+0x08); None for an option without one, which the CLI
+    /// Sub-state; None for an option without one, which the CLI
     /// shows differently from an empty one.
     pub subtype: Option<Vec<u8>>,
-    /// Option id, from 1 (+0x10); the container key.
+    /// Option id, from 1; the container key.
     pub id: i32,
 }
 
 impl PresenceOption {
-    /// The owner's name in `presence.options.getList` (table at 0x5bd1a8).
+    /// The owner's name in `presence.options.getList`.
     pub fn owner_name(&self) -> &'static str {
         if self.owner == OWNER_USER {
             "user"
@@ -57,8 +55,7 @@ pub fn ordered(options: &[PresenceOption]) -> Vec<PresenceOption> {
     v
 }
 
-/// `phone_presence_option_add` (0x1609b0): add an option with the lowest
-/// unused id; returns the id.
+/// Add an option with the lowest unused id; returns the id.
 pub fn option_add(
     options: &mut Vec<PresenceOption>,
     state: i32,
@@ -137,7 +134,7 @@ pub fn sync_applications(apps: &NamedMap<Application>, phone: &mut Phone, list: 
             Send486::No => phone.send486_mask &= !bit,
             Send486::NotSet => {}
         }
-        // FUN_00160bb0: the state, then one option per sub-state.
+        // The state, then one option per sub-state.
         option_add(&mut phone.presence_options, st.status, OWNER_SYSTEM, None);
         for sub in &st.substatuses {
             option_add(
@@ -190,10 +187,9 @@ fn matching(
         .find(|o| o.state == state && o.subtype.as_deref().unwrap_or(b"") == cur)
 }
 
-/// The current presence of a phone (`phone_presence_get_current`
-/// 0x1610e0): the option matching the phone's `CustomPresence` state and
-/// sub-state (None when no option matches), and the presence message.
-/// None when the phone does not exist.
+/// The current presence of a phone: the option matching the phone's
+/// `CustomPresence` state and sub-state (None when no option matches), and
+/// the presence message.  None when the phone does not exist.
 pub fn get_current(phone: &[u8]) -> Option<(Option<PresenceOption>, Option<Vec<u8>>)> {
     let (provider, options) = {
         let g = read();
@@ -211,8 +207,7 @@ pub fn options(phone: &[u8]) -> Option<Vec<PresenceOption>> {
     Some(ordered(&g.as_ref()?.phones.get(phone)?.presence_options))
 }
 
-/// `phone_presence_update` (0x160ce0): set the phone's presence to option
-/// `id` with `message`, i.e., set
+/// Set the phone's presence to option `id` with `message`, i.e., set
 /// `PRESENCE_STATE(CustomPresence:<first line>)` to
 /// `<state>,<sub-state>,<message>` (at most 511 characters).  Err when the
 /// phone or the option does not exist.

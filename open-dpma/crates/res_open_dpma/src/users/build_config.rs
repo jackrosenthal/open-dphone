@@ -1,14 +1,6 @@
-//! The phone configuration document (`phone_user_build_config`
-//! FUN_0016ae70 with `add_firmware_settings`, `add_internal_line_account`,
-//! `add_external_line_account`, `add_option_firmware_settings`, and
-//! `phone_user_has_queue`; `phone_user_get_config` FUN_00170070;
-//! `phone_user_read_config` FUN_00156d10; `phone_user_get_primary_line`
-//! FUN_0015abe0; `phone_user_set_primary_line_name` FUN_0016ac20;
-//! `phone_user_get_primary_line_name` FUN_0016acf0;
-//! `phone_user_get_primary_line_tech` FUN_00170190;
-//! `phone_user_get_show_call_parking` FUN_0016ab70;
-//! `phone_user_get_application_settings` FUN_0016add0;
-//! `insert_display_rules` FUN_001558e0).
+//! The phone configuration document, and the phone settings it is built
+//! from (the primary line, the application settings, and whether the
+//! phone shows call parking).
 //!
 //! The document is built as text with the official DPMA's format strings,
 //! one append per `ast_str_append` of the official DPMA, in the same order
@@ -499,7 +491,7 @@ fn add_firmware_settings(o: &mut Out, reg: &Registry, phone: &Phone) {
     }
 }
 
-/// Does `dir/name` exist (and can it be opened)?  FUN_001523a0.
+/// Does `dir/name` exist (and can it be opened)?
 fn file_exists(dir: &[u8], name: &[u8]) -> bool {
     std::fs::File::open(crate::util::path(&crate::util::truncate(
         &bformat!("{}/{}", dir, name),

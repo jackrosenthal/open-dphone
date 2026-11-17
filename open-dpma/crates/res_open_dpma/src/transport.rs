@@ -1,6 +1,5 @@
-//! Message transport between phones and the module
-//! (phone_network_handler2.c, plus the dialplan routing and outgoing
-//! message construction from phone_message.c).
+//! Message transport between phones and the module, plus the dialplan
+//! routing and the construction of outgoing messages.
 //!
 //! Phones send SIP MESSAGE requests.  res_pjsip delivers them to the
 //! dialplan context `pjsip_message_context` (via the endpoint identifier,
@@ -55,9 +54,8 @@ fn queue() -> std::sync::MutexGuard<'static, ReadQueue> {
     QUEUE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// `receive_msg` (FUN_00147c70): the technology's `msg_send` callback.
-/// Takes a reference to the message (done by the caller) and queues it
-/// for [`read_msg`].
+/// The technology's `msg_send` callback.  Takes a reference to the
+/// message (done by the caller) and queues it for [`read_msg`].
 fn receive_msg(m: Msg, _to: &[u8], _from: &[u8]) -> i32 {
     queue().msgs.push_back(m);
     QUEUE_CV.notify_one();
@@ -71,9 +69,8 @@ fn drain_queue() {
     drop(msgs);
 }
 
-/// `phone_network_handler2` init (FUN_00148040): register the message
-/// technology and create the read queue.  Called at the end of
-/// `session::load` (as the official DPMA does from `phone_msg_load`).
+/// Register the message technology and create the read queue.  Called at
+/// the end of `session::load`, as the official DPMA does.
 pub fn load() -> Result<(), ()> {
     {
         // The module's statics can outlive an unload (a Rust library is
@@ -89,17 +86,16 @@ pub fn load() -> Result<(), ()> {
     Ok(())
 }
 
-/// `network_handler_destroy` (FUN_00147d70): unregister the technology
-/// and drop queued messages.  A reader still waiting is woken (the
-/// official DPMA closes the alert pipe under it).
+/// Unregister the technology and drop queued messages.  A reader still
+/// waiting is woken (the official DPMA closes the alert pipe under it).
 pub fn unload() {
     msg::tech_unregister();
     drain_queue();
     wake_reader();
 }
 
-/// `phone_network_handler2_read_msg` (FUN_00147eb0): wait up to
-/// `timeout_ms` (forever when negative) for the next incoming message.
+/// Wait up to `timeout_ms` (forever when negative) for the next incoming
+/// message.
 /// Returns None on timeout or when woken by [`wake_reader`].
 pub fn read_msg(timeout_ms: i32) -> Option<Msg> {
     let deadline = u64::try_from(timeout_ms)
@@ -138,8 +134,7 @@ pub fn wake_reader() {
     QUEUE_CV.notify_all();
 }
 
-/// `phone_network_handler2_write_msg` (FUN_00147e60): queue an outgoing
-/// message into the dialplan (`ast_msg_queue`).
+/// Queue an outgoing message into the dialplan (`ast_msg_queue`).
 pub fn write_msg(msg: Msg) -> Result<(), ()> {
     if msg.queue() {
         Ok(())
@@ -149,11 +144,10 @@ pub fn write_msg(msg: Msg) -> Result<(), ()> {
     }
 }
 
-/// FUN_0014be60: allocate an outgoing message for `response_uri`, with
-/// its context set from the URI scheme: `pjsip...` gets
-/// `pjsip_message_context` (its default when the setting is empty).  None
-/// for other schemes, including the official DPMA's `sip...` (chan_sip),
-/// which is not supported.
+/// Allocate an outgoing message for `response_uri`, with its context set
+/// from the URI scheme: `pjsip...` gets `pjsip_message_context` (its
+/// default when the setting is empty).  None for other schemes, including
+/// the official DPMA's `sip...` (chan_sip), which is not supported.
 pub fn new_outgoing(response_uri: &[u8]) -> Option<Msg> {
     // The official DPMA compares prefixes (strncmp with "sip", then
     // "pjsip").
@@ -190,9 +184,8 @@ pub fn destroy_routing() {
     destroy_dialplan_routing(crate::config::get().message_context());
 }
 
-/// `msg_build_dialplan_routing` (FUN_00148860): create `context` and add
-/// the `digium_phone_module` (send) and `proxy` (receive) extensions for
-/// the channel technology `tech` ("pjsip").
+/// Create `context` and add the `digium_phone_module` (send) and `proxy`
+/// (receive) extensions for the channel technology `tech` ("pjsip").
 fn build_dialplan_routing(context: &[u8], tech: &str) -> Result<(), ()> {
     dpma_debug!(
         5,
@@ -278,8 +271,8 @@ fn build_dialplan_routing(context: &[u8], tech: &str) -> Result<(), ()> {
     Ok(())
 }
 
-/// `msg_destroy_dialplan_routing` (FUN_0014ff30): remove what this module
-/// added to `context` (and the context itself when that leaves it empty).
+/// Remove what this module added to `context` (and the context itself
+/// when that leaves it empty).
 fn destroy_dialplan_routing(context: &[u8]) {
     if !pbx::context_exists(context) {
         return;

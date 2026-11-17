@@ -1,11 +1,9 @@
-//! mDNS/DNS-SD announcement of the configuration server (phone_avahi.c,
-//! 0x173ba0..0x174390).
+//! mDNS/DNS-SD announcement of the configuration server.
 //!
 //! The official DPMA registers one service through libavahi-client (and so
 //! needs a running avahi-daemon); this rewrite answers mDNS itself with
 //! the pure-Rust `mdns-sd` responder, so it announces with or without
-//! avahi-daemon.  What is announced is what `av_create_service`
-//! (FUN_00173da0) registers:
+//! avahi-daemon.  What is announced is the official DPMA's service:
 //!
 //! - instance `service_name` (default "Digium Phone Config Server") of
 //!   type `_digiumproxy._udp` in domain `local`, on every interface and
@@ -17,14 +15,13 @@
 //!   empty or longer than 63 bytes (Avahi rejects such a name, and the
 //!   official DPMA then announces nothing, silently).
 //!
-//! The lifecycle follows `avahi_start`, `avahi_reload`, and `avahi_stop`:
-//! the service is announced at load, withdrawn (goodbye packets) and
-//! announced again from the new configuration at every reload, and
-//! withdrawn at unload.  The responder runs only while discovery is
-//! enabled, so with discovery off no mDNS socket is open.  When Asterisk
-//! exits without unloading its modules (`core stop now`), avahi-daemon
-//! withdraws the official DPMA's service as its client goes away; here an
-//! Asterisk atexit handler withdraws it.
+//! The lifecycle follows the official DPMA's: the service is announced at
+//! load, withdrawn (goodbye packets) and announced again from the new
+//! configuration at every reload, and withdrawn at unload.  The responder
+//! runs only while discovery is enabled, so with discovery off no mDNS
+//! socket is open.  When Asterisk exits without unloading its modules
+//! (`core stop now`), avahi-daemon withdraws the official DPMA's service
+//! as its client goes away; here an Asterisk atexit handler withdraws it.
 //!
 //! Differences that come with leaving Avahi:
 //!
@@ -289,8 +286,7 @@ extern "C" fn exit_handler() {
     })
 }
 
-/// `avahi_start` (FUN_00174170): announce the service if discovery is
-/// enabled.
+/// Announce the service if discovery is enabled.
 pub fn start() {
     let mut state = STATE.lock().unwrap_or_else(|e| e.into_inner());
     dpma_ast::util::register_atexit(exit_handler);
@@ -300,8 +296,7 @@ pub fn start() {
     publish(&mut state);
 }
 
-/// `avahi_stop` (FUN_001742f0): withdraw the service and stop the
-/// responder.
+/// Withdraw the service and stop the responder.
 pub fn stop() {
     dpma_ast::util::unregister_atexit(exit_handler);
     let mut state = STATE.lock().unwrap_or_else(|e| e.into_inner());
@@ -311,8 +306,8 @@ pub fn stop() {
     }
 }
 
-/// `avahi_reload` (FUN_00174390): withdraw the service and announce the
-/// one of the reloaded configuration.
+/// Withdraw the service and announce the one of the reloaded
+/// configuration.
 pub fn reload() {
     let mut state = STATE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(r) = state.as_mut() {

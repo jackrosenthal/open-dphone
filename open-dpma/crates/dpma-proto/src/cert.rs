@@ -1,4 +1,4 @@
-//! Phone certificate verification (`load_castore`, `session_verify_cert`).
+//! Phone certificate verification.
 //!
 //! The CA store is built from a PEM bundle of CA certificates: by default
 //! the ones built into the official DPMA, or the `phone_ca_file` when set.
@@ -356,7 +356,7 @@ pub struct VerifiedClient {
     /// generation").
     pub public_key: Option<PublicKey>,
     /// The intermediate certificate's serial number as the official DPMA
-    /// stores it (session +0xe20): 0 for the legacy form.  It is read from
+    /// stores it in the session: 0 for the legacy form.  It is read from
     /// the second certificate, or, while the value read is 0, from the
     /// ones after it.  A non-zero value makes the server send
     /// `X-Digium-AppServer-Handshake-Version: 1`.
@@ -486,9 +486,8 @@ pub fn restore_pem_newlines(pem: impl AsRef<[u8]>) -> Vec<u8> {
     }
 }
 
-/// Verify the PEM certificate(s) a phone sent in its Handshake body
-/// (`session_verify_cert`, FUN_00148230), logging as the official DPMA
-/// does.
+/// Verify the PEM certificate(s) a phone sent in its Handshake body,
+/// logging as the official DPMA does.
 ///
 /// The certificates are read in order; reading stops at the first block
 /// after the first that cannot be read.  One certificate is the legacy

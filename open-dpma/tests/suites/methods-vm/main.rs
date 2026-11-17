@@ -17,7 +17,7 @@
 //!
 //! Each response is compared, as text, with the document the official
 //! DPMA builds (key order included), computed from the spool and a model
-//! of the decompile; the spool and the message trackers are checked after
+//! of the official DPMA; the spool and the message trackers are checked after
 //! each change.
 //!
 //! The methods are called with `dpmadev method call` over AMI, and their

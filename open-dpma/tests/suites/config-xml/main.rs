@@ -16,7 +16,7 @@
 //! `-v` prints the documents.
 //!
 //! No expected documents are recorded (they were compared with the
-//! decompile by hand); the suite checks that every document the setup
+//! official DPMA's by hand); the suite checks that every document the setup
 //! describes is produced and well formed, and what a reload does with
 //! options that were removed or misspelled.
 

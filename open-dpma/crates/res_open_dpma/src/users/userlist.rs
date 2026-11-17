@@ -1,5 +1,4 @@
-//! The user list returned to UserlistRequest
-//! (`phone_user_list_build_json` FUN_00161830).
+//! The user list returned to UserlistRequest.
 //!
 //! The JSON is built and serialized with Asterisk's `ast_json` (jansson),
 //! as the official DPMA does, so key order, escaping, and the compact

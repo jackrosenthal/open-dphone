@@ -19,7 +19,7 @@ pub const PING_REQUEST: &str = "PingRequest";
 pub const APP_DATA_REQUEST: &str = crate::appdata::REQUEST;
 
 /// (request type, response type, requires session), in the order
-/// `phone_request_load` registers them, then Open DPhone's.
+/// the official DPMA registers them, then Open DPhone's.
 pub const REQUESTS: &[(&str, &str, bool)] = &[
     (ECHO, "EchoResponse", false),
     (HANDSHAKE, "HandshakeResponse", false),
@@ -34,8 +34,8 @@ pub const REQUESTS: &[(&str, &str, bool)] = &[
     (APP_DATA_REQUEST, crate::appdata::RESPONSE, true),
 ];
 
-/// The response type that answers `request` (case insensitive), as used by
-/// `phone_msg_send_timeout`.
+/// The response type that answers `request` (case insensitive), as used
+/// for a "Session Timeout" reply.
 pub fn response_type_for(request: impl AsRef<[u8]>) -> Option<&'static str> {
     let request = request.as_ref();
     REQUESTS

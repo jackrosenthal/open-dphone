@@ -1,6 +1,6 @@
 //! SIP URI and header parsing: the official DPMA's copy of chan_sip's
 //! reqresp_parser.c, the Asterisk helpers it uses,
-//! `phone_utils_parse_uri`, and the URI comparison of phone_users.c.
+//! `phone_utils_parse_uri`, and the official DPMA's URI comparison.
 //!
 //! The C functions cut their input apart in place (writing NULs, and
 //! putting `=` and `;` back for parameters they do not know) and return
@@ -11,7 +11,7 @@
 use crate::cbuf::{c_bytes, contains_ignore_case, eq_ignore_case, CBuf, EMPTY};
 use dpma_bytes::bformat;
 
-/// `sip_reqresp_parser_init` (FUN_00187f10): nothing to do; kept so the
+/// `sip_reqresp_parser_init`: nothing to do; kept so the
 /// load order matches the official DPMA's.
 pub fn parser_init() -> crate::Result<()> {
     Ok(())
@@ -152,7 +152,7 @@ fn starts_with_ignore_case(s: &[u8], prefix: &[u8]) -> bool {
     s.len() >= prefix.len() && eq_ignore_case(&s[..prefix.len()], prefix)
 }
 
-/// `parse_uri_full` (FUN_00187100) on the buffer, from `start`.
+/// `parse_uri_full` on the buffer, from `start`.
 fn parse_uri_full_buf(b: &mut CBuf, start: usize, scheme: Option<&str>, opts: ParseOpts) -> Pos {
     let mut r = Pos::empty();
     if b.strlen(start) == 0 {
@@ -302,7 +302,7 @@ fn parse_uri_full_buf(b: &mut CBuf, start: usize, scheme: Option<&str>, opts: Pa
     r
 }
 
-/// `parse_uri_full` (FUN_00187100): split `uri` whose scheme must be one
+/// `parse_uri_full`: split `uri` whose scheme must be one
 /// of the comma separated `scheme` list (e.g., "sip:,sips:"; the scheme
 /// text, including any colon, is stripped).  With `None` no scheme is
 /// expected.
@@ -312,7 +312,7 @@ pub fn parse_uri_full(uri: impl AsRef<[u8]>, scheme: Option<&str>, opts: ParseOp
     p.read(&b, opts)
 }
 
-/// `parse_uri` (FUN_001876a0): `parse_uri_full` with parameters parsed;
+/// `parse_uri`: `parse_uri_full` with parameters parsed;
 /// callers use `params.transport`.
 pub fn parse_uri(
     uri: impl AsRef<[u8]>,
@@ -409,7 +409,7 @@ fn get_calleridname_buf(b: &CBuf, input: usize, outputsize: usize) -> (Vec<u8>, 
     }
 }
 
-/// `get_calleridname` (FUN_001876e0) with an output buffer of
+/// `get_calleridname` with an output buffer of
 /// `outputsize` bytes: returns the display name of a From/To/Contact value
 /// (quoted-string or token form) and the rest of the input after it (the
 /// whole input when there is no display name).
@@ -480,7 +480,7 @@ pub struct InBrackets {
     pub residue: Vec<u8>,
 }
 
-/// `get_in_brackets_full` (FUN_001878c0): the part of a header value
+/// `get_in_brackets_full`: the part of a header value
 /// between `<` and `>`, skipping brackets inside quotes.
 pub fn get_in_brackets_full(s: impl AsRef<[u8]>) -> InBrackets {
     let mut b = CBuf::new(s.as_ref());
@@ -492,7 +492,7 @@ pub fn get_in_brackets_full(s: impl AsRef<[u8]>) -> InBrackets {
     }
 }
 
-/// `get_in_brackets` (FUN_00187a50): the bracketed part, or the input
+/// `get_in_brackets`: the bracketed part, or the input
 /// unchanged when there is none or it is malformed.
 pub fn get_in_brackets(s: impl AsRef<[u8]>) -> Vec<u8> {
     let s = s.as_ref();
@@ -515,7 +515,7 @@ pub struct NameAddr {
     pub uri: ParsedUri,
 }
 
-/// `parse_name_andor_addr` (FUN_00187a80): an optional display name, then
+/// `parse_name_andor_addr`: an optional display name, then
 /// a URI in brackets (whose trailing parameters are returned in
 /// `residue`, past the first `;`) or bare (parsed by `parse_uri_full`).
 pub fn parse_name_andor_addr(
@@ -818,7 +818,7 @@ fn sockaddr_eq(a: SockAddr, b: SockAddr) -> bool {
     }
 }
 
-/// `sip_uri_domain_cmp` (FUN_00186f40): true when the hosts differ.
+/// `sip_uri_domain_cmp`: true when the hosts differ.
 fn domain_differs(host1: &[u8], host2: &[u8]) -> bool {
     match (sockaddr_parse(host1), sockaddr_parse(host2)) {
         (Some(a), Some(b)) => !sockaddr_eq(a, b),
@@ -827,7 +827,7 @@ fn domain_differs(host1: &[u8], host2: &[u8]) -> bool {
     }
 }
 
-/// `sip_uri_headers_cmp` (FUN_00186fc0): true when the headers differ.
+/// `sip_uri_headers_cmp`: true when the headers differ.
 fn headers_differ(h1: Option<&[u8]>, h2: Option<&[u8]>) -> bool {
     let h1 = h1.filter(|h| !h.is_empty());
     let h2 = h2.filter(|h| !h.is_empty());
@@ -843,7 +843,7 @@ fn headers_differ(h1: Option<&[u8]>, h2: Option<&[u8]>) -> bool {
     }
 }
 
-/// `sip_uri_params_cmp` (FUN_00186b60): true when the parameters differ.
+/// `sip_uri_params_cmp`: true when the parameters differ.
 /// Parameters present on both sides must have equal values; `maddr`,
 /// `ttl`, `user`, and `method` must be on both sides.
 fn params_differ(p1: Option<&[u8]>, p2: Option<&[u8]>) -> bool {
@@ -908,7 +908,7 @@ fn cut(s: &[u8], c: u8) -> (&[u8], Option<&[u8]>) {
     }
 }
 
-/// `sip_uri_cmp` (FUN_00187bd0): 0 when two sip/sips URIs are equivalent
+/// `sip_uri_cmp`: 0 when two sip/sips URIs are equivalent
 /// per RFC 3261 19.1.4 (as chan_sip implements it), 1 otherwise.  Used by
 /// `validate_session` on the Contact.
 pub fn sip_uri_cmp(input1: impl AsRef<[u8]>, input2: impl AsRef<[u8]>) -> i32 {
@@ -971,7 +971,7 @@ fn split_headers<'a>(
     }
 }
 
-/// `phone_utils_parse_uri` (0x1737f0) on a NUL-terminated buffer, in
+/// `phone_utils_parse_uri` on a NUL-terminated buffer, in
 /// place, as the official DPMA's C function works: returns the offsets of
 /// the address and (when `want_transport`) of the transport value; `None`
 /// stands for a pointer to a static `""`.
@@ -1014,7 +1014,7 @@ pub fn phone_utils_parse_uri_in_place(
     (Some(addr), transport)
 }
 
-/// `phone_utils_parse_uri` (0x1737f0): the address part of a contact or
+/// `phone_utils_parse_uri`: the address part of a contact or
 /// URI and the `transport` parameter value, if any (the C function
 /// returns `""` for none).
 pub fn phone_utils_parse_uri(uri: impl AsRef<[u8]>) -> (Vec<u8>, Option<Vec<u8>>) {
@@ -1025,9 +1025,9 @@ pub fn phone_utils_parse_uri(uri: impl AsRef<[u8]>) -> (Vec<u8>, Option<Vec<u8>>
     (get(addr).unwrap_or_default(), get(transport))
 }
 
-/// Compare two URIs the way FUN_00152570 (phone_users.c) does: equal
-/// addresses (case insensitive) and transports, where a missing transport
-/// is "udp".
+/// Compare two URIs the way the official DPMA compares a phone's URIs:
+/// equal addresses (case insensitive) and transports, where a missing
+/// transport is "udp".
 pub fn same_uri(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> bool {
     let (addr1, t1) = phone_utils_parse_uri(a);
     let (addr2, t2) = phone_utils_parse_uri(b);

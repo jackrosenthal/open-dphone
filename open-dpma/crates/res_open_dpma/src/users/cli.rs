@@ -576,7 +576,7 @@ fn show_line(a: &CliArgs) -> CliResult {
             l.secondary_media_encryption
         );
         // Deviation: the official DPMA prints the secondary server port here
-        // (the field at +0x120, not authname's at +0x128).
+        // instead of the authname.
         bwriteln!(o, "AuthName: {}", l.authname);
         bwriteln!(o, "UserID: {}", l.userid);
         bwriteln!(o, "Register: {}", if l.no_register { "NO" } else { "YES" });

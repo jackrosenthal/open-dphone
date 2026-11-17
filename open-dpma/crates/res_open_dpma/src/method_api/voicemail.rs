@@ -1,5 +1,4 @@
-//! Voicemail methods and the voicemail message trackers
-//! (phone_method_internal_api.c).
+//! Voicemail methods and the voicemail message trackers.
 //!
 //! Message ids.  A phone addresses a message as `<folder>-<msg_id>`, where
 //! `msg_id` is app_voicemail's message id (`<time>-<counter>`) and
@@ -40,13 +39,13 @@ use std::collections::HashMap;
 use std::os::raw::c_void;
 use std::sync::{Arc, Mutex};
 
-/// app_voicemail's folders by index (the table at 0x5bd140).
+/// app_voicemail's folders by index.
 const FOLDERS: [&str; 12] = [
     "INBOX", "Old", "Work", "Family", "Friends", "Cust1", "Cust2", "Cust3", "Cust4", "Cust5",
     "Deleted", "Urgent",
 ];
 
-/// The folder a phone sees each folder as (the table at 0x5bd0e0).
+/// The folder a phone sees each folder as.
 const CANONICAL: [&str; 12] = [
     "INBOX", "INBOX", "Work", "Family", "Friends", "Cust1", "Cust2", "Cust3", "Cust4", "Cust5",
     "Deleted", "INBOX",
@@ -92,11 +91,11 @@ struct UserTracker {
     messages: Mutex<Vec<Arc<MsgTracker>>>,
 }
 
-/// The phone-user tracker container (0x5eff48), keyed by phone name (case
-/// sensitive).  None while the module is not loaded.
+/// The phone-user trackers, keyed by phone name (case sensitive).  None
+/// while the module is not loaded.
 static USER_TRACKERS: Mutex<Option<HashMap<Vec<u8>, Arc<UserTracker>>>> = Mutex::new(None);
 
-/// `vm_phone_user_tracker_find_or_create` (FUN_00181950).
+/// The tracker of phone `name`, created when there is none.
 fn user_tracker_find_or_create(name: &[u8]) -> Arc<UserTracker> {
     let mut g = USER_TRACKERS.lock().unwrap();
     match g.as_mut() {
@@ -107,20 +106,19 @@ fn user_tracker_find_or_create(name: &[u8]) -> Arc<UserTracker> {
     }
 }
 
-/// `vm_phone_user_tracker_remove` (FUN_0017b390): drop a phone's
-/// trackers.
+/// Drop a phone's trackers.
 pub fn remove_user_tracker(name: &[u8]) {
     if let Some(map) = USER_TRACKERS.lock().unwrap().as_mut() {
         map.remove(name);
     }
 }
 
-/// `vm_message_tracker_list_reset` (FUN_00181880).
+/// Drop every message tracker of a phone.
 fn list_reset(ut: &UserTracker) {
     ut.messages.lock().unwrap().clear();
 }
 
-/// `vm_message_tracker_add` (FUN_00184fe0).
+/// Add a tracker for message `id` in `folder`.
 fn tracker_add(ut: &UserTracker, id: &[u8], folder: &[u8]) -> Result<(), ()> {
     ut.messages.lock().unwrap().push(Arc::new(MsgTracker {
         id: id.to_vec(),
@@ -136,8 +134,8 @@ fn tracker_unlink(ut: &UserTracker, t: &Arc<MsgTracker>) {
     }
 }
 
-/// FUN_0017bc60: find the message `id` (`<folder>-<msg_id>`) in a snapshot
-/// of `folder` of `mailbox` (`box@context`) and make a tracker for it.
+/// Find the message `id` (`<folder>-<msg_id>`) in a snapshot of `folder`
+/// of `mailbox` (`box@context`) and make a tracker for it.
 fn tracker_from_snapshot(id: &[u8], folder: &[u8], mailbox: &[u8]) -> Option<MsgTracker> {
     let dash = find(id, b'-')?;
     let msg_id = &id[dash + 1..];
@@ -163,9 +161,9 @@ fn tracker_from_snapshot(id: &[u8], folder: &[u8], mailbox: &[u8]) -> Option<Msg
         })
 }
 
-/// `vm_message_tracker_find` (FUN_00181aa0): the tracker for `id`, made
-/// from a snapshot when there is none, provided the message's folder shows
-/// as `folder` (compared case sensitively).
+/// The tracker for `id`, made from a snapshot when there is none,
+/// provided the message's folder shows as `folder` (compared case
+/// sensitively).
 fn tracker_find(
     ut: &UserTracker,
     id: &[u8],
@@ -470,13 +468,13 @@ fn id_array(v: &Value) -> Option<&Vec<Value>> {
 // Load and unload
 // ---------------------------------------------------------------------------
 
-/// Create the phone-user tracker container (FUN_00186920 part).
+/// Create the phone-user tracker container.
 pub fn load() -> Result<(), ()> {
     *USER_TRACKERS.lock().unwrap() = Some(HashMap::new());
     Ok(())
 }
 
-/// Drop the container and every tracker (FUN_00186840 part).
+/// Drop the container and every tracker.
 pub fn unload() {
     USER_TRACKERS.lock().unwrap().take();
 }
@@ -485,8 +483,7 @@ pub fn unload() {
 // Methods
 // ---------------------------------------------------------------------------
 
-/// `switchvox.users.voicemail.getList` (`handle_request_json_vm_getlist`,
-/// FUN_001859c0): one page of a folder's messages.
+/// `switchvox.users.voicemail.getList`: one page of a folder's messages.
 pub fn get_list(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     let m = c.method.as_slice();
     let tr = vm_translation(&c.phone);
@@ -637,8 +634,8 @@ fn parse_callerid(cid: &[u8]) -> (Vec<u8>, Vec<u8>) {
     (number.to_vec(), name.to_vec())
 }
 
-/// `switchvox.users.voicemail.getFolderList` (FUN_0017d8d0): the folders
-/// and their message counts.
+/// `switchvox.users.voicemail.getFolderList`: the folders and their
+/// message counts.
 pub fn get_folder_list(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     let m = c.method.as_slice();
     let tr = vm_translation(&c.phone);
@@ -681,8 +678,7 @@ pub fn get_folder_list(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     0
 }
 
-/// `switchvox.users.voicemail.move` (`handle_request_json_vm_move`,
-/// FUN_00184200).
+/// `switchvox.users.voicemail.move`.
 pub fn move_message(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     let m = c.method.as_slice();
     let tr = vm_translation(&c.phone);
@@ -759,8 +755,7 @@ pub fn move_message(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     0
 }
 
-/// `switchvox.users.voicemail.remove` (`handle_request_json_vm_remove`,
-/// FUN_00183500).
+/// `switchvox.users.voicemail.remove`.
 pub fn remove(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     let m = c.method.as_slice();
     let tr = vm_translation(&c.phone);
@@ -802,8 +797,8 @@ pub fn remove(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     0
 }
 
-/// `switchvox.users.voicemail.forward` (`handle_request_json_vm_forward`,
-/// FUN_00182660): copy messages to the INBOX of another line's mailbox.
+/// `switchvox.users.voicemail.forward`: copy messages to the INBOX of
+/// another line's mailbox.
 pub fn forward(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     let m = c.method.as_slice();
     let Some(account_from) = json_str(p, "account_from") else {
@@ -866,8 +861,8 @@ pub fn forward(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     0
 }
 
-/// `mark_read_unread_helper_json` (FUN_001850e0): move INBOX, Old, or
-/// Urgent messages to Old (`read`) or INBOX, and update their trackers.
+/// Move INBOX, Old, or Urgent messages to Old (`read`) or INBOX, and
+/// update their trackers.
 fn mark_read_unread(c: &MethodCall, p: &Value, out: &mut Vec<u8>, read: bool) -> i32 {
     let m = c.method.as_slice();
     let target: &[u8] = if read { b"Old" } else { b"INBOX" };
@@ -923,19 +918,19 @@ fn mark_read_unread(c: &MethodCall, p: &Value, out: &mut Vec<u8>, read: bool) ->
     0
 }
 
-/// `switchvox.users.voicemail.markRead` (FUN_001859b0).
+/// `switchvox.users.voicemail.markRead`.
 pub fn mark_read(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     mark_read_unread(c, p, out, true)
 }
 
-/// `switchvox.users.voicemail.markUnread` (FUN_001859a0).
+/// `switchvox.users.voicemail.markUnread`.
 pub fn mark_unread(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     mark_read_unread(c, p, out, false)
 }
 
-/// `switchvox.users.voicemail.play` (`handle_request_json_vm_play`,
-/// FUN_00181d40): call the phone's primary line; when answered, the call
-/// runs `DigiumVoicemailPlayback(<mailbox>,<folder>,<msg_id>)`.
+/// `switchvox.users.voicemail.play`: call the phone's primary line; when
+/// answered, the call runs
+/// `DigiumVoicemailPlayback(<mailbox>,<folder>,<msg_id>)`.
 pub fn play(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     let m = c.method.as_slice();
     let Some(account) = json_str(p, "account_id") else {
@@ -978,10 +973,9 @@ struct DialData {
     app_and_args: Vec<u8>,
 }
 
-/// `dial_phone_event_app` (in FUN_00181d40): dial the phone's primary
-/// line with `X-Event-Name: digium.incomingCall.voicemail` and run `app`
-/// ("app,args") when it answers, on a detached thread.  Errors replace
-/// `out`.
+/// Dial the phone's primary line with `X-Event-Name:
+/// digium.incomingCall.voicemail` and run `app` ("app,args") when it
+/// answers, on a detached thread.  Errors replace `out`.
 fn dial_phone_event_app(phone: &[u8], out: &mut Vec<u8>, method: &[u8], app: &[u8]) {
     let (tech, line) = {
         let g = users::read();
@@ -1060,8 +1054,7 @@ fn dial_phone_event_app(phone: &[u8], out: &mut Vec<u8>, method: &[u8], app: &[u
     }
 }
 
-/// `dial_phone_event_app_thread` (FUN_0017b9f0): run the dial to its end
-/// and destroy it.
+/// Run the dial to its end and destroy it.
 unsafe extern "C" fn dial_phone_event_app_thread(data: *mut c_void) -> *mut c_void {
     dpma_ast::guard(std::ptr::null_mut(), || {
         let d = data as *mut AstDial;

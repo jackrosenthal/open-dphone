@@ -1,12 +1,10 @@
 //! The CLI commands registered at module load, before the full
-//! components: `digium_phones show settings` (FUN_00174570) and
-//! `digium_phones show version` (FUN_00174870) (phone_settings_cli.c;
-//! register FUN_00174950, unregister FUN_00174930).  The official DPMA's
-//! `digium_phones license status` (FUN_001748c0) is intentionally not
-//! ported (no license handling in this rewrite).
+//! components: `digium_phones show settings` and `digium_phones show
+//! version`.  The official DPMA's `digium_phones license status` is
+//! intentionally not ported (no license handling in this rewrite).
 //!
 //! Each command's summary is its own command text, as in the official
-//! DPMA's `ast_cli_entry` table (DAT_005e9100).
+//! DPMA.
 
 use crate::config::{self, auth};
 use dpma_ast::bformat;
@@ -53,9 +51,9 @@ fn invalid_text(bad: &config::InvalidAuth) -> Vec<u8> {
     )
 }
 
-/// `digium_phones show settings` (FUN_00174570).  The official DPMA takes
-/// any number of arguments.  It reads the configuration object (see
-/// `config::Settings`); without one, the getters' defaults.
+/// `digium_phones show settings`.  The official DPMA takes any number of
+/// arguments.  It reads the configuration object (see `config::Settings`);
+/// without one, the defaults.
 fn cli_show_settings(a: &CliArgs) -> CliResult {
     let s = config::settings();
     let s = s.as_ref();
@@ -124,14 +122,14 @@ fn cli_show_settings(a: &CliArgs) -> CliResult {
     CliResult::Success
 }
 
-/// `digium_phones show version` (FUN_00174870; this rewrite prints its own
-/// version).  Like `show settings`, it takes any number of arguments.
+/// `digium_phones show version` (this rewrite prints its own version).
+/// Like `show settings`, it takes any number of arguments.
 fn cli_show_version(a: &CliArgs) -> CliResult {
     a.out(bformat!("Open DPMA version {}\n", crate::VERSION));
     CliResult::Success
 }
 
-/// The commands registered by `load_module` (FUN_00174950).
+/// The commands registered by `load_module`.
 pub fn commands() -> Vec<CliCommand> {
     vec![
         CliCommand {

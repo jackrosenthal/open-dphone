@@ -1,5 +1,5 @@
-//! A model of the decompile: the documents the official DPMA builds from
-//! the spool, and the response documents.
+//! A model of the official DPMA: the documents it builds from the spool,
+//! and the response documents.
 
 use std::cmp::Ordering;
 

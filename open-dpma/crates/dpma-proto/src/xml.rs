@@ -2,7 +2,7 @@
 
 use crate::cbuf::c_bytes;
 
-/// The entity for a character `phone_utils_xml_escape` replaces.
+/// The entity for a character that escaping replaces.
 fn entity(c: u8) -> Option<&'static [u8]> {
     match c {
         b'"' => Some(b"&quot;"),
@@ -14,8 +14,8 @@ fn entity(c: u8) -> Option<&'static [u8]> {
     }
 }
 
-/// `phone_utils_xml_escape(in, out, size)` (0x1731a0) into a buffer of
-/// `size` bytes: `"`, `&`, `'`, `<`, and `>` become entities.  When an
+/// Escape `input` into a buffer of `size` bytes, as the official DPMA
+/// does: `"`, `&`, `'`, `<`, and `>` become entities.  When an
 /// entity does not fit (it must be shorter than the space left, which
 /// keeps one byte free), the character is copied unescaped instead; when
 /// not even that fits, the output ends.  The input is a C string (it ends
@@ -45,7 +45,7 @@ pub fn escape_bounded(input: &[u8], size: usize) -> Vec<u8> {
     out
 }
 
-/// `phone_utils_xml_escape` with unlimited room.
+/// [`escape_bounded`] with unlimited room.
 pub fn escape(s: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(s.len());
     for &c in s {

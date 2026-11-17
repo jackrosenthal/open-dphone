@@ -36,9 +36,8 @@ fn prune_session_by_mac(mac: &[u8]) {
     }
 }
 
-/// `phone_msg_set_common_password` (FUN_0014bb00): generate the session's
-/// common password and put it, RSA-encrypted to the phone's key and base64
-/// encoded, in `out.password`.
+/// Generate the session's common password and put it, RSA-encrypted to
+/// the phone's key and base64 encoded, in `out.password`.
 pub(crate) fn set_common_password(out: &mut Outgoing, session: &Arc<Session>) -> Result<(), ()> {
     let mut st = session.lock();
     if st.certificate.is_none() {
@@ -62,8 +61,8 @@ pub(crate) fn set_common_password(out: &mut Outgoing, session: &Arc<Session>) ->
     Ok(())
 }
 
-/// `set_auth_requirements` (FUN_00149710): the HandshakeResponse's
-/// `Userlist-Auth-Requirements` and `Token-Auth-Requirements`.
+/// Set the HandshakeResponse's `Userlist-Auth-Requirements` and
+/// `Token-Auth-Requirements`.
 pub(crate) fn set_auth_requirements(out: &mut Outgoing, flags: u32) {
     out.userlist_auth_requirements = if flags & auth::USER == 0 {
         "disabled"
@@ -93,8 +92,7 @@ pub(crate) fn set_auth_requirements(out: &mut Outgoing, flags: u32) {
     };
 }
 
-/// Request handler for "Handshake" (`handle_request_handshake`,
-/// FUN_0014dbe0).
+/// Request handler for "Handshake".
 pub fn handle_handshake(tx: Arc<Transaction>) -> i32 {
     let Some(msg) = tx.first_msg.as_ref() else {
         return 0;

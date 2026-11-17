@@ -3,9 +3,9 @@
 //! helper modules in one module.
 //!
 //! This file declares the module to Asterisk's loader and wires the
-//! subsystems together in the official DPMA's order (res_digium_phone.c),
-//! followed by the PJSIP side (`pjsip`), which Asterisk loaded after
-//! res_digium_phone as helper modules.
+//! subsystems together in the official DPMA's order, followed by the
+//! PJSIP side (`pjsip`), which Asterisk loaded after res_digium_phone as
+//! helper modules.
 
 #![allow(clippy::result_unit_err)]
 
@@ -111,10 +111,10 @@ fn load_config() -> Result<(), ()> {
     Ok(())
 }
 
-/// `unload_full_components` (FUN_00146bd0) for loaded or partly loaded
-/// components.  Every step tolerates subsystems that were never loaded.
-/// (On a failed load the official DPMA skips this and leaves the partly
-/// loaded components registered; here they are always unloaded.)
+/// Unload loaded or partly loaded components.  Every step tolerates
+/// subsystems that were never loaded.  (On a failed load the official
+/// DPMA skips this and leaves the partly loaded components registered;
+/// here they are always unloaded.)
 fn unload_components(full: Option<Full>) {
     phone_main::stop();
     avahi::stop();
@@ -136,8 +136,8 @@ fn unload_components(full: Option<Full>) {
     ami::queue_dispose();
 }
 
-/// `load_full_components` (FUN_00146e30).  On error the caller unloads
-/// whatever was loaded with `unload_components(None)`.
+/// Load the components.  On error the caller unloads whatever was loaded
+/// with `unload_components(None)`.
 fn load_full() -> Result<Full, ()> {
     fn fail(msg: &str) -> Result<Full, ()> {
         ast_log!(LOG_ERROR, "{}", msg);
@@ -266,8 +266,8 @@ fn install_logger() {
     log::set_max_level(log::LevelFilter::Debug);
 }
 
-/// `load_module` of res_digium_phone (FUN_001472a0): 0, or 1 when the
-/// module declines.
+/// The `load_module` of res_digium_phone: 0, or 1 when the module
+/// declines.
 fn load_main() -> i32 {
     if !dpma_ast::log::register_custom_level(LOG_LEVEL_NAME) {
         ast_log!(LOG_ERROR, "Failed to register LOG_DPMA_NAME");
@@ -332,7 +332,7 @@ unsafe extern "C" fn unload_module() -> c_int {
     })
 }
 
-/// `reload` (FUN_00147420), without the official DPMA's license re-check.
+/// Reload, without the official DPMA's license re-check.
 /// (The helpers have none; the PJSIP side follows res_digium_phone.conf
 /// through its config hook.)
 unsafe extern "C" fn reload_module() -> c_int {

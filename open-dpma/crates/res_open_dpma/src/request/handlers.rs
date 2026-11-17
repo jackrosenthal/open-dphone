@@ -1,5 +1,4 @@
-//! The request handlers (phone_request.c), registered by
-//! `phone_request_load` (FUN_00177610).
+//! The request handlers.
 
 use super::{error_response_json, error_response_xml, register_handler};
 use crate::method::{self, MethodCall};
@@ -13,7 +12,7 @@ use std::io::Read;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-/// `phone_request_load`.
+/// Register the request handlers.
 pub fn load() -> Result<(), ()> {
     use dpma_proto::types::*;
     let mut res = Ok(());
@@ -69,10 +68,9 @@ pub fn load() -> Result<(), ()> {
     res
 }
 
-/// `handle_request_echo` (FUN_001764f0): answer directly (not through the
-/// session layer, so unencrypted and in one message) with an EchoResponse
-/// carrying Error-ID 0, the request's ID and origination network, and its
-/// body.
+/// Answer an Echo directly (not through the session layer, so unencrypted
+/// and in one message) with an EchoResponse carrying Error-ID 0, the
+/// request's ID and origination network, and its body.
 pub fn handle_echo(tx: Arc<Transaction>) -> i32 {
     use dpma_proto::headers as h;
     let var = |name: &str| tx.first_msg.as_ref().and_then(|m| m.get_var(name));
@@ -122,12 +120,12 @@ fn set_error(tx: &Transaction, code: i32) {
     with_out(tx, |o| o.error = code);
 }
 
-/// `phone_msg_body_append` on the reply.
+/// Append `data` to the reply's body.
 fn append(tx: &Transaction, data: &[u8]) {
     with_out(tx, |o| o.append(data));
 }
 
-/// `phone_msg_session_get_id` (FUN_00149fa0) of the transaction's session.
+/// The id of the transaction's session (empty without one).
 fn session_id(tx: &Transaction) -> Vec<u8> {
     tx.session
         .as_ref()
@@ -135,9 +133,8 @@ fn session_id(tx: &Transaction) -> Vec<u8> {
         .unwrap_or_default()
 }
 
-/// `phone_msg_session_get_auth_flags` (FUN_00149f90), as the official
-/// DPMA's signed int (the handlers reject negative flags as an invalid
-/// session).
+/// The session's authentication flags, as the official DPMA's signed int
+/// (the handlers reject negative flags as an invalid session).
 fn session_auth_flags(tx: &Transaction) -> i32 {
     tx.session.as_ref().map_or(0, |s| s.auth_flags() as i32)
 }
@@ -202,12 +199,12 @@ fn strip_blanks(s: &[u8]) -> &[u8] {
 /// The body answering `file://null`.
 const NULL_CONTACTS: &str = "<contacts group_name=\"null\" editable=\"0\" />\n";
 
-/// `handle_request_file` (FUN_001758f0): the body names a file as
-/// `file://<name>` (up to the end of the line).  `default` is the default
-/// contacts document (every phone with a primary line), `null` an empty
-/// contacts list, and anything else a file inside `file_directory`, sent
-/// as it is.  A body without `file://` or a file that cannot be opened is
-/// answered with error -98 (File Not Found).
+/// Answer a FileRequest: the body names a file as `file://<name>` (up to
+/// the end of the line).  `default` is the default contacts document (every
+/// phone with a primary line), `null` an empty contacts list, and anything
+/// else a file inside `file_directory`, sent as it is.  A body without
+/// `file://` or a file that cannot be opened is answered with error -98
+/// (File Not Found).
 ///
 /// Deviation: a name with a `..` component is answered with the same
 /// error as a missing file.  The official DPMA opens
@@ -288,7 +285,8 @@ fn escapes_file_dir(name: &[u8]) -> bool {
 // ConfigRequest and VerifyRequest
 // ---------------------------------------------------------------------------
 
-/// `standard_phone_user_find_by_token` for the transaction.
+/// The phone the transaction's `Config-Token` belongs to
+/// (`users::runtime::find_by_token`).
 fn phone_for_token(tx: &Transaction) -> Option<Vec<u8>> {
     users::runtime::find_by_token(
         &tx.config_token,
@@ -320,10 +318,10 @@ fn set_digest(tx: &Transaction, doc: &[u8]) {
     }
 }
 
-/// `handle_request_config` (FUN_00175be0): the configuration document of
-/// the phone the `Config-Token` belongs to (built for the model in the
-/// request's user agent); error -192 (Invalid Token) when the token does
-/// not match.  A successful answer marks the session configured.
+/// Answer with the configuration document of the phone the `Config-Token`
+/// belongs to (built for the model in the request's user agent); error -192
+/// (Invalid Token) when the token does not match.  A successful answer
+/// marks the session configured.
 ///
 /// Deviation: the answer states the document's digest in
 /// `X-Digium-AppServer-MD5` (see `handle_verify`).  The official DPMA
@@ -342,20 +340,19 @@ pub fn handle_config(tx: Arc<Transaction>) -> i32 {
     0
 }
 
-/// `handle_request_verify` (FUN_00176750): check the `Config-Token`; error
-/// -192 (Invalid Token) when it is missing or does not match.  The session
-/// is marked configured whenever a token was presented, even one that
-/// does not match (as in the official DPMA).
+/// Check the `Config-Token`; error -192 (Invalid Token) when it is missing
+/// or does not match.  The session is marked configured whenever a token
+/// was presented, even one that does not match (as in the official DPMA).
 ///
-/// Deviation: an accepted token is answered with the digest of the
-/// phone's configuration document as a ConfigRequest would get it now, in
+/// Deviation: an accepted token is answered with the digest of the phone's
+/// configuration document as a ConfigRequest would get it now, in
 /// `X-Digium-AppServer-MD5`.  A phone compares the value with the one it
 /// kept from its last download (the header of that ConfigResponse, or
 /// without one the MD5 of the document's bytes, which is the same value)
 /// and downloads the configuration only when they differ.  The official
-/// DPMA has the header in its messages (FUN_0014c6b0 sends it when it is
-/// set) but never sets it, so a phone logs "md5sum_missing" and downloads
-/// its configuration at every start.
+/// DPMA has the header in its messages (it sends it when it is set) but
+/// never sets it, so a phone logs "md5sum_missing" and downloads its
+/// configuration at every start.
 pub fn handle_verify(tx: Arc<Transaction>) -> i32 {
     if tx.config_token.is_empty() {
         dpma_log!("Verify request with null token");
@@ -382,9 +379,9 @@ pub fn handle_verify(tx: Arc<Transaction>) -> i32 {
 /// Size of the official DPMA's buffer for the phone name.
 const NAME_BUF: usize = 0x80;
 
-/// `handle_request_token` (FUN_00175d50): issue a configuration token.
+/// Issue a configuration token.
 ///
-/// The phone is selected by `phone_username_for_token` from the
+/// The phone is selected by `users::runtime::username_for_token` from the
 /// `Username` (a primary line's name or extension, or a phone name) or,
 /// without one, the MAC.  Then every check the session's authentication
 /// flags require must pass:
@@ -486,12 +483,12 @@ fn token_reply(tx: &Transaction) {
 // UserlistRequest
 // ---------------------------------------------------------------------------
 
-/// `handle_request_userlist` (FUN_001762c0): the user list as JSON
+/// Answer with the user list as JSON
 /// (`users::userlist::build_userlist_json`).  With USERLIST_GLOBALPIN in
 /// the session's flags and a `ConfigPassword` other than the global pin,
-/// only the phones whose `group_pin` is that password are listed.  An
-/// empty list is answered with -198 (Invalid Config Password) and records
-/// an auth incident.  The session becomes unconfigured either way.
+/// only the phones whose `group_pin` is that password are listed.  An empty
+/// list is answered with -198 (Invalid Config Password) and records an auth
+/// incident.  The session becomes unconfigured either way.
 ///
 /// Deviation: while `userlist_auth` has an invalid value
 /// (`General::invalid_userlist_auth`), every request is answered with -198
@@ -542,10 +539,10 @@ fn userlist_reply(tx: &Transaction) {
 // AsteriskRequest and HTTPRequest
 // ---------------------------------------------------------------------------
 
-/// `FUN_00176900`: the phone that `user:secret` authenticates (both parts
-/// stripped of blanks; no colon means no secret): the phone named `user`
-/// with pin `secret`, else the first phone with the line named `user`
-/// whose secret is `secret`.
+/// The phone that `user:secret` authenticates (both parts stripped of
+/// blanks; no colon means no secret): the phone named `user` with pin
+/// `secret`, else the first phone with the line named `user` whose secret
+/// is `secret`.
 fn authenticate(credentials: &[u8]) -> Option<Vec<u8>> {
     let (user, secret) = match credentials.find_byte(b':') {
         Some(i) => (&credentials[..i], strip_blanks(&credentials[i + 1..])),
@@ -571,8 +568,7 @@ struct Forwarded {
     method: Vec<u8>,
 }
 
-/// `handle_request_asterisk` (FUN_00176a60), registered for both
-/// AsteriskRequest and HTTPRequest.
+/// The handler of both AsteriskRequest and HTTPRequest.
 ///
 /// The body carries the credentials on a line
 /// `X-Digium-AppServer-Digest-Auth=<user>:<secret>` and the request as
@@ -675,7 +671,7 @@ fn asterisk_request(tx: &Arc<Transaction>, buf: &mut Vec<u8>) -> Option<Forwarde
     }
 }
 
-/// `handle_request_xml` (inlined in FUN_00176a60).
+/// Run an XML request for `phone`.
 fn xml_request(
     tx: &Arc<Transaction>,
     phone: &[u8],
@@ -739,7 +735,7 @@ fn xml_request(
     None
 }
 
-/// `handle_request_json` (inlined in FUN_00176a60).  The request is parsed
+/// Run a JSON request for `phone`.  The request is parsed
 /// with Asterisk's JSON library (jansson), as the official DPMA does, so
 /// the same documents are accepted and AMI sees the same parameter text;
 /// methods get the parameters as a `serde_json::Value`.
@@ -807,7 +803,7 @@ fn json_request(
     None
 }
 
-/// `handle_request_ping` (FUN_001758e0): send the (empty) PingResponse.
+/// Send the (empty) PingResponse.
 pub fn handle_ping(tx: Arc<Transaction>) -> i32 {
     crate::session::send_and_destroy(&tx);
     0

@@ -1,4 +1,4 @@
-//! Request dispatch (dpma_request.c).
+//! Request dispatch.
 
 pub mod handlers;
 
@@ -8,14 +8,14 @@ use dpma_ast::threadpool::{Options, Origin, ThreadPool};
 use dpma_ast::{ast_log, bformat, bwrite, dpma_log};
 use std::sync::{Arc, RwLock};
 
-/// A request-type handler (`request_register_handler`); runs on the
+/// A request-type handler (`register_handler`); runs on the
 /// `DPMA_request` pool.  The transaction's `outgoing` is allocated before
 /// the handler runs when the registration has a response type.  The
 /// return value is ignored (as the taskprocessor ignores it in the
 /// official DPMA).
 pub type Handler = fn(tx: Arc<Transaction>) -> i32;
 
-/// One entry of the handler table (32 bytes in the official DPMA).
+/// One entry of the handler table.
 #[derive(Clone, Copy)]
 struct Registration {
     request_type: &'static str,
@@ -24,24 +24,25 @@ struct Registration {
     handler: Handler,
 }
 
-/// The handler table (0x5f4e80), searched in registration order.
+/// The handler table, searched in registration order.
 static HANDLERS: RwLock<Vec<Registration>> = RwLock::new(Vec::new());
 
-/// The `DPMA_request` pool (0x5eff78).
+/// The `DPMA_request` pool.
 static REQUEST_POOL: RwLock<Option<ThreadPool>> = RwLock::new(None);
 
-/// The `DPMA_extended` pool (0x5eff70).
+/// The `DPMA_extended` pool.
 static EXTENDED_POOL: RwLock<Option<ThreadPool>> = RwLock::new(None);
 
 const REQUEST_POOL_NAME: &str = "DPMA_request";
 const EXTENDED_POOL_NAME: &str = "DPMA_extended";
 
-/// Fixed part of the pools' options (0x5e95e0).  The sizes come from the
+/// Fixed part of the pools' options.  The sizes come from the
 /// configuration.
 const IDLE_TIMEOUT: i32 = 60;
 const AUTO_INCREMENT: i32 = 1;
 
-/// `request_load` (FUN_00189890).  Does nothing when already loaded.
+/// Register the request handlers and create the thread pools.  Does
+/// nothing when already loaded.
 pub fn load() -> Result<(), ()> {
     if REQUEST_POOL.read().unwrap().is_some() {
         return Ok(());
@@ -78,9 +79,9 @@ pub fn load() -> Result<(), ()> {
     Ok(())
 }
 
-/// `request_unload` (FUN_00189820): drop the handler table and shut down
-/// the extended pool, then the request pool.  Each shutdown waits for the
-/// pool's running tasks; queued tasks are discarded.
+/// Drop the handler table and shut down the extended pool, then the request
+/// pool.  Each shutdown waits for the pool's running tasks; queued tasks
+/// are discarded.
 pub fn unload() {
     HANDLERS.write().unwrap().clear();
     // Take each pool out before shutting it down so that tasks still
@@ -96,7 +97,7 @@ pub fn is_loaded() -> bool {
     REQUEST_POOL.read().unwrap().is_some()
 }
 
-/// `request_register_handler` (FUN_00188bf0): append to the handler table.
+/// Append to the handler table.
 /// A request type registered twice is answered by the first registration.
 pub fn register_handler(
     request_type: &'static str,
@@ -113,7 +114,9 @@ pub fn register_handler(
     Ok(())
 }
 
-/// `request_handle_incoming` (FUN_00188d20).
+/// Dispatch `tx` to the handler of its request type on the
+/// `DPMA_request` pool, allocating its reply first when the handler has a
+/// response type.
 pub fn handle_incoming(tx: Arc<Transaction>) -> Result<(), ()> {
     if tx.request_type.is_empty() {
         dpma_log!("Received request with no type");
@@ -175,9 +178,8 @@ pub fn handle_incoming(tx: Arc<Transaction>) -> Result<(), ()> {
     Ok(())
 }
 
-/// `request_extended_task_push` (FUN_00188b30): run `task` on the
-/// `DPMA_extended` pool (long-running work such as dialing a phone).  On
-/// failure the task is dropped unrun.
+/// Run `task` on the `DPMA_extended` pool (long-running work such as
+/// dialing a phone).  On failure the task is dropped unrun.
 pub fn push_extended(task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ()> {
     let origin = Origin {
         file: c"dpma_request.c",
@@ -207,8 +209,8 @@ fn method_or_na(method: &[u8]) -> &[u8] {
     }
 }
 
-/// `create_error_response_xml` (FUN_00189280): REPLACE the contents of
-/// `out` with the XML error document for `code` (method "NA" when empty):
+/// REPLACE the contents of `out` with the XML error document for `code`
+/// (method "NA" when empty):
 ///
 /// ```text
 /// <response method="M">\r\n<errors>\r\n<error code="C" message="T" />\r\n</errors>\r\n</response>\r\n
@@ -227,8 +229,7 @@ pub fn error_response_xml(out: &mut Vec<u8>, method: impl AsRef<[u8]>, code: i32
     );
 }
 
-/// `create_error_response_json` (FUN_00189450): REPLACE the contents of
-/// `out` with the compact JSON error document
+/// REPLACE the contents of `out` with the compact JSON error document
 ///
 /// ```text
 /// {"response":{"method":"M","errors":{"error":{"code":C,"message":"T: D "}}}}

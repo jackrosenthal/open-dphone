@@ -1,7 +1,4 @@
-//! XML document helpers (phone_utils.c: `phone_utils_xml_escape` 0x1731a0,
-//! `phone_utils_xml_find` 0x173360, `phone_utils_xml_add` 0x1733e0,
-//! `phone_utils_xml_add_doc` 0x173400, `phone_utils_xml_add_file`
-//! 0x173450, and `phone_utils_filename_to_fullpath` 0x173520).
+//! XML document helpers.
 
 use dpma_ast::dpma_log;
 use dpma_ast::xml::{self, Doc, Node};

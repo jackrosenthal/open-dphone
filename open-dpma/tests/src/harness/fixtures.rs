@@ -184,7 +184,7 @@ pub fn http_wrap(doc: &[u8]) -> Vec<u8> {
     out
 }
 
-/// The texts of the request error codes (`phone_request.c`).
+/// The texts of the request error codes.
 pub fn request_error_text(code: u32) -> &'static str {
     match code {
         10001 => "Your request was empty",

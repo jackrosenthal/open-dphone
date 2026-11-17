@@ -21,13 +21,13 @@ use std::sync::{Arc, Mutex, RwLock};
 /// the id); listings follow its order.
 const BUCKETS: u32 = 0x101;
 
-/// The session container (0x5f4e40); None while not loaded.
+/// The session container; None while not loaded.
 static SESSIONS: Mutex<Option<NamedMap<Arc<Session>>>> = Mutex::new(None);
 
-/// The global auth flags (0x5eeda0), copied into every new session.
+/// The global auth flags, copied into every new session.
 static GLOBAL_AUTH_FLAGS: AtomicU32 = AtomicU32::new(crate::config::auth::USER);
 
-/// `digium_phones show sessions` (registered by `phone_msg_load`).
+/// `digium_phones show sessions` (registered at load).
 static CLI: Mutex<Option<CliGroup>> = Mutex::new(None);
 
 /// Trust material read from the configured files.
@@ -108,8 +108,9 @@ fn load_trust() -> Result<Trust, Unreadable> {
     })
 }
 
-/// `phone_msg_load` (FUN_00150440).  A certificate file that cannot be
-/// read fails the load.
+/// Read the trust material, create the session container, register the
+/// CLI command, restore the saved sessions, and load the transport.  A
+/// certificate file that cannot be read fails the load.
 pub fn load(_config_file: &[u8]) -> Result<(), ()> {
     let g = crate::config::get();
     let trust = load_trust().map_err(|u| {
@@ -125,8 +126,8 @@ pub fn load(_config_file: &[u8]) -> Result<(), ()> {
     crate::transport::load()
 }
 
-/// `phone_msg_reload` (FUN_00150420): refresh the global auth flags.  The
-/// trust material is read again too (the official DPMA's is built in).
+/// Refresh the global auth flags.  The trust material is read again too
+/// (the official DPMA's is built in).
 ///
 /// Deviation (the official DPMA has no such files): a certificate file
 /// that cannot be read is logged as an error, and every Handshake is
@@ -159,7 +160,9 @@ pub fn reload(_config_file: &[u8]) -> Result<(), ()> {
     Ok(())
 }
 
-/// `phone_msg_unload` (FUN_001510f0).
+/// Unregister the CLI command, unload the transport, and drop every
+/// session and incomplete transaction, the dialplan routing, and the
+/// trust material.
 pub fn unload() {
     CLI.lock().unwrap_or_else(|e| e.into_inner()).take();
     crate::transport::unload();
@@ -170,7 +173,7 @@ pub fn unload() {
     TRUST.write().unwrap_or_else(|e| e.into_inner()).take();
 }
 
-/// `phone_msg_session_find` (FUN_00149d60): the session with id `id`
+/// The session with id `id`
 /// (case insensitive; the id is cut to 127 bytes first).
 pub fn find(id: &[u8]) -> Option<Arc<Session>> {
     let id = crate::util::truncate(id, 0x80);
@@ -182,8 +185,8 @@ pub fn find(id: &[u8]) -> Option<Arc<Session>> {
         .cloned()
 }
 
-/// `phone_msg_session_find_by_mac` (FUN_00149e30): the first session (in
-/// container order) whose MAC equals `mac`, ignoring case.
+/// The first session (in container order) whose MAC equals `mac`,
+/// ignoring case.
 pub fn find_by_mac(mac: &[u8]) -> Option<Arc<Session>> {
     all().into_iter().find(|s| {
         let st = s.lock();
@@ -218,8 +221,7 @@ fn unlink(s: &Arc<Session>) {
     }
 }
 
-/// `phone_msg_session_mark_authenticated` (FUN_0014c230): set
-/// authenticated (clearing inactive), replace the response URI when
+/// Set authenticated (clearing inactive), replace the response URI when
 /// `response_uri` is not empty, and save the session to AstDB.
 pub fn mark_authenticated(s: &Arc<Session>, response_uri: Option<&[u8]>) {
     {
@@ -233,15 +235,14 @@ pub fn mark_authenticated(s: &Arc<Session>, response_uri: Option<&[u8]>) {
     super::persist::update_db_info(s);
 }
 
-/// `phone_msg_session_mark_inactive` (FUN_0014c310): set inactive and
-/// delete the AstDB entry.
+/// Set inactive and delete the AstDB entry.
 pub fn mark_inactive(s: &Arc<Session>) {
     s.lock().inactive = true;
     db::del(DB_FAMILY, &s.id);
 }
 
-/// `phone_msg_session_mark_unconfigured_by_mac` (FUN_0014c160): clear the
-/// configured flag of the MAC's session and save it when it was set.
+/// Clear the configured flag of the MAC's session and save it when it
+/// was set.
 pub fn mark_unconfigured_by_mac(mac: &[u8]) {
     let Some(s) = find_by_mac(mac) else { return };
     let changed = {
@@ -253,19 +254,18 @@ pub fn mark_unconfigured_by_mac(mac: &[u8]) {
     }
 }
 
-/// `phone_msg_session_invalidate` (FUN_0014c390): delete the AstDB entry
-/// and drop the session from the container.
+/// Delete the AstDB entry and drop the session from the container.
 pub fn invalidate(s: &Arc<Session>) {
     db::del(DB_FAMILY, &s.id);
     unlink(s);
 }
 
-/// `phone_msg_set_global_auth_flags` (FUN_00149f00).
+/// Set the global auth flags.
 pub fn set_global_auth_flags(flags: u32) {
     GLOBAL_AUTH_FLAGS.store(flags, Ordering::SeqCst);
 }
 
-/// `phone_msg_get_global_auth_flags`.
+/// The global auth flags.
 pub fn global_auth_flags() -> u32 {
     GLOBAL_AUTH_FLAGS.load(Ordering::SeqCst)
 }
@@ -283,7 +283,7 @@ fn new_session_id(time: i64, contact: &[u8]) -> Vec<u8> {
     crate::util::truncate(&id, 0x80)
 }
 
-/// What `phone_msg_session_alloc` gets.
+/// What `alloc` gets.
 pub(crate) struct NewSession<'a> {
     pub mac: Option<&'a [u8]>,
     pub contact: &'a [u8],
@@ -296,10 +296,8 @@ pub(crate) struct NewSession<'a> {
     pub origination_network: Option<&'a [u8]>,
 }
 
-/// `phone_msg_session_alloc` (FUN_0014b450) as both of the official DPMA's
-/// callers use it: create a session, verify the phone certificate(s)
-/// (`session_verify_cert`, which logs its own failures), and link it into
-/// the container.  None on failure.
+/// Create a session, verify the phone certificate(s) (which logs its own
+/// failures), and link it into the container.  None on failure.
 pub(crate) fn alloc(n: &NewSession) -> Option<Arc<Session>> {
     let time = now();
     if n.client_cert.is_empty() {

@@ -3,11 +3,9 @@
 //! Two independent sets exist in the official DPMA:
 //!
 //! * message errors, sent as `X-Digium-AppServer-Error-ID: <code>` with a
-//!   `<error msg="..." />` body by `phone_msg_outgoing_send` (table at
-//!   0x5bcce8), and
+//!   `<error msg="..." />` body with an outgoing message, and
 //! * request (method) errors, sent inside XML or JSON responses to
-//!   AsteriskRequest / HTTPRequest (`create_error_response_xml`
-//!   0x189280, `create_error_response_json` 0x189450).
+//!   AsteriskRequest / HTTPRequest.
 
 /// Message error codes (`outgoing->error`).
 pub mod msg {
@@ -84,7 +82,7 @@ mod tests {
 
     #[test]
     fn message_errors() {
-        // The table at 0x5bcce0 and the fallbacks in phone_msg_outgoing_send.
+        // The official DPMA's texts, and its fallbacks for other codes.
         let table = [
             (-1, "An Unknown Error has occurred"),
             (-98, "The file requested was not found"),
@@ -106,7 +104,7 @@ mod tests {
 
     #[test]
     fn request_errors() {
-        // FUN_00189280 (create_error_response_xml), in its hex constants.
+        // The official DPMA's codes and texts, and its fallback.
         let table = [
             (0x2711, "Your request was empty"),
             (0x2712, "Error parsing request"),

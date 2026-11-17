@@ -1,10 +1,10 @@
-//! Phone method registries (phone_method.c).
+//! Phone method registries.
 //!
 //! Three independent, case-insensitive registries keyed by method name:
 //!
-//! * XML methods (container at 0x5f4e68),
-//! * JSON methods (0x5f4e58), and
-//! * AMI methods (0x5f4e60): names registered by AMI clients with
+//! * XML methods,
+//! * JSON methods, and
+//! * AMI methods: names registered by AMI clients with
 //!   `DPMAMessageRegister`; requests for them are forwarded to AMI as
 //!   `DPMAMessage` events.
 //!
@@ -65,7 +65,7 @@ fn key(name: &[u8]) -> Vec<u8> {
     dpma_ast::dpma_bytes::c_view(name).to_ascii_lowercase()
 }
 
-/// `phone_method_load` (FUN_00178c10): create the registries.
+/// Create the registries.
 pub fn load() -> Result<(), ()> {
     let mut g = REGISTRIES.write().unwrap();
     if g.is_some() {
@@ -87,8 +87,7 @@ pub fn load() -> Result<(), ()> {
     Ok(())
 }
 
-/// `phone_method_unload` (FUN_00178dd0): drop the registries and every
-/// registration in them.
+/// Drop the registries and every registration in them.
 pub fn unload() {
     REGISTRIES.write().unwrap().take();
 }

@@ -1,5 +1,5 @@
-//! Phones, lines, and the other objects configured in res_digium_phone.conf
-//! (the official DPMA's phone_users.c).
+//! Phones, lines, and the other objects configured in
+//! res_digium_phone.conf.
 //!
 //! All objects live in one `Registry` behind a global lock.  Objects refer
 //! to each other by name, exactly as in the official DPMA, so a reload can
@@ -258,15 +258,14 @@ pub struct Phone {
     pub headset_answer: bool,
     pub ring_headset_only: bool,
     pub call_waiting_tone: bool,
-    /// Set (+0x960) once `presence::user_application_sync` found one of
-    /// the phone's status applications: the presence options and
-    /// `send486_mask` then come from the status applications.  Cleared by
-    /// `set_user_defaults`.
+    /// Set once `presence::user_application_sync` found one of the phone's
+    /// status applications: the presence options and `send486_mask` then
+    /// come from the status applications.  Cleared by `set_user_defaults`.
     pub send486_custom: bool,
     /// Bit mask (by presence state) of the states that make the phone
     /// reject calls with 486.  Defaults to xa and dnd.
     pub send486_mask: u32,
-    /// The presence options (+0x8e8), in insertion order; see
+    /// The presence options, in insertion order; see
     /// `presence::ordered` for the container order.
     pub presence_options: Vec<presence::PresenceOption>,
     pub can_forward_calls: bool,
@@ -291,13 +290,12 @@ pub struct Phone {
     pub last_session_id: Vec<u8>,
     /// The phone's pin as last applied (also tracks voicemail pins).
     pub applied_pin: Vec<u8>,
-    /// Configuration token state (+0x984): 0 until the first token is
-    /// issued, then 1.
+    /// Configuration token state: 0 until the first token is issued, then 1.
     pub token_state: i32,
     /// Sum of the characters (as signed chars) of the latest token
-    /// issued (+0x988).
+    /// issued.
     pub token_sum: i32,
-    /// The same for the token issued before it (+0x98c).
+    /// The same for the token issued before it.
     pub prev_token_sum: i32,
 
     // ---- reload bookkeeping ----
@@ -470,8 +468,8 @@ impl Phone {
         self.lines.first()
     }
 
-    /// `phone_user_has_line` (FUN_0016aab0): is `line` one of the phone's
-    /// line slots (`line=` or `external_line=`, case insensitive)?
+    /// Is `line` one of the phone's line slots (`line=` or
+    /// `external_line=`, case insensitive)?
     pub fn has_line(&self, line: &[u8]) -> bool {
         self.lines.iter().any(|l| l.name.eq_ignore_ascii_case(line))
     }

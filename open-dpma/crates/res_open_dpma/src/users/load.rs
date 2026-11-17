@@ -179,13 +179,13 @@ fn general_var<'a>(cats: &'a Cfg, var: &str) -> Option<&'a [u8]> {
 struct Effects {
     new_internal_lines: Vec<Vec<u8>>,
     remove_hints: Vec<(Vec<u8>, Vec<u8>)>,
-    /// `phone_user_delme_cb` for each phone, in container order.
+    /// The effect on each phone, in container order.
     phones: Vec<PhoneFx>,
     /// Lines removed by this pass (for their objects).
     swept_lines: Vec<Line>,
 }
 
-/// What `phone_user_delme_cb` (0x159720) does to a phone after a pass.
+/// What a reload pass does to a phone afterward.
 enum PhoneFx {
     /// A phone that is no longer configured: reconfigure it, forget its
     /// AstDB entry, and mark its session inactive.

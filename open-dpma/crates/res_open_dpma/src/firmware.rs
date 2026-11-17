@@ -1,7 +1,6 @@
 //! The firmware package description, digium_phones_firmware.conf, found in
-//! the `firmware_package_directory` (the official DPMA's
-//! phone_firmware.c).  Each section is a phone model with the `version` and
-//! `file` of the firmware to load on it.
+//! the `firmware_package_directory`.  Each section is a phone model with
+//! the `version` and `file` of the firmware to load on it.
 
 use crate::util::NamedMap;
 use dpma_ast::cli::CliArgs;
@@ -161,13 +160,12 @@ pub fn checksum_attr(dir: &[u8], file: &[u8]) -> Vec<u8> {
     }
 }
 
-/// `firmwares_no_option_settings` (FUN_0017a9f0): the `<firmwares>`
-/// element of a phone configuration document for a phone without
-/// `firmware=` options, listing every package for network `network` with
-/// URLs under `url_prefix` (the network's `file_url_prefix`), and the
-/// checksum of each package file found in the package directory (see
-/// [`checksum_attr`]).  Each piece
-/// goes through `append`, one call per piece, as in the official DPMA.
+/// The `<firmwares>` element of a phone configuration document for a
+/// phone without `firmware=` options, listing every package for network
+/// `network` with URLs under `url_prefix` (the network's
+/// `file_url_prefix`), and the checksum of each package file found in the
+/// package directory (see [`checksum_attr`]).  Each piece goes through
+/// `append`, one call per piece, as in the official DPMA.
 /// Nothing is emitted when the packages were never loaded.
 pub fn no_option_settings(append: &mut dyn FnMut(&[u8]), url_prefix: &[u8], network: &[u8]) {
     let package_dir = crate::config::get().firmware_package_directory.clone();

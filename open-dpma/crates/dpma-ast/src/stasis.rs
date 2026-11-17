@@ -1,6 +1,5 @@
 //! Stasis topics and message routers: the parking topic subscription of
-//! res_digium_phone (phone_method_internal_api.c, FUN_00186920 /
-//! FUN_00186840).  A topic of the module's own forwards everything
+//! res_digium_phone.  A topic of the module's own forwards everything
 //! published on `ast_parking_topic()`, and a message router on it hands
 //! `ast_parked_call_type()` messages to a callback.
 

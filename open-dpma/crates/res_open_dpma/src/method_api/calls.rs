@@ -1,4 +1,4 @@
-//! Call-related methods (phone_method_internal_api.c).
+//! Call-related methods.
 //!
 //! The methods talk to Asterisk the way the official DPMA does: through
 //! in-process manager actions (`ast_hook_send_action`), whose response
@@ -65,11 +65,11 @@ fn strtol(s: &[u8]) -> i64 {
     dpma_ast::dpma_bytes::c::strtol(s).0
 }
 
-/// `amihook_action` (FUN_0017adc0): run `action` through the manager hook
-/// and split the response at each "\r\n\r\n".  The official DPMA counts the
-/// separators first (searching again from one byte after each match) and
-/// keeps one block per separator: the text before it, starting one byte
-/// after the previous separator (so later blocks begin with "\n\r\n").
+/// Run `action` through the manager hook and split the response at each
+/// "\r\n\r\n".  The official DPMA counts the separators first (searching
+/// again from one byte after each match) and keeps one block per
+/// separator: the text before it, starting one byte after the previous
+/// separator (so later blocks begin with "\n\r\n").
 /// Text after the last separator is dropped.  An empty response, or one
 /// without a separator, gives no blocks (the official DPMA's failure).
 fn amihook_action(action: &[u8]) -> Vec<Vec<u8>> {
@@ -137,10 +137,9 @@ fn trim_end(mut v: &[u8]) -> &[u8] {
     v
 }
 
-/// FUN_0017bdd0 / FUN_0017bf20 (`amihook_get_header_value`): the value of
-/// header `key` in `block`, copied into a buffer of `size` bytes, or ""
-/// when the header is missing or the value (plus its terminator) does not
-/// fit, i.e., unless `len + 1 < size`.
+/// The value of header `key` in `block`, copied into a buffer of `size`
+/// bytes, or "" when the header is missing or the value (plus its
+/// terminator) does not fit, i.e., unless `len + 1 < size`.
 fn header_value(block: &[u8], key: &str, size: usize) -> Vec<u8> {
     let Some((p, len)) = header_span(block, key) else {
         return Vec::new();
@@ -155,10 +154,10 @@ fn header_value(block: &[u8], key: &str, size: usize) -> Vec<u8> {
     dpma_ast::dpma_bytes::c_view(trim_end(&block[p..p + take])).to_vec()
 }
 
-/// `amihook_append_header_value` (FUN_0017bb30): set `obj[name]` to the
-/// value of header `key` (`ast_strndup(value, len + 1)`, trimmed).  A
-/// negative length makes the official DPMA copy the rest of the block.  Err
-/// when the header is missing, or when the value is not UTF-8 (jansson's
+/// Set `obj[name]` to the value of header `key`
+/// (`ast_strndup(value, len + 1)`, trimmed).  A negative length makes the
+/// official DPMA copy the rest of the block.  Err when the header is
+/// missing, or when the value is not UTF-8 (jansson's
 /// `ast_json_string_create` refuses it).
 fn append_header_value(
     obj: &mut Map<String, Value>,
@@ -192,7 +191,7 @@ fn is_success(response: &[u8]) -> bool {
 }
 
 // ---------------------------------------------------------------------
-// Queue status (`queues_get_status`, FUN_0017d360)
+// Queue status (`queues_get_status`)
 // ---------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default)]
@@ -378,9 +377,9 @@ fn truncate(mut text: Vec<u8>, size: usize) -> Vec<u8> {
 // Load and unload
 // ---------------------------------------------------------------------
 
-/// Parking topic forwarding and the parked-call router (FUN_00186920
-/// part): the topic "dpma" receives everything published on the parking
-/// topic, and `handle_parked_call_message` gets the parked call messages.
+/// Parking topic forwarding and the parked-call router: the topic "dpma"
+/// receives everything published on the parking topic, and
+/// `handle_parked_call_message` gets the parked call messages.
 pub fn load() -> Result<(), ()> {
     if dpma_ast::stasis::parking_subscribe("dpma", handle_parked_call_message) {
         Ok(())
@@ -389,13 +388,12 @@ pub fn load() -> Result<(), ()> {
     }
 }
 
-/// FUN_00186840 part.
+/// Stop the parking topic forwarding.
 pub fn unload() {
     dpma_ast::stasis::parking_unsubscribe();
 }
 
-/// `phone_user_get_show_call_parking` (FUN_0016ab70): the
-/// `show_call_parking` setting of the phone with a line named `line`
+/// The `show_call_parking` setting of the phone with a line named `line`
 /// (case insensitive), true when there is none.
 fn phone_user_get_show_call_parking(line: &[u8]) -> bool {
     let g = users::read();
@@ -408,11 +406,11 @@ fn phone_user_get_show_call_parking(line: &[u8]) -> bool {
         .is_none_or(|p| p.show_call_parking)
 }
 
-/// `handle_parked_call_message` (FUN_0017b130): when a call is parked by a
-/// Digium phone's PJSIP endpoint (the parker dial string is
-/// "PJSIP/<endpoint>") whose phone shows the call parking application,
-/// send the endpoint an out-of-call MESSAGE with `X-Event-Name:
-/// digium.parkingLot.parked` and the body `{"lotnumber":"<space>"}`.
+/// When a call is parked by a Digium phone's PJSIP endpoint (the parker
+/// dial string is "PJSIP/<endpoint>") whose phone shows the call parking
+/// application, send the endpoint an out-of-call MESSAGE with
+/// `X-Event-Name: digium.parkingLot.parked` and the body
+/// `{"lotnumber":"<space>"}`.
 fn handle_parked_call_message(parker_dial_string: &[u8], event_type: i32, parkingspace: u32) {
     if parker_dial_string.is_empty() || event_type != dpma_ast::stasis::PARKED_CALL {
         return;
@@ -440,7 +438,7 @@ fn handle_parked_call_message(parker_dial_string: &[u8], event_type: i32, parkin
 // Parking lots
 // ---------------------------------------------------------------------
 
-/// switchvox.users.parkingLots.getList (FUN_00181040).
+/// switchvox.users.parkingLots.getList.
 ///
 /// Lot names and the parked calls' fields go through jansson: a lot name
 /// that is not UTF-8 fails the request with 10002 "lot entry", a field
@@ -548,7 +546,7 @@ fn send_recording_event(chan: &Channel, event: &str) -> i32 {
     unsafe { crate::pjsip::info_send(chan.as_ptr(), &[("X-Event-Type", event)], "", b"") }
 }
 
-/// `handle_request_json_recording_start` (FUN_0017f730).
+/// The body of [`start_recording_json`].
 fn handle_request_json_recording_start(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     let Some(account) = param_str(p, "requested_account_id") else {
         error_response_json(out, &c.method, rq::PARAMS_NOT_FOUND, "requested_account_id");
@@ -581,7 +579,7 @@ fn handle_request_json_recording_start(c: &MethodCall, p: &Value, out: &mut Vec<
     0
 }
 
-/// `handle_request_json_recording_stop` (FUN_0017e0e0).
+/// The body of [`stop_recording_json`].
 fn handle_request_json_recording_stop(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     let Some(account) = param_str(p, "requested_account_id") else {
         error_response_json(out, &c.method, rq::PARAMS_NOT_FOUND, "requested_account_id");
@@ -626,7 +624,7 @@ impl XmlParams {
     }
 }
 
-/// `handle_request_xml_recording_start` (FUN_0017c910).
+/// The body of [`start_recording_xml`].
 fn handle_request_xml_recording_start(c: &MethodCall, params: &[u8], out: &mut Vec<u8>) -> i32 {
     let x = XmlParams::parse(params);
     let Some(account) = x.get("requested_account_id") else {
@@ -660,7 +658,7 @@ fn handle_request_xml_recording_start(c: &MethodCall, params: &[u8], out: &mut V
     0
 }
 
-/// `handle_request_xml_recording_stop` (FUN_0017c3d0).
+/// The body of [`stop_recording_xml`].
 fn handle_request_xml_recording_stop(c: &MethodCall, params: &[u8], out: &mut Vec<u8>) -> i32 {
     let x = XmlParams::parse(params);
     let Some(account) = x.get("requested_account_id") else {
@@ -714,9 +712,8 @@ pub fn stop_recording_json(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 
 // Queues
 // ---------------------------------------------------------------------
 
-/// `handle_request_json_queue_getlist` (FUN_00180960).  A queue name that
-/// is not UTF-8 fails the request (10002 "alloc_error"), as jansson
-/// refuses it.
+/// The body of [`queues_get_list`].  A queue name that is not UTF-8 fails
+/// the request (10002 "alloc_error"), as jansson refuses it.
 fn handle_request_json_queue_getlist(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     if param_str(p, "account_id").is_none() {
         error_response_json(out, &c.method, rq::PARAMS_NOT_FOUND, "account_id");
@@ -789,9 +786,9 @@ fn handle_request_json_queue_getlist(c: &MethodCall, p: &Value, out: &mut Vec<u8
     0
 }
 
-/// `handle_request_json_queue_gettodaysstatus` (FUN_0017fbb0).  A member
-/// name or a waiting caller's id that is not UTF-8 fails the request
-/// (10002 "alloc_failure"), as jansson refuses it.
+/// The body of [`queues_get_todays_status`].  A member name or a waiting
+/// caller's id that is not UTF-8 fails the request (10002
+/// "alloc_failure"), as jansson refuses it.
 fn handle_request_json_queue_gettodaysstatus(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     if param_str(p, "account_id").is_none() {
         error_response_json(out, &c.method, rq::PARAMS_NOT_FOUND, "account_id");
@@ -902,9 +899,8 @@ fn handle_request_json_queue_gettodaysstatus(c: &MethodCall, p: &Value, out: &mu
     0
 }
 
-/// `queue_pause_member` (FUN_0017c070): QueuePause for every queue
-/// application of the phone matching `queue` ("all" for every one).
-/// Failures are only logged; always 0.
+/// QueuePause for every queue application of the phone matching `queue`
+/// ("all" for every one).  Failures are only logged; always 0.
 fn queue_pause_member(phone: &[u8], queue: &[u8], paused: i32, reason: Option<&[u8]>) -> i32 {
     for app in user_apps(phone) {
         let qa = match app {
@@ -961,10 +957,10 @@ fn find_member<'a>(queues: &'a [QueueStatus], qa: &QueueApp) -> Option<&'a Queue
         .find(|m| eq_ic(&m.location, &qa.location))
 }
 
-/// `handle_request_json_queue_login` (FUN_0017f030): for each member
-/// queue application matching `call_queue_account_id` ("all" for every
-/// one) whose location is not in the queue yet, QueueAdd (or dial the
-/// login extension).  Failures are only logged.
+/// The body of [`queue_login`]: for each member queue application
+/// matching `call_queue_account_id` ("all" for every one) whose location
+/// is not in the queue yet, QueueAdd (or dial the login extension).
+/// Failures are only logged.
 fn handle_request_json_queue_login(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     if param_str(p, "account_id").is_none() {
         error_response_json(out, &c.method, rq::PARAMS_NOT_FOUND, "account_id");
@@ -1021,12 +1017,12 @@ fn handle_request_json_queue_login(c: &MethodCall, p: &Value, out: &mut Vec<u8>)
     0
 }
 
-/// `handle_request_json_queue_logout` (FUN_0017e990): for each member
-/// queue application matching `call_queue_account_id` ("all" for every
-/// one) whose location is a dynamic member of the queue, QueueRemove (or
-/// dial the logout extension).  Static members stay.  Failures are only
-/// logged.  (The official DPMA crashes on an application that does not
-/// exist; here it is skipped.)
+/// The body of [`queue_logout`]: for each member queue application
+/// matching `call_queue_account_id` ("all" for every one) whose location
+/// is a dynamic member of the queue, QueueRemove (or dial the logout
+/// extension).  Static members stay.  Failures are only logged.  (The
+/// official DPMA crashes on an application that does not exist; here it
+/// is skipped.)
 fn handle_request_json_queue_logout(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     if param_str(p, "account_id").is_none() {
         error_response_json(out, &c.method, rq::PARAMS_NOT_FOUND, "account_id");
@@ -1103,7 +1099,7 @@ pub fn queue_logout(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     handle_request_json_queue_logout(c, p, out)
 }
 
-/// switchvox.users.callQueues.pause (FUN_0017cd80).
+/// switchvox.users.callQueues.pause.
 pub fn queue_pause(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     if param_str(p, "account_id").is_none() {
         error_response_json(out, &c.method, rq::PARAMS_NOT_FOUND, "account_id");
@@ -1130,7 +1126,7 @@ pub fn queue_pause(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     0
 }
 
-/// switchvox.users.callQueues.resume (FUN_0017c7b0).
+/// switchvox.users.callQueues.resume.
 pub fn queue_resume(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     if param_str(p, "account_id").is_none() {
         error_response_json(out, &c.method, rq::PARAMS_NOT_FOUND, "account_id");
@@ -1157,10 +1153,10 @@ pub fn queue_resume(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
 // Phonebook
 // ---------------------------------------------------------------------
 
-/// switchvox.users.phonebooks.entries.add (FUN_0017e4a0): add a contact
-/// (`name`, `extension`) to the `<contacts id="phonebook_id">` list of the
-/// first of the phone's contact files that has one, unless a contact there
-/// already has a number dialing `extension`; then reconfigure the phone.
+/// switchvox.users.phonebooks.entries.add: add a contact (`name`,
+/// `extension`) to the `<contacts id="phonebook_id">` list of the first of
+/// the phone's contact files that has one, unless a contact there already
+/// has a number dialing `extension`; then reconfigure the phone.
 pub fn phonebook_entries_add(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     let mut missing = None;
     let mut get = |key: &'static str| {
@@ -1272,7 +1268,7 @@ pub fn phonebook_entries_add(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i3
 // Echo
 // ---------------------------------------------------------------------
 
-/// test.dpma.api.echo (FUN_0017c340): `{"response":{"method":M,"result":PARAMS}}`.
+/// test.dpma.api.echo: `{"response":{"method":M,"result":PARAMS}}`.
 pub fn echo(c: &MethodCall, p: &Value, out: &mut Vec<u8>) -> i32 {
     append_result(out, &c.method, p.clone());
     0

@@ -232,7 +232,8 @@ impl Drop for Channel {
 /// The creation time (seconds since the epoch) of the first channel whose
 /// `MEMBERINTERFACE` equals `interface` (case insensitive; unset counts as
 /// "") and whose `QUEUEPOSITION` is unset or empty: the queue member's leg
-/// of a queue call (the scan in `handle_request_json_queue_gettodaysstatus`).
+/// of a queue call (as `switchvox.users.callQueues.getTodaysStatus` finds
+/// it).
 pub fn queue_member_call_created(interface: &[u8]) -> Option<i64> {
     let interface = crate::dpma_bytes::c_view(interface);
     // SAFETY: as in `find_by_callid`; the variables are read under the

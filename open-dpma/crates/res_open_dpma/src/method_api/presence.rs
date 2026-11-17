@@ -1,6 +1,4 @@
-//! Presence methods (phone_method_internal_api.c): getInfo
-//! (FUN_0017d0e0), update (FUN_0017cf20), options.getList
-//! (`handle_request_json_presence_getlist` FUN_0017dd50).
+//! Presence methods: getInfo, update, and options.getList.
 //!
 //! Each answers `{"response":{"method":M,"result":...}}` (replacing
 //! `out`) and returns 0, or puts the JSON error document in `out` and

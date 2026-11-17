@@ -1,5 +1,5 @@
-//! Authentication incidents (phone_auth.c): failed handshakes and bad
-//! credentials, recorded per IP address.
+//! Authentication incidents: failed handshakes and bad credentials,
+//! recorded per IP address.
 //!
 //! An incident expires 600 s after the latest failure.  From the fifth
 //! failure on, the log line says "ALERT" and `DPMAShowIncidents` reports
@@ -53,32 +53,32 @@ impl TimeVal {
     }
 }
 
-/// `struct auth_problem`.
+/// The incident of one source address.
 #[derive(Debug, Clone)]
 struct Problem {
-    /// Reason of the first failure (+0x00).
+    /// Reason of the first failure.
     reason: Vec<u8>,
-    /// Source host, without brackets or port (+0x08); the container key.
+    /// Source host, without brackets or port; the container key.
     ip: Vec<u8>,
-    /// MAC address of the first failure (+0x10).
+    /// MAC address of the first failure.
     mac: Vec<u8>,
-    /// User agent of the first failure (+0x18).
+    /// User agent of the first failure.
     user_agent: Vec<u8>,
-    /// First failure (+0x20).
+    /// First failure.
     first: TimeVal,
-    /// Latest failure (+0x30).
+    /// Latest failure.
     last: TimeVal,
-    /// Failures so far (+0x40).
+    /// Failures so far.
     count: i64,
-    /// Never set by 3.6.13 (+0x48).
+    /// Never set by 3.6.13.
     alert_sent: bool,
 }
 
-/// The container (0x5eef38); None while the module is not loaded.
+/// The incidents, by hash bucket; None while the module is not loaded.
 static PROBLEMS: Mutex<Option<Vec<Vec<Problem>>>> = Mutex::new(None);
 
-/// The container's hash (FUN_00177810): djb2 (`h * 33 ^ c`, seed 5381)
-/// over the address bytes, masked to 31 bits.
+/// The container's hash: djb2 (`h * 33 ^ c`, seed 5381) over the address
+/// bytes, masked to 31 bits.
 fn bucket(ip: &[u8]) -> usize {
     let mut h: u32 = 5381;
     for &b in ip {
@@ -91,20 +91,19 @@ fn find_mut<'a>(buckets: &'a mut [Vec<Problem>], ip: &[u8]) -> Option<&'a mut Pr
     buckets[bucket(ip)].iter_mut().find(|p| p.ip == ip)
 }
 
-/// `phone_auth_init` (FUN_00178300).
+/// Create the empty incident container.
 pub fn load() -> Result<(), ()> {
     *PROBLEMS.lock().unwrap() = Some(vec![Vec::new(); BUCKETS]);
     Ok(())
 }
 
-/// `phone_auth_unload` (FUN_00178380).
+/// Drop the container and every incident.
 pub fn unload() {
     PROBLEMS.lock().unwrap().take();
 }
 
-/// `phone_auth_issue_alert` (FUN_00177920): record a failure for the
-/// transaction's source address.  `reason` is, e.g., "invalid credentials"
-/// or "invalid config pass".
+/// Record a failure for the transaction's source address.  `reason` is,
+/// e.g., "invalid credentials" or "invalid config pass".
 ///
 /// The address is the host of the first message's
 /// `X-Digium-AppServer-Response-URI` (`pjsip:${PJSIP_RECVADDR}`, set by
@@ -124,9 +123,8 @@ fn record(tx: &Transaction, reason: &str) -> Result<(), ()> {
         dpma_log!("Unable to process authorization problem with no uri");
         return Err(());
     };
-    // The user agent as `phone_msg_get_user_agent` (FUN_00149fc0) reads
-    // it: X-Digium-User-Agent if not empty, else User-Agent (possibly
-    // absent).
+    // The user agent: X-Digium-User-Agent if not empty, else User-Agent
+    // (possibly absent).
     let user_agent = msg.and_then(|m| {
         m.var("X-Digium-User-Agent")
             .or_else(|| m.get_var("User-Agent"))
@@ -180,9 +178,8 @@ fn record(tx: &Transaction, reason: &str) -> Result<(), ()> {
     Ok(())
 }
 
-/// `phone_auth_expire_problems` (FUN_00177d30): drop incidents whose latest
-/// failure is more than 600 s old.  Called by `session::next_transaction`
-/// on every pass.
+/// Drop incidents whose latest failure is more than 600 s old.  Called by
+/// `session::next_transaction` on every pass.
 pub fn expire_problems() {
     let now = TimeVal::now();
     let mut g = PROBLEMS.lock().unwrap();
@@ -216,7 +213,7 @@ fn action_id_text(id: &[u8]) -> Vec<u8> {
     s
 }
 
-/// `action_dpma_show_incidents` (FUN_00177e70).
+/// AMI action `DPMAShowIncidents`: list every incident.
 fn action_show_incidents(r: &Request) -> i32 {
     let now = TimeVal::now();
     let id = r.header("ActionID");
@@ -257,7 +254,8 @@ fn action_show_incidents(r: &Request) -> i32 {
     0
 }
 
-/// `action_dpma_remove_incident` (FUN_00178110).
+/// AMI action `DPMARemoveIncident`: remove the incident of the address in
+/// the `IPAddress` header.
 fn action_remove_incident(r: &Request) -> i32 {
     let idtext = action_id_text(&r.header("ActionID"));
     // astman_get_header never returns NULL, so the official DPMA's "AMI

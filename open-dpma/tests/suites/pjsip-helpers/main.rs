@@ -58,7 +58,7 @@
 //!
 //! # The dialog-info supplement
 //!
-//! Checked against the official DPMA's decompile:
+//! What the official DPMA's supplement does (ours does the same):
 //!
 //! - Other user agents ("Not a digium or sangoma phone") and states
 //!   without a ringing channel ("No Channel") are left alone.

@@ -1,6 +1,5 @@
-//! AMI action registration for the DPMA actions (FUN_00175750 /
-//! FUN_00175840) plus the AMI scheduler and queued-message container
-//! (phone_ami.c, phone_request.c).
+//! AMI action registration for the DPMA actions plus the AMI scheduler
+//! and queued-message container.
 //!
 //! The official DPMA registers its actions in one place, all with
 //! authority `call` (EVENT_FLAG_CALL).  `DPMALicenseStatus` is not
@@ -35,7 +34,7 @@ const ORDER: &[&str] = &[
     "DPMARemoveIncident",
 ];
 
-/// FUN_00175750: register every DPMA action.
+/// Register every DPMA action.
 pub fn register_actions() {
     let mut all = messages::actions();
     all.extend(crate::session::ami::actions());
@@ -54,7 +53,8 @@ pub fn register_actions() {
     }
 }
 
-/// FUN_00175840 (fixed): unregister every action registered above.
+/// Unregister every action registered above (the official DPMA leaves
+/// some registered).
 pub fn unregister_actions() {
     let names: Vec<&'static str> = std::mem::take(&mut *REGISTERED.lock().unwrap());
     for n in names {

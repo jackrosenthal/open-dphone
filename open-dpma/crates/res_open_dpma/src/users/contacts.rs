@@ -1,5 +1,4 @@
-//! The default contacts document returned for `file://default`
-//! (`phone_user_get_default_contacts_xml` FUN_00161cd0).
+//! The default contacts document returned for `file://default`.
 
 use super::*;
 use crate::util::truncate;

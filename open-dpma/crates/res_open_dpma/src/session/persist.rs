@@ -1,6 +1,4 @@
-//! Session persistence in AstDB family `DigiumPhoneSessions`
-//! (`phone_session_update_db_info` FUN_00149250,
-//! `phone_session_db_restore_entry` in FUN_00150440).
+//! Session persistence in AstDB family `DigiumPhoneSessions`.
 //!
 //! An entry is keyed by the session id; its value is
 //!
@@ -19,11 +17,10 @@
 //! sessions saved by the official DPMA restore here.
 //!
 //! Restoring verifies the stored certificate again exactly as a handshake
-//! does (both of the official DPMA's callers of `phone_msg_session_alloc`
-//! pass 0 for its "load an RSA public key instead" argument), links the
-//! session as authenticated but inactive (so it is pruned unless a phone
-//! user's `last_session_id` re-activates it), and deletes its AstDB
-//! entry until the session is saved again.
+//! does (the official DPMA, too, verifies it rather than loading a stored
+//! RSA public key), links the session as authenticated but inactive (so it
+//! is pruned unless a phone user's `last_session_id` re-activates it), and
+//! deletes its AstDB entry until the session is saved again.
 
 use super::store::{alloc, NewSession};
 use super::{Session, DB_FAMILY};
@@ -36,11 +33,11 @@ use std::sync::{Arc, Mutex};
 /// AstDB, embedded in its binary.
 const DB_PASSPHRASE: &[u8] = b"1sInnalILansfPOEIdi)0-294923kjashdkjwe][";
 
-/// `db_crypto_mutex`: serializes saving and restoring.
+/// Serializes saving and restoring.
 static DB_CRYPTO: Mutex<()> = Mutex::new(());
 
-/// `send_encrypt_hdr_helper` into a buffer of `size` bytes, with the
-/// official DPMA's messages; "" on failure.
+/// Encrypt and base64 encode `plain` into a buffer of `size` bytes, with
+/// the official DPMA's messages; "" on failure.
 pub(crate) fn encrypt_helper(
     plain: &[u8],
     password: &[u8],
@@ -64,8 +61,7 @@ pub(crate) fn encrypt_helper(
     crypto::base64_encode_max(&cipher, size).into_bytes()
 }
 
-/// `phone_session_update_db_info` (FUN_00149250): write the session's
-/// AstDB entry, unless it is inactive.
+/// Write the session's AstDB entry, unless it is inactive.
 pub fn update_db_info(s: &Arc<Session>) {
     let value = {
         let st = s.lock();
@@ -113,7 +109,7 @@ fn b64_text(s: &[u8]) -> Vec<u8> {
     crypto::c_str(&bytes).to_vec()
 }
 
-/// `phone_session_db_restore_entry`: restore one AstDB entry.
+/// Restore one AstDB entry.
 fn restore_entry(key: &[u8], value: &[u8]) {
     let Some(slash) = key.rfind_byte(b'/') else {
         return;
@@ -184,8 +180,7 @@ fn restore_entry(key: &[u8], value: &[u8]) {
     }
 }
 
-/// Restore every session found in AstDB (the restore loop of
-/// `phone_msg_load`).
+/// Restore every session found in AstDB (at load).
 pub fn restore_all() {
     for (key, value) in db::tree(DB_FAMILY) {
         restore_entry(&key, &value);

@@ -1,7 +1,5 @@
 //! Splitting outgoing bodies into SIP MESSAGEs and reassembling incoming
-//! ones (`phone_msg_outgoing_send` FUN_0014c6b0, `incoming_add_msg` and
-//! `incoming_build_transaction` in FUN_0014f280, `incoming_check_finalize`
-//! FUN_0014a000).
+//! ones.
 //!
 //! # Outgoing
 //!
@@ -64,11 +62,11 @@ pub const TCP_LIMIT: usize = 0x384;
 
 /// Size of the buffer for the transaction key (`snprintf(.., 0x80, ..)`).
 pub const TRANSACTION_KEY_BUF: usize = 0x80;
-/// Size of the buffer `incoming_check_finalize` builds the response URI
-/// in.
+/// Size of the buffer the response URI of a completed transaction is
+/// built in.
 pub const RESPONSE_URI_BUF: usize = 0x4f;
-/// Size of the buffer `incoming_build_transaction` builds the response URI
-/// in for its "handshake required" reply.
+/// Size of the buffer the response URI of the "handshake required"
+/// reply is built in.
 pub const HANDSHAKE_REQUIRED_URI_BUF: usize = 0x50;
 
 /// Whether replies to `response_uri` use the TCP chunk limit
@@ -285,8 +283,7 @@ pub struct Part<M> {
     pub meta: M,
 }
 
-/// Incoming parts of one transaction, ordered by sequence number
-/// (`incoming_add_msg`).
+/// Incoming parts of one transaction, ordered by sequence number.
 #[derive(Debug)]
 pub struct Reassembly<M = ()> {
     parts: Vec<Part<M>>,
@@ -360,7 +357,7 @@ impl<M> Reassembly<M> {
         self.count += 1;
     }
 
-    /// `incoming_check_finalize`'s test: finished, and as many parts as
+    /// Whether the transaction is complete: finished, and as many parts as
     /// the last sequence number plus one.
     pub fn is_complete(&self) -> bool {
         self.count != 0 && self.finished && i64::from(self.last_sequence) == self.count as i64 - 1

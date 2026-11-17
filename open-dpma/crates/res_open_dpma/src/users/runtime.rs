@@ -1,21 +1,7 @@
-//! Runtime state of phone users (phone_users.c).
-//!
-//! Functions: `phone_user_token_set_last_info` (0x170630),
-//! `phone_user_config_token_build` (0x170f00),
-//! `standard_phone_user_find_by_token` (0x1710e0),
-//! `phone_user_find_w_grouppin` (0x171720),
-//! `phone_user_find_authenticated(_w_mac)` (0x170370 / 0x170250),
-//! `phone_user_find_w_mac` (0x170470), `phone_user_for_last_token_mac`
-//! (0x170560), `phone_username_for_token` (0x161340),
-//! `phone_line_find_authenticated` (0x15b2b0), `phone_line_get_user`
-//! (0x161300 with `phone_user_exten_match_cb` 0x152180),
-//! `phone_mailbox_by_line` (0x161710), `phone_user_has_line` (0x16aab0),
-//! `phone_application_list_get_type` (0x1612a0),
-//! `phone_user_del_stale_response_uri` (0x152410), the URI comparison
-//! FUN_00152570, `phone_user_update_db_info` (0x152660),
-//! `phone_user_send_reconfigure` (0x151c80), `phone_user_send_event`
-//! (0x159a10), and the `last_session_id` part of `phone_user_db_restore`.
-//! The session side effects of `phone_user_delme_cb` (0x159720) are in
+//! Runtime state of phone users: each phone's last known location and its
+//! AstDB entry, configuration tokens, the lookups of phones and lines (by
+//! token, credentials, MAC address, group PIN, and line), and the messages
+//! sent to phones.  The session side effects of a reload pass are in
 //! `load.rs`.
 //!
 //! Deviation: configuration tokens are keyed (see "Configuration tokens"
@@ -156,7 +142,7 @@ pub fn mark_session_inactive(id: &[u8]) {
 // AstDB
 // ---------------------------------------------------------------------------
 
-/// The AstDB value of a phone (`phone_user_update_db_info` 0x152660).
+/// The AstDB value of a phone.
 fn db_value(p: &Phone) -> Vec<u8> {
     crate::util::truncate(
         &bformat!(
@@ -357,9 +343,8 @@ fn set_last_info_locked(
     fx.push(Fx::DbPut(p.name.clone(), db_value(p)));
 }
 
-/// `phone_user_del_stale_response_uri` (0x152410) over every phone: a
-/// phone last seen at `uri` with another session than `session_id` is
-/// no longer there.
+/// Forget the stale locations: a phone last seen at `uri` with another
+/// session than `session_id` is no longer there.
 fn del_stale_response_uri_locked(
     reg: &mut Registry,
     uri: &[u8],

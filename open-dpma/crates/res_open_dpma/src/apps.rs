@@ -1,10 +1,8 @@
-//! Dialplan applications DigiumControlPlayback (`controlplayback_exec`
-//! FUN_001729a0) and DigiumVoicemailPlayback (`vm_play_exec`
-//! FUN_001726e0, which plays through FUN_00172870), with `playback_cb`
-//! (FUN_001728e0) telling the phone the new position after a fast forward
-//! or rewind: SIP INFO `digium.voicemail.play.location.change` through
-//! `dpma_info_send` (phone_apps.c; load FUN_00173090, unload
-//! FUN_001730d0).
+//! Dialplan applications DigiumControlPlayback (`controlplayback_exec`)
+//! and DigiumVoicemailPlayback (`vm_play_exec`, which plays through
+//! `vm_play_cb`), with `playback_cb` telling the phone the new position
+//! after a fast forward or rewind: SIP INFO
+//! `digium.voicemail.play.location.change` through `pjsip::info_send`.
 //!
 //! DigiumControlPlayback is the official DPMA's variant of an older
 //! app_controlplayback: `DigiumControlPlayback(filename[,skipms[,ff[,rew[,stop[,pause[,restart[,options]]]]]]])`
@@ -35,13 +33,13 @@ const OPT_OFFSET: u32 = 1 << 1;
 /// DigiumControlPlayback option `u`: send the location event.
 const OPT_CALLBACK: u32 = 1 << 2;
 
-/// The option table (DAT_0032a580).
+/// The options of DigiumControlPlayback.
 static CPB_OPTS: AppOptions = AppOptions::new()
     .option_arg(b'o', OPT_OFFSET as u64, 0)
     .option(b'u', OPT_CALLBACK as u64);
 
-/// Register both applications (FUN_00173090).  The official DPMA ORs the
-/// two results, so both are attempted.
+/// Register both applications.  The official DPMA ORs the two results,
+/// so both are attempted.
 pub fn load() -> Result<(), ()> {
     let a = app::register(APP_CONTROLPLAYBACK, controlplayback_exec);
     let b = app::register(APP_VM_PLAYBACK, vm_play_exec);
@@ -52,7 +50,7 @@ pub fn load() -> Result<(), ()> {
     }
 }
 
-/// Unregister both applications (FUN_001730d0).
+/// Unregister both applications.
 pub fn unload() {
     app::unregister(APP_CONTROLPLAYBACK);
     app::unregister(APP_VM_PLAYBACK);
@@ -86,9 +84,8 @@ fn show(arg: &Option<Vec<u8>>) -> &[u8] {
     arg.as_deref().unwrap_or(b"(null)")
 }
 
-/// `playback_cb` (FUN_001728e0), the `ast_waitstream_fr_cb` of both
-/// applications: after a rewind or fast forward, tell the phone the new
-/// position in seconds.
+/// The `ast_waitstream_fr_cb` of both applications: after a rewind or
+/// fast forward, tell the phone the new position in seconds.
 unsafe extern "C" fn playback_cb(
     chan: *mut AstChannel,
     ms: c_long,
@@ -111,7 +108,7 @@ unsafe extern "C" fn controlplayback_exec(chan: *mut AstChannel, data: *const c_
     dpma_ast::guard(-1, || controlplayback(chan, data_bytes(data)))
 }
 
-/// `controlplayback_exec` (FUN_001729a0).
+/// DigiumControlPlayback.
 unsafe fn controlplayback(chan: *mut AstChannel, data: &[u8]) -> c_int {
     if data.is_empty() {
         dpma_log!("DigiumControlPlayback requires an argument (filename)");
@@ -232,10 +229,10 @@ unsafe fn controlplayback(chan: *mut AstChannel, data: &[u8]) -> c_int {
     ret
 }
 
-/// FUN_00172870, the `ast_vm_msg_play_cb` of DigiumVoicemailPlayback:
-/// play the message with `#` and `*` skipping a fifth of its duration
-/// (at least whole seconds; 3 s for messages under 5 s), `0` as stop and
-/// pause key, and the location event.
+/// The `ast_vm_msg_play_cb` of DigiumVoicemailPlayback: play the message
+/// with `#` and `*` skipping a fifth of its duration (at least whole
+/// seconds; 3 s for messages under 5 s), `0` as stop and pause key, and
+/// the location event.
 unsafe extern "C" fn vm_play_cb(chan: *mut AstChannel, playfile: *const c_char, duration: c_int) {
     dpma_ast::guard((), || {
         let skipms = if duration / 5 != 0 {
@@ -263,7 +260,7 @@ unsafe extern "C" fn vm_play_exec(chan: *mut AstChannel, data: *const c_char) ->
     dpma_ast::guard(-1, || vm_play(chan, data_bytes(data)))
 }
 
-/// `vm_play_exec` (FUN_001726e0).
+/// DigiumVoicemailPlayback.
 unsafe fn vm_play(chan: *mut AstChannel, data: &[u8]) -> c_int {
     const USAGE: &str = "DigiumVoicemailPlayback requires arguments (mailbox|folder|message)";
     if data.is_empty() {

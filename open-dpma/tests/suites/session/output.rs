@@ -1,6 +1,5 @@
 //! `digium_phones show sessions` and `DPMAShowPhones` in the official
-//! DPMA's formats (handle_cli_show_sessions FUN_00148e40,
-//! action_dpma_show_phones FUN_001500d0).
+//! DPMA's formats.
 
 use anyhow::Result;
 use dpma_tests::harness::Ctx;

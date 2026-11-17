@@ -1,7 +1,4 @@
-//! Incoming messages (FUN_0014f280: `incoming_build_transaction`,
-//! `validate_message`, `find_transaction`, `transaction_alloc`,
-//! `incoming_add_msg`, `prune_inactive`; `incoming_check_finalize`
-//! FUN_0014a000; `validate_session` FUN_0014ed90).
+//! Incoming messages.
 //!
 //! Every message read from the transport is checked (a request other than
 //! Handshake, Echo, or Preconfig needs a known session that validates;
@@ -31,12 +28,12 @@ const TRANSACTION_AGE: i64 = 0x28;
 /// Pruning runs when more than this many seconds have passed (5).
 const PRUNE_INTERVAL: i64 = 5;
 
-/// The incomplete transactions (0x5f4e48), each with the session it is for
+/// The incomplete transactions, each with the session it is for
 /// and the SIP message of each part.
 static PENDING: Mutex<Transactions<Option<Arc<Session>>, Msg>> =
     Mutex::new(Transactions::new(Sender::Phone));
 
-/// When sessions and transactions were last pruned (0x5ee008).
+/// When sessions and transactions were last pruned.
 static LAST_PRUNE: AtomicI64 = AtomicI64::new(0);
 
 /// Drop every incomplete transaction (load and unload).
@@ -62,8 +59,8 @@ pub(crate) fn backdate_pending(secs: i64) -> usize {
     g.len()
 }
 
-/// `prune_inactive`: invalidate idle sessions (authenticated active
-/// sessions are kept) and drop stale transactions.
+/// Invalidate idle sessions (authenticated active sessions are kept) and
+/// drop stale transactions.
 fn prune_inactive() {
     let t = now();
     if t - LAST_PRUNE.load(Ordering::SeqCst) <= PRUNE_INTERVAL {
@@ -104,10 +101,10 @@ fn prune_inactive() {
     drop(gone);
 }
 
-/// `validate_session` (FUN_0014ed90): the message must come from the
-/// session's MAC and contact; otherwise the phone is answered "Session
-/// Timeout".  Learns the user agent (once) and the origination network,
-/// saving the session when either changes.
+/// Check that the message comes from the session's MAC and contact;
+/// otherwise the phone is answered "Session Timeout".  Learns the user
+/// agent (once) and the origination network, saving the session when
+/// either changes.
 fn validate_session(m: &Msg, s: &Arc<Session>) -> bool {
     let mac = m.get_var(h::MAC_ADDRESS);
     let mut st = s.lock();
@@ -200,8 +197,8 @@ fn validate_message(m: &Msg) -> Option<&'static str> {
     None
 }
 
-/// `incoming_check_finalize` (FUN_0014a000): build the transaction from
-/// its parts.  None when decryption fails (the transaction is dropped).
+/// Build the transaction from its parts.  None when decryption fails (the
+/// transaction is dropped).
 fn finalize(
     session: Option<Arc<Session>>,
     parts: dpma_proto::message::Collector<Msg>,
@@ -263,7 +260,7 @@ fn finalize(
     Some(tx)
 }
 
-/// `phone_utils_get_model`: the second word of a user agent whose first
+/// The phone model: the second word of a user agent whose first
 /// word is a prefix of "sangoma p" or "digium" (case insensitive).
 fn phone_model(ua: &[u8]) -> Option<Vec<u8>> {
     let (first, rest) = ua.split_once_str(" ")?;
@@ -275,7 +272,7 @@ fn phone_model(ua: &[u8]) -> Option<Vec<u8>> {
     Some(rest.split(|&c| c == b' ').next().unwrap_or(b"").to_vec())
 }
 
-/// `incoming_build_transaction` for one message: Some(transaction) when it
+/// Add one message to its transaction: Some(transaction) when it
 /// completed one.
 fn build(m: Msg) -> Option<Transaction> {
     let id = m.get_var(h::APPSERVER_ID);
@@ -344,8 +341,7 @@ fn build(m: Msg) -> Option<Transaction> {
     finalize(session, parts)
 }
 
-/// `incoming_build_transaction` (FUN_0014f280): prune idle sessions and
-/// transactions, expire auth incidents, then read
+/// Prune idle sessions and transactions, expire auth incidents, then read
 /// messages (each read waiting up to `timeout_ms`) until one completes a
 /// transaction.  Returns None as soon as a read returns nothing (a timeout
 /// or a wake from `transport::wake_reader`).

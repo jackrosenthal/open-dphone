@@ -1,5 +1,4 @@
-//! The phone_main thread (res_digium_phone.c: `phone_main` FUN_001461e0,
-//! `start_DPMA_thread`, `stop_DPMA_thread`).
+//! The phone_main thread, started by `start` and ended by `stop`.
 //!
 //! Waits until Asterisk is fully booted, logs "Digium Phone Module
 //! Started" (to the DPMA level, when the system verbosity is at least 2),
@@ -48,7 +47,7 @@ struct Running {
     control: Arc<Control>,
 }
 
-/// The thread (`threadlock` and the thread id at 0x5e7df8).
+/// The running thread, if any.
 static THREAD: Mutex<Option<Running>> = Mutex::new(None);
 
 /// Handle one complete transaction the way the loop does: answers from

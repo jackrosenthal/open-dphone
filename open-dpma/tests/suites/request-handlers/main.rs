@@ -17,7 +17,7 @@
 //! The request handler parts rewrite `[general]` of the instance's
 //! `res_digium_phone.conf` for each authentication mode, reload the
 //! module, and put the file back at the end of the part.  Replies are
-//! compared byte for byte with what the decompile builds.
+//! compared byte for byte with what the official DPMA builds.
 
 mod common;
 mod flows;

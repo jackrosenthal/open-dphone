@@ -1,6 +1,4 @@
-//! Phone requests forwarded to AMI (phone_ami.c 0x174980..0x175750;
-//! phone_request.c 0x175840..0x1758c0, 0x176490, and the AMI part of
-//! 0x176a60).
+//! Phone requests forwarded to AMI.
 //!
 //! AMI clients register method names with `DPMAMessageRegister`.  When a
 //! phone calls such a method in an AsteriskRequest or HTTPRequest (and no
@@ -27,7 +25,7 @@ use std::os::raw::{c_int, c_void};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 
-/// Delay of `sched_expire_queued` (FUN_001758c0 schedules after 300000 ms).
+/// Delay of `sched_expire_queued` (300 s, as in the official DPMA).
 pub const QUEUED_EXPIRY_MS: i32 = 300_000;
 
 /// A shorter delay set by the test hooks (`dpmadev ami expiry`); 0 means
@@ -51,26 +49,25 @@ fn expiry_ms() -> i32 {
 /// The `DPMAMessage` event's category: EVENT_FLAG_AGENT ("agent").
 const DPMA_MESSAGE_CATEGORY: i32 = manager::AUTH_AGENT;
 
-/// The body `handle_request_asterisk` starts every reply with.  A queued
+/// The body the AsteriskRequest handler starts every reply with.  A queued
 /// reply carries it (and nothing else the handler adds) until
 /// `DPMAMessageResponse` appends the response document.
 pub const HTTP_PREAMBLE: &str = "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\n\r\n";
 
 /// A phone request forwarded to AMI as a `DPMAMessage` event, waiting for
-/// `DPMAMessageResponse` (`struct queued_msg`; destroyed by
-/// `destroy_queued_msg`, FUN_00175650).
+/// `DPMAMessageResponse`.
 pub struct QueuedMsg {
     /// The transaction key, `"<AppServer-ID>-<MAC>"`: the event's
-    /// `RequestID` and the container key (case insensitive) (+0x00).
+    /// `RequestID` and the container key (case insensitive).
     pub request_id: Vec<u8>,
-    /// The method as the phone requested it (+0x08).
+    /// The method as the phone requested it.
     pub method: Vec<u8>,
     /// Id of the session the request came in on; the reply goes to the
-    /// session found under this id when it is answered (+0x10).
+    /// session found under this id when it is answered.
     pub session_id: Vec<u8>,
-    /// The transaction's reply, taken from the transaction (+0x18).
+    /// The transaction's reply, taken from the transaction.
     pub outgoing: Option<Outgoing>,
-    /// The expiry's scheduler entry, or -1 (+0x20).
+    /// The expiry's scheduler entry, or -1.
     pub sched_id: i32,
     /// Identifies this entry to the expiry callback (the official DPMA
     /// passes the object itself as the callback data).
@@ -96,12 +93,12 @@ impl QueuedMsg {
     }
 }
 
-/// The queued message container (0x5f4e50): None while not initialized.
+/// The queued message container: None while not initialized.
 /// Kept in insertion order, so a lookup finds the oldest of several
 /// entries with the same key, as the official DPMA's hash container does.
 static QUEUE: Mutex<Option<Vec<QueuedMsg>>> = Mutex::new(None);
 
-/// The AMI scheduler context (0x5eef30).
+/// The AMI scheduler context.
 static SCHED: RwLock<Option<Context>> = RwLock::new(None);
 
 fn queue() -> MutexGuard<'static, Option<Vec<QueuedMsg>>> {
@@ -109,12 +106,12 @@ fn queue() -> MutexGuard<'static, Option<Vec<QueuedMsg>>> {
 }
 
 // ---------------------------------------------------------------------------
-// Scheduler (phone_request.c)
+// Scheduler
 // ---------------------------------------------------------------------------
 
-/// FUN_00175880: create the scheduler context ("Failed to create ami
-/// schedule context" on error, logged by the caller) and start its thread
-/// (the official DPMA starts none).
+/// Create the scheduler context ("Failed to create ami schedule context" on
+/// error, logged by the caller) and start its thread (the official DPMA
+/// starts none).
 pub fn sched_create() -> Result<(), ()> {
     let ctx = Context::create().ok_or(())?;
     if !ctx.start_thread() {
@@ -124,16 +121,16 @@ pub fn sched_create() -> Result<(), ()> {
     Ok(())
 }
 
-/// FUN_001758a0: destroy the scheduler context (which stops its thread);
-/// pending expiries are dropped without running.
+/// Destroy the scheduler context (which stops its thread); pending expiries
+/// are dropped without running.
 pub fn sched_destroy() {
     let ctx = SCHED.write().unwrap_or_else(|e| e.into_inner()).take();
     drop(ctx);
 }
 
-/// FUN_001758c0: schedule `sched_expire_queued` for `msg` in
-/// [`QUEUED_EXPIRY_MS`] (or the test hooks' delay) and record the entry in
-/// `msg.sched_id`.  Err (with `sched_id` -1) when that fails.
+/// Schedule `sched_expire_queued` for `msg` in [`QUEUED_EXPIRY_MS`] (or the
+/// test hooks' delay) and record the entry in `msg.sched_id`.  Err (with
+/// `sched_id` -1) when that fails.
 pub fn schedule_expiry(msg: &mut QueuedMsg) -> Result<(), ()> {
     msg.sched_id = match SCHED.read().unwrap_or_else(|e| e.into_inner()).as_ref() {
         Some(ctx) => ctx.add(expiry_ms(), sched_expire_queued, msg.token),
@@ -156,7 +153,7 @@ fn cancel_expiry(sched_id: i32) {
     }
 }
 
-/// `sched_expire_queued` (FUN_00176490): drop a request nobody answered.
+/// Drop a request nobody answered.
 /// Returns 0 (not rescheduled).
 unsafe extern "C" fn sched_expire_queued(data: *const c_void) -> c_int {
     dpma_ast::guard(0, || {
@@ -168,24 +165,23 @@ unsafe extern "C" fn sched_expire_queued(data: *const c_void) -> c_int {
 }
 
 // ---------------------------------------------------------------------------
-// The queued message container (phone_ami.c)
+// The queued message container
 // ---------------------------------------------------------------------------
 
-/// `phone_ami_queued_msg_container_initialize` (FUN_001755b0).
+/// Create the queued message container.
 pub fn queue_init() -> Result<(), ()> {
     *queue() = Some(Vec::new());
     Ok(())
 }
 
-/// `phone_ami_queued_msg_container_dispose` (FUN_00175610): drop every
-/// queued request (their replies are never sent).
+/// Drop the container and every queued request (their replies are never
+/// sent).
 pub fn queue_dispose() {
     let q = queue().take();
     drop(q);
 }
 
-/// `phone_ami_queued_msg_link` (FUN_001756d0).  Err when the container
-/// does not exist.
+/// Queue `msg`.  Err when the container does not exist.
 pub fn queue_link(msg: QueuedMsg) -> Result<(), ()> {
     match queue().as_mut() {
         Some(q) => {
@@ -196,8 +192,8 @@ pub fn queue_link(msg: QueuedMsg) -> Result<(), ()> {
     }
 }
 
-/// Find (`queued_msg_find`, FUN_00174bc0) and unlink the oldest queued
-/// request with this RequestID (case insensitive).
+/// Find and unlink the oldest queued request with this RequestID (case
+/// insensitive).
 pub fn queue_unlink(request_id: &[u8]) -> Option<QueuedMsg> {
     let mut g = queue();
     let q = g.as_mut()?;
@@ -207,7 +203,7 @@ pub fn queue_unlink(request_id: &[u8]) -> Option<QueuedMsg> {
     Some(q.remove(i))
 }
 
-/// `phone_ami_queued_msg_unlink` (FUN_00175710) of one particular entry.
+/// Unlink one particular entry.
 fn unlink_token(token: usize) -> Option<QueuedMsg> {
     let mut g = queue();
     let q = g.as_mut()?;
@@ -216,15 +212,15 @@ fn unlink_token(token: usize) -> Option<QueuedMsg> {
 }
 
 // ---------------------------------------------------------------------------
-// The request side (phone_request.c, handle_request_asterisk)
+// The request side (the AsteriskRequest and HTTPRequest handler)
 // ---------------------------------------------------------------------------
 
-/// `__handle_request_ami` (phone_request.c line 0x192): raise the
-/// `DPMAMessage` event (category "agent") for a request to an
-/// AMI-registered method.  `request_id` is the transaction key, `format`
-/// "XML" or "JSON", and `params` the request's parameters: for XML the
-/// text content of the `<parameters>` element (`ast_xml_get_text`), for
-/// JSON the compact dump of the `"parameters"` value.
+/// Raise the `DPMAMessage` event (category "agent", with the official
+/// DPMA's source location) for a request to an AMI-registered method.
+/// `request_id` is the transaction key, `format` "XML" or "JSON", and
+/// `params` the request's parameters: for XML the text content of the
+/// `<parameters>` element (`ast_xml_get_text`), for JSON the compact dump
+/// of the `"parameters"` value.
 pub fn raise_event(request_id: &[u8], method: &[u8], format: &str, params: &[u8]) {
     manager::event_at(
         DPMA_MESSAGE_CATEGORY,
@@ -242,12 +238,12 @@ pub fn raise_event(request_id: &[u8], method: &[u8], format: &str, params: &[u8]
     );
 }
 
-/// The end of `handle_request_asterisk` (FUN_00176a60) after an AMI
-/// forward: move the transaction's reply into a queued request keyed by
-/// the transaction key, schedule its expiry, and link it.  The handler
-/// must not send the reply when this succeeds; on Err the reply is left in
-/// the transaction for the handler to send (`send_and_destroy`), as the
-/// official DPMA does when the expiry cannot be scheduled.
+/// The end of the AsteriskRequest handler after an AMI forward: move the
+/// transaction's reply into a queued request keyed by the transaction key,
+/// schedule its expiry, and link it.  The handler must not send the reply
+/// when this succeeds; on Err the reply is left in the transaction for the
+/// handler to send (`send_and_destroy`), as the official DPMA does when the
+/// expiry cannot be scheduled.
 pub fn queue_request(tx: &Arc<Transaction>, method: &[u8]) -> Result<(), ()> {
     let session_id = tx
         .session
@@ -277,7 +273,7 @@ pub fn queue_request(tx: &Arc<Transaction>, method: &[u8]) -> Result<(), ()> {
 }
 
 // ---------------------------------------------------------------------------
-// AMI actions (phone_ami.c)
+// AMI actions
 // ---------------------------------------------------------------------------
 
 /// `snprintf(idtext, 0x100, "ActionID: %s\r\n", id)` when the request has
@@ -303,14 +299,14 @@ fn reply(r: &Request, ok: bool, idtext: &[u8]) {
     r.append(&t);
 }
 
-/// `action_dpma_message_send` (FUN_00174a00): send event `Method` with
-/// body `Message` to phone `PhoneName` (`phone_user_send_event`).
+/// `DPMAMessageSend`: send event `Method` with body `Message` to phone
+/// `PhoneName`.
 fn action_message_send(r: &Request) -> i32 {
     let method = r.header("Method");
     let message = r.header("Message");
     let phone = r.header("PhoneName");
     let idtext = action_id_text(r);
-    // phone_user_find: no phone for an empty name.
+    // No phone for an empty name, as in the official DPMA.
     let found = !phone.is_empty()
         && crate::users::read()
             .as_ref()
@@ -328,8 +324,8 @@ fn action_message_send(r: &Request) -> i32 {
     0
 }
 
-/// `DPMAMessageRegister` (FUN_00174c50): forward requests for `Method` to
-/// AMI from now on (`__phone_method_register` in the AMI registry).
+/// `DPMAMessageRegister`: forward requests for `Method` to AMI from now
+/// on.
 fn action_message_register(r: &Request) -> i32 {
     let method = r.header("Method");
     let idtext = action_id_text(r);
@@ -415,9 +411,9 @@ fn respond(
     session::send(&out, &session)
 }
 
-/// `action_dpma_message_response` (FUN_00174f20): answer the queued
-/// request `RequestID` with `Response` (or `ErrorNum` and `ErrorMsg`) as an
-/// XML or JSON document (`Format`), and send it to the phone.
+/// `DPMAMessageResponse`: answer the queued request `RequestID` with
+/// `Response` (or `ErrorNum` and `ErrorMsg`) as an XML or JSON document
+/// (`Format`), and send it to the phone.
 fn action_message_response(r: &Request) -> i32 {
     let request_id = r.header("RequestID");
     let format = r.header("Format");
@@ -431,7 +427,7 @@ fn action_message_response(r: &Request) -> i32 {
 }
 
 /// Actions contributed to `ami::register_actions` (all with authority
-/// "call", as FUN_00175750 registers them).
+/// "call", as the official DPMA registers them).
 pub fn actions() -> Vec<AmiAction> {
     vec![
         AmiAction {
@@ -531,9 +527,9 @@ pub fn devtest_commands() -> Vec<dpma_ast::cli::CliCommand> {
     }
 
     /// dpmadev ami forward <session> <uri> <id> <XML|JSON> <method> [params...]:
-    /// what handle_request_asterisk does for an AMI-registered method, for a
-    /// synthetic AsteriskRequest with AppServer-ID <id> on <session> whose
-    /// reply goes to <uri>.
+    /// what the AsteriskRequest handler does for an AMI-registered method,
+    /// for a synthetic AsteriskRequest with AppServer-ID <id> on <session>
+    /// whose reply goes to <uri>.
     fn forward(a: &CliArgs) -> CliResult {
         if a.argc() < 8 {
             return CliResult::ShowUsage;
