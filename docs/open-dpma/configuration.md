@@ -7,7 +7,7 @@ Open DPMA reads `res_digium_phone.conf` from the Asterisk configuration director
 The file has a `[general]` section and any number of sections with a `type` option.  A section's name identifies the phone, line, network, or other object.
 
 - **On/off options** accept any value that Asterisk reads as true (`yes`, `true`, `on`, `1`) or false.
-- **Errors.**  An unknown option or an unreadable value is logged at the `DPMA` level and skipped; the rest of the section applies.  A section with a missing or unknown `type` is logged and skipped.
+- **Errors.**  An unknown option or an unreadable value is logged at the `DPMA` level and skipped; the rest of the section applies.  A section with a missing or unknown `type` is logged and skipped.  Exceptions: an invalid [`config_auth`](#config_auth) or `userlist_auth` value refuses requests, and an invalid `dphone_ssh_enabled`, `dphone_serial_console`, or `dphone_metrics_enabled` value sends `no`; each is also logged as an error.
 - **Special characters.**  The module escapes `"`, `<`, and `&` in the phone's XML configuration, so write these characters as the phone should display them.  An `&` that begins a reference, e.g., `&amp;` or `&#38;`, is left alone, so values written for the original module, which escapes nothing, display the same.
 - **Comments.**  `;` begins a comment; `\;` is a literal semicolon.
 
@@ -67,9 +67,9 @@ The built-in certificates are the original module's, which D-series phones trust
 | `mac_pin` | The MAC address, the chosen user, and a PIN. | The section has that `mac`, and the PIN matches the section's `pin`. |
 | `mac_globalpin` | The MAC address, the chosen user, and a PIN. | The section has that `mac`, and the PIN matches `globalpin` or the section's `group_pin`. |
 
-!!! warning "A misspelled value leaves authentication disabled"
+!!! warning "A misspelled value refuses requests"
 
-    For a `config_auth` or `userlist_auth` value not listed above, the module keeps the default, `disabled`, and logs `Invalid value '<value>' for config_auth at line <n> of res_digium_phone.conf is ignored`.  After every change, check `Config Authentication` and `Userlist Authentication` in `digium_phones show settings`.  To choose a value, see [Authentication](administration.md#authentication).
+    A `config_auth` value not listed above, including an empty value, makes the module refuse every configuration token request until the value is corrected and the module reloaded.  An invalid `userlist_auth` value refuses every user list request the same way.  A phone without a token gets no configuration.  A phone with a token keeps getting the section's configuration, as with every listed value.  The module logs an error, e.g., `Invalid value '<value>' for config_auth at line <n> of res_digium_phone.conf: configuration token requests are refused ...`, and `digium_phones show settings` shows the value under `Config Authentication` or `Userlist Authentication`.  To choose a value, see [Authentication](administration.md#authentication).
 
 ## `type=phone` { #phone }
 

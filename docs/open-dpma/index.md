@@ -13,7 +13,7 @@ Open DPMA (`res_open_dpma.so`) is an open-source Asterisk module that replaces t
 
 | Case | Open DPMA | Original module |
 | --- | --- | --- |
-| A misspelled `config_auth` or `userlist_auth` value | Logs a warning. | Ignores the value silently. |
+| A misspelled `config_auth` or `userlist_auth` value | Logs an error and refuses every configuration token request or user list request until the value is corrected.  See [`config_auth`](configuration.md#config_auth). | Ignores the value silently, so the default, `disabled`, applies. |
 | `enable_check_sync` removed from the file | Turns the option off. | Keeps the option on until the file says `enable_check_sync=no`. |
 | `network_vlan_qos` in a network section | Sets the RTP priority. | Has no effect. |
 | A network section without `registration_port` | Sends the transport's default port: 5061 for TLS, 5060 otherwise. | Sends an empty port. |

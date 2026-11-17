@@ -1,7 +1,8 @@
 //! The `[general]` section of res_digium_phone.conf.
 
 use dpma_ast::config::{self, LoadResult};
-use dpma_ast::{ast_log, bformat, dpma_log, log::LOG_WARNING};
+use dpma_ast::log::{LOG_ERROR, LOG_WARNING};
+use dpma_ast::{ast_log, bformat, dpma_log};
 use std::sync::{Arc, RwLock};
 
 /// Authentication flags (shared with the session layer).
@@ -16,6 +17,21 @@ pub mod auth {
     pub const MAC: u32 = 1 << 3;
     /// The global pin is required to fetch the user list.
     pub const USERLIST_GLOBALPIN: u32 = 1 << 4;
+    /// Not in the official DPMA: the session was created while
+    /// `config_auth` or `userlist_auth` had an invalid value, so its
+    /// requests are checked with the flags of the configuration in effect
+    /// when they arrive (see `General::invalid_config_auth`).  The other
+    /// flags of such a session are what the official DPMA would have
+    /// used, so that its HandshakeResponse is the same.
+    pub const USE_CURRENT: u32 = 1 << 5;
+}
+
+/// A `config_auth` or `userlist_auth` line whose value is none of the
+/// option's values.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidAuth {
+    pub value: Vec<u8>,
+    pub lineno: i32,
 }
 
 pub use dpma_proto::cert::{DEFAULT_APPSERVER_CERTIFICATE, DEFAULT_PHONE_CA};
@@ -30,6 +46,18 @@ pub const DEFAULT_MESSAGE_DELAY: u32 = 5;
 #[derive(Debug, Clone)]
 pub struct General {
     pub auth_flags: u32,
+    /// The first `config_auth` line with an invalid value.  While there is
+    /// one, every TokenRequest is refused.
+    ///
+    /// Deviation: the official DPMA ignores such a line without a word,
+    /// which leaves the authentication of the other lines in effect, or
+    /// none (`disabled`): a misspelled value can hand out every phone's
+    /// configuration.
+    pub invalid_config_auth: Option<InvalidAuth>,
+    /// The first `userlist_auth` line with an invalid value.  While there
+    /// is one, every UserlistRequest is refused (deviation, as for
+    /// `invalid_config_auth`).
+    pub invalid_userlist_auth: Option<InvalidAuth>,
     pub discovery_enabled: bool,
     pub initial_threads: u32,
     pub max_threads: u32,
@@ -62,6 +90,8 @@ impl General {
         let file_dir = bformat!("{}/digium_phones", dpma_ast::var_dir());
         General {
             auth_flags: auth::USER,
+            invalid_config_auth: None,
+            invalid_userlist_auth: None,
             discovery_enabled: true,
             initial_threads: DEFAULT_INITIAL_THREADS,
             max_threads: DEFAULT_MAX_THREADS,
@@ -114,6 +144,18 @@ impl General {
             DEFAULT_PORT.as_bytes()
         } else {
             &self.registration_port
+        }
+    }
+
+    /// The flags that a request of a session with `session_flags` is
+    /// checked with: the session's, or this configuration's for a session
+    /// created while `config_auth` or `userlist_auth` was invalid
+    /// ([`auth::USE_CURRENT`]).
+    pub fn effective_auth_flags(&self, session_flags: u32) -> u32 {
+        if session_flags & auth::USE_CURRENT != 0 {
+            self.auth_flags
+        } else {
+            session_flags
         }
     }
 }
@@ -185,15 +227,17 @@ pub fn load() -> Result<(Option<Arc<General>>, Arc<General>), ()> {
                     } else if value.eq_ignore_ascii_case(b"globalpin") {
                         g.auth_flags |= auth::USERLIST_GLOBALPIN;
                     } else {
-                        // The official DPMA ignores such a value without a
-                        // word, which leaves the user list open.
                         ast_log!(
-                            LOG_WARNING,
-                            "Invalid value '{}' for userlist_auth at line {} of {} is ignored: use disabled or globalpin",
+                            LOG_ERROR,
+                            "Invalid value '{}' for userlist_auth at line {} of {}: user list requests are refused until the value is disabled or globalpin",
                             value,
                             v.lineno,
                             crate::CONFIG_FILE
                         );
+                        g.invalid_userlist_auth.get_or_insert(InvalidAuth {
+                            value: value.into(),
+                            lineno: v.lineno,
+                        });
                     }
                 }
                 b"mdns_address" => g.mdns_address = value.into(),
@@ -229,16 +273,19 @@ pub fn load() -> Result<(Option<Arc<General>>, Arc<General>), ()> {
                         b"pin" => g.auth_flags |= auth::USER | auth::PIN,
                         b"globalpin" => g.auth_flags |= auth::USER | auth::GLOBALPIN,
                         b"disabled" => g.auth_flags |= auth::USER,
-                        // The official DPMA ignores such a value without
-                        // a word, which leaves authentication as it was
-                        // (disabled, unless an earlier line set it).
-                        _ => ast_log!(
-                            LOG_WARNING,
-                            "Invalid value '{}' for config_auth at line {} of {} is ignored: use disabled, mac, pin, globalpin, mac_pin, or mac_globalpin",
-                            value,
-                            v.lineno,
-                            crate::CONFIG_FILE
-                        ),
+                        _ => {
+                            ast_log!(
+                                LOG_ERROR,
+                                "Invalid value '{}' for config_auth at line {} of {}: configuration token requests are refused until the value is disabled, mac, pin, globalpin, mac_pin, or mac_globalpin",
+                                value,
+                                v.lineno,
+                                crate::CONFIG_FILE
+                            );
+                            g.invalid_config_auth.get_or_insert(InvalidAuth {
+                                value: value.into(),
+                                lineno: v.lineno,
+                            });
+                        }
                     }
                 }
                 b"file_directory" => g.file_directory = value.into(),
@@ -287,6 +334,12 @@ pub fn load() -> Result<(Option<Arc<General>>, Arc<General>), ()> {
     if g.initial_threads > g.max_threads {
         g.initial_threads = g.max_threads;
     }
+    // A session created now must not keep this configuration's flags once
+    // the value is corrected: those flags lack the check that the invalid
+    // line was meant to ask for.
+    if g.invalid_config_auth.is_some() || g.invalid_userlist_auth.is_some() {
+        g.auth_flags |= auth::USE_CURRENT;
+    }
 
     let new = Arc::new(g);
     let old = CURRENT.write().unwrap().replace(new.clone());
@@ -304,6 +357,10 @@ pub fn unload() {
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub auth_flags: u32,
+    /// Not in the official DPMA: [`General::invalid_config_auth`].
+    pub invalid_config_auth: Option<InvalidAuth>,
+    /// Not in the official DPMA: [`General::invalid_userlist_auth`].
+    pub invalid_userlist_auth: Option<InvalidAuth>,
     pub enable_discovery: bool,
     pub delay: u32,
     /// `password` (the global pin), 0x100 bytes.
@@ -343,6 +400,8 @@ pub fn settings() -> Option<Settings> {
     let g = CURRENT.read().unwrap().clone()?;
     Some(Settings {
         auth_flags: g.auth_flags,
+        invalid_config_auth: g.invalid_config_auth.clone(),
+        invalid_userlist_auth: g.invalid_userlist_auth.clone(),
         enable_discovery: g.discovery_enabled,
         delay: g.message_delay,
         password: cut(&g.globalpin, 0x100),

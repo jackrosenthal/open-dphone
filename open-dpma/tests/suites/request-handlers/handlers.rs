@@ -1353,3 +1353,287 @@ fn handshake_checks(ctx: &mut Ctx) -> Result<()> {
     );
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Invalid config_auth and userlist_auth values
+
+/// The `Userlist Authentication` and `Config Authentication` lines of
+/// `digium_phones show settings`.
+fn auth_settings(ctx: &mut Ctx) -> Result<(String, String)> {
+    let out = cli_text(ctx, "digium_phones show settings")?;
+    let line = |name: &str| {
+        out.lines()
+            .find_map(|l| l.strip_prefix(name))
+            .unwrap_or("?")
+            .trim()
+            .to_owned()
+    };
+    Ok((
+        line("Userlist Authentication:"),
+        line("Config Authentication:"),
+    ))
+}
+
+/// The line of `res_digium_phone.conf` that is `text`.
+fn conf_line(ctx: &Ctx, text: &str) -> Result<usize> {
+    let conf = std::fs::read_to_string(ctx.inst.conf("res_digium_phone.conf"))?;
+    conf.lines()
+        .position(|l| l == text)
+        .map(|i| i + 1)
+        .with_context(|| format!("no line {text:?}"))
+}
+
+/// Checks that no auth incident was recorded (a refusal for an invalid
+/// value is not the phone's fault).
+fn no_incident(ctx: &mut Ctx, name: &str) -> Result<()> {
+    let inc = local_incident(ctx)?;
+    ctx.c.check(
+        format!("{name}: no incident"),
+        inc.is_none(),
+        format!("{inc:?}"),
+    );
+    Ok(())
+}
+
+pub fn invalid_auth(ctx: &mut Ctx) -> Result<()> {
+    clear_incidents(ctx)?;
+    let res = invalid_auth_checks(ctx);
+    clear_incidents(ctx)?;
+    res
+}
+
+fn invalid_auth_checks(ctx: &mut Ctx) -> Result<()> {
+    ctx.c
+        .say("-- Misspelled config_auth and userlist_auth refuse requests");
+    // phonea got a token while the configuration was valid.
+    set_auth(ctx, "mac_globalpin", "globalpin")?;
+    let early = phone(ctx, MAC_A)?;
+    let ex = early
+        .get_token()
+        .user("phonea")
+        .config_password(GLOBALPIN)
+        .send()?;
+    expect(
+        ctx,
+        "token while valid",
+        &ex,
+        "TokenResponse",
+        None,
+        Body::Default,
+    );
+
+    let mark = log_mark(ctx);
+    set_auth(ctx, "mac_globalpn", "globalpn")?;
+    let config_line = conf_line(ctx, "config_auth=mac_globalpn")?;
+    let userlist_line = conf_line(ctx, "userlist_auth=globalpn")?;
+    logged_error(
+        ctx,
+        "config_auth: an error",
+        mark,
+        &format!(
+            "Invalid value 'mac_globalpn' for config_auth at line {config_line} of res_digium_phone.conf: configuration token requests are refused until the value is disabled, mac, pin, globalpin, mac_pin, or mac_globalpin\n"
+        ),
+    );
+    logged_error(
+        ctx,
+        "userlist_auth: an error",
+        mark,
+        &format!(
+            "Invalid value 'globalpn' for userlist_auth at line {userlist_line} of res_digium_phone.conf: user list requests are refused until the value is disabled or globalpin\n"
+        ),
+    );
+    let settings = auth_settings(ctx)?;
+    ctx.c.same(
+        "show settings: the invalid values",
+        settings,
+        (
+            format!("invalid value 'globalpn' at line {userlist_line}, requests refused"),
+            format!("invalid value 'mac_globalpn' at line {config_line}, requests refused"),
+        ),
+    );
+
+    // phoneb handshakes now.  Every token and user list request is
+    // refused, the earlier session's too.
+    let late = phone(ctx, "000fd3001202")?;
+    for (who, p, user) in [
+        ("earlier session", &early, "phonea"),
+        ("new session", &late, "phoneb"),
+    ] {
+        let mark = log_mark(ctx);
+        let ex = p.get_token().user(user).config_password(GLOBALPIN).send()?;
+        let name = format!("token refused ({who})");
+        expect(ctx, &name, &ex, "TokenResponse", Some(-195), Body::Default);
+        logged(
+            ctx,
+            &format!("{name} (log)"),
+            mark,
+            &format!("Token request refused: config_auth at line {config_line} of res_digium_phone.conf has the invalid value 'mac_globalpn'\n"),
+        );
+        no_incident(ctx, &name)?;
+        let mark = log_mark(ctx);
+        let ex = p.userlist().config_password(GLOBALPIN).send()?;
+        let name = format!("userlist refused ({who})");
+        expect(
+            ctx,
+            &name,
+            &ex,
+            "UserlistResponse",
+            Some(-198),
+            Body::Default,
+        );
+        logged(
+            ctx,
+            &format!("{name} (log)"),
+            mark,
+            &format!("Userlist request refused: userlist_auth at line {userlist_line} of res_digium_phone.conf has the invalid value 'globalpn'\n"),
+        );
+        no_incident(ctx, &name)?;
+    }
+    // A token from before still gets the phone's configuration, as with
+    // every valid value.
+    let ex = early.config().send()?;
+    expect(
+        ctx,
+        "config with the earlier token",
+        &ex,
+        "ConfigResponse",
+        None,
+        Body::Matches(r"\A<config>"),
+    );
+    let ex = early.verify().send()?;
+    expect(
+        ctx,
+        "verify with the earlier token",
+        &ex,
+        "VerifyResponse",
+        None,
+        Body::Is(b"empty body"),
+    );
+
+    // Each value refuses only its own requests.
+    set_auth(ctx, "mac_globalpin", "globalpn")?;
+    let ex = late
+        .get_token()
+        .user("phoneb")
+        .config_password(GLOBALPIN)
+        .send()?;
+    expect(
+        ctx,
+        "only userlist_auth invalid: token",
+        &ex,
+        "TokenResponse",
+        None,
+        Body::Default,
+    );
+    let ex = late.userlist().config_password(GLOBALPIN).send()?;
+    expect(
+        ctx,
+        "only userlist_auth invalid: userlist refused",
+        &ex,
+        "UserlistResponse",
+        Some(-198),
+        Body::Default,
+    );
+    set_auth(ctx, "mac_globalpn", "globalpin")?;
+    let ex = late
+        .get_token()
+        .user("phoneb")
+        .config_password(GLOBALPIN)
+        .send()?;
+    expect(
+        ctx,
+        "only config_auth invalid: token refused",
+        &ex,
+        "TokenResponse",
+        Some(-195),
+        Body::Default,
+    );
+    let ex = late.userlist().config_password(GLOBALPIN).send()?;
+    expect(
+        ctx,
+        "only config_auth invalid: userlist",
+        &ex,
+        "UserlistResponse",
+        None,
+        Body::Default,
+    );
+    no_incident(ctx, "one value invalid")?;
+
+    // Corrected: the session created while the values were invalid is
+    // checked as the corrected values say, not with the defaults that
+    // applied when it was created.
+    set_auth(ctx, "mac_globalpin", "globalpin")?;
+    let settings = auth_settings(ctx)?;
+    ctx.c.same(
+        "show settings: corrected",
+        settings,
+        ("globalpin".to_owned(), "mac globalpin".to_owned()),
+    );
+    let ex = late
+        .get_token()
+        .user("phoneb")
+        .config_password("wrong")
+        .send()?;
+    expect(
+        ctx,
+        "corrected: token with a wrong config password",
+        &ex,
+        "TokenResponse",
+        Some(-198),
+        Body::Default,
+    );
+    let ex = late.userlist().config_password("wrong").send()?;
+    expect(
+        ctx,
+        "corrected: userlist with a wrong config password",
+        &ex,
+        "UserlistResponse",
+        Some(-198),
+        Body::Default,
+    );
+    let inc = local_incident(ctx)?;
+    ctx.c.check(
+        "corrected: wrong config passwords are incidents again",
+        inc.as_ref()
+            .and_then(|i| field(i, "IncidentCount"))
+            .as_deref()
+            == Some("2"),
+        format!("{inc:?}"),
+    );
+    let ex = late
+        .get_token()
+        .user("phoneb")
+        .config_password(GLOBALPIN)
+        .send()?;
+    expect(
+        ctx,
+        "corrected: token",
+        &ex,
+        "TokenResponse",
+        None,
+        Body::Default,
+    );
+    let ex = late.userlist().config_password(GLOBALPIN).send()?;
+    expect(
+        ctx,
+        "corrected: userlist",
+        &ex,
+        "UserlistResponse",
+        None,
+        Body::Default,
+    );
+    let ex = early
+        .get_token()
+        .user("phonea")
+        .config_password(GLOBALPIN)
+        .send()?;
+    expect(
+        ctx,
+        "corrected: token (earlier session)",
+        &ex,
+        "TokenResponse",
+        None,
+        Body::Default,
+    );
+    Ok(())
+}

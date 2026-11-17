@@ -43,6 +43,16 @@ fn config_auth_text(flags: u32) -> String {
     }
 }
 
+/// The "Userlist Authentication" or "Config Authentication" text of an
+/// invalid value.
+fn invalid_text(bad: &config::InvalidAuth) -> Vec<u8> {
+    bformat!(
+        "invalid value '{}' at line {}, requests refused",
+        bad.value,
+        bad.lineno
+    )
+}
+
 /// `digium_phones show settings` (FUN_00174570).  The official DPMA takes
 /// any number of arguments.  It reads the configuration object (see
 /// `config::Settings`); without one, the getters' defaults.
@@ -81,16 +91,19 @@ fn cli_show_settings(a: &CliArgs) -> CliResult {
         "Service Disc. Port: {}\n",
         defaulted(|s| &s.mdns_port, config::DEFAULT_PORT)
     ));
-    let userlist = if flags & auth::USERLIST_GLOBALPIN != 0 {
-        "globalpin"
-    } else {
-        "disabled"
+    // Not in the official DPMA: an invalid value, which refuses requests,
+    // is shown in place of the authentication that would otherwise apply.
+    let userlist = match s.and_then(|s| s.invalid_userlist_auth.as_ref()) {
+        Some(bad) => invalid_text(bad),
+        None if flags & auth::USERLIST_GLOBALPIN != 0 => "globalpin".into(),
+        None => "disabled".into(),
     };
     a.out(bformat!("Userlist Authentication: {}\n", userlist));
-    a.out(bformat!(
-        "Config Authentication: {}\n",
-        config_auth_text(flags)
-    ));
+    let config_auth = match s.and_then(|s| s.invalid_config_auth.as_ref()) {
+        Some(bad) => invalid_text(bad),
+        None => config_auth_text(flags).into_bytes(),
+    };
+    a.out(bformat!("Config Authentication: {}\n", config_auth));
     a.out(bformat!(
         "Firmware Package Directory: {}\n",
         or_not_set(text(|s| &s.firmware_package_dir))

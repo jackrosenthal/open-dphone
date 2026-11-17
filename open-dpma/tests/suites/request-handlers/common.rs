@@ -185,6 +185,19 @@ pub fn logged(ctx: &mut Ctx, name: &str, mark: LogMark, text: &str) {
     ctx.c.check(name, ok, format!("not in the log: {text:?}"));
 }
 
+/// Checks that a line matching the regular expression `pattern` was
+/// logged at the ERROR level since `mark` (waiting up to two seconds).
+pub fn logged_error(ctx: &mut Ctx, name: &str, mark: LogMark, pattern: &str) {
+    let re = Regex::new(&format!(r"ERROR\[[^\n]*{pattern}")).expect("pattern");
+    let log = ctx.log();
+    let ok =
+        dpma_tests::util::wait_until(Duration::from_secs(2), Duration::from_millis(20), || {
+            re.is_match(&log.since(mark))
+        });
+    ctx.c
+        .check(name, ok, format!("no error in the log matches {pattern:?}"));
+}
+
 /// The current end of `messages.log`.
 pub fn log_mark(ctx: &Ctx) -> LogMark {
     ctx.log().mark()

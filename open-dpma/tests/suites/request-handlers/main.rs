@@ -39,7 +39,7 @@ fn main() -> ExitCode {
             )
         })
     });
-    let handler_parts: [(&str, fn(&mut _) -> _); 8] = [
+    let handler_parts: [(&str, fn(&mut _) -> _); 9] = [
         ("token", handlers::token),
         ("config", handlers::config),
         ("userlist", handlers::userlist),
@@ -48,6 +48,7 @@ fn main() -> ExitCode {
         ("xml", handlers::xml),
         ("ami", handlers::ami),
         ("handshake", handlers::handshake),
+        ("invalid-auth", handlers::invalid_auth),
     ];
     for (name, f) in handler_parts {
         suite = suite.part(name, move |ctx| handlers::part(ctx, f));

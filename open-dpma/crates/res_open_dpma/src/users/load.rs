@@ -23,8 +23,9 @@ use super::options::{self, UserCtx};
 use super::*;
 use dpma_ast::config::{self, Category, LoadResult};
 use dpma_ast::dpma_bytes::ByteSlice;
+use dpma_ast::log::LOG_ERROR;
 use dpma_ast::util::{ast_false, ast_true};
-use dpma_ast::{ast_debug, bformat, dpma_log};
+use dpma_ast::{ast_debug, ast_log, bformat, dpma_log};
 use std::sync::{Arc, Mutex};
 
 /// One loaded configuration file (shared, so a processing pass can work
@@ -573,6 +574,18 @@ fn build_phone(
                     v.name,
                     v.lineno
                 );
+                if options::is_access_option(&v.name) {
+                    ast_log!(
+                        LOG_ERROR,
+                        "Invalid value '{}' for {} at line {} of {}: phone '{}' is sent {}=no",
+                        v.value,
+                        v.name,
+                        v.lineno,
+                        crate::CONFIG_FILE,
+                        phone.name,
+                        v.name
+                    );
+                }
             }
         }
     }

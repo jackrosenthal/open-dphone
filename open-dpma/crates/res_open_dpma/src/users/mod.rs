@@ -190,16 +190,17 @@ pub struct Phone {
     pub ringtones: Vec<Vec<u8>>,
     pub firmware: Vec<Vec<u8>>,
     pub alerts: Vec<Vec<u8>>,
-    /// Open DPhone: `1` or `0` when `dphone_ssh_enabled` is set, else empty.
+    /// Open DPhone: `1` or `0` when `dphone_ssh_enabled` is set (`0` for an
+    /// invalid value), else empty.
     pub dphone_ssh_enabled: Vec<u8>,
     /// Open DPhone: `1` or `0` when `dphone_ignore_provisioned_firmware` is
     /// set, else empty.
     pub dphone_ignore_provisioned_firmware: Vec<u8>,
-    /// Open DPhone: `1` or `0` when `dphone_metrics_enabled` is set, else
-    /// empty.
+    /// Open DPhone: `1` or `0` when `dphone_metrics_enabled` is set (`0`
+    /// for an invalid value), else empty.
     pub dphone_metrics_enabled: Vec<u8>,
-    /// Open DPhone: `1` or `0` when `dphone_serial_console` is set, else
-    /// empty.
+    /// Open DPhone: `1` or `0` when `dphone_serial_console` is set (`0` for
+    /// an invalid value), else empty.
     pub dphone_serial_console: Vec<u8>,
     /// Open DPhone: `dphone_static_address` as `address/prefix length`, else
     /// empty.

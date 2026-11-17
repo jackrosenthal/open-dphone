@@ -402,6 +402,12 @@ const NAME_BUF: usize = 0x80;
 /// trace.  On success the token goes back in
 /// `Config-Token`, the phone's last MAC, URI, and session are updated, and
 /// the session is marked configured.
+///
+/// Deviation: while `config_auth` has an invalid value
+/// (`General::invalid_config_auth`), every request is answered with -195
+/// and records no auth incident, since the phone did nothing wrong.  A
+/// session created in that time is checked with the flags of the
+/// configuration in effect (`auth::USE_CURRENT`).
 pub fn handle_token(tx: Arc<Transaction>) -> i32 {
     token_reply(&tx);
     crate::session::send_and_destroy(&tx);
@@ -416,6 +422,18 @@ fn token_reply(tx: &Transaction) {
         dpma_log!("Token request with invalid session id ");
         return;
     }
+    let general = crate::config::get();
+    if let Some(bad) = &general.invalid_config_auth {
+        set_error(tx, errors::msg::USER_NOT_FOUND);
+        dpma_log!(
+            "Token request refused: config_auth at line {} of {} has the invalid value '{}'",
+            bad.lineno,
+            crate::CONFIG_FILE,
+            bad.value
+        );
+        return;
+    }
+    let flags = general.effective_auth_flags(flags as u32);
     if tx.mac.is_empty() && tx.username.is_empty() {
         set_error(tx, errors::msg::USER_NOT_FOUND);
         dpma_log!("The MAC and USERNAME headers are required in a token request. ");
@@ -426,7 +444,6 @@ fn token_reply(tx: &Transaction) {
         return;
     };
     let name = crate::util::truncate(&name, NAME_BUF);
-    let flags = flags as u32;
     let global_pin = config_password();
 
     // The official DPMA runs these lookups in a tangle of branches; each
@@ -475,6 +492,12 @@ fn token_reply(tx: &Transaction) {
 /// only the phones whose `group_pin` is that password are listed.  An
 /// empty list is answered with -198 (Invalid Config Password) and records
 /// an auth incident.  The session becomes unconfigured either way.
+///
+/// Deviation: while `userlist_auth` has an invalid value
+/// (`General::invalid_userlist_auth`), every request is answered with -198
+/// and records no auth incident.  A session created in that time is
+/// checked with the flags of the configuration in effect
+/// (`auth::USE_CURRENT`).
 pub fn handle_userlist(tx: Arc<Transaction>) -> i32 {
     userlist_reply(&tx);
     crate::session::send_and_destroy(&tx);
@@ -488,8 +511,21 @@ fn userlist_reply(tx: &Transaction) {
         dpma_log!("Userlist request with invalid session id ");
         return;
     }
+    let general = crate::config::get();
+    if let Some(bad) = &general.invalid_userlist_auth {
+        set_error(tx, errors::msg::INVALID_CONFIG_PASSWORD);
+        dpma_log!(
+            "Userlist request refused: userlist_auth at line {} of {} has the invalid value '{}'",
+            bad.lineno,
+            crate::CONFIG_FILE,
+            bad.value
+        );
+        tx.unconfigured.store(true, Ordering::SeqCst);
+        return;
+    }
+    let flags = general.effective_auth_flags(flags as u32);
     let differs = tx.config_password != config_password();
-    let filter = differs && (flags as u32) & crate::config::auth::USERLIST_GLOBALPIN != 0;
+    let filter = differs && flags & crate::config::auth::USERLIST_GLOBALPIN != 0;
     let mut buf = Vec::with_capacity(0x400);
     match crate::users::userlist::build_userlist_json(&mut buf, filter, &tx.config_password) {
         Ok(n) if n >= 1 => append(tx, &buf),

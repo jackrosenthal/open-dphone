@@ -44,6 +44,30 @@ fn tristate_opt(field: &mut Vec<u8>, value: &[u8]) -> Res {
     Ok(())
 }
 
+/// The `dphone_*` on/off options that open a way into the phone.
+const ACCESS_OPTIONS: [&[u8]; 3] = [
+    b"dphone_ssh_enabled",
+    b"dphone_serial_console",
+    b"dphone_metrics_enabled",
+];
+
+/// Is `name` one of [`ACCESS_OPTIONS`] (case insensitive)?
+pub fn is_access_option(name: &[u8]) -> bool {
+    ACCESS_OPTIONS.iter().any(|o| name.eq_ignore_ascii_case(o))
+}
+
+/// One of [`ACCESS_OPTIONS`]: as [`tristate_opt`], except that a value
+/// that is neither true nor false turns the feature off (and is still an
+/// error).  Without a value the phone's user decides, so a misspelled
+/// `no` must not leave the option unset.
+fn access_opt(field: &mut Vec<u8>, value: &[u8]) -> Res {
+    let res = tristate_opt(field, value);
+    if res.is_err() {
+        *field = b"0".to_vec();
+    }
+    res
+}
+
 /// A host's IPv4 address in dotted form: not the unspecified address, and
 /// not a loopback, multicast, reserved, or broadcast one.
 fn host_ipv4(value: &[u8]) -> Option<std::net::Ipv4Addr> {
@@ -253,12 +277,12 @@ pub fn set_user_option(ctx: &mut UserCtx, phone: &mut Phone, name: &[u8], value:
         b"active_locale" => phone.active_locale = s,
         b"active_ringtone" => phone.active_ringtone = s,
         b"login_password" => phone.login_password = s,
-        b"dphone_ssh_enabled" => return tristate_opt(&mut phone.dphone_ssh_enabled, value),
+        b"dphone_ssh_enabled" => return access_opt(&mut phone.dphone_ssh_enabled, value),
         b"dphone_ignore_provisioned_firmware" => {
             return tristate_opt(&mut phone.dphone_ignore_provisioned_firmware, value)
         }
-        b"dphone_metrics_enabled" => return tristate_opt(&mut phone.dphone_metrics_enabled, value),
-        b"dphone_serial_console" => return tristate_opt(&mut phone.dphone_serial_console, value),
+        b"dphone_metrics_enabled" => return access_opt(&mut phone.dphone_metrics_enabled, value),
+        b"dphone_serial_console" => return access_opt(&mut phone.dphone_serial_console, value),
         b"dphone_static_address" => match static_address(value) {
             Some(address) => phone.dphone_static_address = address,
             None => return Err(()),

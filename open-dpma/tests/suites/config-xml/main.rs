@@ -396,8 +396,10 @@ fn reload_checks(ctx: &mut Ctx) -> Result<()> {
         vec![setting(0)],
     );
 
-    // A config_auth or userlist_auth value that is not one is reported,
-    // and changes nothing: the defaults stay.
+    // A config_auth or userlist_auth value that is none of the values is
+    // an error, and show settings says that requests are refused (the
+    // request-handlers suite sends the requests).  Corrected, the values
+    // apply again.
     let settings = |ctx: &Ctx| {
         let out = ctx.cli_text("digium_phones show settings");
         let line = |name: &str| {
@@ -426,19 +428,85 @@ fn reload_checks(ctx: &mut Ctx) -> Result<()> {
             ("userlist_auth", Some("globalpn")),
         ],
     )?;
+    let config_line = conf_line(ctx, "config_auth=mac_globalpn")?;
+    let userlist_line = conf_line(ctx, "userlist_auth=globalpn")?;
     ctx.c.same(
-        "misspelled values leave the defaults",
+        "misspelled values refuse requests",
         settings(ctx),
-        ("disabled".to_owned(), "disabled".to_owned()),
+        (
+            format!("invalid value 'globalpn' at line {userlist_line}, requests refused"),
+            format!("invalid value 'mac_globalpn' at line {config_line}, requests refused"),
+        ),
     );
     for text in [
-        "Invalid value 'mac_globalpn' for config_auth at line ",
-        "Invalid value 'globalpn' for userlist_auth at line ",
+        format!("Invalid value 'mac_globalpn' for config_auth at line {config_line} of res_digium_phone.conf: configuration token requests are refused until the value is disabled, mac, pin, globalpin, mac_pin, or mac_globalpin"),
+        format!("Invalid value 'globalpn' for userlist_auth at line {userlist_line} of res_digium_phone.conf: user list requests are refused until the value is disabled or globalpin"),
     ] {
-        let ok = ctx.log().wait_for(mark, text, Duration::from_secs(2));
-        ctx.c.check(format!("logged: {text}"), ok, "not in the log");
+        let ok = logged_error(ctx, mark, &text);
+        ctx.c.check(format!("logged as an error: {text}"), ok, "not in the log");
+    }
+    set_options(
+        ctx,
+        "general",
+        &[
+            ("config_auth", Some("mac_globalpin")),
+            ("userlist_auth", Some("globalpin")),
+        ],
+    )?;
+    ctx.c.same(
+        "corrected values apply",
+        settings(ctx),
+        ("globalpin".to_owned(), "mac globalpin".to_owned()),
+    );
+
+    // An invalid value of an on/off option that opens a way into the
+    // phone turns the feature off, and is an error.  (fullphone sets
+    // dphone_serial_console=yes.)
+    let mark = ctx.log().mark();
+    let access = [
+        ("dphone_ssh_enabled", "nope"),
+        ("dphone_serial_console", "yse"),
+        ("dphone_metrics_enabled", "ture"),
+    ];
+    let opts: Vec<(&str, Option<&str>)> = access.iter().map(|(k, v)| (*k, Some(*v))).collect();
+    set_options(ctx, "fullphone", &opts)?;
+    let doc = plain(document(ctx, "dpmadev config fullphone D65")?);
+    for (option, value) in access {
+        let setting = format!("<setting id=\"{option}\" value=\"0\" conflict=\"freeze\"/>\n");
+        ctx.c.check(
+            format!("{option}={value}: off"),
+            doc.contains_str(&setting),
+            find_all(&doc, &format!("<setting id=\"{option}\"")).join(" | "),
+        );
+        let line = conf_line(ctx, &format!("{option}={value}"))?;
+        let text = format!(
+            "Invalid value '{value}' for {option} at line {line} of res_digium_phone.conf: phone 'fullphone' is sent {option}=no"
+        );
+        let ok = logged_error(ctx, mark, &text);
+        ctx.c
+            .check(format!("logged as an error: {text}"), ok, "not in the log");
     }
     Ok(())
+}
+
+/// The line of the instance's `res_digium_phone.conf` that is `text`.
+fn conf_line(ctx: &Ctx, text: &str) -> Result<usize> {
+    let conf = std::fs::read_to_string(ctx.inst.conf("res_digium_phone.conf"))?;
+    match conf.lines().position(|l| l == text) {
+        Some(i) => Ok(i + 1),
+        None => bail!("res_digium_phone.conf has no line {text:?}"),
+    }
+}
+
+/// Whether `text` was logged at the ERROR level since `mark` (waiting up
+/// to two seconds for Asterisk's logger).
+fn logged_error(ctx: &Ctx, mark: dpma_tests::harness::LogMark, text: &str) -> bool {
+    let log = ctx.log();
+    dpma_tests::util::wait_until(Duration::from_secs(2), Duration::from_millis(20), || {
+        log.since(mark)
+            .lines()
+            .any(|l| l.contains_str("ERROR[") && l.ends_with(text.as_bytes()))
+    })
 }
 
 fn contacts(ctx: &mut Ctx) -> Result<()> {

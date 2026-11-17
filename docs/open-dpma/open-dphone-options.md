@@ -23,7 +23,7 @@ line=101
 
 - **A server value overrides the phone setting.**  The on/off options, the softkeys, the disabled apps, the theme, the palette file, and the static address are frozen settings: the phone uses the server's value, and the phone's web interface shows the setting as a disabled control labeled "Configured via DPMA".  Removing the option restores the value set on the phone.
 - **An omitted option sends nothing.**  The phone uses the value set on the phone, or else the default listed below.
-- **An invalid value is skipped.**  The module logs `Invalid option '<name>' at line <n> is not supported by phone module.` at the `DPMA` level and sends nothing for the option.
+- **An invalid value is skipped.**  The module logs `Invalid option '<name>' at line <n> is not supported by phone module.` at the `DPMA` level and sends nothing for the option.  Exception: an invalid value of `dphone_ssh_enabled`, `dphone_serial_console`, or `dphone_metrics_enabled` sends `no`, and the module also logs an error.
 
 ## Remote access
 

@@ -76,9 +76,17 @@ official DPMA's documentation and sample configuration apply.
 
 These differ from the official DPMA:
 
-- A `config_auth` or `userlist_auth` value that is not one of the values
-  is reported as a warning.  The official DPMA ignores such a value
-  without a message, which leaves authentication disabled.
+- A `config_auth` value that is none of the values (an empty one
+  included) makes the module refuse every request for a configuration
+  token, with error -195 and no authentication incident, until the value
+  is corrected and the module reloaded; an invalid `userlist_auth` value
+  refuses every request for the user list the same way, with error -198.
+  Each such line is logged as an error, and `digium_phones show settings`
+  shows the value.  A phone that holds a token keeps getting the
+  configuration, as with every valid value, and a session that a phone
+  started while the value was invalid is checked with the corrected
+  value.  The official DPMA ignores such a value without a message, which
+  leaves authentication disabled.
 - A configuration token is keyed: its two numbers are part of an HMAC
   of the phone section's name and the phone's MAC address, under a
   random key that the module keeps in AstDB (family `OpenDPMATokens`),
@@ -147,6 +155,10 @@ while the option is there.  Stock firmware ignores the settings.
 | `dphone_palette_file=<file>` | The palette file for the wallpaper of `wallpaper_file`: the colors of the phone's screens, as Open DPhone's `palette.proto` describes, e.g., `lobby.txtpb`.  Default is the phone's own palette. |
 | `dphone_ignore_provisioned_firmware=yes\|no` | Whether the phone ignores the firmware this configuration offers it.  Default is no. |
 | `dphone_app_data_tenant=<key>` | The tenant whose app data the phone reads and writes (see "App data"): 1 to 32 lower-case letters, digits, `.`, or `-`.  Default is none: the phone shares the app data of the phones without a key. |
+
+An invalid value of `dphone_ssh_enabled`, `dphone_metrics_enabled`, or
+`dphone_serial_console` sends `no`, and is logged as an error; without a
+value, the phone's user would decide.
 
 The official DPMA's `web_ui_enabled=yes|no` controls the phone's web
 configuration.  Default is no.
