@@ -131,7 +131,7 @@ fn handle(&mut self, event: Event) {
         }
         Event::Softkey(SK_EMPTY) => self.brewed = None,
         Event::Softkey(SK_EXIT) => return runtime::exit(),
-        Event::Key(key) if key == "cancel" => return runtime::exit(),
+        Event::Key(Key::Cancel) => return runtime::exit(),
         Event::Timer(_) => {}
         _ => return,
     }
@@ -237,7 +237,7 @@ fn handle(&mut self, event: Event) {
                 }
                 Event::Softkey(SK_EMPTY) => self.brewed = None,
                 Event::Softkey(SK_EXIT) => return runtime::exit(),
-                Event::Key(key) if key == "cancel" => return runtime::exit(),
+                Event::Key(Key::Cancel) => return runtime::exit(),
                 Event::Timer(_) => {}
                 _ => return,
             }

@@ -678,7 +678,7 @@ impl LightUp {
         self.leave_screen();
         self.screen = Screen::Generating;
         ui::clear(ROOT);
-        ui::claim_keys(ROOT, &["cancel".to_string()]);
+        ui::claim_keys(ROOT, &[Key::Cancel]);
         let name = format!("{} {}", size_name(self.wanted.0), self.wanted.1.name());
         centered(content_rect(), &[&name, "Generating\u{2026}"]);
         ui::set_softkeys(
@@ -742,7 +742,7 @@ impl LightUp {
         self.leave_screen();
         self.screen = Screen::Failed;
         ui::clear(ROOT);
-        ui::claim_keys(ROOT, &["cancel".to_string()]);
+        ui::claim_keys(ROOT, &[Key::Cancel]);
         centered(content_rect(), &["No puzzle was found.", "Try again."]);
         ui::set_softkeys(
             ROOT,
@@ -761,14 +761,9 @@ impl LightUp {
         };
         self.screen = Screen::Play;
         ui::clear(ROOT);
-        ui::claim_keys(
-            ROOT,
-            &[
-                "up", "down", "left", "right", "select", "cancel", "1", "2", "3", "4", "5", "6",
-                "8",
-            ]
-            .map(String::from),
-        );
+        let mut claims = vec![Key::Up, Key::Down, Key::Left, Key::Right, Key::Select, Key::Cancel];
+        claims.extend([1, 2, 3, 4, 5, 6, 8].map(Key::Digit));
+        ui::claim_keys(ROOT, &claims);
         let m = ui::get_metrics();
         let l = Layout::new(m.width, m.height, self.side);
         let palette = palette();
@@ -890,7 +885,7 @@ impl LightUp {
         let area = screen(&format!("How to play ({}/{})", self.page + 1, PAGES.len()));
         ui::claim_keys(
             ROOT,
-            &["up", "down", "left", "right", "select", "cancel"].map(String::from),
+            &[Key::Up, Key::Down, Key::Left, Key::Right, Key::Select, Key::Cancel],
         );
         let m = ui::get_metrics();
         let shown = &PAGES[self.page];
@@ -982,10 +977,7 @@ impl LightUp {
             _ => format!("Best times: {}", kind.title()),
         };
         let area = screen(&title);
-        ui::claim_keys(
-            ROOT,
-            &["up", "down", "left", "right", "cancel"].map(String::from),
-        );
+        ui::claim_keys(ROOT, &[Key::Up, Key::Down, Key::Left, Key::Right, Key::Cancel]);
         self.lines = None;
         let (id, name) = player().unwrap_or((String::new(), "You".to_string()));
         let mut table = self.tables[kind.index()].clone().unwrap_or_default();
@@ -1276,26 +1268,26 @@ impl App for LightUp {
             Event::Widget((_, WidgetEvent::Activated(row))) if self.screen == Screen::Choose => {
                 self.choose(row as usize)
             }
-            Event::Key(key) => match (key.as_str(), &self.screen) {
-                ("up" | "2", Screen::Play) => self.step(0, -1),
-                ("down" | "5", Screen::Play) => self.step(0, 1),
-                ("left" | "4", Screen::Play) => self.step(-1, 0),
-                ("right" | "6", Screen::Play) => self.step(1, 0),
-                ("select" | "1", Screen::Play) => self.toggle(Act::Light),
-                ("3", Screen::Play) => self.toggle(Act::Mark),
-                ("8", Screen::Play) => self.changed(|game| game.auto()),
-                ("right" | "down" | "select", Screen::Help) => self.show_help(self.page + 1),
-                ("left" | "up", Screen::Help) => self.show_help(self.page + PAGES.len() - 1),
-                ("cancel", Screen::Help | Screen::Scores) => self.back(),
-                ("left", Screen::Scores) => self.show_scores(self.shown.step(-1)),
-                ("up" | "down", Screen::Scores) => {
+            Event::Key(key) => match (key, &self.screen) {
+                (Key::Up | Key::Digit(2), Screen::Play) => self.step(0, -1),
+                (Key::Down | Key::Digit(5), Screen::Play) => self.step(0, 1),
+                (Key::Left | Key::Digit(4), Screen::Play) => self.step(-1, 0),
+                (Key::Right | Key::Digit(6), Screen::Play) => self.step(1, 0),
+                (Key::Select | Key::Digit(1), Screen::Play) => self.toggle(Act::Light),
+                (Key::Digit(3), Screen::Play) => self.toggle(Act::Mark),
+                (Key::Digit(8), Screen::Play) => self.changed(|game| game.auto()),
+                (Key::Right | Key::Down | Key::Select, Screen::Help) => self.show_help(self.page + 1),
+                (Key::Left | Key::Up, Screen::Help) => self.show_help(self.page + PAGES.len() - 1),
+                (Key::Cancel, Screen::Help | Screen::Scores) => self.back(),
+                (Key::Left, Screen::Scores) => self.show_scores(self.shown.step(-1)),
+                (Key::Up | Key::Down, Screen::Scores) => {
                     if let Some(lines) = &mut self.lines {
-                        lines.step(if key == "up" { -1 } else { 1 });
+                        lines.step(if key == Key::Up { -1 } else { 1 });
                     }
                 }
-                ("right", Screen::Scores) => self.show_scores(self.shown.step(1)),
-                ("cancel", Screen::Choose) if self.game.is_some() => self.show_play(),
-                ("cancel", _) => self.leave(),
+                (Key::Right, Screen::Scores) => self.show_scores(self.shown.step(1)),
+                (Key::Cancel, Screen::Choose) if self.game.is_some() => self.show_play(),
+                (Key::Cancel, _) => self.leave(),
                 _ => {}
             },
             _ => {}
@@ -1309,5 +1301,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.lightup",
     display_name: "Light Up",
     description: "Light every cell of the grid",
-    phone_icon: "lightup",
+    phone_icon: Some(Icon::AppLightup),
 }

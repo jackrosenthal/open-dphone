@@ -198,8 +198,8 @@ pub struct Manifest {
     /// The app has a window on the idle screen, and starts with the phone.
     pub has_idle: bool,
     pub hidden: bool,
-    /// The name of one of the phone's own icons, for an app without an
-    /// icon of its own.
+    /// The name of one of the phone's icons (`app-calendar`), for an app
+    /// without an icon of its own.
     pub icon: String,
     /// The app's icon, a PNG file's content (empty: none), and its icons
     /// for particular models: (model, PNG).
@@ -334,6 +334,12 @@ fn number(v: Field<'_>) -> Result<u64, ManifestError> {
         Field::Number(n) => Ok(n),
         Field::Bytes(_) => Err(ManifestError::Malformed("bytes where a number belongs")),
     }
+}
+
+/// The element that a manifest's enum value names: the values count the
+/// elements from 1.
+fn numbered<T>(all: &[T], n: u64) -> Option<&T> {
+    all.get(usize::try_from(n).ok()?.checked_sub(1)?)
 }
 
 fn message<'a>(v: Field<'a>) -> Result<&'a [u8], ManifestError> {
@@ -527,28 +533,36 @@ impl Manifest {
                 }
                 7 => m.has_idle = number(v)? != 0,
                 8 => m.hidden = number(v)? != 0,
-                9 => m.icon = string(v)?,
                 10 => m.memory_kib = number(v)?.min(u64::from(u32::MAX)) as u32,
                 11 => m.icon_png = message(v)?.to_vec(),
                 12 => {
                     let mut icon = (String::new(), Vec::new());
                     fields(message(v)?, |n, v| {
                         match n {
-                            1 => icon.0 = string(v)?,
                             2 => icon.1 = message(v)?.to_vec(),
+                            3 => {
+                                icon.0 = numbered(&MODELS, number(v)?)
+                                    .ok_or(ManifestError::BadIcon("for a model that is none"))?
+                                    .to_string()
+                            }
                             _ => {}
                         }
                         Ok(())
                     })?;
                     m.icons_for.push(icon);
                 }
+                // An icon this phone does not have: none.
+                13 => {
+                    m.icon = numbered(&crate::view::ICONS, number(v)?)
+                        .map(|i| crate::view::icon_name(*i).to_string())
+                        .unwrap_or_default()
+                }
                 // Only the phone's own record says what the app may use.
-                15 if record => {
-                    let name = string(v)?;
-                    if let Some(c) = Capability::from_name(&name)
-                        && !m.capabilities.contains(&c)
+                16 if record => {
+                    if let Some(c) = numbered(&Capability::ALL, number(v)?)
+                        && !m.capabilities.contains(c)
                     {
-                        m.capabilities.push(c);
+                        m.capabilities.push(*c);
                     }
                 }
                 _ => {}
@@ -596,19 +610,22 @@ impl Manifest {
         );
         put_number(&mut out, 7, u64::from(self.has_idle));
         put_number(&mut out, 8, u64::from(self.hidden));
-        put_string(&mut out, 9, &self.icon);
         put_number(&mut out, 10, u64::from(self.memory_kib));
+        let icon = crate::view::ICONS.iter().position(|i| crate::view::icon_name(*i) == self.icon);
+        put_number(&mut out, 13, icon.map_or(0, |n| n as u64 + 1));
         if !self.icon_png.is_empty() {
             put_bytes(&mut out, 11, &self.icon_png);
         }
         for (model, png) in &self.icons_for {
             let mut i = Vec::new();
-            put_string(&mut i, 1, model);
             put_bytes(&mut i, 2, png);
+            let n = MODELS.iter().position(|m| m == model).map_or(0, |n| n as u64 + 1);
+            put_number(&mut i, 3, n);
             put_bytes(&mut out, 12, &i);
         }
         for c in &self.capabilities {
-            put_string(&mut out, 15, c.name());
+            let n = Capability::ALL.iter().position(|a| a == c).map_or(0, |n| n as u64 + 1);
+            put_number(&mut out, 16, n);
         }
         out
     }

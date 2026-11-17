@@ -7,7 +7,7 @@ pub enum Event {
     Exit,
     IdleScreenShow,
     IdleScreenHide,
-    Key(String),
+    Key(Key),
     Hook(bool),
     Softkey(u32),
     Widget((Widget, WidgetEvent)),
@@ -51,27 +51,10 @@ The last event of an instance.  The phone sends `Exit` before discarding the ins
 ## `Key`
 
 ```rust
-Event::Key(name)
+Event::Key(key)
 ```
 
-A key claimed with [`ui::claim_keys`](ui.md#claim_keys) by the window or one of the app's widgets was pressed, or any key while [`input::capture`](input.md) is on.  Releases and repeats aren't reported, and the event doesn't name the claiming widget.
-
-| Names | Keys |
-| --- | --- |
-| `0` to `9`, `*`, `#` | The dial pad. |
-| `up`, `down`, `left`, `right`, `select`, `cancel` | The navigation keys. |
-| `sk1` to `sk4` | The four keys below the display, left to right. |
-| `line1` to `line6` | The line keys, top to bottom. |
-| `blf1` to `blf10` | The rapid-dial keys, top to bottom. |
-| `vup`, `vdn` | Volume up and down. |
-| `mute`, `spkr`, `hdst` | Mute, speaker, and headset. |
-| `hold`, `xfer`, `conf`, `redial`, `msgs` | Hold, transfer, conference, redial, and messages. |
-| `info`, `status`, `dir`, `apps`, `menu` | Information, status, contacts, applications, and menu. |
-| `blfleft`, `blfright` | The page keys of the rapid-dial keys. |
-| `expM.K` | Key `K` on expansion module `M`. |
-| `keyN` | A key without a name, by key code `N`. |
-
-No model has every key.
+A key claimed with [`ui::claim_keys`](ui.md#claim_keys) by the window or one of the app's widgets was pressed, or any key while [`input::capture`](input.md) is on.  Releases and repeats aren't reported, and the event doesn't name the claiming widget.  [`Key`](types.md#keys) names the key.
 
 ## `Hook`
 
@@ -147,12 +130,12 @@ The PBX pushed an event whose name the app observes with [`events::observe`](eve
 | `name` | The event's name. |
 | `kind` | For an event with a call, the `X-Event-Type` header; otherwise `""`. |
 | `data` | The event's data as text: for an event through the DPMA session, the payload; for an `INVITE` or `INFO`, the `X-Event-Data` header, or else the body unless the body is SDP. |
-| `method` | `"MESSAGE"` for an event through the DPMA session; `"INVITE"` or `"INFO"` for an event with a call. |
+| `method` | `PushMethod::Message` for an event through the DPMA session; `Invite` or `Info` for an event with a call. |
 | `call` | For `INVITE` and `INFO`, the call. |
 
 For an `INVITE` or `INFO`, the name is the last of the `X-Digium-Event-Name`, `X-Event-Name`, and `X-Event-Type` headers.
 
-An incoming call whose event name the configuration assigns to apps (by default, `digium.incomingCall.voicemail`) doesn't ring and has no call screen.  The app answers or rejects the call with [`calls::answer`](calls.md#answer) or [`calls::reject`](calls.md#reject) and `push.call`.  If an event whose name starts with `digium.incomingCall.` names no call, the phone sets `call` to the newest ringing call and `method` to `"INVITE"`.
+An incoming call whose event name the configuration assigns to apps (by default, `digium.incomingCall.voicemail`) doesn't ring and has no call screen.  The app answers or rejects the call with [`calls::answer`](calls.md#answer) or [`calls::reject`](calls.md#reject) and `push.call`.  If an event whose name starts with `digium.incomingCall.` names no call, the phone sets `call` to the newest ringing call and `method` to `Invite`.
 
 Such a call belongs to the apps that received the push, and ends when the last of those apps has left the screen or stopped.  An app off screen when the push arrives keeps the call until the app has been on screen and left, or stops.  A call whose event no running app observes ends when the app on screen leaves the screen.
 

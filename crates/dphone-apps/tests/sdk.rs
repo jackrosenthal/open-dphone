@@ -4,6 +4,7 @@
 
 use dphone_apps::manifest::{AppType, Manifest};
 use dphone_app_sdk::manifest::{AppKind, Manifest as Written};
+use dphone_app_sdk::{Icon, PhoneModel};
 
 /// A module that holds nothing but the section.
 fn module(section: &[u8]) -> Vec<u8> {
@@ -37,8 +38,8 @@ fn every_field_arrives() {
         has_idle: true,
         hidden: true,
         icon: PNG,
-        icon_for: &[("D60", COLOR), ("D65", COLOR)],
-        phone_icon: "status",
+        icon_for: &[(PhoneModel::D60, COLOR), (PhoneModel::D65, COLOR)],
+        phone_icon: Some(Icon::AppStatus),
         memory_kib: 8192,
     }
     .checked();
@@ -52,7 +53,7 @@ fn every_field_arrives() {
     assert_eq!(m.description, "Looks around");
     assert_eq!(m.kind, AppType::Background);
     assert!(m.has_idle && m.hidden);
-    assert_eq!(m.icon, "status");
+    assert_eq!(m.icon, "app-status");
     assert_eq!(m.icon_for("D60"), COLOR);
     assert_eq!(m.icon_for("D65"), COLOR);
     assert_eq!(m.icon_for("D40"), PNG);
@@ -61,10 +62,6 @@ fn every_field_arrives() {
     assert!(m.capabilities.is_empty());
     // What this crate writes for the same manifest is the same bytes.
     assert_eq!(m.section(), SECTION);
-    assert_eq!(
-        dphone_app_sdk::manifest::MODELS,
-        dphone_apps::manifest::MODELS
-    );
 }
 
 #[test]

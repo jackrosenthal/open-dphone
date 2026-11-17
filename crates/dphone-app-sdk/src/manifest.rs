@@ -7,6 +7,8 @@
 //! The section is made when the app is compiled, so everything here is
 //! `const`: a mistake in the manifest is a compile error.
 
+use crate::{Icon, PhoneModel};
+
 /// The custom section that holds the manifest.
 pub const SECTION: &str = "dphone-app";
 
@@ -46,12 +48,13 @@ pub struct Manifest {
     /// `include_bytes!("hello.png")`.  At most 256 KiB.
     pub icon: &'static [u8],
     /// Icons for particular models of phone, each a PNG file's content:
-    /// (model, icon), e.g., `&[("D60", include_bytes!("color.png"))]`.  A
-    /// phone shows its model's icon if there is one, else `icon`.  The
-    /// models are D40, D45, D50, D60, D62, D65, and D70.
-    pub icon_for: &'static [(&'static str, &'static [u8])],
-    /// The name of one of the phone's icons, for an app without an icon.
-    pub phone_icon: &'static str,
+    /// (model, icon), e.g.,
+    /// `&[(PhoneModel::D60, include_bytes!("color.png"))]`.  A phone shows
+    /// its model's icon if there is one, else `icon`.
+    pub icon_for: &'static [(PhoneModel, &'static [u8])],
+    /// One of the phone's icons, for an app without an icon, e.g.,
+    /// `Some(Icon::AppCalendar)`.
+    pub phone_icon: Option<Icon>,
     /// The most memory the app may have, in KiB.  The default (0) is
     /// 4 MiB, and the phone gives no app more than 16 MiB.
     pub memory_kib: u32,
@@ -60,41 +63,27 @@ pub struct Manifest {
 /// The largest icon.
 pub const MAX_ICON_BYTES: usize = 256 << 10;
 
-/// The models of phone, as `icon_for` names them.
-pub const MODELS: [&str; 7] = ["D40", "D45", "D50", "D60", "D62", "D65", "D70"];
-
-const fn same(a: &str, b: &str) -> bool {
-    let (a, b) = (a.as_bytes(), b.as_bytes());
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut i = 0;
-    while i < a.len() {
-        if a[i] != b[i] {
-            return false;
-        }
-        i += 1;
-    }
-    true
+/// A model's number in the manifest (`PhoneModel` of `manifest.proto`):
+/// its place in the app interface's enum, from 1.
+const fn model_number(model: PhoneModel) -> u64 {
+    model as u64 + 1
 }
 
-const fn model_ok(model: &str) -> bool {
-    let mut i = 0;
-    while i < MODELS.len() {
-        if same(MODELS[i], model) {
-            return true;
-        }
-        i += 1;
+/// An icon's number in the manifest (`Icon` of `manifest.proto`): its
+/// place in the app interface's enum, from 1.
+const fn icon_number(icon: Option<Icon>) -> u64 {
+    match icon {
+        Some(icon) => icon as u64 + 1,
+        None => 0,
     }
-    false
 }
 
 const fn png_ok(icon: &[u8]) -> bool {
     icon.len() > 8 && icon[0] == 0x89 && icon[1] == b'P' && icon[2] == b'N' && icon[3] == b'G'
 }
 
-const fn model_icon_len(i: &(&str, &[u8])) -> usize {
-    string_len(i.0) + delimited_len(i.1.len())
+const fn model_icon_len(i: &(PhoneModel, &[u8])) -> usize {
+    number_len(model_number(i.0)) + delimited_len(i.1.len())
 }
 
 const fn varint_len(mut v: u64) -> usize {
@@ -109,6 +98,11 @@ const fn varint_len(mut v: u64) -> usize {
 /// A length-delimited field of `len` bytes, with its one-byte tag.
 const fn delimited_len(len: usize) -> usize {
     1 + varint_len(len as u64) + len
+}
+
+/// A number field, with its one-byte tag; nothing for 0.
+const fn number_len(v: u64) -> usize {
+    if v == 0 { 0 } else { 1 + varint_len(v) }
 }
 
 const fn string_len(s: &str) -> usize {
@@ -208,7 +202,7 @@ impl Manifest {
         hidden: false,
         icon: &[],
         icon_for: &[],
-        phone_icon: "",
+        phone_icon: None,
         memory_kib: 0,
     };
 
@@ -234,15 +228,11 @@ impl Manifest {
         );
         assert!(
             self.icon.is_empty() || png_ok(self.icon),
-            "export_app!: `icon` is not a PNG file's content (for one of the phone's icons, give its name as `phone_icon`)"
+            "export_app!: `icon` is not a PNG file's content (for one of the phone's icons, give it as `phone_icon`)"
         );
         let mut i = 0;
         while i < self.icon_for.len() {
             let (model, icon) = self.icon_for[i];
-            assert!(
-                model_ok(model),
-                "export_app!: a model in `icon_for` is not one of D40, D45, D50, D60, D62, D65, D70"
-            );
             assert!(
                 icon.len() <= MAX_ICON_BYTES && png_ok(icon),
                 "export_app!: an icon in `icon_for` is not a PNG file's content of at most 256 KiB"
@@ -250,7 +240,7 @@ impl Manifest {
             let mut j = 0;
             while j < i {
                 assert!(
-                    !same(self.icon_for[j].0, model),
+                    model_number(self.icon_for[j].0) != model_number(model),
                     "export_app!: `icon_for` names a model twice"
                 );
                 j += 1;
@@ -275,7 +265,7 @@ impl Manifest {
         // `kind` is always written; the flags only when set.
         n += 2;
         n += self.has_idle as usize * 2 + self.hidden as usize * 2;
-        n += string_len(self.phone_icon);
+        n += number_len(icon_number(self.phone_icon));
         if self.memory_kib > 0 {
             n += 1 + varint_len(self.memory_kib as u64);
         }
@@ -308,15 +298,15 @@ impl Manifest {
         .number(6, kind)
         .number(7, self.has_idle as u64)
         .number(8, self.hidden as u64)
-        .string(9, self.phone_icon)
-        .number(10, self.memory_kib as u64);
+        .number(10, self.memory_kib as u64)
+        .number(13, icon_number(self.phone_icon));
         if !self.icon.is_empty() {
             out = out.bytes(11, self.icon);
         }
         let mut i = 0;
         while i < self.icon_for.len() {
             let m = &self.icon_for[i];
-            out = out.open(12, model_icon_len(m)).string(1, m.0).bytes(2, m.1);
+            out = out.open(12, model_icon_len(m)).bytes(2, m.1).number(3, model_number(m.0));
             i += 1;
         }
         assert!(out.at == N, "the manifest's section has another length");

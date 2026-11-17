@@ -29,8 +29,8 @@ dphone_app_sdk::export_app! {
 | `has_idle` | `bool` | `false` | Adds a window on the idle screen ([Idle window](ui.md#idle-window)).  The app then starts with the phone and keeps running off screen, whatever the `kind`. |
 | `hidden` | `bool` | `false` | Hides the app from the Applications menu.  `runtime::show_app`, `kind`, and `has_idle` still start the app. |
 | `icon` | `&[u8]` | `&[]` | PNG data, starting with the PNG signature, at most 256 KiB: `include_bytes!("weather.png")`. |
-| `icon_for` | `&[(&str, &[u8])]` | `&[]` | Icons by model, each under the rules for `icon`: `&[("D60", include_bytes!("color.png"))]`.  Models: `D40`, `D45`, `D50`, `D60`, `D62`, `D65`, and `D70`, each at most once. |
-| `phone_icon` | `&str` | `""` | A [built-in app icon](ui.md#built-in-icons) name without the `app-` prefix, for a model with no PNG icon. |
+| `icon_for` | `&[(PhoneModel, &[u8])]` | `&[]` | Icons by model, each under the rules for `icon`, each model at most once: `&[(PhoneModel::D60, include_bytes!("color.png"))]`. |
+| `phone_icon` | `Option<Icon>` | `None` | A [built-in icon](ui.md#built-in-icons), for a model with no PNG icon: `Some(Icon::AppCalendar)`. |
 | `memory_kib` | `u32` | `0` | The linear memory limit in KiB.  `0` means 4096 (4 MiB).  Above 16384 (16 MiB) doesn't compile.  Data embedded with `include_bytes!` or `include_str!` counts toward the limit. |
 
 ## Icon selection
@@ -39,7 +39,7 @@ The Applications menu shows the first of these that exists:
 
 1. The `icon_for` entry for the phone's model.
 2. `icon`.
-3. The built-in app icon named by `phone_icon`.
+3. The built-in icon `phone_icon`.
 4. The built-in app icon named by `name`.
 5. The generic built-in app icon.
 
@@ -57,7 +57,7 @@ The phone runs these checks in order and reports the first failure:
 | The phone knows the manifest's kind. | `bad app kind N`. |
 | The manifest's format number is 1. | `the app's manifest has format N, and this firmware knows format 1`. |
 | `name` follows the rules under [Fields](#fields) and is not `dphone`. | `bad app name: ...`. |
-| Each icon is a PNG of at most 256 KiB, and each model in `icon_for` is a real model. | `bad app icon: ...`. |
+| Each icon is a PNG of at most 256 KiB, and each model in `icon_for` is a model of the interface's, once. | `bad app icon: ...`. |
 | The code sections total at most 1 MiB.  Data doesn't count. | The component holds more code than the phone compiles. |
 | No built-in app has the same `name`. | `"name" is a built-in app`. |
 | The flash has room for the file and the compiled code, with 2 MiB to spare. | Not enough space. |

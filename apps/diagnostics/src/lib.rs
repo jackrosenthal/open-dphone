@@ -3,6 +3,7 @@
 
 use dphone_app_sdk::canvas::{self, Bitmap, Color, Op, Role, Text};
 use dphone_app_sdk::prelude::*;
+use dphone_app_sdk::diagnostics::{HealthState, Subsystem};
 use dphone_app_sdk::{Align, Font, diagnostics, input, lamps};
 
 const SK_SELECT: u32 = 1;
@@ -80,12 +81,78 @@ impl Info {
     /// The page's rows: a label (may be empty) and a value.
     fn rows(self) -> Vec<(String, String)> {
         match self {
-            Info::Health => diagnostics::health(),
+            Info::Health => diagnostics::health()
+                .into_iter()
+                .map(|h| (subsystem_label(h.subsystem).to_string(), health_text(&h.health)))
+                .collect(),
             Info::Log => diagnostics::log_tail(LOG_ENTRIES)
                 .into_iter()
                 .map(|line| (String::new(), line))
                 .collect(),
         }
+    }
+}
+
+fn subsystem_label(s: Subsystem) -> &'static str {
+    match s {
+        Subsystem::Core => "Core",
+        Subsystem::Configuration => "Configuration",
+        Subsystem::Network => "Network",
+        Subsystem::Sip => "SIP",
+        Subsystem::Media => "Media",
+        Subsystem::Dpma => "DPMA",
+        Subsystem::Ui => "UI",
+        Subsystem::Apps => "Apps",
+        Subsystem::Web => "Web",
+        Subsystem::Ssh => "SSH",
+        Subsystem::Update => "Update",
+    }
+}
+
+fn health_text(h: &HealthState) -> String {
+    match h {
+        HealthState::Ok => "ok".to_string(),
+        HealthState::Starting => "starting".to_string(),
+        HealthState::Stopped => "stopped".to_string(),
+        HealthState::Degraded(why) => format!("degraded: {why}"),
+        HealthState::Failed(why) => format!("failed: {why}"),
+    }
+}
+
+/// The name the key test shows for a key: the phone's key vocabulary.
+fn key_name(k: Key) -> String {
+    match k {
+        Key::Digit(d) => d.to_string(),
+        Key::Star => "*".into(),
+        Key::Pound => "#".into(),
+        Key::Up => "up".into(),
+        Key::Down => "down".into(),
+        Key::Left => "left".into(),
+        Key::Right => "right".into(),
+        Key::Select => "select".into(),
+        Key::Cancel => "cancel".into(),
+        Key::VolumeUp => "vup".into(),
+        Key::VolumeDown => "vdn".into(),
+        Key::Softkey(n) => format!("sk{n}"),
+        Key::Line(n) => format!("line{n}"),
+        Key::Blf(n) => format!("blf{n}"),
+        Key::Mute => "mute".into(),
+        Key::Speaker => "spkr".into(),
+        Key::Headset => "hdst".into(),
+        Key::Hold => "hold".into(),
+        Key::Transfer => "xfer".into(),
+        Key::Redial => "redial".into(),
+        Key::Messages => "msgs".into(),
+        Key::Conference => "conf".into(),
+        Key::Info => "info".into(),
+        Key::BlfPageLeft => "blfleft".into(),
+        Key::BlfPageRight => "blfright".into(),
+        Key::Status => "status".into(),
+        Key::Contacts => "dir".into(),
+        Key::Apps => "apps".into(),
+        Key::Menu => "menu".into(),
+        Key::Expansion(e) => format!("exp{}.{}", e.module, e.key),
+        Key::Other(code) => format!("key{code}"),
     }
 }
 
@@ -280,10 +347,9 @@ impl Diagnostics {
         let r = screen("Diagnostics");
         // As in the phone's own menus: Right selects, and a digit selects
         // the row of that number.
-        ui::claim_keys(
-            ROOT,
-            &["cancel", "left", "right", "1", "2", "3", "4", "5", "6"].map(String::from),
-        );
+        let mut claims = vec![Key::Cancel, Key::Left, Key::Right];
+        claims.extend((1..=6).map(Key::Digit));
+        ui::claim_keys(ROOT, &claims);
         let list = ui::create(WidgetKind::TextList, ROOT, r);
         let items: Vec<ListItem> = ITEMS.iter().map(|i| ListItem::new(*i)).collect();
         ui::set_items(list, &items);
@@ -304,7 +370,7 @@ impl Diagnostics {
     fn show_info(&mut self, which: Info) {
         let rows = which.rows();
         let r = screen(which.title());
-        ui::claim_keys(ROOT, &["cancel", "left", "select"].map(String::from));
+        ui::claim_keys(ROOT, &[Key::Cancel, Key::Left, Key::Select]);
         let scroll = ui::create(WidgetKind::Scroll, ROOT, r);
         let m = ui::get_metrics();
         let inset = inset(&m);
@@ -425,7 +491,7 @@ impl Diagnostics {
 
     /// A key (`key`) or a hook change in the key test.  Cancel twice in a
     /// row leaves the test.
-    fn key_tested(&mut self, name: String, key: bool) {
+    fn key_tested(&mut self, name: String, cancel: Option<bool>) {
         let Page::Keys {
             text,
             names,
@@ -434,8 +500,8 @@ impl Diagnostics {
         else {
             return;
         };
-        if key {
-            *cancels = if name == "cancel" { *cancels + 1 } else { 0 };
+        if let Some(cancel) = cancel {
+            *cancels = if cancel { *cancels + 1 } else { 0 };
             if *cancels >= 2 {
                 return self.show_menu();
             }
@@ -450,7 +516,7 @@ impl Diagnostics {
     /// The lamp test: every lamp shows the color of `step`.
     fn show_lamps(&mut self, step: usize) {
         ui::clear(ROOT);
-        ui::claim_keys(ROOT, &["cancel", "select"].map(String::from));
+        ui::claim_keys(ROOT, &[Key::Cancel, Key::Select]);
         let m = ui::get_metrics();
         let inset = inset(&m);
         let width = m.width.saturating_sub(2 * inset);
@@ -482,8 +548,8 @@ impl Diagnostics {
 
     fn light(&mut self, step: usize) {
         let color = LAMP_COLORS[step % LAMP_COLORS.len()];
-        for lamp in lamps::names() {
-            lamps::set(&lamp, color);
+        for lamp in lamps::list() {
+            lamps::set(lamp, color);
         }
         self.page = Page::Lamps { step };
     }
@@ -523,26 +589,27 @@ impl Diagnostics {
         }
     }
 
-    fn key(&mut self, name: String) {
+    fn key(&mut self, key: Key) {
         match &self.page {
             // Cancel leaves the test, and so does any key after the last
             // pattern.
             Page::Display { pattern } => {
-                if name == "cancel" || pattern + 1 >= PATTERNS {
+                if key == Key::Cancel || pattern + 1 >= PATTERNS {
                     self.show_menu();
                 } else {
                     let next = pattern + 1;
                     self.show_display(next);
                 }
             }
-            Page::Keys { .. } => self.key_tested(name, true),
-            Page::Menu { list } if name == "right" => {
+            Page::Keys { .. } => self.key_tested(key_name(key), Some(key == Key::Cancel)),
+            Page::Menu { list } if key == Key::Right => {
                 if let Some(row) = ui::selected(*list) {
                     self.activate(row);
                 }
             }
-            Page::Menu { list } if name.len() == 1 && name != "0" => {
-                let row = u32::from(name.as_bytes()[0] - b'1');
+            Page::Menu { list } if matches!(key, Key::Digit(1..=9)) => {
+                let Key::Digit(d) = key else { return };
+                let row = u32::from(d - 1);
                 ui::set_selected(*list, row);
                 self.activate(row);
             }
@@ -572,10 +639,10 @@ impl App for Diagnostics {
                 }
             }
             Event::Softkey(SK_BACK) => self.back(),
-            Event::Key(name) => self.key(name),
+            Event::Key(key) => self.key(key),
             Event::Hook(off_hook) => {
                 let name = if off_hook { "hook-up" } else { "hook-down" };
-                self.key_tested(name.to_string(), false);
+                self.key_tested(name.to_string(), None);
             }
             _ => {}
         }
@@ -588,5 +655,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.diagnostics",
     display_name: "Diagnostics",
     description: "Hardware tests, subsystems, and the log",
-    phone_icon: "diagnostics",
+    phone_icon: Some(Icon::AppDiagnostics),
 }

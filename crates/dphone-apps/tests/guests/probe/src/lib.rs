@@ -149,12 +149,12 @@ impl App for Probe {
             Event::Softkey(5) => {
                 let defined = ui::define_image("pic.png", PIC);
                 let image = ui::create(WidgetKind::Image, ROOT, Rect::new(0, 20, 48, 48));
-                ui::set_image(image, "pic.png");
+                ui::set_image(image, &Image::Picture("pic.png".into()));
                 let list = ui::create(WidgetKind::TextList, ROOT, Rect::new(0, 70, 200, 60));
                 let mut mine = ListItem::new("mine");
-                mine.icon = "pic.png".into();
+                mine.icon = Some(Image::Picture("pic.png".into()));
                 let mut theirs = ListItem::new("theirs");
-                theirs.icon = "app-contacts".into();
+                theirs.icon = Some(Image::Icon(Icon::AppContacts));
                 ui::set_items(list, &[mine, theirs]);
                 format!("pics={defined:?}")
             }

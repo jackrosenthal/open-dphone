@@ -219,10 +219,10 @@ fn visible_apps<'a>(cx: &'a Cx) -> Vec<&'a dphone_state::AppInfo> {
     cx.st.apps.installed.iter().filter(|a| !a.hidden).collect()
 }
 
-/// One of the phone's own app icons, for the manifest's icon name, the
-/// app's name, or the generic one.
+/// One of the phone's icons: the manifest's, the app icon of the app's
+/// name, or the generic one.
 fn builtin_app_icon(th: &Theme, app: &dphone_state::AppInfo) -> Option<crate::icons::Icon> {
-    th.icon(&format!("app-{}", app.icon))
+    th.icon(&app.icon)
         .or_else(|| th.icon(&format!("app-{}", app.name)))
         .or_else(|| th.icon("app-app"))
 }

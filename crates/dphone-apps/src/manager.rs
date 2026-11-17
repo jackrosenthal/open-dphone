@@ -173,10 +173,6 @@ mod dyn_mwi {
     pub type Snapshot = dphone_state::Mwi;
 }
 
-fn key_name(k: dphone_state::Key) -> String {
-    k.name()
-}
-
 impl AppManager {
     pub fn new(
         cfg: ManagerConfig,
@@ -1116,12 +1112,13 @@ impl AppManager {
                         name: push,
                         kind: String::new(),
                         data: body,
-                        method: "MESSAGE".into(),
+                        method: wit::PushMethod::Message,
                         call: None,
                     };
                     self.on_push(record)
                 }
                 Event::CallPush { name: push, kind, data, method, call } => {
+                    let method = host::push_method(&method);
                     let record = wit::Push { name: push, kind, data, method, call: Some(call.0) };
                     self.on_push(record)
                 }
@@ -1179,7 +1176,7 @@ impl AppManager {
         // newest alerting call.
         let calls = self.store.get::<dphone_state::Calls>();
         if record.call.is_none() && push.starts_with("digium.incomingCall.") {
-            record.method = "INVITE".into();
+            record.method = wit::PushMethod::Invite;
             record.call = calls
                 .calls
                 .iter()
@@ -1247,7 +1244,7 @@ impl AppManager {
                 self.publish();
                 return;
             }
-            WindowEvent::Key(k) => wit::Event::Key(key_name(k)),
+            WindowEvent::Key(k) => wit::Event::Key(host::wit_key(k)),
             WindowEvent::Hook(off_hook) => wit::Event::Hook(off_hook),
             WindowEvent::Softkey(id) => wit::Event::Softkey(id),
             WindowEvent::Highlighted { widget, row } => {

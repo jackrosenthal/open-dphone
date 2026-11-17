@@ -103,10 +103,7 @@ impl Calendar {
     fn build() -> Grid {
         let m = ui::get_metrics();
         ui::clear(ROOT);
-        ui::claim_keys(
-            ROOT,
-            &["left", "right", "up", "down", "cancel"].map(String::from),
-        );
+        ui::claim_keys(ROOT, &[Key::Left, Key::Right, Key::Up, Key::Down, Key::Cancel]);
         let title = ui::create(
             WidgetKind::Text,
             ROOT,
@@ -259,10 +256,10 @@ impl App for Calendar {
             Event::Softkey(SK_NEXT) => self.turn(1),
             Event::Softkey(SK_TODAY) => self.show_today(),
             Event::Softkey(SK_EXIT) => runtime::background(),
-            Event::Key(k) => match k.as_str() {
-                "left" | "up" => self.turn(-1),
-                "right" | "down" => self.turn(1),
-                "cancel" => runtime::background(),
+            Event::Key(k) => match k {
+                Key::Left | Key::Up => self.turn(-1),
+                Key::Right | Key::Down => self.turn(1),
+                Key::Cancel => runtime::background(),
                 _ => {}
             },
             _ => {}
@@ -276,5 +273,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.calendar",
     display_name: "Calendar",
     description: "Month calendar",
-    phone_icon: "calendar",
+    phone_icon: Some(Icon::AppCalendar),
 }

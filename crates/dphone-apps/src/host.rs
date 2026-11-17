@@ -24,6 +24,7 @@ pub(crate) mod bindings {
         // it to crates.io.
         path: "../dphone-app-sdk/wit",
         world: "app",
+        additional_derives: [PartialEq],
     });
 }
 
@@ -269,25 +270,135 @@ pub(crate) fn call_info(c: &Call) -> CallInfo {
     }
 }
 
+fn presence_status(s: PresenceStatus) -> api::types::PresenceStatus {
+    use api::types::PresenceStatus as P;
+    match s {
+        PresenceStatus::Available => P::Available,
+        PresenceStatus::Chat => P::Chat,
+        PresenceStatus::Away => P::Away,
+        PresenceStatus::Dnd => P::Dnd,
+        PresenceStatus::ExtendedAway => P::Xa,
+        PresenceStatus::Unavailable => P::Unavailable,
+        PresenceStatus::Unknown => P::Unknown,
+    }
+}
+
 pub(crate) fn presence_of(e: &dphone_state::BlfEntry, target: &str) -> Presence {
     let line_state = match e.state {
-        BlfState::Unknown => "unknown",
-        BlfState::Idle => "idle",
-        BlfState::Ringing => "ringing",
-        BlfState::InUse => "busy",
-        BlfState::OnHold => "hold",
-        BlfState::OnHoldRinging => "hold-ringing",
-        BlfState::Unavailable => "unavailable",
-    };
-    let status = match e.status {
-        PresenceStatus::Unknown => "unknown",
-        s => s.token(),
+        BlfState::Unknown => LineState::Unknown,
+        BlfState::Idle => LineState::Idle,
+        BlfState::Ringing => LineState::Ringing,
+        BlfState::InUse => LineState::Busy,
+        BlfState::OnHold => LineState::Hold,
+        BlfState::OnHoldRinging => LineState::HoldRinging,
+        BlfState::Unavailable => LineState::Unavailable,
     };
     Presence {
         target: target.to_string(),
-        status: status.to_string(),
+        status: presence_status(e.status),
         text: e.status_text.clone(),
-        line_state: line_state.to_string(),
+        line_state,
+    }
+}
+
+/// A key as the app interface has it.
+pub(crate) fn wit_key(k: Key) -> api::types::Key {
+    use api::types::Key as K;
+    match k {
+        Key::Digit(d) => K::Digit(d),
+        Key::Star => K::Star,
+        Key::Pound => K::Pound,
+        Key::Up => K::Up,
+        Key::Down => K::Down,
+        Key::Left => K::Left,
+        Key::Right => K::Right,
+        Key::Select => K::Select,
+        Key::Cancel => K::Cancel,
+        Key::VolumeUp => K::VolumeUp,
+        Key::VolumeDown => K::VolumeDown,
+        Key::Soft(n) => K::Softkey(n),
+        Key::Line(n) => K::Line(n),
+        Key::Blf(n) => K::Blf(n),
+        Key::Mute => K::Mute,
+        Key::Speaker => K::Speaker,
+        Key::Headset => K::Headset,
+        Key::Hold => K::Hold,
+        Key::Transfer => K::Transfer,
+        Key::Redial => K::Redial,
+        Key::Messages => K::Messages,
+        Key::Conference => K::Conference,
+        Key::Info => K::Info,
+        Key::BlfPageLeft => K::BlfPageLeft,
+        Key::BlfPageRight => K::BlfPageRight,
+        Key::Status => K::Status,
+        Key::Contacts => K::Contacts,
+        Key::Apps => K::Apps,
+        Key::Menu => K::Menu,
+        Key::Expansion { module, key } => K::Expansion(ExpansionKey { module, key }),
+        Key::Unknown(code) => K::Other(code),
+    }
+}
+
+/// The phone's key for a key of the app interface; `None` for a number
+/// out of range (a digit over 9, softkey 5, line key 0).
+pub(crate) fn phone_key(k: &api::types::Key) -> Option<Key> {
+    use api::types::Key as K;
+    let numbered = |n: u8, max: u8, f: fn(u8) -> Key| (1..=max).contains(&n).then(|| f(n));
+    Some(match *k {
+        K::Digit(d) if d <= 9 => Key::Digit(d),
+        K::Digit(_) => return None,
+        K::Star => Key::Star,
+        K::Pound => Key::Pound,
+        K::Up => Key::Up,
+        K::Down => Key::Down,
+        K::Left => Key::Left,
+        K::Right => Key::Right,
+        K::Select => Key::Select,
+        K::Cancel => Key::Cancel,
+        K::VolumeUp => Key::VolumeUp,
+        K::VolumeDown => Key::VolumeDown,
+        K::Softkey(n) => return numbered(n, 4, Key::Soft),
+        K::Line(n) => return numbered(n, 6, Key::Line),
+        K::Blf(n) => return numbered(n, 10, Key::Blf),
+        K::Mute => Key::Mute,
+        K::Speaker => Key::Speaker,
+        K::Headset => Key::Headset,
+        K::Hold => Key::Hold,
+        K::Transfer => Key::Transfer,
+        K::Redial => Key::Redial,
+        K::Messages => Key::Messages,
+        K::Conference => Key::Conference,
+        K::Info => Key::Info,
+        K::BlfPageLeft => Key::BlfPageLeft,
+        K::BlfPageRight => Key::BlfPageRight,
+        K::Status => Key::Status,
+        K::Contacts => Key::Contacts,
+        K::Apps => Key::Apps,
+        K::Menu => Key::Menu,
+        K::Expansion(e) => Key::Expansion { module: e.module, key: e.key },
+        K::Other(code) => Key::Unknown(code),
+    })
+}
+
+/// A lamp as the app interface has it (line and rapid-dial lamps from 1).
+fn wit_lamp(l: Lamp) -> api::lamps::Lamp {
+    use api::lamps::Lamp as L;
+    match l {
+        Lamp::Line(i) => L::Line(i.saturating_add(1)),
+        Lamp::Blf(i) => L::Blf(i.saturating_add(1)),
+        Lamp::Message => L::Message,
+        Lamp::Mute => L::Mute,
+        Lamp::Headset => L::Headset,
+        Lamp::Speaker => L::Speaker,
+    }
+}
+
+/// The method of a push as the SIP side names it.
+pub(crate) fn push_method(method: &str) -> PushMethod {
+    match method {
+        "MESSAGE" => PushMethod::Message,
+        "INVITE" => PushMethod::Invite,
+        _ => PushMethod::Info,
     }
 }
 
@@ -393,8 +504,7 @@ impl AppCtx {
     }
 
     /// Hands the window the picture the app defined as `name`, the first
-    /// time the app names it there.  A name the app did not define stays
-    /// what it was: one of the phone's icons.
+    /// time the app names it there.
     fn load_image(&mut self, w: u32, name: &str) {
         let idle = w & IDLE_BIT != 0;
         let Some(png) = self.pictures.get(name).cloned() else {
@@ -558,8 +668,10 @@ impl api::ui::Host for AppCtx {
         self.on_widget(w, |win, id| win.set_highlight(id, on));
     }
     fn set_items(&mut self, w: u32, items: Vec<ListItem>) {
-        for item in items.iter().filter(|i| !i.icon.is_empty()) {
-            self.load_image(w, &item.icon);
+        for item in &items {
+            if let Some(Image::Picture(name)) = &item.icon {
+                self.load_image(w, name);
+            }
         }
         self.on_widget(w, |win, id| win.set_items(id, &items));
     }
@@ -614,14 +726,17 @@ impl api::ui::Host for AppCtx {
         }
         Ok(())
     }
-    fn set_image(&mut self, w: u32, name: String) {
-        if !bad_name(&name) {
-            self.load_image(w, &name);
-            self.on_widget(w, |win, id| win.set_image(id, &name));
+    fn set_image(&mut self, w: u32, image: Image) {
+        if let Image::Picture(name) = &image {
+            if bad_name(name) {
+                return;
+            }
+            self.load_image(w, name);
         }
+        self.on_widget(w, |win, id| win.set_image(id, &image));
     }
-    fn claim_keys(&mut self, w: u32, keys: Vec<String>) {
-        let keys: Vec<Key> = keys.iter().filter_map(|k| Key::from_name(k)).collect();
+    fn claim_keys(&mut self, w: u32, keys: Vec<api::types::Key>) {
+        let keys: Vec<Key> = keys.iter().filter_map(phone_key).collect();
         if let Some((win, id)) = self.win(w) {
             win.claim_keys(id, &keys);
         }
@@ -680,11 +795,22 @@ impl api::config::Host for AppCtx {
         }
         self.services.config.app_setting(&self.name, &name)
     }
-    fn setting(&mut self, id: String) -> Option<String> {
-        APP_VISIBLE_SETTINGS
-            .contains(&id.as_str())
-            .then(|| self.services.config.setting(&id))
-            .flatten()
+    fn setting(&mut self, id: api::config::PhoneSetting) -> Option<String> {
+        use api::config::PhoneSetting as S;
+        // The ids of `APP_VISIBLE_SETTINGS`.
+        let id = match id {
+            S::Locale => "locale",
+            S::TimeZone => "timezone",
+            S::TimeFormat => "time_format",
+            S::DateFormat => "date_format",
+            S::ContactsMaxSubscriptions => "contacts_max_subscriptions",
+            S::BlfContactGroup => "blf_contact_group",
+            S::DefaultRingtone => "default_ringtone",
+            S::NameFormat => "name_format",
+            S::Brightness => "brightness",
+        };
+        debug_assert!(APP_VISIBLE_SETTINGS.contains(&id));
+        self.services.config.setting(id)
     }
     fn accounts(&mut self) -> Vec<AccountInfo> {
         self.store
@@ -701,8 +827,17 @@ impl api::config::Host for AppCtx {
             })
             .collect()
     }
-    fn model(&mut self) -> String {
-        self.store.model().name().to_string()
+    fn model(&mut self) -> PhoneModel {
+        use api::types::PhoneModel as M;
+        match self.store.model() {
+            dphone_state::Model::D40 => M::D40,
+            dphone_state::Model::D45 => M::D45,
+            dphone_state::Model::D50 => M::D50,
+            dphone_state::Model::D60 => M::D60,
+            dphone_state::Model::D62 => M::D62,
+            dphone_state::Model::D65 => M::D65,
+            dphone_state::Model::D70 => M::D70,
+        }
     }
     fn firmware_version(&mut self) -> String {
         self.store
@@ -1209,11 +1344,17 @@ impl api::presence::Host for AppCtx {
             .find(|e| entry_matches(e, &target))
             .map(|e| presence_of(e, &target))
     }
-    fn set_status(&mut self, status: String, text: String) -> Result<(), Error> {
-        let status = PresenceStatus::from_token(&status);
-        if status == PresenceStatus::Unknown {
-            return Err(Error::Invalid("unknown presence status".into()));
-        }
+    fn set_status(&mut self, status: api::types::PresenceStatus, text: String) -> Result<(), Error> {
+        use api::types::PresenceStatus as P;
+        let status = match status {
+            P::Available => PresenceStatus::Available,
+            P::Chat => PresenceStatus::Chat,
+            P::Away => PresenceStatus::Away,
+            P::Dnd => PresenceStatus::Dnd,
+            P::Xa => PresenceStatus::ExtendedAway,
+            P::Unavailable => PresenceStatus::Unavailable,
+            P::Unknown => return Err(Error::Invalid("unknown presence status".into())),
+        };
         self.command(Command::SetPresence { status, text })
             .map(|_| ())
     }
@@ -1221,12 +1362,9 @@ impl api::presence::Host for AppCtx {
         let p = self.store.get::<dphone_state::Presence>();
         Presence {
             target: String::new(),
-            status: match p.own_status {
-                PresenceStatus::Unknown => "unknown".into(),
-                s => s.token().into(),
-            },
+            status: presence_status(p.own_status),
             text: p.own_status_text.clone(),
-            line_state: "unknown".into(),
+            line_state: LineState::Unknown,
         }
     }
 }
@@ -1280,21 +1418,21 @@ impl api::l10n::Host for AppCtx {
     fn locale(&mut self) -> String {
         "en_US".into()
     }
-    fn common(&mut self, key: String) -> String {
-        match key.as_str() {
-            "ok" => "OK",
-            "cancel" => "Cancel",
-            "back" => "Back",
-            "exit" => "Exit",
-            "select" => "Select",
-            "yes" => "Yes",
-            "no" => "No",
-            "more" => "More",
-            "delete" => "Delete",
-            "save" => "Save",
-            "loading" => "Loading...",
-            "error" => "Error",
-            _ => return key,
+    fn common(&mut self, key: api::l10n::CommonText) -> String {
+        use api::l10n::CommonText as C;
+        match key {
+            C::Ok => "OK",
+            C::Cancel => "Cancel",
+            C::Back => "Back",
+            C::Exit => "Exit",
+            C::Select => "Select",
+            C::Yes => "Yes",
+            C::No => "No",
+            C::More => "More",
+            C::Delete => "Delete",
+            C::Save => "Save",
+            C::Loading => "Loading...",
+            C::Error => "Error",
         }
         .to_string()
     }
@@ -1332,20 +1470,33 @@ impl api::hotdesk::Host for AppCtx {
 }
 
 impl api::diagnostics::Host for AppCtx {
-    fn health(&mut self) -> Vec<(String, String)> {
-        use dphone_state::HealthStatus;
+    fn health(&mut self) -> Vec<api::diagnostics::SubsystemHealth> {
+        use api::diagnostics::{HealthState as H, Subsystem as W, SubsystemHealth};
+        use dphone_state::{HealthStatus, Subsystem};
         let health = self.store.get::<dphone_state::Health>();
-        dphone_state::Subsystem::ALL
+        Subsystem::ALL
             .iter()
-            .map(|s| {
-                let status = match health.status(*s) {
-                    HealthStatus::Stopped => "stopped".to_string(),
-                    HealthStatus::Starting => "starting".to_string(),
-                    HealthStatus::Ok => "ok".to_string(),
-                    HealthStatus::Degraded(e) => format!("degraded: {e}"),
-                    HealthStatus::Failed(e) => format!("failed: {e}"),
-                };
-                (s.label().to_string(), status)
+            .map(|s| SubsystemHealth {
+                subsystem: match s {
+                    Subsystem::Core => W::Core,
+                    Subsystem::Config => W::Configuration,
+                    Subsystem::Net => W::Network,
+                    Subsystem::Sip => W::Sip,
+                    Subsystem::Media => W::Media,
+                    Subsystem::Dpma => W::Dpma,
+                    Subsystem::Ui => W::Ui,
+                    Subsystem::Apps => W::Apps,
+                    Subsystem::Web => W::Web,
+                    Subsystem::Ssh => W::Ssh,
+                    Subsystem::Update => W::Update,
+                },
+                health: match health.status(*s) {
+                    HealthStatus::Stopped => H::Stopped,
+                    HealthStatus::Starting => H::Starting,
+                    HealthStatus::Ok => H::Ok,
+                    HealthStatus::Degraded(e) => H::Degraded(e.clone()),
+                    HealthStatus::Failed(e) => H::Failed(e.clone()),
+                },
             })
             .collect()
     }
@@ -1361,13 +1512,13 @@ impl api::diagnostics::Host for AppCtx {
 }
 
 impl api::lamps::Host for AppCtx {
-    fn names(&mut self) -> Vec<String> {
+    fn list(&mut self) -> Vec<api::lamps::Lamp> {
         Lamp::for_model(self.store.model())
             .into_iter()
-            .map(Lamp::name)
+            .map(wit_lamp)
             .collect()
     }
-    fn set(&mut self, lamp: String, color: api::lamps::Color) {
+    fn set(&mut self, lamp: api::lamps::Lamp, color: api::lamps::Color) {
         use api::lamps::Color;
         let color = match color {
             Color::Off => LampColor::Off,
@@ -1376,7 +1527,7 @@ impl api::lamps::Host for AppCtx {
             Color::Amber => LampColor::Amber,
         };
         let lamps = Lamp::for_model(self.store.model());
-        if let Some(lamp) = lamps.into_iter().find(|l| l.name() == lamp) {
+        if let Some(lamp) = lamps.into_iter().find(|l| wit_lamp(*l) == lamp) {
             self.window.set_lamp(lamp, color);
         }
     }

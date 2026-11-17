@@ -6,7 +6,8 @@
 
 use dphone_app_sdk::canvas::{Color, Op};
 use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{CallState, InputMode, alarms, canvas, hotdesk, lamps};
+use dphone_app_sdk::lamps::Lamp;
+use dphone_app_sdk::{CallState, InputMode, PresenceStatus, PushMethod, alarms, canvas, hotdesk, lamps};
 
 /// The app's data is in its code.
 const TONE: &[u8] = include_bytes!("../../probe/data/tone.wav");
@@ -95,7 +96,7 @@ fn wait(which: &str) -> String {
         "hangup" => calls::hangup(1),
         "send-dtmf" => calls::send_dtmf(1, "12"),
         "dial-voicemail" => calls::dial_voicemail(None),
-        "set-status" => presence::set_status("available", ""),
+        "set-status" => presence::set_status(PresenceStatus::Available, ""),
         "login" => hotdesk::login("100", "0000"),
         "logout" => hotdesk::logout(),
         "set-alarm" => alarms::set(&alarm).map(|_| ()),
@@ -184,13 +185,26 @@ impl Checks {
                 // The refused content does not take the place of a picture.
                 let again = ui::define_image("good", b"nor is this");
                 let image = ui::create(WidgetKind::Image, ROOT, Rect::new(0, 60, 10, 10));
-                ui::set_image(image, "good");
-                ui::set_image(image, "bad");
+                ui::set_image(image, &Image::Picture("good".into()));
+                ui::set_image(image, &Image::Picture("bad".into()));
                 format!("good={good:?} bad={bad:?} again={again:?}")
             }
             "show" => format!("{:?}", runtime::show_app(arg)),
             "send" => format!("{:?}", events::send(arg, "hello", "there")),
-            "lamps" => lamps::names().join(","),
+            "lamps" => {
+                let names: Vec<String> = lamps::list()
+                    .into_iter()
+                    .map(|l| match l {
+                        Lamp::Line(n) => format!("line{n}"),
+                        Lamp::Blf(n) => format!("blf{n}"),
+                        Lamp::Message => "message".into(),
+                        Lamp::Mute => "mute".into(),
+                        Lamp::Headset => "headset".into(),
+                        Lamp::Speaker => "speaker".into(),
+                    })
+                    .collect();
+                names.join(",")
+            }
             "long-key" => {
                 let key = "k".repeat(arg.parse().unwrap_or(0));
                 stored(storage::set(StorageLocation::Local, &key, b"v", None))
@@ -249,7 +263,15 @@ impl App for Checks {
             Event::Call(c) => self.log.push(format!("call {} {}", c.id, state(c.state))),
             Event::Push(p) => self.log.push(format!(
                 "push {} kind={:?} data={:?} method={} call={:?}",
-                p.name, p.kind, p.data, p.method, p.call
+                p.name,
+                p.kind,
+                p.data,
+                match p.method {
+                    PushMethod::Message => "MESSAGE",
+                    PushMethod::Invite => "INVITE",
+                    PushMethod::Info => "INFO",
+                },
+                p.call
             )),
             Event::PlaybackStopped(at) => self.log.push(format!("stopped {at}")),
             Event::HotdeskDone(result) => self.log.push(format!("hotdesk {result:?}")),

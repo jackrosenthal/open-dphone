@@ -6,7 +6,7 @@ Helpers call the interfaces on the other pages, and give the app the capabilitie
 
 `use dphone_app_sdk::prelude::*;` imports:
 
-- The trait `App`, the constant `ROOT`, and the types `Event`, `Widget`, `Rect`, `ListItem`, `Softkey`, `WidgetKind`, `WidgetEvent`, `Skin`, `PbxResult`, `PbxError`, `StorageLocation`, `StorageEntry`, `StorageOutcome`, `StorageReply`, `TimeStyle`, `AppKind`, `Form`, and `Message`.
+- The trait `App`, the constant `ROOT`, and the types `Event`, `Key`, `Widget`, `Rect`, `ListItem`, `Image`, `Icon`, `Softkey`, `WidgetKind`, `WidgetEvent`, `Skin`, `PbxResult`, `PbxError`, `StorageLocation`, `StorageEntry`, `StorageOutcome`, `StorageReply`, `TimeStyle`, `AppKind`, `Form`, and `Message`.
 - The functions `screen`, `content_rect`, and `row_height`.
 - The modules `audio`, `calls`, `config`, `events`, `http`, `l10n`, `pbx`, `presence`, `runtime`, `storage`, `timers`, and `ui`.
 
@@ -20,7 +20,7 @@ pub fn screen(title: &str) -> Rect
 
 Clears the window with `ui::clear(ROOT)`, which also removes the window's softkeys and key claims; claims `cancel` for the window; creates a `Text` in `Font::Title`, `title_height` tall, across the top; and returns the rectangle below the title.
 
-`cancel` then arrives as `Event::Key("cancel")` instead of taking the app off the screen.  The app should call `runtime::background` or go back one screen.
+`cancel` then arrives as `Event::Key(Key::Cancel)` instead of taking the app off the screen.  The app should call `runtime::background` or go back one screen.
 
 ### `content_rect`
 

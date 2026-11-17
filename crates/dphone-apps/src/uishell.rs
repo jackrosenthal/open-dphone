@@ -137,7 +137,7 @@ impl AppWindow for UiWindow {
         self.view.set_colors(id(w), fg, bg);
     }
     fn set_items(&mut self, w: u32, items: &[ListItem]) {
-        let icons = items.iter().any(|i| !i.icon.is_empty());
+        let icons = items.iter().any(|i| i.icon.is_some());
         let details = items.iter().any(|i| !i.detail.is_empty());
         let m = self.view.metrics();
         let mut columns = Vec::new();
@@ -153,13 +153,14 @@ impl AppWindow for UiWindow {
             .map(|i| {
                 let mut cells = Vec::new();
                 if icons {
-                    cells.push(if i.icon.is_empty() {
-                        tk::Cell::Empty
-                    } else if let Some(img) = self.images.get(&i.icon) {
+                    cells.push(match &i.icon {
+                        None => tk::Cell::Empty,
+                        Some(Image::Icon(icon)) => tk::Cell::icon(icon_name(*icon).to_string()),
                         // A picture of the app's, reduced to the row.
-                        tk::Cell::Image(img.fit(m.row_height, m.row_height))
-                    } else {
-                        tk::Cell::icon(i.icon.clone())
+                        Some(Image::Picture(name)) => match self.images.get(name) {
+                            Some(img) => tk::Cell::Image(img.fit(m.row_height, m.row_height)),
+                            None => tk::Cell::Empty,
+                        },
                     });
                 }
                 cells.push(tk::Cell::text(i.text.clone()));
@@ -204,14 +205,18 @@ impl AppWindow for UiWindow {
         self.view
             .input_set_max_len(id(w), max.min(u16::MAX as u32) as u16);
     }
-    fn set_image(&mut self, w: u32, name: &str) {
-        let source = match self.images.get(name) {
-            Some(img) => tk::ImageSource::Rgba {
-                width: img.width,
-                height: img.height,
-                pixels: img.pixels.clone(),
+    fn set_image(&mut self, w: u32, image: &Image) {
+        let source = match image {
+            Image::Icon(icon) => tk::ImageSource::Icon(icon_name(*icon).to_string()),
+            Image::Picture(name) => match self.images.get(name) {
+                Some(img) => tk::ImageSource::Rgba {
+                    width: img.width,
+                    height: img.height,
+                    pixels: img.pixels.clone(),
+                },
+                // Nothing: no icon has an empty name.
+                None => tk::ImageSource::Icon(String::new()),
             },
-            None => tk::ImageSource::Icon(name.to_string()),
         };
         self.view.set_image(id(w), source);
     }
@@ -390,5 +395,20 @@ impl Shell for UiShell {
             width: s.width,
             height: s.height,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::view::{ICONS, icon_name};
+
+    #[test]
+    fn the_interface_names_every_icon_of_the_phone() {
+        let mut ours: Vec<&str> = ICONS.iter().map(|i| icon_name(*i)).collect();
+        // The boot screen's artwork is not an icon for apps.
+        let mut phone: Vec<&str> = dphone_ui::icons::names().into_iter().filter(|n| *n != "splash").collect();
+        ours.sort();
+        phone.sort();
+        assert_eq!(ours, phone);
     }
 }

@@ -136,7 +136,7 @@ fn handle(&mut self, event: Event) {
         // Another phone changed the key, or the PBX is reachable again.
         Event::StorageChanged(_) | Event::StorageOnline => return self.ask(),
         Event::Softkey(SK_EXIT) => return runtime::exit(),
-        Event::Key(key) if key == "cancel" => return runtime::exit(),
+        Event::Key(Key::Cancel) => return runtime::exit(),
         // On a timer tick, or when the window returns to the screen
         // (possibly with a new theme's colors), fall through and redraw.
         Event::Timer(_) | Event::Foreground => {}
@@ -419,7 +419,7 @@ With one phone, the second line shows that phone's user after **Brewed**.  Witho
                 // Another phone changed the key, or the PBX is reachable again.
                 Event::StorageChanged(_) | Event::StorageOnline => return self.ask(),
                 Event::Softkey(SK_EXIT) => return runtime::exit(),
-                Event::Key(key) if key == "cancel" => return runtime::exit(),
+                Event::Key(Key::Cancel) => return runtime::exit(),
                 // On a timer tick, or when the window returns to the screen
                 // (possibly with a new theme's colors), fall through and redraw.
                 Event::Timer(_) | Event::Foreground => {}

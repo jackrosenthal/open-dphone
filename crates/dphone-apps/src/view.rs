@@ -8,10 +8,147 @@ pub use crate::host::bindings::dphone::app::canvas::{
     Bitmap, Color, Op as DrawOp, Role as ColorRole,
 };
 pub use crate::host::bindings::dphone::app::types::{
-    Align, Font, InputMode, ListItem, Metrics, Rect, Size, Skin, Softkey, WidgetKind,
+    Align, Font, Icon, Image, InputMode, ListItem, Metrics, Rect, Size, Skin, Softkey, WidgetKind,
 };
 use dphone_state::{Key, LampColor, Model};
 use std::sync::Arc;
+
+/// The name of one of the phone's icons in its icon set (`dphone-ui`'s
+/// atlas).
+pub fn icon_name(icon: Icon) -> &'static str {
+    match icon {
+        Icon::Alarm => "alarm",
+        Icon::Apps => "apps",
+        Icon::Backspace => "backspace",
+        Icon::Brightness => "brightness",
+        Icon::Calllog => "calllog",
+        Icon::Clock => "clock",
+        Icon::Conference => "conference",
+        Icon::Contacts => "contacts",
+        Icon::Desk => "desk",
+        Icon::Dnd => "dnd",
+        Icon::Down => "down",
+        Icon::Error => "error",
+        Icon::Forward => "forward",
+        Icon::Handset => "handset",
+        Icon::Headset => "headset",
+        Icon::Hold => "hold",
+        Icon::Info => "info",
+        Icon::Left => "left",
+        Icon::Lock => "lock",
+        Icon::More => "more",
+        Icon::Mute => "mute",
+        Icon::NetDown => "net-down",
+        Icon::Network => "network",
+        Icon::Ok => "ok",
+        Icon::Page => "page",
+        Icon::Park => "park",
+        Icon::PhoneIn => "phone-in",
+        Icon::PhoneMissed => "phone-missed",
+        Icon::PhoneOut => "phone-out",
+        Icon::PhoneUnregistered => "phone-unregistered",
+        Icon::Phone => "phone",
+        Icon::Presence => "presence",
+        Icon::Registered => "registered",
+        Icon::Right => "right",
+        Icon::Ring => "ring",
+        Icon::Settings => "settings",
+        Icon::Speaker => "speaker",
+        Icon::Transfer => "transfer",
+        Icon::Unregistered => "unregistered",
+        Icon::Up => "up",
+        Icon::Update => "update",
+        Icon::Voicemail => "voicemail",
+        Icon::Warning => "warning",
+        Icon::AppAlarms => "app-alarms",
+        Icon::AppApp => "app-app",
+        Icon::AppBoxpusher => "app-boxpusher",
+        Icon::AppCalendar => "app-calendar",
+        Icon::AppCalllog => "app-calllog",
+        Icon::AppContacts => "app-contacts",
+        Icon::AppDesksparrow => "app-desksparrow",
+        Icon::AppDiagnostics => "app-diagnostics",
+        Icon::AppForward => "app-forward",
+        Icon::AppHotdesking => "app-hotdesking",
+        Icon::AppInfo => "app-info",
+        Icon::AppLightup => "app-lightup",
+        Icon::AppNetwork => "app-network",
+        Icon::AppPaging => "app-paging",
+        Icon::AppParking => "app-parking",
+        Icon::AppQueues => "app-queues",
+        Icon::AppSettings => "app-settings",
+        Icon::AppStatus => "app-status",
+        Icon::AppUpdate => "app-update",
+        Icon::AppVoicemail => "app-voicemail",
+    }
+}
+
+/// Every icon the app interface names.
+pub const ICONS: [Icon; 63] = [
+    Icon::Alarm,
+    Icon::Apps,
+    Icon::Backspace,
+    Icon::Brightness,
+    Icon::Calllog,
+    Icon::Clock,
+    Icon::Conference,
+    Icon::Contacts,
+    Icon::Desk,
+    Icon::Dnd,
+    Icon::Down,
+    Icon::Error,
+    Icon::Forward,
+    Icon::Handset,
+    Icon::Headset,
+    Icon::Hold,
+    Icon::Info,
+    Icon::Left,
+    Icon::Lock,
+    Icon::More,
+    Icon::Mute,
+    Icon::NetDown,
+    Icon::Network,
+    Icon::Ok,
+    Icon::Page,
+    Icon::Park,
+    Icon::PhoneIn,
+    Icon::PhoneMissed,
+    Icon::PhoneOut,
+    Icon::PhoneUnregistered,
+    Icon::Phone,
+    Icon::Presence,
+    Icon::Registered,
+    Icon::Right,
+    Icon::Ring,
+    Icon::Settings,
+    Icon::Speaker,
+    Icon::Transfer,
+    Icon::Unregistered,
+    Icon::Up,
+    Icon::Update,
+    Icon::Voicemail,
+    Icon::Warning,
+    Icon::AppAlarms,
+    Icon::AppApp,
+    Icon::AppBoxpusher,
+    Icon::AppCalendar,
+    Icon::AppCalllog,
+    Icon::AppContacts,
+    Icon::AppDesksparrow,
+    Icon::AppDiagnostics,
+    Icon::AppForward,
+    Icon::AppHotdesking,
+    Icon::AppInfo,
+    Icon::AppLightup,
+    Icon::AppNetwork,
+    Icon::AppPaging,
+    Icon::AppParking,
+    Icon::AppQueues,
+    Icon::AppSettings,
+    Icon::AppStatus,
+    Icon::AppUpdate,
+    Icon::AppVoicemail,
+];
 
 /// A lamp of the phone, as apps name it.  Line and rapid-dial lamps count
 /// from 0 at the top (`line1` is `Lamp::Line(0)`).
@@ -38,8 +175,7 @@ impl Lamp {
         v
     }
 
-    /// The name of the lamp in the app interface: that of its key, where
-    /// it is in one.
+    /// A name of the lamp: that of its key, where it is in one.
     pub fn name(self) -> String {
         match self {
             Lamp::Line(i) => format!("line{}", u16::from(i) + 1),
@@ -122,9 +258,9 @@ pub trait AppWindow: Send {
     fn value(&self, w: u32) -> String;
     fn set_input_mode(&mut self, w: u32, mode: InputMode);
     fn set_max_length(&mut self, w: u32, max: u32);
-    /// Shows the picture defined as `name`, else the phone's icon of that
-    /// name.
-    fn set_image(&mut self, w: u32, name: &str);
+    /// Shows one of the phone's icons, or the picture defined as a name
+    /// (nothing for a name not defined).
+    fn set_image(&mut self, w: u32, image: &Image);
     /// Makes a picture the app defined (`file` is a PNG file's content)
     /// known as `name` to [`AppWindow::set_image`] and to list icons,
     /// in place of an earlier one of that name.  Returns whether it is a
@@ -190,4 +326,17 @@ pub trait Shell: Send {
     fn close(&mut self, app: &str, kind: WindowKind);
     /// Size of the idle-screen area offered to apps.
     fn idle_size(&self) -> Size;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_icons_are_in_the_order_of_the_interface() {
+        // A manifest's icon is the number of its place in the enum.
+        for (i, icon) in ICONS.iter().enumerate() {
+            assert_eq!(*icon as usize, i, "{}", icon_name(*icon));
+        }
+    }
 }

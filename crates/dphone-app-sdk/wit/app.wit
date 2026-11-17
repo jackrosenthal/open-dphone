@@ -42,15 +42,90 @@ interface types {
   enum font { small, normal, large, bold, title }
   enum input-mode { text, numeric, dial, password, pin }
 
+  /// The phone's icons: the one-color icons, and the color icons of the
+  /// apps (`app-...`).
+  enum icon {
+    alarm, apps, backspace, brightness, calllog, clock, conference,
+    contacts, desk, dnd, down, error, forward, handset, headset, hold,
+    info, left, lock, more, mute, net-down, network, ok, page, park,
+    phone-in, phone-missed, phone-out, phone-unregistered, phone, presence,
+    registered, right, ring, settings, speaker, transfer, unregistered, up,
+    update, voicemail, warning,
+    app-alarms, app-app, app-boxpusher, app-calendar, app-calllog,
+    app-contacts, app-desksparrow, app-diagnostics, app-forward,
+    app-hotdesking, app-info, app-lightup, app-network, app-paging,
+    app-parking, app-queues, app-settings, app-status, app-update,
+    app-voicemail,
+  }
+
+  /// A picture to show: one of the phone's icons, or a picture the app
+  /// defined (`ui.define-image`), by its name.
+  variant image {
+    icon(icon),
+    picture(string),
+  }
+
   record list-item {
     /// Main text.
     text: string,
     /// Secondary text at the right edge (may be empty).
     detail: string,
-    /// The name of a picture the app defined (`ui.define-image`), or of
-    /// one of the phone's icons (may be empty).
-    icon: string,
+    icon: option<image>,
   }
+
+  /// A key of the phone.  No model has every key.
+  variant key {
+    /// The dial pad: 0 to 9.
+    digit(u8),
+    star,
+    pound,
+    up,
+    down,
+    left,
+    right,
+    /// The check-mark key.
+    select,
+    /// The X key.
+    cancel,
+    volume-up,
+    volume-down,
+    /// The four keys below the display, 1 to 4 from the left.
+    softkey(u8),
+    /// The line keys, from 1 at the top.
+    line(u8),
+    /// The rapid-dial keys, from 1 at the top.
+    blf(u8),
+    mute,
+    speaker,
+    headset,
+    hold,
+    transfer,
+    redial,
+    /// Voicemail (`Msgs`).
+    messages,
+    conference,
+    info,
+    /// The page keys of the rapid-dial keys.
+    blf-page-left,
+    blf-page-right,
+    status,
+    contacts,
+    apps,
+    menu,
+    /// A key of an expansion module.
+    expansion(expansion-key),
+    /// A key without a function of its own, by its key code.
+    other(u16),
+  }
+
+  record expansion-key {
+    /// From 0.
+    module: u8,
+    /// From 0.
+    key: u8,
+  }
+
+  enum phone-model { d40, d45, d50, d60, d62, d65, d70 }
 
   record softkey {
     /// App-chosen identifier reported in `event.softkey`.
@@ -363,17 +438,31 @@ interface types {
 
   record mwi { account: u8, new-messages: u32, old-messages: u32 }
 
+  enum presence-status { available, chat, away, dnd, xa, unavailable, unknown }
+
+  /// The state of a contact's line.
+  enum line-state {
+    idle,
+    ringing,
+    busy,
+    hold,
+    /// One call held, another ringing.
+    hold-ringing,
+    /// No device registered.
+    unavailable,
+    unknown,
+  }
+
   record presence {
     /// Subscription target (extension or URI).
     target: string,
-    /// `available`, `chat`, `away`, `dnd`, `xa`, `unavailable`, `unknown`.
-    status: string,
+    status: presence-status,
     text: string,
-    /// The contact's line: `idle`, `ringing`, `busy`, `hold`,
-    /// `hold-ringing` (one call held, another ringing), `unavailable` (no
-    /// device registered), `unknown`.
-    line-state: string,
+    line-state: line-state,
   }
+
+  /// The SIP method that carried a push.
+  enum push-method { message, invite, info }
 
   record push {
     /// Event name: the last of `X-Digium-Event-Name`, `X-Event-Name`,
@@ -383,8 +472,7 @@ interface types {
     kind: string,
     /// `X-Event-Data` or the body, as text (JSON where the server sent JSON).
     data: string,
-    /// SIP method that carried it (`MESSAGE`, `INFO`, `INVITE`, ...).
-    method: string,
+    method: push-method,
     /// The call it arrived with, for INVITE and INFO pushes (e.g.,
     /// `digium.incomingCall.voicemail`); the app may answer or reject it.
     /// A call whose event the configuration gives to apps does not ring
@@ -407,10 +495,8 @@ interface types {
     /// The app's idle window left the screen.
     idle-screen-hide,
     /// A key claimed with `ui.claim-keys`, or any key under
-    /// `input.capture`.  Names follow the phone's key vocabulary: `0`..`9`,
-    /// `*`, `#`, `up`, `down`, `left`, `right`, `select`, `cancel`,
-    /// `sk1`.., `line1`.., and so on.
-    key(string),
+    /// `input.capture`.
+    key(key),
     /// The handset was lifted (`true`) or put back (under
     /// `input.capture`).
     hook(bool),
@@ -489,7 +575,7 @@ interface runtime {
 
 /// Widgets and softkeys.  Capability `ui`.
 interface ui {
-  use types.{widget, widget-kind, rect, size, metrics, align, font, input-mode, list-item, softkey, error};
+  use types.{widget, widget-kind, rect, size, metrics, align, font, input-mode, list-item, softkey, error, image, key};
 
   get-metrics: func() -> metrics;
   /// Size of the idle-screen area offered to apps with `hasIdle`.
@@ -528,28 +614,28 @@ interface ui {
   set-input-mode: func(w: widget, mode: input-mode);
   set-max-length: func(w: widget, max: u32);
 
-  /// Gives a picture of the app's a name, for `set-image` and for the
-  /// icons of list items: `png` is a PNG file's content, which the app
-  /// holds in its data (e.g., with `include_bytes!`).  At most 512 KiB
+  /// Gives a picture of the app's a name, for `image.picture` (in
+  /// `set-image` and in list items): `png` is a PNG file's content, which
+  /// the app holds in its data (e.g., with `include_bytes!`).  At most 512 KiB
   /// and 1,048,576 pixels a picture, and 32 pictures.  Content that is
   /// not a PNG picture the phone can show is refused (`invalid`).
   /// Defining a name again replaces the picture.
   define-image: func(name: string, png: list<u8>) -> result<_, error>;
 
-  /// Image by name: a picture the app defined, else an icon of the
-  /// phone's icon set.
-  set-image: func(w: widget, name: string);
+  /// Shows a picture in an image widget.  A picture name the app did not
+  /// define shows nothing.
+  set-image: func(w: widget, image: image);
 
   /// Keys this widget wants as `event.key` instead of the built-in
   /// behavior.  For each press the phone walks from the focused widget up
   /// to the root (widget 0, the window); the first claimant gets the key.
   /// An unclaimed `cancel` backgrounds the app.
-  claim-keys: func(w: widget, keys: list<string>);
+  claim-keys: func(w: widget, keys: list<key>);
 
   /// Gives the app's window the whole display (`true`), or the usual
   /// area above the softkey bar again.  A full-screen window has no
   /// softkey bar: softkeys are not shown, and the four keys under the
-  /// display do nothing unless the app claims them (`sk1` to `sk4`).
+  /// display do nothing unless the app claims them (`key.softkey`).
   /// `get-metrics` reports the size the window now has (480x272, 320x160,
   /// or 240x120 when full-screen); widgets keep their bounds.  An
   /// unclaimed `cancel` still leaves the app and line key 1 always does,
@@ -579,17 +665,41 @@ interface timers {
 
 /// Capability `config`.
 interface config {
-  use types.{account-info};
+  use types.{account-info, phone-model};
+
+  /// The phone settings an app may read, by their stock ids.
+  enum phone-setting {
+    /// `locale`, e.g., `en_US`.
+    locale,
+    /// `time_zone`: an IANA name, or a POSIX TZ string.
+    time-zone,
+    /// `time_short_format`: a CLDR pattern, e.g., `h:mm a`.
+    time-format,
+    /// `date_short_format`: a CLDR pattern, e.g., `M/d/yy`.
+    date-format,
+    /// `contacts_max_subscriptions`: a number.
+    contacts-max-subscriptions,
+    /// `blf_contact_group`: a contact group's id or name.
+    blf-contact-group,
+    /// `default_ringtone`: a ringtone's name.
+    default-ringtone,
+    /// `name_format`: e.g., `first_last` or `last_first`.
+    name-format,
+    /// `brightness`: 0 to 10.
+    brightness,
+  }
+
   /// This app's provisioned `<application>` element as XML ("" if none),
   /// without the credentials (`password` and `secret`), which the host
   /// keeps: it adds them to PBX requests.
   app-config: func() -> string;
   /// One attribute of this app's `<application>`/`<account>`/`<setting>`s.
   app-setting: func(name: string) -> option<string>;
-  /// A phone setting by its stock id (read-only; a fixed allowlist).
-  setting: func(id: string) -> option<string>;
+  /// A phone setting, as the configuration writes it (`none` if the
+  /// configuration does not set it).
+  setting: func(id: phone-setting) -> option<string>;
   accounts: func() -> list<account-info>;
-  model: func() -> string;
+  model: func() -> phone-model;
   firmware-version: func() -> string;
   mac-address: func() -> string;
   /// Contact-list files provisioned to the phone: (file name, XML text).
@@ -758,7 +868,7 @@ interface calls {
 /// is on no key is not watched, and an app cannot make the phone watch
 /// one.
 interface presence {
-  use types.{presence, error};
+  use types.{presence, presence-status, error};
   /// Have the changes of a target the phone watches arrive as
   /// `event.presence`: an extension, a contact's id, or a URI.  A target
   /// the phone does not watch is accepted and never has an event.  An
@@ -769,8 +879,8 @@ interface presence {
   /// it).
   get: func(target: string) -> option<presence>;
   /// Set the presence of the phone's user (line display and SIP PUBLISH
-  /// where configured).
-  set-status: func(status: string, text: string) -> result<_, error>;
+  /// where configured).  `unknown` is refused (`invalid`).
+  set-status: func(status: presence-status, text: string) -> result<_, error>;
   /// The presence of the phone's user.
   get-status: func() -> presence;
 }
@@ -809,8 +919,10 @@ interface audio {
 interface l10n {
   /// Current locale (`en_US` for now).
   locale: func() -> string;
-  /// Host-provided common strings (`ok`, `cancel`, `back`, ...).
-  common: func(key: string) -> string;
+  /// Words of the phone's softkeys and screens.
+  enum common-text { ok, cancel, back, exit, select, yes, no, more, delete, save, loading, error }
+  /// A common word in the phone's language.
+  common: func(key: common-text) -> string;
   /// What `format-time` writes.
   enum time-style { time, date, date-and-time }
   /// Local date and time text for a Unix time.  The time follows the
@@ -837,9 +949,18 @@ interface hotdesk {
 
 /// Capability `diagnostics`: the state of the phone.
 interface diagnostics {
-  /// Every subsystem of the phone and its state: `ok`, `starting`,
-  /// `stopped`, `degraded: <why>`, or `failed: <why>`.
-  health: func() -> list<tuple<string, string>>;
+  enum subsystem { core, configuration, network, sip, media, dpma, ui, apps, web, ssh, update }
+
+  /// The state of a subsystem; the text says why.
+  variant health-state { ok, starting, stopped, degraded(string), failed(string) }
+
+  record subsystem-health {
+    subsystem: subsystem,
+    health: health-state,
+  }
+
+  /// Every subsystem of the phone and its state.
+  health: func() -> list<subsystem-health>;
   /// The newest log entries, newest first, at most `max` of them (and at
   /// most 100): `<source> <message>`.
   log-tail: func(max: u32) -> list<string>;
@@ -851,14 +972,25 @@ interface diagnostics {
 /// phone shows there.
 interface lamps {
   enum color { off, red, green, amber }
-  /// The lamps of this phone: `line1`.. (the line keys, from the top),
-  /// `blf1`.. (the rapid-dial keys, from the top), `message` (message
-  /// waiting), `mute`, `hdst`, and `spkr`.
-  names: func() -> list<string>;
+
+  variant lamp {
+    /// The lamp of a line key, from 1 at the top.
+    line(u8),
+    /// The lamp of a rapid-dial key, from 1 at the top.
+    blf(u8),
+    /// Message waiting.
+    message,
+    mute,
+    headset,
+    speaker,
+  }
+
+  /// The lamps of this phone.
+  %list: func() -> list<lamp>;
   /// Shows a color on a lamp in place of what the phone shows there.  A
-  /// name this phone does not have is ignored, and so is a color a lamp
+  /// lamp this phone does not have is ignored, and so is a color a lamp
   /// does not have.
-  set: func(lamp: string, color: color);
+  set: func(lamp: lamp, color: color);
   /// Gives every lamp back to the phone.
   release: func();
 }
@@ -868,7 +1000,7 @@ interface input {
   /// With `true`, every key press comes to the app as `event.key` while
   /// the app's window is on screen, and every change of the hookswitch
   /// as `event.hook`: also the keys an app's window never gets otherwise
-  /// (line key 1, the volume keys, `mute`, `spkr`, and `hdst`), the
+  /// (line key 1, the volume keys, `mute`, `speaker`, and `headset`), the
   /// softkeys, and the keys a widget would use.  The phone itself does
   /// nothing with them: no volume change, no softkey, and no dial tone
   /// when the handset is lifted.  With `false`, keys go the usual

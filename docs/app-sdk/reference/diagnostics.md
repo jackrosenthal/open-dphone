@@ -3,18 +3,24 @@
 ## `health`
 
 ```rust
-pub fn health() -> Vec<(String, String)>
+pub fn health() -> Vec<SubsystemHealth>
 ```
 
-Every subsystem of the phone with the subsystem's state, in this order: `Core`, `Configuration`, `Network`, `SIP`, `Media`, `DPMA`, `UI`, `Apps`, `Web`, `SSH`, and `Update`.
+```rust
+pub enum Subsystem { Core, Configuration, Network, Sip, Media, Dpma, Ui, Apps, Web, Ssh, Update }
+pub enum HealthState { Ok, Starting, Stopped, Degraded(String), Failed(String) }
+pub struct SubsystemHealth { pub subsystem: Subsystem, pub health: HealthState }
+```
 
-| State | Meaning |
+Every subsystem of the phone with the subsystem's state, in the order of `Subsystem`.
+
+| `HealthState` | Meaning |
 | --- | --- |
-| `ok` | Working. |
-| `starting` | Starting. |
-| `stopped` | Not started, or not part of this phone. |
-| `degraded: <why>` | Working, with a fault. |
-| `failed: <why>` | Not working. |
+| `Ok` | Working. |
+| `Starting` | Starting. |
+| `Stopped` | Not started, or not part of this phone. |
+| `Degraded(why)` | Working, with a fault. |
+| `Failed(why)` | Not working. |
 
 ## `log_tail`
 

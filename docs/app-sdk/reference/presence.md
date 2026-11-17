@@ -43,12 +43,12 @@ The contact's presence ([`Presence`](types.md#presence)), or `None` if no watche
 ## `set_status`
 
 ```rust
-pub fn set_status(status: &str, text: &str) -> Result<(), Error>
+pub fn set_status(status: PresenceStatus, text: &str) -> Result<(), Error>
 ```
 
-Sets the presence of the phone's user.  The phone displays the status and, if the configuration says so, publishes the status to the PBX.  `status` is `available`, `chat`, `away`, `dnd`, `xa`, or `unavailable`, in any case.  `text` is the status message, and may be empty.
+Sets the presence of the phone's user.  The phone displays the status and, if the configuration says so, publishes the status to the PBX.  `text` is the status message, and may be empty.
 
-Returns `Invalid("unknown presence status")` for any other status, and `Failed(text)` if the phone's SIP stack doesn't answer within 0.5 seconds; the status may still change afterward.
+Returns `Invalid("unknown presence status")` for `PresenceStatus::Unknown`, and `Failed(text)` if the phone's SIP stack doesn't answer within 0.5 seconds; the status may still change afterward.
 
 ## `get_status`
 
@@ -56,4 +56,4 @@ Returns `Invalid("unknown presence status")` for any other status, and `Failed(t
 pub fn get_status() -> Presence
 ```
 
-The presence of the phone's user: `status` is `unknown` if never set, `text` is the status message, `target` is `""`, and `line_state` is always `unknown`.
+The presence of the phone's user: `status` is `Unknown` if never set, `text` is the status message, `target` is `""`, and `line_state` is always `Unknown`.

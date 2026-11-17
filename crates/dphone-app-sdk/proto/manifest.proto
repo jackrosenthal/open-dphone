@@ -37,9 +37,9 @@ message Manifest {
   bool has_idle = 7;
   // The app is marked as hidden.
   bool hidden = 8;
-  // The name of one of the phone's icons, for an app that has no icon (or
-  // whose icon the phone cannot show).
-  string phone_icon = 9;
+  // One of the phone's icons, for an app that has no icon (or whose icon
+  // the phone cannot show).
+  Icon phone_icon = 13;
   // The most memory the app may have, in KiB; 0 is the phone's default.
   uint32 memory_kib = 10;
   // The app's icon: the content of a PNG file, at most 256 KiB.
@@ -50,9 +50,12 @@ message Manifest {
 
   // Not for an app's section, where the phone ignores it: in the record
   // the phone keeps of an app ("app.pb" in the app's directory), the
-  // interfaces of the phone
-  // the app's component imports, e.g., "ui".
-  repeated string capabilities = 15;
+  // interfaces of the phone the app's component imports.
+  repeated Capability capabilities = 16;
+
+  // Fields of earlier forms: the phone icon's name, and the capabilities'
+  // names.
+  reserved 9, 15;
 }
 
 enum Kind {
@@ -75,8 +78,114 @@ message Text {
 }
 
 message ModelIcon {
-  // "D40", "D45", "D50", "D60", "D62", "D65", or "D70".
-  string model = 1;
+  PhoneModel model = 3;
   // The content of a PNG file, at most 256 KiB.
   bytes icon = 2;
+  // The model's name in an earlier form.
+  reserved 1;
 }
+
+enum PhoneModel {
+  PHONE_MODEL_UNSPECIFIED = 0;
+  PHONE_MODEL_D40 = 1;
+  PHONE_MODEL_D45 = 2;
+  PHONE_MODEL_D50 = 3;
+  PHONE_MODEL_D60 = 4;
+  PHONE_MODEL_D62 = 5;
+  PHONE_MODEL_D65 = 6;
+  PHONE_MODEL_D70 = 7;
+}
+
+// The phone's icons, in the order of the enum `icon` of the app interface
+// (`wit/app.wit`): the one-color icons, and the color icons of the apps
+// (`APP_...`).
+enum Icon {
+  ICON_UNSPECIFIED = 0;
+  ICON_ALARM = 1;
+  ICON_APPS = 2;
+  ICON_BACKSPACE = 3;
+  ICON_BRIGHTNESS = 4;
+  ICON_CALLLOG = 5;
+  ICON_CLOCK = 6;
+  ICON_CONFERENCE = 7;
+  ICON_CONTACTS = 8;
+  ICON_DESK = 9;
+  ICON_DND = 10;
+  ICON_DOWN = 11;
+  ICON_ERROR = 12;
+  ICON_FORWARD = 13;
+  ICON_HANDSET = 14;
+  ICON_HEADSET = 15;
+  ICON_HOLD = 16;
+  ICON_INFO = 17;
+  ICON_LEFT = 18;
+  ICON_LOCK = 19;
+  ICON_MORE = 20;
+  ICON_MUTE = 21;
+  ICON_NET_DOWN = 22;
+  ICON_NETWORK = 23;
+  ICON_OK = 24;
+  ICON_PAGE = 25;
+  ICON_PARK = 26;
+  ICON_PHONE_IN = 27;
+  ICON_PHONE_MISSED = 28;
+  ICON_PHONE_OUT = 29;
+  ICON_PHONE_UNREGISTERED = 30;
+  ICON_PHONE = 31;
+  ICON_PRESENCE = 32;
+  ICON_REGISTERED = 33;
+  ICON_RIGHT = 34;
+  ICON_RING = 35;
+  ICON_SETTINGS = 36;
+  ICON_SPEAKER = 37;
+  ICON_TRANSFER = 38;
+  ICON_UNREGISTERED = 39;
+  ICON_UP = 40;
+  ICON_UPDATE = 41;
+  ICON_VOICEMAIL = 42;
+  ICON_WARNING = 43;
+  ICON_APP_ALARMS = 44;
+  ICON_APP_APP = 45;
+  ICON_APP_BOXPUSHER = 46;
+  ICON_APP_CALENDAR = 47;
+  ICON_APP_CALLLOG = 48;
+  ICON_APP_CONTACTS = 49;
+  ICON_APP_DESKSPARROW = 50;
+  ICON_APP_DIAGNOSTICS = 51;
+  ICON_APP_FORWARD = 52;
+  ICON_APP_HOTDESKING = 53;
+  ICON_APP_INFO = 54;
+  ICON_APP_LIGHTUP = 55;
+  ICON_APP_NETWORK = 56;
+  ICON_APP_PAGING = 57;
+  ICON_APP_PARKING = 58;
+  ICON_APP_QUEUES = 59;
+  ICON_APP_SETTINGS = 60;
+  ICON_APP_STATUS = 61;
+  ICON_APP_UPDATE = 62;
+  ICON_APP_VOICEMAIL = 63;
+}
+
+// The interfaces of the app interface (`wit/app.wit`) that are
+// capabilities.
+enum Capability {
+  CAPABILITY_UNSPECIFIED = 0;
+  CAPABILITY_UI = 1;
+  CAPABILITY_TIMERS = 2;
+  CAPABILITY_STORAGE = 3;
+  CAPABILITY_CONFIG = 4;
+  CAPABILITY_PBX = 5;
+  CAPABILITY_HTTP = 6;
+  CAPABILITY_CALLS = 7;
+  CAPABILITY_PRESENCE = 8;
+  CAPABILITY_EVENTS = 9;
+  CAPABILITY_AUDIO = 10;
+  CAPABILITY_L10N = 11;
+  CAPABILITY_CANVAS = 12;
+  CAPABILITY_HOTDESK = 13;
+  CAPABILITY_DIAGNOSTICS = 14;
+  CAPABILITY_LAMPS = 15;
+  CAPABILITY_INPUT = 16;
+  CAPABILITY_ALARMS = 17;
+}
+

@@ -2,7 +2,7 @@
 //! set an optional message.
 
 use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{InputMode, PbxPresenceState};
+use dphone_app_sdk::{InputMode, PbxPresenceState, PresenceStatus};
 
 const SK_SELECT: u32 = 1;
 const SK_MESSAGE: u32 = 2;
@@ -43,15 +43,15 @@ fn presence_label(state: PbxPresenceState) -> &'static str {
 }
 
 /// The phone's presence for a state of the PBX's.
-fn presence_token(state: PbxPresenceState) -> &'static str {
+fn phone_presence(state: PbxPresenceState) -> PresenceStatus {
     match state {
-        PbxPresenceState::Available => "available",
-        PbxPresenceState::Chat => "chat",
-        PbxPresenceState::Away => "away",
-        PbxPresenceState::Dnd => "dnd",
-        PbxPresenceState::Xa => "xa",
-        PbxPresenceState::Unavailable => "unavailable",
-        PbxPresenceState::NotSet => "unknown",
+        PbxPresenceState::Available => PresenceStatus::Available,
+        PbxPresenceState::Chat => PresenceStatus::Chat,
+        PbxPresenceState::Away => PresenceStatus::Away,
+        PbxPresenceState::Dnd => PresenceStatus::Dnd,
+        PbxPresenceState::Xa => PresenceStatus::Xa,
+        PbxPresenceState::Unavailable => PresenceStatus::Unavailable,
+        PbxPresenceState::NotSet => PresenceStatus::Unknown,
     }
 }
 
@@ -176,7 +176,7 @@ impl Status {
             match outcome {
                 Ok(_) => {
                     if let Some(c) = self.applying.take() {
-                        let _ = presence::set_status(presence_token(c.state), &self.message);
+                        let _ = presence::set_status(phone_presence(c.state), &self.message);
                         for o in &mut self.options {
                             o.active = o.id == c.id;
                         }
@@ -240,7 +240,7 @@ impl App for Status {
             Event::Softkey(SK_BACK) => self.show_list(),
             Event::Softkey(SK_RETRY) => self.load(),
             Event::Softkey(SK_EXIT) => runtime::background(),
-            Event::Key(k) if k == "cancel" => match self.screen {
+            Event::Key(Key::Cancel) => match self.screen {
                 Screen::Message { .. } => self.show_list(),
                 _ => runtime::background(),
             },
@@ -255,5 +255,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.status",
     display_name: "Status",
     description: "Set your presence status",
-    phone_icon: "status",
+    phone_icon: Some(Icon::AppStatus),
 }

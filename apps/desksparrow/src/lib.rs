@@ -36,12 +36,24 @@ use game::{Game, Pipe, Rules};
 
 /// The keys that start a game and flap: Select and the keypad.  Claimed,
 /// so that a digit does not start a number to dial behind the game.
-const PLAY_KEYS: [&str; 13] = [
-    "select", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "#",
+const PLAY_KEYS: [Key; 13] = [
+    Key::Select,
+    Key::Digit(0),
+    Key::Digit(1),
+    Key::Digit(2),
+    Key::Digit(3),
+    Key::Digit(4),
+    Key::Digit(5),
+    Key::Digit(6),
+    Key::Digit(7),
+    Key::Digit(8),
+    Key::Digit(9),
+    Key::Star,
+    Key::Pound,
 ];
 /// The keys that show the leaderboard between games, and the start screen
 /// or the end of the game again.
-const BOARD_KEYS: [&str; 2] = ["down", "up"];
+const BOARD_KEYS: [Key; 2] = [Key::Down, Key::Up];
 
 /// The file of the best score: a decimal number.
 const BEST_FILE: &str = "best";
@@ -410,11 +422,7 @@ impl Screen {
         let look = Look::new();
         let m = ui::get_metrics();
         ui::clear(ROOT);
-        let keys: Vec<String> = PLAY_KEYS
-            .iter()
-            .chain(&BOARD_KEYS)
-            .map(|k| k.to_string())
-            .collect();
+        let keys: Vec<Key> = PLAY_KEYS.iter().chain(&BOARD_KEYS).copied().collect();
         ui::claim_keys(ROOT, &keys);
         let canvas = canvas::create(ROOT, Rect::new(0, 0, m.width, m.height));
 
@@ -906,8 +914,8 @@ impl App for Sparrow {
             Event::Foreground => self.show(),
             Event::Background | Event::Exit => self.leave(),
             Event::Timer(id) if self.timer == Some(id) => self.tick(),
-            Event::Key(k) if PLAY_KEYS.contains(&k.as_str()) => self.play(),
-            Event::Key(k) if BOARD_KEYS.contains(&k.as_str()) => self.turn(),
+            Event::Key(k) if PLAY_KEYS.contains(&k) => self.play(),
+            Event::Key(k) if BOARD_KEYS.contains(&k) => self.turn(),
             Event::Storage((id, outcome)) if self.asked == Some(id) => {
                 self.asked = None;
                 self.answered(outcome);
@@ -932,5 +940,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.desksparrow",
     display_name: "Desk Sparrow",
     description: "A one-key flying game",
-    phone_icon: "desksparrow",
+    phone_icon: Some(Icon::AppDesksparrow),
 }

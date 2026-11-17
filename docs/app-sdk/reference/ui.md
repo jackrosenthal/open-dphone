@@ -26,7 +26,7 @@ Functions do nothing for a handle that doesn't exist, or for `ROOT` where a widg
 At most one widget in the window has the focus, set by [`set_focus`](#set_focus).  The phone handles each key press, while the window is on screen, by the first step that applies:
 
 1. A notice from the phone takes `select`, `cancel`, and the keys below the display.
-2. Line key 1 takes the app off the screen.  The volume keys, `mute`, `spkr`, and `hdst` go to the phone.
+2. Line key 1 takes the app off the screen.  The volume keys, `Mute`, `Speaker`, and `Headset` go to the phone.
 3. A key below the display triggers the softkey above that key, except in a [full-screen](#set_full_screen) window.
 4. The first claim ([`claim_keys`](#claim_keys)) on the key, checked on the focused widget, then each ancestor, then the window, produces [`Event::Key`](app-events.md#key).
 5. The focused widget handles the key, as under [Widget kinds](#widget-kinds).  If no widget has the focus and the window has exactly one visible `TextList` or `Input`, that widget handles the key.
@@ -192,11 +192,11 @@ pub fn set_items(w: Widget, items: &[ListItem])
 ```
 
 
-Replaces the rows of a `TextList`.  A `ListItem` has the row's `text`, a `detail` right-aligned at the right edge, and an `icon` at the left; `detail` and `icon` may be empty.
+Replaces the rows of a `TextList`.  A `ListItem` has the row's `text`, a `detail` right-aligned at the right edge, and an `icon: Option<Image>` at the left; `detail` may be empty.
 
 - If any item has an icon, the list has an icon column one `row_height` wide.
 - If any item has a detail, the list has a detail column of 40% of the width.
-- `icon` names an image from [`define_image`](#define_image), scaled down to fit a `row_height` square, or else a [built-in icon](#built-in-icons).  An unknown name draws nothing.
+- `Image::Icon(icon)` is a [built-in icon](#built-in-icons).  `Image::Picture(name)` is the image that [`define_image`](#define_image) defined as `name`, scaled down to fit a `row_height` square; a name without an image draws nothing.
 - The selection keeps the row number, or moves to the last row if the list got shorter.  No `WidgetEvent::Highlighted` is sent.
 
 ### `set_selected`
@@ -270,7 +270,7 @@ pub fn define_image(name: &str, png: &[u8]) -> Result<(), Error>
 ```
 
 
-Defines a named image for `set_image` and for list item icons.  `png` is the contents of a PNG file.
+Defines a named image for `Image::Picture(name)`, in `set_image` and in list item icons.  `png` is the contents of a PNG file.
 
 Redefining a name affects later calls; a widget or list that shows the old image keeps the old image until the next `set_image` or `set_items`.  Definitions last for the instance.
 
@@ -283,29 +283,32 @@ The phone decodes the image during the call, so `Ok` means that the image can be
 | `Invalid("an app may define 32 pictures")` | The app already has 32 names, and `name` is a new one. |
 | `Invalid("not a PNG picture the phone can show (at most 1,048,576 pixels)")` | `png` is not the contents of a PNG file, the file is corrupt, or the image has more than 1,048,576 pixels. |
 
-A failed call changes nothing: an image defined earlier under the name remains, and a name without an image still refers to the built-in icon of that name, if any.
+A failed call changes nothing: an image defined earlier under the name remains.
 
 ### `set_image`
 
 ```rust
-pub fn set_image(w: Widget, name: &str)
+pub fn set_image(w: Widget, image: &Image)
 ```
 
+```rust
+pub enum Image { Icon(Icon), Picture(String) }
+```
 
-Sets an `Image` to the image that the app defined as `name`, or else to the built-in icon `name`.  An unknown name shows nothing, and a name that `define_image` would reject is ignored.  One-color built-in icons take the widget's text color.
+Sets an `Image` widget to a [built-in icon](#built-in-icons), or to the image that the app defined as `name` (`Picture(name)`).  A name without an image shows nothing, and a name that `define_image` would reject is ignored.  One-color built-in icons take the widget's text color.
 
 ### `claim_keys`
 
 ```rust
-pub fn claim_keys(w: Widget, keys: &[String])
+pub fn claim_keys(w: Widget, keys: &[Key])
 ```
 
 
-Sets the keys that the widget, or the window for `ROOT`, receives as [`Event::Key`](app-events.md#key) instead of the built-in behavior.  The list replaces the widget's earlier claims; an empty list removes them.  Names are the [key names](app-events.md#key); unrecognized names are dropped.
+Sets the keys ([`Key`](types.md#keys)) that the widget, or the window for `ROOT`, receives as [`Event::Key`](app-events.md#key) instead of the built-in behavior.  The list replaces the widget's earlier claims; an empty list removes them.  A key with a number out of range (`Digit(10)`, `Softkey(5)`, `Line(0)`) is dropped.
 
-A widget's claims apply while the widget or a descendant has the focus; the window's claims always apply.  Claiming `cancel` keeps `cancel` from taking the app off the screen.
+A widget's claims apply while the widget or a descendant has the focus; the window's claims always apply.  Claiming `Cancel` keeps `cancel` from taking the app off the screen.
 
-Line key 1, the volume keys, `mute`, `spkr`, and `hdst` can't be claimed (see [`input::capture`](input.md)).  The four keys below the display can be claimed only in a full-screen window.
+Line key 1, the volume keys, `Mute`, `Speaker`, and `Headset` can't be claimed (see [`input::capture`](input.md)).  The four keys below the display can be claimed only in a full-screen window.
 
 ### `set_full_screen`
 
@@ -316,7 +319,7 @@ pub fn set_full_screen(on: bool)
 
 Expands the app's window to the whole display (`true`), or restores the area above the softkey bar (`false`).
 
-- A full-screen window has no softkey bar.  The four keys below the display do nothing unless claimed as `sk1` to `sk4`.
+- A full-screen window has no softkey bar.  The four keys below the display do nothing unless claimed as `Key::Softkey(1)` to `Key::Softkey(4)`.
 - `get_metrics` reports the new height (272, 160, or 120).  Widgets keep their bounds; lay out the screen again.
 - An unclaimed `cancel` and line key 1 still take the app off the screen.  Calls and notices from the phone cover a full-screen window like any other.
 
@@ -331,8 +334,8 @@ Sets the softkeys of a widget, or of the window for `ROOT`.  [`Event::Softkey`](
 
 ## Built-in icons
 
-`set_image` and list items accept these names.  One-color icons, which take the text color:
+The variants of `Icon`, by their names in the interface (`phone-in` is `Icon::PhoneIn`).  One-color icons, which take the text color:
 
 `alarm`, `apps`, `backspace`, `brightness`, `calllog`, `clock`, `conference`, `contacts`, `desk`, `dnd`, `down`, `error`, `forward`, `handset`, `headset`, `hold`, `info`, `left`, `lock`, `more`, `mute`, `net-down`, `network`, `ok`, `page`, `park`, `phone`, `phone-in`, `phone-missed`, `phone-out`, `phone-unregistered`, `presence`, `registered`, `right`, `ring`, `settings`, `speaker`, `transfer`, `unregistered`, `up`, `update`, `voicemail`, and `warning`.
 
-App icons, in color on the color models: `app-alarms`, `app-app`, `app-boxpusher`, `app-calendar`, `app-calllog`, `app-contacts`, `app-desksparrow`, `app-diagnostics`, `app-forward`, `app-hotdesking`, `app-info`, `app-lightup`, `app-network`, `app-paging`, `app-parking`, `app-queues`, `app-settings`, `app-status`, `app-update`, and `app-voicemail`.
+App icons, in color on the color models (`app-contacts` is `Icon::AppContacts`): `app-alarms`, `app-app`, `app-boxpusher`, `app-calendar`, `app-calllog`, `app-contacts`, `app-desksparrow`, `app-diagnostics`, `app-forward`, `app-hotdesking`, `app-info`, `app-lightup`, `app-network`, `app-paging`, `app-parking`, `app-queues`, `app-settings`, `app-status`, `app-update`, and `app-voicemail`.

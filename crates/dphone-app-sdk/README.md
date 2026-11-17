@@ -81,8 +81,8 @@ The manifest is what the phone has to know about an app before it runs it.  It i
 | `has_idle` | `true` if the app has a window on the idle screen (`ui::idle_root`).  Such an app starts with the phone, and keeps running when it leaves the screen, whatever its `kind`. |
 | `hidden` | `true` marks the app as hidden. |
 | `icon` | The app's icon: the content of a PNG file, `include_bytes!("hello.png")`.  At most 256 KiB. |
-| `icon_for` | Icons for particular models of phone, each as `icon` is: `&[("D60", include_bytes!("color.png"))]`.  A phone shows its model's icon if there is one, else `icon`.  The models are D40, D45, D50, D60, D62, D65, and D70. |
-| `phone_icon` | The name of one of the phone's icons, for an app without an icon. |
+| `icon_for` | Icons for particular models of phone, each as `icon` is: `&[(PhoneModel::D60, include_bytes!("color.png"))]`.  A phone shows its model's icon if there is one, else `icon`. |
+| `phone_icon` | One of the phone's icons, for an app without an icon: `Some(Icon::AppCalendar)`. |
 | `memory_kib` | The most memory the app may have, in KiB.  The default is 4 MiB, and the phone gives no app more than 16 MiB. |
 
 A manifest with everything:
@@ -98,8 +98,8 @@ dphone_app_sdk::export_app! {
     has_idle: true,
     icon: include_bytes!("weather.png"),
     icon_for: &[
-        ("D60", include_bytes!("weather-color.png")),
-        ("D65", include_bytes!("weather-color.png")),
+        (PhoneModel::D60, include_bytes!("weather-color.png")),
+        (PhoneModel::D65, include_bytes!("weather-color.png")),
     ],
     memory_kib: 8192,
 }
@@ -111,7 +111,7 @@ The manifest travels in the app's file: `export_app!` writes it, when the app is
 
 An app's data (pictures, sounds, tables) is in its code: `include_bytes!` and `include_str!`, as in any Rust program.  The phone unpacks nothing.
 
-- A picture: `ui::define_image("logo", include_bytes!("logo.png"))` gives a PNG a name, once; `ui::set_image` and the `icon` of a list item then take that name.  A name the app did not define is one of the phone's icons.  At most 512 KiB and 1,048,576 pixels a picture, and 32 pictures; `define_image` returns an error for content the phone cannot show.  An app that wants another picture on another model of phone chooses by `ui::get_metrics()`.
+- A picture: `ui::define_image("logo", include_bytes!("logo.png"))` gives a PNG a name, once; `ui::set_image` and the `icon` of a list item then take `Image::Picture("logo".into())`.  `Image::Icon(...)` is one of the phone's icons.  At most 512 KiB and 1,048,576 pixels a picture, and 32 pictures; `define_image` returns an error for content the phone cannot show.  An app that wants another picture on another model of phone chooses by `ui::get_metrics()`.
 - A sound: `audio::play(include_bytes!("tone.wav"), 0)`.
 - The data counts toward the app's memory (`memory_kib`), since it is part of the program.
 

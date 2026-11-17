@@ -4,7 +4,7 @@
 
 use dphone_app_sdk::prelude::*;
 use dphone_app_sdk::xml;
-use dphone_app_sdk::{InputMode, Presence};
+use dphone_app_sdk::{InputMode, LineState, Presence, PresenceStatus};
 
 const SK_DIAL: u32 = 1;
 const SK_DETAILS: u32 = 2;
@@ -121,14 +121,16 @@ fn load_groups() -> Vec<Group> {
 }
 
 fn presence_text(p: &Presence) -> &'static str {
-    match (p.line_state.as_str(), p.status.as_str()) {
-        ("ringing", _) => "Ringing",
-        ("busy", _) => "On call",
-        ("hold", _) => "On hold",
-        (_, "dnd") => "DND",
-        (_, "away") | (_, "xa") => "Away",
-        (_, "unavailable") | ("unavailable", _) => "Offline",
-        (_, "available") | (_, "chat") | ("idle", _) => "Available",
+    use LineState as L;
+    use PresenceStatus as S;
+    match (p.line_state, p.status) {
+        (L::Ringing, _) => "Ringing",
+        (L::Busy, _) => "On call",
+        (L::Hold, _) => "On hold",
+        (_, S::Dnd) => "DND",
+        (_, S::Away | S::Xa) => "Away",
+        (_, S::Unavailable) | (L::Unavailable, _) => "Offline",
+        (_, S::Available | S::Chat) | (L::Idle, _) => "Available",
         _ => "",
     }
 }
@@ -478,7 +480,7 @@ impl App for Contacts {
             Event::Softkey(SK_GROUPS) => self.show_groups(),
             Event::Softkey(SK_BACK) => self.back(),
             Event::Softkey(SK_EXIT) => runtime::background(),
-            Event::Key(k) if k == "cancel" => self.back(),
+            Event::Key(Key::Cancel) => self.back(),
             _ => {}
         }
     }
@@ -490,5 +492,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.contacts",
     display_name: "Contacts",
     description: "Browse, search, and call your contacts",
-    phone_icon: "contacts",
+    phone_icon: Some(Icon::AppContacts),
 }

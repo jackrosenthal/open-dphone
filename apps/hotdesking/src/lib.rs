@@ -127,7 +127,7 @@ impl App for HotDesk {
             Event::HotdeskDone(result) => self.done(result),
             Event::Softkey(SK_NO | SK_BACK) => self.show(),
             Event::Softkey(SK_EXIT) => runtime::background(),
-            Event::Key(k) if k == "cancel" => match self.screen {
+            Event::Key(Key::Cancel) => match self.screen {
                 Screen::Confirm | Screen::Failed => self.show(),
                 _ => runtime::background(),
             },
@@ -142,5 +142,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.hotdesking",
     display_name: "Hot Desking",
     description: "Log in to or out of this phone",
-    phone_icon: "hotdesking",
+    phone_icon: Some(Icon::AppHotdesking),
 }

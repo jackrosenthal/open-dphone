@@ -305,8 +305,8 @@ impl Alarms {
                 ui::set_align(hint, Align::Center);
                 ui::set_text(hint, "Type the hour and the minutes.");
                 // The dialog takes the keys that type the time.
-                let mut claims = vec!["cancel".to_string(), "select".to_string(), "left".to_string()];
-                claims.extend("0123456789".chars().map(String::from));
+                let mut claims = vec![Key::Cancel, Key::Select, Key::Left];
+                claims.extend((0..=9).map(Key::Digit));
                 ui::claim_keys(group, &claims);
                 ui::set_focus(group);
                 let mut softkeys = vec![Softkey::new(SK_OK, "OK")];
@@ -347,7 +347,7 @@ impl Alarms {
         let marked = |text: String, on: bool| ListItem {
             text,
             detail: String::new(),
-            icon: if on { "ok".into() } else { String::new() },
+            icon: on.then_some(Image::Icon(Icon::Ok)),
         };
         let items: Vec<ListItem> = match self.dialog {
             Some(Dialog::Days) => DAY_NAMES
@@ -428,20 +428,18 @@ impl Alarms {
         }
     }
 
-    fn key(&mut self, key: &str) {
+    fn key(&mut self, key: Key) {
         let typing = self.dialog == Some(Dialog::Time);
         match key {
-            "cancel" => self.back(),
-            "select" => self.activate(),
-            "left" if typing => {
+            Key::Cancel => self.back(),
+            Key::Select => self.activate(),
+            Key::Left if typing => {
                 self.typed.erase();
                 self.draw_time();
             }
-            digit if typing => {
-                if let Some(d) = digit.chars().next().and_then(|c| c.to_digit(10)) {
-                    self.typed.push(d as u8);
-                    self.draw_time();
-                }
+            Key::Digit(d) if typing => {
+                self.typed.push(d);
+                self.draw_time();
             }
             _ => {}
         }
@@ -534,7 +532,7 @@ impl App for Alarms {
                 self.activate();
             }
             Event::Softkey(id) => self.softkey(id),
-            Event::Key(k) => self.key(&k),
+            Event::Key(k) => self.key(k),
             _ => {}
         }
     }
@@ -546,5 +544,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.alarms",
     display_name: "Alarms",
     description: "Set the alarm clock",
-    phone_icon: "alarms",
+    phone_icon: Some(Icon::AppAlarms),
 }

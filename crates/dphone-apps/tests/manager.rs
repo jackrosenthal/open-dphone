@@ -427,7 +427,7 @@ fn an_apps_pictures_reach_the_window_and_the_launcher() {
     assert_eq!(&probe.icon_png.0[..], &pic[..]);
     // A built-in's icon is one of the phone's own, by name.
     let contacts = apps.installed.iter().find(|a| a.name == "contacts").unwrap();
-    assert_eq!(contacts.icon, "contacts");
+    assert_eq!(contacts.icon, "app-contacts");
     assert!(contacts.icon_png.is_empty());
     // Nothing of an app's is unpacked: its directory holds the phone's
     // record of it and its code.
@@ -443,8 +443,8 @@ fn an_apps_pictures_reach_the_window_and_the_launcher() {
     r.softkey("probe", "Pics");
     assert_eq!(r.ui.texts("probe"), ["pics=Ok(())"]);
     // The app defined the picture once, from its own data; an image widget
-    // and a list row both name it, and the name the app did not define
-    // stays an icon of the phone.
+    // and a list row both name it, and the other row has an icon of the
+    // phone.
     assert_eq!(r.ui.images("probe"), [("pic.png".to_string(), pic.len())]);
     assert_eq!(r.ui.image_names("probe"), ["pic.png"]);
 }

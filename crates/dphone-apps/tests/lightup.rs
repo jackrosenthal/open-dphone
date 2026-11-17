@@ -1143,7 +1143,7 @@ fn it_is_a_built_in_app_that_can_be_switched_off() {
         .expect("listed");
     assert_eq!(
         (entry.display_name.as_str(), entry.icon.as_str()),
-        ("Light Up", "lightup")
+        ("Light Up", "app-lightup")
     );
     assert!(entry.builtin);
     r.launch(APP);

@@ -288,7 +288,7 @@ impl App for Queues {
             Event::Softkey(SK_DETAILS | SK_REFRESH) => self.show_details(),
             Event::Softkey(SK_BACK) => self.draw_list(),
             Event::Softkey(SK_EXIT) => runtime::background(),
-            Event::Key(k) if k == "cancel" => match self.screen {
+            Event::Key(Key::Cancel) => match self.screen {
                 Screen::Details | Screen::Reason(_) => self.draw_list(),
                 _ => runtime::background(),
             },
@@ -303,5 +303,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.queues",
     display_name: "Queues",
     description: "Log in to call queues and see how they are doing",
-    phone_icon: "queues",
+    phone_icon: Some(Icon::AppQueues),
 }

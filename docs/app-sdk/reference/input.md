@@ -8,7 +8,7 @@ pub fn capture(on: bool)
 
 Turns key capture on or off.  While capture is on and the app's window is the top screen:
 
-- Every key press arrives as [`Event::Key`](app-events.md#key), including the keys that a window otherwise never receives (line key 1, the volume keys, `mute`, `spkr`, and `hdst`), the four keys below the display, and the keys that a widget would handle.
+- Every key press arrives as [`Event::Key`](app-events.md#key), including the keys that a window otherwise never receives (line key 1, the volume keys, `Mute`, `Speaker`, and `Headset`), the four keys below the display, and the keys that a widget would handle.
 - Every hookswitch change arrives as [`Event::Hook`](app-events.md#hook).
 - The phone does nothing else with these keys: no volume change, softkeys, widget handling, key claims, or dial tone when the handset is lifted.
 

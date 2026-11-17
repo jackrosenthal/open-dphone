@@ -179,10 +179,10 @@ fn a_message_for_an_app_that_does_not_run_fails() {
 #[test]
 fn the_lamps_are_those_the_model_has() {
     let mut r = rig();
-    assert_eq!(ask(&mut r, "lamps", ""), "line1,line2,message,mute,hdst,spkr");
+    assert_eq!(ask(&mut r, "lamps", ""), "line1,line2,message,mute,headset,speaker");
     let mut r = Rig::with_root(staged(), FakeConfig::default(), Model::D65);
     r.launch("checks");
-    assert_eq!(ask(&mut r, "lamps", ""), "line1,line2,line3,line4,line5,line6,message,mute,hdst,spkr");
+    assert_eq!(ask(&mut r, "lamps", ""), "line1,line2,line3,line4,line5,line6,message,mute,headset,speaker");
 }
 
 #[test]

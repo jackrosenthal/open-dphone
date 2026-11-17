@@ -379,7 +379,17 @@ impl BoxPusher {
         ui::clear(ROOT);
         ui::claim_keys(
             ROOT,
-            &["up", "down", "left", "right", "2", "4", "6", "8", "cancel"].map(String::from),
+            &[
+                Key::Up,
+                Key::Down,
+                Key::Left,
+                Key::Right,
+                Key::Digit(2),
+                Key::Digit(4),
+                Key::Digit(6),
+                Key::Digit(8),
+                Key::Cancel,
+            ],
         );
         let m = ui::get_metrics();
         let number = self.level + 1;
@@ -471,7 +481,7 @@ impl BoxPusher {
                 line,
             );
         }
-        ui::claim_keys(ROOT, &["select", "cancel"].map(String::from));
+        ui::claim_keys(ROOT, &[Key::Select, Key::Cancel]);
         let mut keys = vec![
             Softkey::new(SK_AGAIN, "Again"),
             Softkey::new(SK_LEVELS, "Levels"),
@@ -586,14 +596,14 @@ impl App for BoxPusher {
                     self.update(true);
                 }
             }
-            Event::Key(key) => match (key.as_str(), &self.screen) {
-                ("up" | "2", Screen::Play) => self.step(Dir::Up),
-                ("down" | "8", Screen::Play) => self.step(Dir::Down),
-                ("left" | "4", Screen::Play) => self.step(Dir::Left),
-                ("right" | "6", Screen::Play) => self.step(Dir::Right),
-                ("select", Screen::Solved) => self.play(self.level),
-                ("cancel", Screen::Levels) => self.back(),
-                ("cancel", _) => self.leave(),
+            Event::Key(key) => match (key, &self.screen) {
+                (Key::Up | Key::Digit(2), Screen::Play) => self.step(Dir::Up),
+                (Key::Down | Key::Digit(8), Screen::Play) => self.step(Dir::Down),
+                (Key::Left | Key::Digit(4), Screen::Play) => self.step(Dir::Left),
+                (Key::Right | Key::Digit(6), Screen::Play) => self.step(Dir::Right),
+                (Key::Select, Screen::Solved) => self.play(self.level),
+                (Key::Cancel, Screen::Levels) => self.back(),
+                (Key::Cancel, _) => self.leave(),
                 _ => {}
             },
             _ => {}
@@ -607,5 +617,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.boxpusher",
     display_name: "Box Pusher",
     description: "Push every box onto a target",
-    phone_icon: "boxpusher",
+    phone_icon: Some(Icon::AppBoxpusher),
 }

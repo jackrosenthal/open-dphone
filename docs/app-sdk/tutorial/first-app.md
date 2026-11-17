@@ -62,7 +62,7 @@ impl App for FreshPot {
 
     fn handle(&mut self, event: Event) {
         match event {
-            Event::Key(key) if key == "cancel" => runtime::exit(),
+            Event::Key(Key::Cancel) => runtime::exit(),
             _ => {}
         }
     }
@@ -79,7 +79,7 @@ dphone_app_sdk::export_app! {
 - `FreshPot` holds the app's state.  At startup, the phone creates the value with `Default::default()`.
 - The phone calls `start` once, then `handle` for each event.
 - [`screen`](../reference/helpers.md#screen) clears the window, draws a title, claims the cancel key (✕), and returns the rectangle below the title.  [`ui::create`](../reference/ui.md#create) makes a `Text` widget in that rectangle, a child of the window (`ROOT`).
-- A cancel key press arrives as `Event::Key("cancel")`.  [`runtime::exit`](../reference/runtime.md#exit) stops the app and removes the window.
+- A cancel key press arrives as `Event::Key(Key::Cancel)`.  [`runtime::exit`](../reference/runtime.md#exit) stops the app and removes the window.
 - `export_app!` registers the type and embeds the manifest in the app file.  Installing an app replaces the installed app with the same `name`, and the phone rejects the `name` of a built-in app.  The Applications menu shows `display_name`, and the web interface shows `description`.  The [manifest reference](../reference/manifest.md) lists the other fields.
 
 ## Build

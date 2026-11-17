@@ -4,30 +4,31 @@ An app's lamp colors show only while the app's window is the top screen.  During
 
 ```rust
 pub enum Color { Off, Red, Green, Amber }
+pub enum Lamp { Line(u8), Blf(u8), Message, Mute, Headset, Speaker }
 ```
 
-## `names`
+## `list`
 
 ```rust
-pub fn names() -> Vec<String>
+pub fn list() -> Vec<Lamp>
 ```
 
 The lamps of this model, in this order:
 
-| Names | Lamps |
+| `Lamp` | Lamps |
 | --- | --- |
-| `line1`, `line2`, ... | The line key lamps, top to bottom: 2 on the D40, D45, D60, and D62; 4 on the D50; and 6 on the D65 and D70. |
-| `blf1` to `blf10` | The rapid-dial key lamps, top to bottom, on the D50 and D70. |
-| `message` | The message-waiting lamp. |
-| `mute`, `hdst`, `spkr` | The lamps on the mute, headset, and speaker keys. |
+| `Line(1)`, `Line(2)`, ... | The line key lamps, top to bottom: 2 on the D40, D45, D60, and D62; 4 on the D50; and 6 on the D65 and D70. |
+| `Blf(1)` to `Blf(10)` | The rapid-dial key lamps, top to bottom, on the D50 and D70. |
+| `Message` | The message-waiting lamp. |
+| `Mute`, `Headset`, `Speaker` | The lamps on the mute, headset, and speaker keys. |
 
 ## `set`
 
 ```rust
-pub fn set(lamp: &str, color: Color)
+pub fn set(lamp: Lamp, color: Color)
 ```
 
-Shows a steady color on a lamp, overriding the phone's normal indication.  `Color::Off` keeps the lamp dark.  A name that `names` doesn't list, and a color that the lamp can't show, are ignored.
+Shows a steady color on a lamp, overriding the phone's normal indication.  `Color::Off` keeps the lamp dark.  A lamp that `list` doesn't list, and a color that the lamp can't show, are ignored.
 
 ## `release`
 

@@ -204,7 +204,7 @@ impl Rig {
                     id: format!("org.opendphone.{name}"),
                     display_name: display.into(),
                     builtin: true,
-                    icon: name.into(),
+                    icon: format!("app-{name}"),
                     ..Default::default()
                 });
             }

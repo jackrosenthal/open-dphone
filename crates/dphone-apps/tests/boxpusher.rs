@@ -295,7 +295,7 @@ fn it_is_a_built_in_app_that_can_be_switched_off() {
     let mut r = Rig::new(config);
     let listed = r.store.get::<dphone_state::Apps>();
     let entry = listed.installed.iter().find(|a| a.name == APP).expect("listed");
-    assert_eq!((entry.display_name.as_str(), entry.icon.as_str()), ("Box Pusher", "boxpusher"));
+    assert_eq!((entry.display_name.as_str(), entry.icon.as_str()), ("Box Pusher", "app-boxpusher"));
     assert!(entry.builtin);
     r.launch(APP);
     *disabled.lock().unwrap() = vec![APP.into()];

@@ -642,8 +642,12 @@ impl AppWindow for FakeWindow {
     fn set_max_length(&mut self, w: u32, max: u32) {
         self.node(w, |n| n.max_len = max)
     }
-    fn set_image(&mut self, w: u32, name: &str) {
-        self.node(w, |n| n.image = name.to_string())
+    fn set_image(&mut self, w: u32, image: &Image) {
+        let name = match image {
+            Image::Icon(icon) => icon_name(*icon).to_string(),
+            Image::Picture(name) => name.clone(),
+        };
+        self.node(w, |n| n.image = name)
     }
     fn define_image(&mut self, name: &str, file: &[u8]) -> bool {
         if !file.starts_with(b"\x89PNG") {

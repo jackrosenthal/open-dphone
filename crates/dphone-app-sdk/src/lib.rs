@@ -35,6 +35,7 @@ pub mod bindings {
         world: "app",
         pub_export_macro: true,
         default_bindings_module: "dphone_app_sdk::bindings",
+        additional_derives: [PartialEq],
         generate_all,
     });
 }
@@ -44,12 +45,13 @@ pub mod nav;
 pub mod xml;
 
 pub use bindings::dphone::app::types::{
-    AccountInfo, Align, CallInfo, CallQueue, CallState, Error, Event, Font, Header, HttpResponse,
-    InputMode, ListItem, Metrics, Mwi, ParkedCall, ParkingLot, PbxError, PbxPresence,
-    PbxPresenceOption, PbxPresenceState, PbxResult, PbxServerError, PbxUser, Presence, Push,
-    QueueCaller, QueueMember, QueueMembership, QueueStatus, Rect, Size, Skin, Softkey,
-    StorageChange, StorageEntry, StorageLocation, StorageOutcome, StorageReply, VoicemailFolder,
-    VoicemailMessage, VoicemailPage, VoicemailSort, WidgetEvent, WidgetKind,
+    AccountInfo, Align, CallInfo, CallQueue, CallState, Error, Event, ExpansionKey, Font, Header,
+    HttpResponse, Icon, Image, InputMode, Key, LineState, ListItem, Metrics, Mwi,
+    ParkedCall, ParkingLot, PbxError, PbxPresence, PbxPresenceOption, PbxPresenceState, PbxResult,
+    PbxServerError, PbxUser, PhoneModel, Presence, PresenceStatus, Push, PushMethod, QueueCaller, QueueMember,
+    QueueMembership, QueueStatus, Rect, Size, Skin, Softkey, StorageChange, StorageEntry,
+    StorageLocation, StorageOutcome, StorageReply, VoicemailFolder, VoicemailMessage,
+    VoicemailPage, VoicemailSort, WidgetEvent, WidgetKind,
 };
 pub use bindings::dphone::app::l10n::TimeStyle;
 pub use bindings::dphone::app::{
@@ -86,14 +88,14 @@ impl ListItem {
         ListItem {
             text: text.into(),
             detail: String::new(),
-            icon: String::new(),
+            icon: None,
         }
     }
     pub fn with_detail(text: impl Into<String>, detail: impl Into<String>) -> ListItem {
         ListItem {
             text: text.into(),
             detail: detail.into(),
-            icon: String::new(),
+            icon: None,
         }
     }
 }
@@ -153,7 +155,7 @@ pub fn row_height() -> u16 {
 /// [`Event::Key`] and decides between "back" and leaving.
 pub fn screen(title: &str) -> Rect {
     ui::clear(ROOT);
-    ui::claim_keys(ROOT, &["cancel".to_string()]);
+    ui::claim_keys(ROOT, &[Key::Cancel]);
     let m = ui::get_metrics();
     let t = ui::create(
         WidgetKind::Text,
@@ -182,10 +184,10 @@ pub mod prelude {
     pub use crate::manifest::AppKind;
     pub use crate::nav::{Form, Message};
     pub use crate::{
-        App, Event, ListItem, PbxError, PbxResult, ROOT, Rect, Skin, Softkey, StorageEntry,
-        StorageLocation, StorageOutcome, StorageReply, TimeStyle, Widget, WidgetEvent, WidgetKind,
-        audio, calls, config, content_rect, events, http, l10n, pbx, presence, row_height, runtime,
-        screen, storage, timers, ui,
+        App, Event, Icon, Image, Key, ListItem, PbxError, PbxResult, ROOT, Rect, Skin, Softkey,
+        StorageEntry, StorageLocation, StorageOutcome, StorageReply, TimeStyle, Widget,
+        WidgetEvent, WidgetKind, audio, calls, config, content_rect, events, http, l10n, pbx,
+        presence, row_height, runtime, screen, storage, timers, ui,
     };
 }
 

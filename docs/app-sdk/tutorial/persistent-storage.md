@@ -191,7 +191,7 @@ Save on each change, not on exit: the phone sends `Event::Exit` before an orderl
                     self.save();
                 }
                 Event::Softkey(SK_EXIT) => return runtime::exit(),
-                Event::Key(key) if key == "cancel" => return runtime::exit(),
+                Event::Key(Key::Cancel) => return runtime::exit(),
                 Event::Timer(_) => {}
                 _ => return,
             }

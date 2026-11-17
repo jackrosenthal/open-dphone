@@ -251,7 +251,7 @@ impl Voicemail {
             m.duration % 60
         );
         Message::show("Playing", &text, &[Softkey::new(SK_STOP, "Stop")]);
-        ui::claim_keys(ROOT, &["cancel", "*", "#", "0"].map(String::from));
+        ui::claim_keys(ROOT, &[Key::Cancel, Key::Star, Key::Pound, Key::Digit(0)]);
         self.current = Some(m);
         self.screen = Screen::Playing;
     }
@@ -402,18 +402,24 @@ impl App for Voicemail {
                     self.load_list();
                 }
             }
-            Event::Key(k) => match (k.as_str(), &self.screen) {
-                ("*" | "#" | "0", Screen::Playing) => {
+            Event::Key(k) => match (k, &self.screen) {
+                // Rewind, skip, and pause.
+                (Key::Star | Key::Pound | Key::Digit(0), Screen::Playing) => {
+                    let digit = match k {
+                        Key::Star => "*",
+                        Key::Pound => "#",
+                        _ => "0",
+                    };
                     if let Some(call) = self.call {
-                        let _ = calls::send_dtmf(call, &k);
+                        let _ = calls::send_dtmf(call, digit);
                     }
                 }
-                ("cancel", Screen::Playing) => self.stop_playing(),
-                ("cancel", Screen::Folders | Screen::MoveTo | Screen::ConfirmDelete) => {
+                (Key::Cancel, Screen::Playing) => self.stop_playing(),
+                (Key::Cancel, Screen::Folders | Screen::MoveTo | Screen::ConfirmDelete) => {
                     self.current = None;
                     self.draw_list()
                 }
-                ("cancel", _) => runtime::background(),
+                (Key::Cancel, _) => runtime::background(),
                 _ => {}
             },
             Event::Widget((_, WidgetEvent::Highlighted(_))) => {
@@ -497,5 +503,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.voicemail",
     display_name: "Voicemail",
     description: "Listen to and manage voicemail messages",
-    phone_icon: "voicemail",
+    phone_icon: Some(Icon::AppVoicemail),
 }

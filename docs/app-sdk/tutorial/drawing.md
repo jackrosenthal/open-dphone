@@ -350,7 +350,7 @@ Event::Timer(_) | Event::Foreground => {}
                     self.save();
                 }
                 Event::Softkey(SK_EXIT) => return runtime::exit(),
-                Event::Key(key) if key == "cancel" => return runtime::exit(),
+                Event::Key(Key::Cancel) => return runtime::exit(),
                 // On a timer tick, or when the window returns to the screen
                 // (possibly with a new theme's colors), fall through and redraw.
                 Event::Timer(_) | Event::Foreground => {}

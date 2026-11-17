@@ -68,7 +68,8 @@ pub enum Align { Left, Center, Right }
 pub enum Font { Small, Normal, Large, Bold, Title }
 pub enum InputMode { Text, Numeric, Dial, Password, Pin }
 
-pub struct ListItem { pub text: String, pub detail: String, pub icon: String }
+pub struct ListItem { pub text: String, pub detail: String, pub icon: Option<Image> }
+pub enum Image { Icon(Icon), Picture(String) }
 pub struct Softkey { pub id: u32, pub label: String }
 
 pub enum WidgetEvent {
@@ -88,6 +89,60 @@ impl Softkey {
 ```
 
 See [`ui`](ui.md).
+
+## Keys
+
+```rust
+pub enum Key {
+    Digit(u8),
+    Star,
+    Pound,
+    Up,
+    Down,
+    Left,
+    Right,
+    Select,
+    Cancel,
+    VolumeUp,
+    VolumeDown,
+    Softkey(u8),
+    Line(u8),
+    Blf(u8),
+    Mute,
+    Speaker,
+    Headset,
+    Hold,
+    Transfer,
+    Redial,
+    Messages,
+    Conference,
+    Info,
+    BlfPageLeft,
+    BlfPageRight,
+    Status,
+    Contacts,
+    Apps,
+    Menu,
+    Expansion(ExpansionKey),
+    Other(u16),
+}
+
+pub struct ExpansionKey { pub module: u8, pub key: u8 }
+```
+
+| Variant | Key |
+| --- | --- |
+| `Digit(0)` to `Digit(9)`, `Star`, `Pound` | The dial pad. |
+| `Select`, `Cancel` | The check-mark key and the X key. |
+| `Softkey(1)` to `Softkey(4)` | The four keys below the display, left to right. |
+| `Line(1)` to `Line(6)` | The line keys, top to bottom. |
+| `Blf(1)` to `Blf(10)` | The rapid-dial keys, top to bottom. |
+| `Messages` | Voicemail (`Msgs`). |
+| `BlfPageLeft`, `BlfPageRight` | The page keys of the rapid-dial keys. |
+| `Expansion(ExpansionKey { module, key })` | A key of an expansion module, both from 0. |
+| `Other(code)` | A key without a function of its own, by key code. |
+
+No model has every key.
 
 ## `Error`
 
@@ -302,29 +357,34 @@ pub struct Mwi { pub account: u8, pub new_messages: u32, pub old_messages: u32 }
 ## Presence
 
 ```rust
+pub enum PresenceStatus { Available, Chat, Away, Dnd, Xa, Unavailable, Unknown }
+pub enum LineState { Idle, Ringing, Busy, Hold, HoldRinging, Unavailable, Unknown }
+
 pub struct Presence {
     pub target: String,
-    pub status: String,
+    pub status: PresenceStatus,
     pub text: String,
-    pub line_state: String,
+    pub line_state: LineState,
 }
 ```
 
 | Field | Contents |
 | --- | --- |
 | `target` | The target string that the app passed. |
-| `status` | `available`, `chat`, `away`, `dnd`, `xa` (extended away), `unavailable`, or `unknown`. |
+| `status` | `Xa` is extended away. |
 | `text` | The status message; may be empty. |
-| `line_state` | The contact's line: `idle`, `ringing`, `busy`, `hold`, `hold-ringing` (one call held and another ringing), `unavailable` (no device registered), or `unknown`. |
+| `line_state` | The contact's line.  `HoldRinging`: one call held and another ringing.  `Unavailable`: no device registered. |
 
 ## `Push`
 
 ```rust
+pub enum PushMethod { Message, Invite, Info }
+
 pub struct Push {
     pub name: String,
     pub kind: String,
     pub data: String,
-    pub method: String,
+    pub method: PushMethod,
     pub call: Option<u32>,
 }
 ```

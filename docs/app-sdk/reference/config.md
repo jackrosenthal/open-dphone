@@ -39,22 +39,22 @@ One value of the app's configuration, by the first rule that applies:
 ## `setting`
 
 ```rust
-pub fn setting(id: &str) -> Option<String>
+pub fn setting(id: PhoneSetting) -> Option<String>
 ```
 
-One of the phone's settings, exactly as written in the configuration.  Only these identifiers are available; others, and settings that the configuration doesn't set, return `None`.
+One of the phone's settings, exactly as written in the configuration; `None` if the configuration doesn't set the setting.
 
-| `id` | Setting in the phone's configuration |
+| `PhoneSetting` | Setting in the phone's configuration |
 | --- | --- |
-| `locale` | `locale` |
-| `timezone` | `time_zone` |
-| `time_format` | `time_short_format` |
-| `date_format` | `date_short_format` |
-| `contacts_max_subscriptions` | `contacts_max_subscriptions` |
-| `blf_contact_group` | `blf_contact_group` |
-| `default_ringtone` | `default_ringtone` |
-| `name_format` | `name_format` |
-| `brightness` | `brightness` |
+| `Locale` | `locale` |
+| `TimeZone` | `time_zone` |
+| `TimeFormat` | `time_short_format` |
+| `DateFormat` | `date_short_format` |
+| `ContactsMaxSubscriptions` | `contacts_max_subscriptions` |
+| `BlfContactGroup` | `blf_contact_group` |
+| `DefaultRingtone` | `default_ringtone` |
+| `NameFormat` | `name_format` |
+| `Brightness` | `brightness` |
 
 ## `accounts`
 
@@ -67,10 +67,12 @@ The phone's SIP accounts ([`AccountInfo`](types.md#calls)).
 ## `model`
 
 ```rust
-pub fn model() -> String
+pub fn model() -> PhoneModel
 ```
 
-`D40`, `D45`, `D50`, `D60`, `D62`, `D65`, or `D70`.
+```rust
+pub enum PhoneModel { D40, D45, D50, D60, D62, D65, D70 }
+```
 
 ## `firmware_version`
 

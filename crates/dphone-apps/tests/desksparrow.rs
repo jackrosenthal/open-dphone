@@ -662,8 +662,8 @@ impl AppWindow for WatchedWindow {
     fn set_max_length(&mut self, w: u32, max: u32) {
         self.inner.set_max_length(w, max)
     }
-    fn set_image(&mut self, w: u32, name: &str) {
-        self.inner.set_image(w, name)
+    fn set_image(&mut self, w: u32, image: &dphone_apps::view::Image) {
+        self.inner.set_image(w, image)
     }
     fn set_full_screen(&mut self, on: bool) {
         self.inner.set_full_screen(on)

@@ -166,7 +166,7 @@ impl App for Parking {
             }
             Event::Softkey(SK_REFRESH) => self.refresh(),
             Event::Softkey(SK_EXIT) => runtime::background(),
-            Event::Key(k) if k == "cancel" => runtime::background(),
+            Event::Key(Key::Cancel) => runtime::background(),
             _ => {}
         }
     }
@@ -178,5 +178,5 @@ dphone_app_sdk::export_app! {
     id: "org.opendphone.parking",
     display_name: "Parking",
     description: "See and retrieve parked calls",
-    phone_icon: "parking",
+    phone_icon: Some(Icon::AppParking),
 }
