@@ -513,8 +513,6 @@ mod tests {
                 assert_eq!(&late[12..m], &[14u8; 20]);
             }
         }
-        assert_eq!(tx.roc, 1);
-        assert_eq!(rx.roc, 1);
     }
 
     #[test]

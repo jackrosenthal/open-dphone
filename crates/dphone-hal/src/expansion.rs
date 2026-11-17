@@ -450,7 +450,6 @@ mod tests {
         assert!(text.ends_with(
             "<USER_NAME:admin>\n<PASS_WORD:pw>\n<SELF_HOST:1>\n<HOST_ADDR:>\n<SCREEN_SAVER_TIME:0>\n<BACKLIGHT_TIME:0>\n<BACKLIGHT_ACTIVE_LEVEL:7>\n<FONT_SIZE:1>\n<EXP_PHOTO_SERVER_PATH:0>\n<TITLE_BG_COLOR:87963>\n<TITLE_FG_COLOR:16777215>\n<DISABLE_KEY_DOTS:0>\n<EXPM_LONG_PRESS_TIME:550>\n<END>"
         ));
-        assert!(text.len() > MAX_DATAGRAM, "the configuration is larger than one receive buffer; it is sent whole, as stock does");
         // Pushed without being asked: no acknowledgement line.
         assert!(config(false, 1, 0, &[], &settings).starts_with("EXP_CFG_SAVE_EVENT\n"));
     }

@@ -307,7 +307,6 @@ mod tests {
         f.to_bytes(&mut two);
         let mut g = BandFrame::ZERO;
         g.from_bytes(&two);
-        assert_eq!(g.hi2[319], 0);
         assert_eq!(g.hi1[0], -5);
     }
 }

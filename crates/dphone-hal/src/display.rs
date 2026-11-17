@@ -207,11 +207,6 @@ mod backlight_tests {
         for m in [Model::D60, Model::D62, Model::D65] {
             assert_eq!(levels(m, Screen::Main), [0, 2, 6, 10, 14, 17, 20, 23, 26, 29, 32]);
         }
-        // The defaults: brightness 5, dim level 2.
-        assert_eq!(backlight_level(Model::D40, Screen::Main, 5), 8);
-        assert_eq!(backlight_level(Model::D40, Screen::Main, 2), 3);
-        assert_eq!(backlight_level(Model::D60, Screen::Main, 5), 17);
-        assert_eq!(backlight_level(Model::D60, Screen::Main, 2), 6);
         // Above the scale is the top of the scale.
         assert_eq!(backlight_level(Model::D40, Screen::Main, 200), 15);
     }

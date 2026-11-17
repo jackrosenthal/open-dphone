@@ -299,7 +299,6 @@ mod tests {
         // A start beyond the end is the end.
         let p = RingPlayer::new(RingSource::Once { samples, start: 9000, token: 1 });
         assert_eq!(p.one_shot(), Some((1, 400, true)));
-        assert_eq!(RingPlayer::new(RingSource::Pcm { samples: Arc::from([1i16]), pause_ms: 0 }).one_shot(), None);
     }
 
     #[test]

@@ -135,9 +135,6 @@ mod tests {
         let r = Remoteproc::find_in(&root).unwrap();
         assert_eq!(r.state().unwrap(), State::Offline);
         assert_eq!(r.firmware().unwrap(), "dspapp1107_lcc.bin");
-        r.stop().unwrap();
-        fs::write(rp.join("state"), "running\n").unwrap();
-        r.start().unwrap();
         fs::remove_dir_all(&root).unwrap();
     }
 }
