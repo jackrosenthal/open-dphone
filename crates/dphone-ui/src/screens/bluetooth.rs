@@ -1,5 +1,6 @@
-//! The Bluetooth application (D65): on/off, the pairing question, the
-//! connected and paired headsets, and discovery.
+//! The Bluetooth application (D65): the pairing question, the connected and
+//! paired headsets, and discovery.  Bluetooth is on whenever the phone has a
+//! controller.
 //!
 //! Everything shown comes from the `Bluetooth` state topic, and everything
 //! done is a command of the Bluetooth domain; the screens keep no state of
@@ -47,17 +48,6 @@ pub(crate) fn menu() -> Box<dyn Screen> {
                 cx.post(Command::BluetoothAnswerPairing { addr: addr.clone(), accept: false, pin: None });
                 Nav::Stay
             }));
-        }
-        let on = bt.enabled;
-        items.push(
-            Item::new(tr::BLUETOOTH, move |cx| {
-                cx.post(Command::SetBluetooth { on: !on });
-                Nav::Stay
-            })
-            .value(if on { tr::ON } else { tr::OFF }),
-        );
-        if !on {
-            return items;
         }
         for d in &bt.paired {
             let connected = d.addr == bt.connected;

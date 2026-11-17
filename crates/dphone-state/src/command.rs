@@ -220,8 +220,6 @@ pub enum Command {
     StopPage,
 
     // ---- Bluetooth (addresses as text, `00:1B:DC:0F:A1:02`)
-    /// Turn Bluetooth on or off; remembered across reboots.
-    SetBluetooth { on: bool },
     /// Look for devices (`on`), or stop looking.
     BluetoothDiscovery { on: bool },
     /// Pair with a device and connect to it.
@@ -284,9 +282,8 @@ impl Command {
             InstallFirmware { .. } | ConfirmTrial | Rollback => Domain::Update,
             Reboot { .. } | FactoryReset | EraseNvdata | SetTime { .. } => Domain::System,
             StartPage { .. } | StopPage => Domain::Paging,
-            SetBluetooth { .. } | BluetoothDiscovery { .. } | BluetoothPair { .. }
-            | BluetoothAnswerPairing { .. } | BluetoothUnpair { .. } | BluetoothConnect { .. }
-            | BluetoothDisconnect => Domain::Bluetooth,
+            BluetoothDiscovery { .. } | BluetoothPair { .. } | BluetoothAnswerPairing { .. }
+            | BluetoothUnpair { .. } | BluetoothConnect { .. } | BluetoothDisconnect => Domain::Bluetooth,
             SetAlarm { .. } | RemoveAlarm { .. } | SnoozeAlarm | DismissAlarm => Domain::Alarms,
         }
     }

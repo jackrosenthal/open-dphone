@@ -181,7 +181,6 @@ async fn bluetooth() {
 
     p.store.update::<st::Bluetooth, _>(|b| {
         b.present = true;
-        b.enabled = true;
         b.powered = true;
         b.address = "00:0F:D3:65:00:01".into();
         b.discovering = true;
@@ -193,7 +192,6 @@ async fn bluetooth() {
     });
     let expected = json!({
         "present": true,
-        "enabled": true,
         "powered": true,
         "address": "00:0F:D3:65:00:01",
         "discovering": true,
@@ -209,9 +207,8 @@ async fn bluetooth() {
 
     // Each RPC becomes its command.
     let cases: Vec<(&str, Value, Command)> = vec![
-        ("SetBluetoothEnabled", json!({ "enabled": true }), Command::SetBluetooth { on: true }),
-        ("SetBluetoothEnabled", json!({}), Command::SetBluetooth { on: false }),
         ("SetBluetoothDiscovery", json!({ "discovering": true }), Command::BluetoothDiscovery { on: true }),
+        ("SetBluetoothDiscovery", json!({}), Command::BluetoothDiscovery { on: false }),
         // Addresses are normalized to upper case.
         ("PairBluetoothDevice", json!({ "address": "70:bf:92:11:22:33" }), Command::BluetoothPair { addr: "70:BF:92:11:22:33".into() }),
         (
@@ -258,7 +255,7 @@ async fn bluetooth() {
 
     // Not without a session.
     let (status, _, _) =
-        post(p.addr, "/dphone.v1.BluetoothService/SetBluetoothEnabled", &[("Content-Type", "application/json")], b"{}", false).await;
+        post(p.addr, "/dphone.v1.BluetoothService/SetBluetoothDiscovery", &[("Content-Type", "application/json")], b"{}", false).await;
     assert_eq!(status, 401);
 }
 
@@ -271,7 +268,7 @@ async fn no_bluetooth_on_other_models() {
     assert_eq!(v["status"]["system"]["hasExpansion"], true);
     let (status, v) = call(&p, &l, "BluetoothService/GetBluetooth", json!({})).await;
     assert_eq!((status, &v["snapshot"]), (200, &json!({})));
-    let (status, v) = call(&p, &l, "BluetoothService/SetBluetoothEnabled", json!({ "enabled": true })).await;
+    let (status, v) = call(&p, &l, "BluetoothService/SetBluetoothDiscovery", json!({ "discovering": true })).await;
     assert_eq!((status, v["code"].as_str()), (501, Some("unimplemented")));
     assert!(p.seen.lock().unwrap().is_empty());
 }

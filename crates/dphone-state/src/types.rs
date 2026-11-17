@@ -1757,8 +1757,7 @@ pub struct BluetoothPairing {
 pub struct Bluetooth {
     /// This model has Bluetooth and its controller answered.
     pub present: bool,
-    /// The user wants Bluetooth on (kept across reboots).
-    pub enabled: bool,
+    /// The controller is on; the phone switches it on once it answers.
     pub powered: bool,
     /// The controller's own address.
     pub address: String,

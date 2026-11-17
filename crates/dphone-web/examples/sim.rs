@@ -354,7 +354,6 @@ fn fabricate(store: &Store, model: Model) {
     if model.bluetooth() {
         store.update::<st::Bluetooth, _>(|b| {
             b.present = true;
-            b.enabled = true;
             b.powered = true;
             b.address = "00:0F:D3:65:00:01".into();
             b.paired = vec![st::BluetoothDevice { addr: "00:1B:DC:0F:A1:02".into(), name: "Voyager 5200".into(), rssi: 0 }];
@@ -620,16 +619,6 @@ fn spawn_handlers(store: &Store, hal: Hal, config: Arc<Mutex<ConfigStore>>) {
             ]
         };
         match c {
-            Command::SetBluetooth { on } => store.update::<st::Bluetooth, _>(|b| {
-                b.enabled = *on;
-                b.powered = *on;
-                if !*on {
-                    b.discovering = false;
-                    b.found.clear();
-                    b.connected.clear();
-                    b.pairing = None;
-                }
-            }),
             Command::BluetoothDiscovery { on } => {
                 store.update::<st::Bluetooth, _>(|b| b.discovering = *on);
                 if *on {

@@ -3,11 +3,10 @@ syntax = "proto3";
 package dphone.v1;
 
 // Bluetooth headsets (models with a Bluetooth controller: the D65).
+// Bluetooth is on whenever the phone has a controller.
 service BluetoothService {
   rpc GetBluetooth(GetBluetoothRequest) returns (GetBluetoothResponse);
   rpc WatchBluetooth(WatchBluetoothRequest) returns (stream WatchBluetoothResponse);
-  // Turns Bluetooth on or off; remembered across reboots.
-  rpc SetBluetoothEnabled(SetBluetoothEnabledRequest) returns (SetBluetoothEnabledResponse);
   // Starts or stops looking for devices.
   rpc SetBluetoothDiscovery(SetBluetoothDiscoveryRequest) returns (SetBluetoothDiscoveryResponse);
   // Pairs with a found device and connects to it.
@@ -44,8 +43,8 @@ message BluetoothPairing {
 message BluetoothSnapshot {
   // This model has Bluetooth and its controller answered.
   bool present = 1;
-  // The user wants Bluetooth on.
-  bool enabled = 2;
+  reserved 2;
+  // The controller is on; the phone switches it on once it answers.
   bool powered = 3;
   // The controller's own address.
   string address = 4;
@@ -75,12 +74,6 @@ message WatchBluetoothRequest {}
 message WatchBluetoothResponse {
   BluetoothSnapshot snapshot = 1;
 }
-
-message SetBluetoothEnabledRequest {
-  bool enabled = 1;
-}
-
-message SetBluetoothEnabledResponse {}
 
 message SetBluetoothDiscoveryRequest {
   bool discovering = 1;

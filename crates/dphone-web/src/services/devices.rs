@@ -50,15 +50,6 @@ pub async fn watch_bluetooth(
     .await
 }
 
-pub async fn set_bluetooth_enabled(
-    ctx: Ctx,
-    req: pb::SetBluetoothEnabledRequest,
-) -> Result<pb::SetBluetoothEnabledResponse, ConnectError> {
-    bluetooth_model(&ctx)?;
-    command(&ctx.app.store, Command::SetBluetooth { on: req.enabled }).await?;
-    Ok(pb::SetBluetoothEnabledResponse {})
-}
-
 pub async fn set_bluetooth_discovery(
     ctx: Ctx,
     req: pb::SetBluetoothDiscoveryRequest,

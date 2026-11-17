@@ -63,8 +63,6 @@ pub enum Profile {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
-    /// Power the controller on or off.
-    SetEnabled(bool),
     StartDiscovery,
     StopDiscovery,
     /// Pair with a device and, on success, connect to it.
@@ -141,7 +139,6 @@ impl Bluetooth {
             index: None,
             address: Addr::ANY,
             powered: false,
-            want_enabled: false,
             listeners: None,
             sdp_clients: Vec::new(),
             query: None,
@@ -224,7 +221,6 @@ struct Service {
     index: Option<u16>,
     address: Addr,
     powered: bool,
-    want_enabled: bool,
     listeners: Option<Listeners>,
     sdp_clients: Vec<OwnedFd>,
     query: Option<Query>,
@@ -382,24 +378,9 @@ impl Service {
     fn command(&mut self, command: Command) {
         debug!("command {command:?}");
         let Some(index) = self.index else {
-            if let Command::SetEnabled(on) = command {
-                self.want_enabled = on;
-            }
             return;
         };
         match command {
-            Command::SetEnabled(on) => {
-                self.want_enabled = on;
-                if on {
-                    self.power_on(index);
-                } else {
-                    self.drop_link();
-                    self.query = None;
-                    self.listeners = None;
-                    self.sdp_clients.clear();
-                    self.mgmt_send(mgmt::set_mode(op::SET_POWERED, index, 0));
-                }
-            }
             Command::StartDiscovery => self.mgmt_send(mgmt::start_discovery(index)),
             Command::StopDiscovery => self.mgmt_send(mgmt::stop_discovery(index)),
             Command::Pair(addr) => {
@@ -524,9 +505,8 @@ impl Service {
                     self.powered = false;
                     let powered = info.current_settings & mgmt::SETTING_POWERED != 0;
                     self.emit(Event::Adapter { present: true, powered, address: info.addr });
-                    if self.want_enabled {
-                        self.power_on(index);
-                    }
+                    // Bluetooth is on whenever there is a controller.
+                    self.power_on(index);
                     if powered {
                         self.set_powered(true);
                     }

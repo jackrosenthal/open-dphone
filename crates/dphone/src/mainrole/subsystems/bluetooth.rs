@@ -11,11 +11,11 @@
 //!   call), and its voice link opens while a call is on the headset path;
 //!   while the link is up the audio service uses the Bluetooth voice device
 //!   for that path;
-//! - the commands of the Bluetooth domain (on/off, discovery, pairing with
-//!   the user's confirmation, connecting) are passed on.
+//! - the commands of the Bluetooth domain (discovery, pairing with the
+//!   user's confirmation, connecting) are passed on.
 //!
-//! Whether Bluetooth is on is kept in `/nvdata/open/bluetooth/enabled`; it
-//! starts off.  Paired devices are kept by `dphone_bt` beside it.
+//! Bluetooth is on whenever the phone has a controller.  Paired devices are
+//! kept by `dphone_bt` in `/nvdata/open/bluetooth`.
 
 use std::path::PathBuf;
 
@@ -34,21 +34,6 @@ type State = dphone_state::Bluetooth;
 
 /// Headset volume steps (the Hands-Free profile's 0 to 15).
 const HEADSET_STEPS: u32 = 15;
-
-fn enabled_file(dir: &std::path::Path) -> PathBuf {
-    dir.join("enabled")
-}
-
-fn read_enabled(dir: &std::path::Path) -> bool {
-    std::fs::read_to_string(enabled_file(dir)).is_ok_and(|t| t.trim() == "1")
-}
-
-fn write_enabled(dir: &std::path::Path, on: bool) {
-    let _ = std::fs::create_dir_all(dir);
-    if let Err(e) = crate::paths::write_atomic(&enabled_file(dir), if on { b"1\n" } else { b"0\n" }, 0o644) {
-        warn!("bluetooth: cannot save the on/off choice: {e}");
-    }
-}
 
 /// The phone's call state as a headset sees it: the alerting call first,
 /// then a call being set up, then a connected one.
@@ -280,16 +265,6 @@ impl Service {
     fn command(&mut self, cmd: Command) -> Result<Reply, CommandError> {
         let addr = |text: &str| text.parse::<Addr>().map_err(|()| CommandError::Invalid(format!("'{text}' is not a Bluetooth address")));
         match cmd {
-            Command::SetBluetooth { on } => {
-                write_enabled(&self.dir, on);
-                self.update(|s| {
-                    s.enabled = on;
-                    if !on {
-                        s.found.clear();
-                    }
-                });
-                self.bt.send(Bt::SetEnabled(on));
-            }
             Command::BluetoothDiscovery { on } => {
                 if on {
                     self.update(|s| s.found.clear());
@@ -379,11 +354,8 @@ pub fn start(ctx: &Context, audio: AudioService) {
             return;
         }
     };
-    let enabled = read_enabled(&dir);
     let service = Service { ctx: ctx.clone(), audio, bt, dir, told_call: BtCall::Idle, told_audio: false, told_volume: None };
-    service.update(|s| s.enabled = enabled);
     service.publish_paired();
-    service.bt.send(Bt::SetEnabled(enabled));
     tokio::spawn(run(service, rx));
 }
 
@@ -429,15 +401,5 @@ mod tests {
         for level in 0..=10 {
             assert_eq!(from_headset_volume(to_headset_volume(level, 10), 10), level);
         }
-    }
-
-    #[test]
-    fn on_off_choice_is_kept() {
-        let dir = tempfile::tempdir().unwrap();
-        assert!(!read_enabled(dir.path()));
-        write_enabled(dir.path(), true);
-        assert!(read_enabled(dir.path()));
-        write_enabled(dir.path(), false);
-        assert!(!read_enabled(dir.path()));
     }
 }

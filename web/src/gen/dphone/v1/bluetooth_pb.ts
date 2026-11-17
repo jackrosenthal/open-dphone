@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/v1/bluetooth.proto.
  */
 export const file_dphone_v1_bluetooth: GenFile = /*@__PURE__*/
-  fileDesc("ChlkcGhvbmUvdjEvYmx1ZXRvb3RoLnByb3RvEglkcGhvbmUudjEiPgoPQmx1ZXRvb3RoRGV2aWNlEg8KB2FkZHJlc3MYASABKAkSDAoEbmFtZRgCIAEoCRIMCgRyc3NpGAMgASgRImcKEEJsdWV0b290aFBhaXJpbmcSDwoHYWRkcmVzcxgBIAEoCRIMCgRuYW1lGAIgASgJEhQKB3Bhc3NrZXkYAyABKA1IAIgBARISCgpwaW5fbmVlZGVkGAQgASgIQgoKCF9wYXNza2V5Ir0CChFCbHVldG9vdGhTbmFwc2hvdBIPCgdwcmVzZW50GAEgASgIEg8KB2VuYWJsZWQYAiABKAgSDwoHcG93ZXJlZBgDIAEoCBIPCgdhZGRyZXNzGAQgASgJEhMKC2Rpc2NvdmVyaW5nGAUgASgIEikKBWZvdW5kGAYgAygLMhouZHBob25lLnYxLkJsdWV0b290aERldmljZRIqCgZwYWlyZWQYByADKAsyGi5kcGhvbmUudjEuQmx1ZXRvb3RoRGV2aWNlEhQKDHBhaXJpbmdfd2l0aBgIIAEoCRIsCgdwYWlyaW5nGAkgASgLMhsuZHBob25lLnYxLkJsdWV0b290aFBhaXJpbmcSEQoJY29ubmVjdGVkGAogASgJEhIKCmF1ZGlvX29wZW4YCyABKAgSDQoFZXJyb3IYDCABKAkiFQoTR2V0Qmx1ZXRvb3RoUmVxdWVzdCJGChRHZXRCbHVldG9vdGhSZXNwb25zZRIuCghzbmFwc2hvdBgBIAEoCzIcLmRwaG9uZS52MS5CbHVldG9vdGhTbmFwc2hvdCIXChVXYXRjaEJsdWV0b290aFJlcXVlc3QiSAoWV2F0Y2hCbHVldG9vdGhSZXNwb25zZRIuCghzbmFwc2hvdBgBIAEoCzIcLmRwaG9uZS52MS5CbHVldG9vdGhTbmFwc2hvdCItChpTZXRCbHVldG9vdGhFbmFibGVkUmVxdWVzdBIPCgdlbmFibGVkGAEgASgIIh0KG1NldEJsdWV0b290aEVuYWJsZWRSZXNwb25zZSIzChxTZXRCbHVldG9vdGhEaXNjb3ZlcnlSZXF1ZXN0EhMKC2Rpc2NvdmVyaW5nGAEgASgIIh8KHVNldEJsdWV0b290aERpc2NvdmVyeVJlc3BvbnNlIi0KGlBhaXJCbHVldG9vdGhEZXZpY2VSZXF1ZXN0Eg8KB2FkZHJlc3MYASABKAkiHQobUGFpckJsdWV0b290aERldmljZVJlc3BvbnNlIloKHUFuc3dlckJsdWV0b290aFBhaXJpbmdSZXF1ZXN0Eg8KB2FkZHJlc3MYASABKAkSDgoGYWNjZXB0GAIgASgIEhAKA3BpbhgDIAEoCUgAiAEBQgYKBF9waW4iIAoeQW5zd2VyQmx1ZXRvb3RoUGFpcmluZ1Jlc3BvbnNlIi8KHFJlbW92ZUJsdWV0b290aERldmljZVJlcXVlc3QSDwoHYWRkcmVzcxgBIAEoCSIfCh1SZW1vdmVCbHVldG9vdGhEZXZpY2VSZXNwb25zZSIwCh1Db25uZWN0Qmx1ZXRvb3RoRGV2aWNlUmVxdWVzdBIPCgdhZGRyZXNzGAEgASgJIiAKHkNvbm5lY3RCbHVldG9vdGhEZXZpY2VSZXNwb25zZSIiCiBEaXNjb25uZWN0Qmx1ZXRvb3RoRGV2aWNlUmVxdWVzdCIjCiFEaXNjb25uZWN0Qmx1ZXRvb3RoRGV2aWNlUmVzcG9uc2UytgcKEEJsdWV0b290aFNlcnZpY2USTwoMR2V0Qmx1ZXRvb3RoEh4uZHBob25lLnYxLkdldEJsdWV0b290aFJlcXVlc3QaHy5kcGhvbmUudjEuR2V0Qmx1ZXRvb3RoUmVzcG9uc2USVwoOV2F0Y2hCbHVldG9vdGgSIC5kcGhvbmUudjEuV2F0Y2hCbHVldG9vdGhSZXF1ZXN0GiEuZHBob25lLnYxLldhdGNoQmx1ZXRvb3RoUmVzcG9uc2UwARJkChNTZXRCbHVldG9vdGhFbmFibGVkEiUuZHBob25lLnYxLlNldEJsdWV0b290aEVuYWJsZWRSZXF1ZXN0GiYuZHBob25lLnYxLlNldEJsdWV0b290aEVuYWJsZWRSZXNwb25zZRJqChVTZXRCbHVldG9vdGhEaXNjb3ZlcnkSJy5kcGhvbmUudjEuU2V0Qmx1ZXRvb3RoRGlzY292ZXJ5UmVxdWVzdBooLmRwaG9uZS52MS5TZXRCbHVldG9vdGhEaXNjb3ZlcnlSZXNwb25zZRJkChNQYWlyQmx1ZXRvb3RoRGV2aWNlEiUuZHBob25lLnYxLlBhaXJCbHVldG9vdGhEZXZpY2VSZXF1ZXN0GiYuZHBob25lLnYxLlBhaXJCbHVldG9vdGhEZXZpY2VSZXNwb25zZRJtChZBbnN3ZXJCbHVldG9vdGhQYWlyaW5nEiguZHBob25lLnYxLkFuc3dlckJsdWV0b290aFBhaXJpbmdSZXF1ZXN0GikuZHBob25lLnYxLkFuc3dlckJsdWV0b290aFBhaXJpbmdSZXNwb25zZRJqChVSZW1vdmVCbHVldG9vdGhEZXZpY2USJy5kcGhvbmUudjEuUmVtb3ZlQmx1ZXRvb3RoRGV2aWNlUmVxdWVzdBooLmRwaG9uZS52MS5SZW1vdmVCbHVldG9vdGhEZXZpY2VSZXNwb25zZRJtChZDb25uZWN0Qmx1ZXRvb3RoRGV2aWNlEiguZHBob25lLnYxLkNvbm5lY3RCbHVldG9vdGhEZXZpY2VSZXF1ZXN0GikuZHBob25lLnYxLkNvbm5lY3RCbHVldG9vdGhEZXZpY2VSZXNwb25zZRJ2ChlEaXNjb25uZWN0Qmx1ZXRvb3RoRGV2aWNlEisuZHBob25lLnYxLkRpc2Nvbm5lY3RCbHVldG9vdGhEZXZpY2VSZXF1ZXN0GiwuZHBob25lLnYxLkRpc2Nvbm5lY3RCbHVldG9vdGhEZXZpY2VSZXNwb25zZWIGcHJvdG8z");
+  fileDesc("ChlkcGhvbmUvdjEvYmx1ZXRvb3RoLnByb3RvEglkcGhvbmUudjEiPgoPQmx1ZXRvb3RoRGV2aWNlEg8KB2FkZHJlc3MYASABKAkSDAoEbmFtZRgCIAEoCRIMCgRyc3NpGAMgASgRImcKEEJsdWV0b290aFBhaXJpbmcSDwoHYWRkcmVzcxgBIAEoCRIMCgRuYW1lGAIgASgJEhQKB3Bhc3NrZXkYAyABKA1IAIgBARISCgpwaW5fbmVlZGVkGAQgASgIQgoKCF9wYXNza2V5IrICChFCbHVldG9vdGhTbmFwc2hvdBIPCgdwcmVzZW50GAEgASgIEg8KB3Bvd2VyZWQYAyABKAgSDwoHYWRkcmVzcxgEIAEoCRITCgtkaXNjb3ZlcmluZxgFIAEoCBIpCgVmb3VuZBgGIAMoCzIaLmRwaG9uZS52MS5CbHVldG9vdGhEZXZpY2USKgoGcGFpcmVkGAcgAygLMhouZHBob25lLnYxLkJsdWV0b290aERldmljZRIUCgxwYWlyaW5nX3dpdGgYCCABKAkSLAoHcGFpcmluZxgJIAEoCzIbLmRwaG9uZS52MS5CbHVldG9vdGhQYWlyaW5nEhEKCWNvbm5lY3RlZBgKIAEoCRISCgphdWRpb19vcGVuGAsgASgIEg0KBWVycm9yGAwgASgJSgQIAhADIhUKE0dldEJsdWV0b290aFJlcXVlc3QiRgoUR2V0Qmx1ZXRvb3RoUmVzcG9uc2USLgoIc25hcHNob3QYASABKAsyHC5kcGhvbmUudjEuQmx1ZXRvb3RoU25hcHNob3QiFwoVV2F0Y2hCbHVldG9vdGhSZXF1ZXN0IkgKFldhdGNoQmx1ZXRvb3RoUmVzcG9uc2USLgoIc25hcHNob3QYASABKAsyHC5kcGhvbmUudjEuQmx1ZXRvb3RoU25hcHNob3QiMwocU2V0Qmx1ZXRvb3RoRGlzY292ZXJ5UmVxdWVzdBITCgtkaXNjb3ZlcmluZxgBIAEoCCIfCh1TZXRCbHVldG9vdGhEaXNjb3ZlcnlSZXNwb25zZSItChpQYWlyQmx1ZXRvb3RoRGV2aWNlUmVxdWVzdBIPCgdhZGRyZXNzGAEgASgJIh0KG1BhaXJCbHVldG9vdGhEZXZpY2VSZXNwb25zZSJaCh1BbnN3ZXJCbHVldG9vdGhQYWlyaW5nUmVxdWVzdBIPCgdhZGRyZXNzGAEgASgJEg4KBmFjY2VwdBgCIAEoCBIQCgNwaW4YAyABKAlIAIgBAUIGCgRfcGluIiAKHkFuc3dlckJsdWV0b290aFBhaXJpbmdSZXNwb25zZSIvChxSZW1vdmVCbHVldG9vdGhEZXZpY2VSZXF1ZXN0Eg8KB2FkZHJlc3MYASABKAkiHwodUmVtb3ZlQmx1ZXRvb3RoRGV2aWNlUmVzcG9uc2UiMAodQ29ubmVjdEJsdWV0b290aERldmljZVJlcXVlc3QSDwoHYWRkcmVzcxgBIAEoCSIgCh5Db25uZWN0Qmx1ZXRvb3RoRGV2aWNlUmVzcG9uc2UiIgogRGlzY29ubmVjdEJsdWV0b290aERldmljZVJlcXVlc3QiIwohRGlzY29ubmVjdEJsdWV0b290aERldmljZVJlc3BvbnNlMtAGChBCbHVldG9vdGhTZXJ2aWNlEk8KDEdldEJsdWV0b290aBIeLmRwaG9uZS52MS5HZXRCbHVldG9vdGhSZXF1ZXN0Gh8uZHBob25lLnYxLkdldEJsdWV0b290aFJlc3BvbnNlElcKDldhdGNoQmx1ZXRvb3RoEiAuZHBob25lLnYxLldhdGNoQmx1ZXRvb3RoUmVxdWVzdBohLmRwaG9uZS52MS5XYXRjaEJsdWV0b290aFJlc3BvbnNlMAESagoVU2V0Qmx1ZXRvb3RoRGlzY292ZXJ5EicuZHBob25lLnYxLlNldEJsdWV0b290aERpc2NvdmVyeVJlcXVlc3QaKC5kcGhvbmUudjEuU2V0Qmx1ZXRvb3RoRGlzY292ZXJ5UmVzcG9uc2USZAoTUGFpckJsdWV0b290aERldmljZRIlLmRwaG9uZS52MS5QYWlyQmx1ZXRvb3RoRGV2aWNlUmVxdWVzdBomLmRwaG9uZS52MS5QYWlyQmx1ZXRvb3RoRGV2aWNlUmVzcG9uc2USbQoWQW5zd2VyQmx1ZXRvb3RoUGFpcmluZxIoLmRwaG9uZS52MS5BbnN3ZXJCbHVldG9vdGhQYWlyaW5nUmVxdWVzdBopLmRwaG9uZS52MS5BbnN3ZXJCbHVldG9vdGhQYWlyaW5nUmVzcG9uc2USagoVUmVtb3ZlQmx1ZXRvb3RoRGV2aWNlEicuZHBob25lLnYxLlJlbW92ZUJsdWV0b290aERldmljZVJlcXVlc3QaKC5kcGhvbmUudjEuUmVtb3ZlQmx1ZXRvb3RoRGV2aWNlUmVzcG9uc2USbQoWQ29ubmVjdEJsdWV0b290aERldmljZRIoLmRwaG9uZS52MS5Db25uZWN0Qmx1ZXRvb3RoRGV2aWNlUmVxdWVzdBopLmRwaG9uZS52MS5Db25uZWN0Qmx1ZXRvb3RoRGV2aWNlUmVzcG9uc2USdgoZRGlzY29ubmVjdEJsdWV0b290aERldmljZRIrLmRwaG9uZS52MS5EaXNjb25uZWN0Qmx1ZXRvb3RoRGV2aWNlUmVxdWVzdBosLmRwaG9uZS52MS5EaXNjb25uZWN0Qmx1ZXRvb3RoRGV2aWNlUmVzcG9uc2ViBnByb3RvMw");
 
 /**
  * @generated from message dphone.v1.BluetoothDevice
@@ -95,13 +95,8 @@ export type BluetoothSnapshot = Message<"dphone.v1.BluetoothSnapshot"> & {
   present: boolean;
 
   /**
-   * The user wants Bluetooth on.
+   * The controller is on; the phone switches it on once it answers.
    *
-   * @generated from field: bool enabled = 2;
-   */
-  enabled: boolean;
-
-  /**
    * @generated from field: bool powered = 3;
    */
   powered: boolean;
@@ -232,36 +227,6 @@ export const WatchBluetoothResponseSchema: GenMessage<WatchBluetoothResponse> = 
   messageDesc(file_dphone_v1_bluetooth, 6);
 
 /**
- * @generated from message dphone.v1.SetBluetoothEnabledRequest
- */
-export type SetBluetoothEnabledRequest = Message<"dphone.v1.SetBluetoothEnabledRequest"> & {
-  /**
-   * @generated from field: bool enabled = 1;
-   */
-  enabled: boolean;
-};
-
-/**
- * Describes the message dphone.v1.SetBluetoothEnabledRequest.
- * Use `create(SetBluetoothEnabledRequestSchema)` to create a new message.
- */
-export const SetBluetoothEnabledRequestSchema: GenMessage<SetBluetoothEnabledRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 7);
-
-/**
- * @generated from message dphone.v1.SetBluetoothEnabledResponse
- */
-export type SetBluetoothEnabledResponse = Message<"dphone.v1.SetBluetoothEnabledResponse"> & {
-};
-
-/**
- * Describes the message dphone.v1.SetBluetoothEnabledResponse.
- * Use `create(SetBluetoothEnabledResponseSchema)` to create a new message.
- */
-export const SetBluetoothEnabledResponseSchema: GenMessage<SetBluetoothEnabledResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 8);
-
-/**
  * @generated from message dphone.v1.SetBluetoothDiscoveryRequest
  */
 export type SetBluetoothDiscoveryRequest = Message<"dphone.v1.SetBluetoothDiscoveryRequest"> & {
@@ -276,7 +241,7 @@ export type SetBluetoothDiscoveryRequest = Message<"dphone.v1.SetBluetoothDiscov
  * Use `create(SetBluetoothDiscoveryRequestSchema)` to create a new message.
  */
 export const SetBluetoothDiscoveryRequestSchema: GenMessage<SetBluetoothDiscoveryRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 9);
+  messageDesc(file_dphone_v1_bluetooth, 7);
 
 /**
  * @generated from message dphone.v1.SetBluetoothDiscoveryResponse
@@ -289,7 +254,7 @@ export type SetBluetoothDiscoveryResponse = Message<"dphone.v1.SetBluetoothDisco
  * Use `create(SetBluetoothDiscoveryResponseSchema)` to create a new message.
  */
 export const SetBluetoothDiscoveryResponseSchema: GenMessage<SetBluetoothDiscoveryResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 10);
+  messageDesc(file_dphone_v1_bluetooth, 8);
 
 /**
  * @generated from message dphone.v1.PairBluetoothDeviceRequest
@@ -306,7 +271,7 @@ export type PairBluetoothDeviceRequest = Message<"dphone.v1.PairBluetoothDeviceR
  * Use `create(PairBluetoothDeviceRequestSchema)` to create a new message.
  */
 export const PairBluetoothDeviceRequestSchema: GenMessage<PairBluetoothDeviceRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 11);
+  messageDesc(file_dphone_v1_bluetooth, 9);
 
 /**
  * @generated from message dphone.v1.PairBluetoothDeviceResponse
@@ -319,7 +284,7 @@ export type PairBluetoothDeviceResponse = Message<"dphone.v1.PairBluetoothDevice
  * Use `create(PairBluetoothDeviceResponseSchema)` to create a new message.
  */
 export const PairBluetoothDeviceResponseSchema: GenMessage<PairBluetoothDeviceResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 12);
+  messageDesc(file_dphone_v1_bluetooth, 10);
 
 /**
  * @generated from message dphone.v1.AnswerBluetoothPairingRequest
@@ -348,7 +313,7 @@ export type AnswerBluetoothPairingRequest = Message<"dphone.v1.AnswerBluetoothPa
  * Use `create(AnswerBluetoothPairingRequestSchema)` to create a new message.
  */
 export const AnswerBluetoothPairingRequestSchema: GenMessage<AnswerBluetoothPairingRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 13);
+  messageDesc(file_dphone_v1_bluetooth, 11);
 
 /**
  * @generated from message dphone.v1.AnswerBluetoothPairingResponse
@@ -361,7 +326,7 @@ export type AnswerBluetoothPairingResponse = Message<"dphone.v1.AnswerBluetoothP
  * Use `create(AnswerBluetoothPairingResponseSchema)` to create a new message.
  */
 export const AnswerBluetoothPairingResponseSchema: GenMessage<AnswerBluetoothPairingResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 14);
+  messageDesc(file_dphone_v1_bluetooth, 12);
 
 /**
  * @generated from message dphone.v1.RemoveBluetoothDeviceRequest
@@ -378,7 +343,7 @@ export type RemoveBluetoothDeviceRequest = Message<"dphone.v1.RemoveBluetoothDev
  * Use `create(RemoveBluetoothDeviceRequestSchema)` to create a new message.
  */
 export const RemoveBluetoothDeviceRequestSchema: GenMessage<RemoveBluetoothDeviceRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 15);
+  messageDesc(file_dphone_v1_bluetooth, 13);
 
 /**
  * @generated from message dphone.v1.RemoveBluetoothDeviceResponse
@@ -391,7 +356,7 @@ export type RemoveBluetoothDeviceResponse = Message<"dphone.v1.RemoveBluetoothDe
  * Use `create(RemoveBluetoothDeviceResponseSchema)` to create a new message.
  */
 export const RemoveBluetoothDeviceResponseSchema: GenMessage<RemoveBluetoothDeviceResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 16);
+  messageDesc(file_dphone_v1_bluetooth, 14);
 
 /**
  * @generated from message dphone.v1.ConnectBluetoothDeviceRequest
@@ -408,7 +373,7 @@ export type ConnectBluetoothDeviceRequest = Message<"dphone.v1.ConnectBluetoothD
  * Use `create(ConnectBluetoothDeviceRequestSchema)` to create a new message.
  */
 export const ConnectBluetoothDeviceRequestSchema: GenMessage<ConnectBluetoothDeviceRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 17);
+  messageDesc(file_dphone_v1_bluetooth, 15);
 
 /**
  * @generated from message dphone.v1.ConnectBluetoothDeviceResponse
@@ -421,7 +386,7 @@ export type ConnectBluetoothDeviceResponse = Message<"dphone.v1.ConnectBluetooth
  * Use `create(ConnectBluetoothDeviceResponseSchema)` to create a new message.
  */
 export const ConnectBluetoothDeviceResponseSchema: GenMessage<ConnectBluetoothDeviceResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 18);
+  messageDesc(file_dphone_v1_bluetooth, 16);
 
 /**
  * @generated from message dphone.v1.DisconnectBluetoothDeviceRequest
@@ -434,7 +399,7 @@ export type DisconnectBluetoothDeviceRequest = Message<"dphone.v1.DisconnectBlue
  * Use `create(DisconnectBluetoothDeviceRequestSchema)` to create a new message.
  */
 export const DisconnectBluetoothDeviceRequestSchema: GenMessage<DisconnectBluetoothDeviceRequest> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 19);
+  messageDesc(file_dphone_v1_bluetooth, 17);
 
 /**
  * @generated from message dphone.v1.DisconnectBluetoothDeviceResponse
@@ -447,10 +412,11 @@ export type DisconnectBluetoothDeviceResponse = Message<"dphone.v1.DisconnectBlu
  * Use `create(DisconnectBluetoothDeviceResponseSchema)` to create a new message.
  */
 export const DisconnectBluetoothDeviceResponseSchema: GenMessage<DisconnectBluetoothDeviceResponse> = /*@__PURE__*/
-  messageDesc(file_dphone_v1_bluetooth, 20);
+  messageDesc(file_dphone_v1_bluetooth, 18);
 
 /**
  * Bluetooth headsets (models with a Bluetooth controller: the D65).
+ * Bluetooth is on whenever the phone has a controller.
  *
  * @generated from service dphone.v1.BluetoothService
  */
@@ -470,16 +436,6 @@ export const BluetoothService: GenService<{
     methodKind: "server_streaming";
     input: typeof WatchBluetoothRequestSchema;
     output: typeof WatchBluetoothResponseSchema;
-  },
-  /**
-   * Turns Bluetooth on or off; remembered across reboots.
-   *
-   * @generated from rpc dphone.v1.BluetoothService.SetBluetoothEnabled
-   */
-  setBluetoothEnabled: {
-    methodKind: "unary";
-    input: typeof SetBluetoothEnabledRequestSchema;
-    output: typeof SetBluetoothEnabledResponseSchema;
   },
   /**
    * Starts or stops looking for devices.

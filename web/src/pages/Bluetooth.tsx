@@ -1,6 +1,6 @@
 import { useMutation } from "@connectrpc/connect-query";
 import { useState, type FormEvent } from "react";
-import { Alert, Badge, Button, Card, ConfirmButton, Empty, Input, PageHeader, Spinner, Toggle } from "../components/ui";
+import { Alert, Badge, Button, Card, ConfirmButton, Empty, Input, PageHeader, Spinner } from "../components/ui";
 import { BluetoothService, type BluetoothDevice, type BluetoothPairing } from "../gen/dphone/v1/bluetooth_pb";
 import { useStatus } from "../lib/status";
 import { useStreamState } from "../lib/stream";
@@ -56,7 +56,6 @@ export function Bluetooth() {
   const [bt] = useStreamState((signal) => client(BluetoothService).watchBluetooth({}, { signal }));
   const [error, setError] = useState<unknown>();
   const opts = { onError: setError, onSuccess: () => setError(undefined) };
-  const enable = useMutation(BluetoothService.method.setBluetoothEnabled, opts);
   const discover = useMutation(BluetoothService.method.setBluetoothDiscovery, opts);
   const pair = useMutation(BluetoothService.method.pairBluetoothDevice, opts);
   const connect = useMutation(BluetoothService.method.connectBluetoothDevice, opts);
@@ -81,7 +80,6 @@ export function Bluetooth() {
       </>
     );
   }
-  const on = snap.enabled && snap.powered;
   const paired = new Set(snap.paired.map((d) => d.address));
   const found = snap.found.filter((d) => !paired.has(d.address));
 
@@ -93,19 +91,21 @@ export function Bluetooth() {
         {!snap.present && <Alert tone="red" title="Bluetooth controller not responding." />}
         {snap.error && <Alert tone="red">{snap.error}</Alert>}
 
-        <Card>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <Toggle label="Bluetooth" checked={snap.enabled} disabled={!snap.present || enable.isPending} onChange={(v) => enable.mutate({ enabled: v })} />
-              {snap.enabled && !snap.powered && <Badge tone="amber">Starting</Badge>}
+        {snap.present && (
+          <Card>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium">Controller</span>
+                {!snap.powered && <Badge tone="amber">Starting</Badge>}
+              </div>
+              {snap.address && <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{snap.address}</span>}
             </div>
-            {snap.address && <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{snap.address}</span>}
-          </div>
-        </Card>
+          </Card>
+        )}
 
         {snap.pairing && <Pairing key={snap.pairing.address} p={snap.pairing} onError={setError} />}
 
-        {on && (
+        {snap.powered && (
           <div className="grid gap-5 lg:grid-cols-2">
             <Card title="Paired Devices">
               {snap.paired.length === 0 ? (

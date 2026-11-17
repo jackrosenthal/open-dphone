@@ -614,7 +614,6 @@ fn bluetooth_device(d: &st::BluetoothDevice) -> pb::BluetoothDevice {
 pub fn bluetooth(b: &st::Bluetooth) -> pb::BluetoothSnapshot {
     pb::BluetoothSnapshot {
         present: b.present,
-        enabled: b.enabled,
         powered: b.powered,
         address: b.address.clone(),
         discovering: b.discovering,

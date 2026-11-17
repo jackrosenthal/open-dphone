@@ -202,7 +202,6 @@ service!(SshService {
 service!(BluetoothService {
     unary get_bluetooth(GetBluetoothRequest) -> GetBluetoothResponse = devices::get_bluetooth;
     stream watch_bluetooth(WatchBluetoothRequest) -> WatchBluetoothResponse = devices::watch_bluetooth;
-    unary set_bluetooth_enabled(SetBluetoothEnabledRequest) -> SetBluetoothEnabledResponse = devices::set_bluetooth_enabled;
     unary set_bluetooth_discovery(SetBluetoothDiscoveryRequest) -> SetBluetoothDiscoveryResponse = devices::set_bluetooth_discovery;
     unary pair_bluetooth_device(PairBluetoothDeviceRequest) -> PairBluetoothDeviceResponse = devices::pair_bluetooth_device;
     unary answer_bluetooth_pairing(AnswerBluetoothPairingRequest) -> AnswerBluetoothPairingResponse = devices::answer_bluetooth_pairing;
