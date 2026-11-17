@@ -1,0 +1,36 @@
+The alarm tones beside this file (argon.wav, beep.wav, buzzer.wav,
+classic.wav, osmium.wav, and rooster.wav) are derived from the alarm
+sounds of the Android Open Source Project:
+
+  Copyright (C) The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License"); you may
+  not use these files except in compliance with the License.  A copy of
+  the License is in the file LICENSE-Apache-2.0.txt beside this file, and
+  at http://www.apache.org/licenses/LICENSE-2.0.
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
+The files are changed from the originals: each was converted from Ogg
+Vorbis to a 16 kHz mono mu-law WAV file, cut to one period of the sound
+(Argon to the first of its two phrases, with a fade at the end), and
+changed in level.  The originals are in the repository
+https://android.googlesource.com/platform/frameworks/base, directory
+data/sounds, at commit 1cdfff555f4a21f71ccc978290e2e212e2f8b168:
+
+  beep.wav     Alarm_Beep_03.ogg
+  buzzer.wav   Alarm_Buzzer.ogg
+  classic.wav  Alarm_Classic.ogg
+  osmium.wav   alarms/ogg/Osmium.ogg
+  rooster.wav  Alarm_Rooster_02.ogg
+  argon.wav    alarms/ogg/Argon.ogg
+
+From the NOTICE file of that repository:
+
+  Android Code
+  Copyright 2005-2008 The Android Open Source Project
+
+  This product includes software developed as part of
+  The Android Open Source Project (http://source.android.com).

@@ -275,17 +275,17 @@ A request ends `Unreachable(text)` when the phone has no session with the PBX (i
 
 ## The alarm clock
 
-The alarm clock is the phone's, not an app's: the phone keeps the alarms, and when one is due it sounds the alarm's ringtone and shows the alarm with Snooze and Dismiss over whatever is on screen, whether or not any app runs.  `alarms` is the interface to it for an app that shows the alarms and changes them, as the built-in Alarms app does (`apps/alarms`); the web interface's page "Alarms" changes the same alarms.
+The alarm clock is the phone's, not an app's: the phone keeps the alarms, and when one is due it sounds the alarm's tone and shows the alarm with Snooze and Dismiss over whatever is on screen, whether or not any app runs.  `alarms` is the interface to it for an app that shows the alarms and changes them, as the built-in Alarms app does (`apps/alarms`); the web interface's page "Alarms" changes the same alarms.
 
-An `Alarm` has an `id`, a time of day (`hour` and `minute`, in the phone's time zone), the days of the week it rings on (`days`: bit 0 is Sunday, bit 6 Saturday; 0 is a one-time alarm, which rings the next time the clock shows its time and is then switched off), a `tone` (one of the phone's ringtones), and `enabled`.
+An `Alarm` has an `id`, a time of day (`hour` and `minute`, in the phone's time zone), the days of the week it rings on (`days`: bit 0 is Sunday, bit 6 Saturday; 0 is a one-time alarm, which rings the next time the clock shows its time and is then switched off), a `tone` (one of the alarm clock's tones, which are not the ringtones), and `enabled`.
 
 | Function | Does |
 | --- | --- |
 | `list()` | The alarms, in the order they were added. |
 | `set(alarm)` | Adds an alarm (`id` 0) or changes the one with that `id`, and returns its `id`.  The phone keeps at most 16 alarms. |
 | `remove(id)` | Removes an alarm. |
-| `tones()` | The ringtones an alarm can ring with. |
-| `preview(tone)` | Sounds a ringtone for a few seconds, for choosing one; `None` stops it. |
+| `tones()` | The tones an alarm can ring with. |
+| `preview(tone)` | Sounds an alarm tone for a few seconds, for choosing one; `None` stops it. |
 | `next()` | The next time an alarm rings: its `id` and the time, in seconds since the Unix epoch. |
 | `snoozed()` | The snoozed alarm, if one is, and when it rings again. |
 | `dismiss()` | Ends the alarm that is ringing or snoozed. |
@@ -295,7 +295,7 @@ An `Alarm` has an `id`, a time of day (`hour` and `minute`, in the phone's time 
 ```rust,ignore
 use dphone_app_sdk::alarms::{self, Alarm};
 
-// Every Monday at 8:00, with the phone's first ringtone.
+// Every Monday at 8:00, with the phone's first alarm tone.
 let id = alarms::set(&Alarm {
     id: 0,
     hour: 8,

@@ -804,9 +804,9 @@ fn the_alarm_clock_keeps_its_alarms_and_rings_after_a_restart() {
     let (mut main, socket) = start_main(dir.path(), &["--no-ssh"]);
     wait_for("diag socket", Duration::from_secs(10), || socket.exists());
     wait_for("the alarm clock", Duration::from_secs(10), || diag(&socket, &["alarms"]).0 == 0);
-    let (code, out, err) = diag(&socket, &["alarms", "add", "07:00", "--days", "mon,wed", "--tone", "chime"]);
+    let (code, out, err) = diag(&socket, &["alarms", "add", "07:00", "--days", "mon,wed", "--tone", "osmium"]);
     assert_eq!(code, 0, "{err}");
-    assert!(out.contains("1 07:00 mon,wed Chime on\n") && out.contains("next: 1 at "), "{out}");
+    assert!(out.contains("1 07:00 mon,wed Osmium on\n") && out.contains("next: 1 at "), "{out}");
     let (code, _, err) = diag(&socket, &["alarms", "add", "25:00"]);
     assert_eq!(code, 1, "{err}");
     let (code, _, _) = diag(&socket, &["restart"]);
@@ -838,7 +838,7 @@ fn the_alarm_clock_keeps_its_alarms_and_rings_after_a_restart() {
 
     let (code, out, _) = diag(&socket, &["alarms", "dismiss"]);
     assert_eq!(code, 0);
-    assert!(!out.contains("snoozed") && out.contains("1 07:00 mon,wed Chime on\n"), "{out}");
+    assert!(!out.contains("snoozed") && out.contains("1 07:00 mon,wed Osmium on\n"), "{out}");
     let (code, out, _) = diag(&socket, &["alarms", "remove", "1"]);
     assert_eq!(code, 0);
     assert!(!out.contains("07:00"), "{out}");

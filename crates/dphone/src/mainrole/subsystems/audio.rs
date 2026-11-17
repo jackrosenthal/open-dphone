@@ -399,9 +399,15 @@ impl AudioService {
         self.refresh();
     }
 
-    /// Start or stop the ringer.  `name` picks a built-in ring.  The
-    /// ringer takes the place of an app's sound file.
+    /// Start or stop the ringer.  `name` picks a built-in ring or a user
+    /// ringtone from `/nvdata/ringtones`.  The ringer takes the place of
+    /// an app's sound file.
     pub fn ring(&self, name: Option<&str>) {
+        self.ring_with(name.map(super::ringtones::source));
+    }
+
+    /// Start the ringer with this source, or stop it.
+    fn ring_with(&self, source: Option<RingSource>) {
         {
             let mut inner = self.inner.lock().unwrap();
             // Whoever rings or silences the ringer now, it is no longer
@@ -415,23 +421,21 @@ impl AudioService {
             if std::mem::take(&mut inner.preview) != 0 {
                 inner.sound = false;
             }
-            inner.ringing = name.is_some();
-            // A built-in ring, or a user ringtone from `/nvdata/ringtones`.
-            let source = name.map(super::ringtones::source);
+            inner.ringing = source.is_some();
             let level = self.store.read::<Audio, _>(|a| a.ringer_volume);
             let _ = inner.send(Ec::PlayRing(source, ring_gain_q12(level)));
         }
         self.refresh();
     }
 
-    /// Rings for the alarm clock, with a ringtone as [`AudioService::ring`]
-    /// takes it, until `None`.  The ringer stays everyone else's: a call
+    /// Rings for the alarm clock, with the alarm tone of this name
+    /// ([`super::alarmtones`]), until `None`.  The ringer stays everyone else's: a call
     /// that rings, or a sound that plays, takes it over, and `None` then
     /// silences nothing.
     pub fn alarm(&self, tone: Option<&str>) {
         match tone {
             Some(tone) => {
-                self.ring(Some(tone));
+                self.ring_with(Some(super::alarmtones::source(tone)));
                 self.inner.lock().unwrap().alarm = true;
             }
             None => {
@@ -786,9 +790,14 @@ impl AudioService {
                 }
             }
             Command::StopTone => self.tone(None),
-            Command::PlaySound { name } => {
-                // Ringtone preview: the named built-in ring, once around.
-                self.ring(Some(&name));
+            command @ (Command::PlaySound { .. } | Command::PlayAlarmTone { .. }) => {
+                // A preview: the named ringtone or alarm tone, for a few
+                // seconds.
+                self.ring_with(Some(match &command {
+                    Command::PlayAlarmTone { name } => super::alarmtones::source(name),
+                    Command::PlaySound { name } => super::ringtones::source(name),
+                    _ => unreachable!(),
+                }));
                 let mine = {
                     let mut inner = self.inner.lock().unwrap();
                     inner.sound = true;

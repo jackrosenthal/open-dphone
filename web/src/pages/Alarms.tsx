@@ -52,7 +52,7 @@ function AlarmForm({ draft, tones, onClose }: { draft: Draft; tones: string[]; o
           <Field label="Time">
             <Input type="time" required value={time} onChange={(e) => setTime(e.target.value)} autoFocus />
           </Field>
-          <Field label="Ringtone">
+          <Field label="Tone">
             <Select value={tone} onChange={(e) => setTone(e.target.value)}>
               {tones.map((t) => (
                 <option key={t}>{t}</option>

@@ -744,7 +744,7 @@ interface canvas {
 
 /// Capability `alarms`: the phone's alarm clock.  The phone keeps the
 /// alarms and rings them, whether or not any app runs: when an alarm is
-/// due it sounds the alarm's ringtone and shows the alarm with Snooze and
+/// due it sounds the alarm's tone and shows the alarm with Snooze and
 /// Dismiss over whatever is on screen.  An app that uses this interface
 /// shows the alarms and changes them; `event.alarms-changed` tells it when
 /// they changed.
@@ -761,7 +761,7 @@ interface alarms {
     /// Saturday.  0 is a one-time alarm: it rings the next time the
     /// clock shows its time, and is then switched off.
     days: u8,
-    /// The ringtone it rings with, one of `tones`.  Empty in `set`: the
+    /// The alarm tone it rings with, one of `tones`.  Empty in `set`: the
     /// phone's first.
     tone: string,
     /// An alarm that is switched off does not ring.
@@ -776,9 +776,10 @@ interface alarms {
   /// 16 alarms.
   set: func(a: alarm) -> result<u32, error>;
   remove: func(id: u32) -> result<_, error>;
-  /// The ringtones an alarm can ring with: the phone's.
+  /// The tones an alarm can ring with: the alarm clock's own, which are
+  /// not the phone's ringtones.
   tones: func() -> list<string>;
-  /// Sounds a ringtone for a few seconds, for choosing one (`none`:
+  /// Sounds an alarm tone for a few seconds, for choosing one (`none`:
   /// stops the preview this app started, if it still sounds).
   preview: func(tone: option<string>);
   /// The next time an alarm rings: the alarm's `id` and the time, in

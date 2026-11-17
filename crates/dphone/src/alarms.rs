@@ -71,7 +71,7 @@ struct Ringing {
 /// What the ringer is to do.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Sound {
-    /// Ring with this ringtone until told otherwise.
+    /// Ring with this alarm tone until told otherwise.
     Ring(String),
     Silence,
 }
@@ -168,8 +168,8 @@ impl Engine {
     }
 
     /// Adds an alarm (`alarm.id` 0) or changes one; returns its identifier.
-    /// `tones` are the ringtones the phone has; an empty tone is the first
-    /// of them.
+    /// `tones` are the alarm tones the phone has; an empty tone is the
+    /// first of them.
     pub fn set(&mut self, mut alarm: Alarm, now: u64, tones: &[String]) -> Result<u32, String> {
         if alarm.hour > 23 || alarm.minute > 59 {
             return Err("the time must be between 00:00 and 23:59".into());
@@ -182,7 +182,7 @@ impl Engine {
         }
         match tones.iter().find(|t| t.eq_ignore_ascii_case(&alarm.tone)) {
             Some(t) => alarm.tone = t.clone(),
-            None => return Err(format!("the phone has no ringtone named {:?}", alarm.tone)),
+            None => return Err(format!("the phone has no alarm tone named {:?}", alarm.tone)),
         }
         let id = if alarm.id == 0 {
             if self.saved.alarms.len() >= Alarms::MAX {
@@ -372,8 +372,17 @@ impl Engine {
             .min()
             .map(|(at, id)| (id, at));
         let upcoming = ringing.is_some() || next.is_some_and(|(_, at)| at <= now + Alarms::UPCOMING_SECS);
+        // An alarm kept with a tone the phone does not have (any more)
+        // has the first tone, which is also what it rings with.
+        let known = |a: &Alarm| {
+            let mut a = a.clone();
+            if !tones.contains(&a.tone) {
+                a.tone = tones.first().cloned().unwrap_or_default();
+            }
+            a
+        };
         Alarms {
-            alarms: self.saved.alarms.iter().map(|e| e.alarm.clone()).collect(),
+            alarms: self.saved.alarms.iter().map(|e| known(&e.alarm)).collect(),
             tones: tones.to_vec(),
             icon: upcoming,
             next,
@@ -406,11 +415,11 @@ mod tests {
     }
 
     fn tones() -> Vec<String> {
-        vec!["Marimba".to_string(), "Classic".to_string()]
+        vec!["Beep".to_string(), "Buzzer".to_string()]
     }
 
     fn alarm(hour: u8, minute: u8, days: u8) -> Alarm {
-        Alarm { id: 0, hour, minute, days, tone: "Classic".into(), enabled: true }
+        Alarm { id: 0, hour, minute, days, tone: "Buzzer".into(), enabled: true }
     }
 
     /// An engine with a clock that the test moves.
@@ -567,7 +576,7 @@ mod tests {
         assert_eq!(r.ringing(), None);
         r.run(1);
         assert_eq!(r.ringing(), Some(id));
-        assert_eq!(r.sounds, [Sound::Ring("Classic".into())]);
+        assert_eq!(r.sounds, [Sound::Ring("Buzzer".into())]);
         r.dismiss();
         assert_eq!(r.sounds.last(), Some(&Sound::Silence));
         let st = r.state();
@@ -621,7 +630,7 @@ mod tests {
         r.run(3600);
         assert_eq!(
             r.sounds,
-            [Sound::Ring("Classic".into()), Sound::Silence, Sound::Ring("Classic".into()), Sound::Silence]
+            [Sound::Ring("Buzzer".into()), Sound::Silence, Sound::Ring("Buzzer".into()), Sound::Silence]
         );
     }
 
@@ -678,12 +687,12 @@ mod tests {
     fn alarms_and_a_snooze_outlast_a_restart() {
         let mut r = Rig::new("America/Los_Angeles", utc(2026, 11, 16, 15, 0));
         let daily = r.add(alarm(8, 0, Alarm::EVERY_DAY));
-        let once = r.add(Alarm { tone: "marimba".into(), ..alarm(9, 0, 0) });
+        let once = r.add(Alarm { tone: "beep".into(), ..alarm(9, 0, 0) });
         r.collect();
         r.restart(utc(2026, 11, 16, 15, 30));
         let st = r.state();
         assert_eq!(st.alarms.len(), 2);
-        assert_eq!(st.alarms[1], Alarm { id: once, hour: 9, minute: 0, days: 0, tone: "Marimba".into(), enabled: true });
+        assert_eq!(st.alarms[1], Alarm { id: once, hour: 9, minute: 0, days: 0, tone: "Beep".into(), enabled: true });
         // It rings after the restart, without anything else being done.
         r.run_to(utc(2026, 11, 16, 16, 0));
         assert_eq!(r.ringing(), Some(daily));
@@ -767,6 +776,23 @@ mod tests {
     }
 
     #[test]
+    fn an_alarm_with_a_tone_that_is_gone_has_the_first() {
+        let mut r = Rig::new("America/Los_Angeles", utc(2026, 11, 16, 15, 0));
+        let id = r.add(alarm(8, 0, Alarm::EVERY_DAY));
+        // As firmware whose alarms rang with the ringtones wrote the file.
+        let saved = r.e.saved().replace("\"Buzzer\"", "\"Marimba\"");
+        assert!(saved.contains("Marimba"));
+        r.e = Engine::load(Some(&saved));
+        let st = r.state();
+        assert_eq!(st.get(id).unwrap().tone, "Beep");
+        assert_eq!(st.next, Some((id, utc(2026, 11, 16, 16, 0))));
+        // It rings; the audio side takes any name that is no alarm tone
+        // as the first tone.
+        r.run_to(utc(2026, 11, 16, 16, 0));
+        assert_eq!(r.ringing(), Some(id));
+    }
+
+    #[test]
     fn a_file_with_the_former_icon_setting_loads() {
         let mut r = Rig::new("America/Los_Angeles", utc(2026, 11, 16, 15, 0));
         let id = r.add(alarm(8, 0, Alarm::EVERY_DAY));
@@ -791,7 +817,7 @@ mod tests {
         assert!(e.remove(7).is_err());
         // An alarm without a tone gets the phone's first.
         let id = e.set(Alarm { tone: String::new(), ..alarm(1, 0, 0) }, 0, &t).unwrap();
-        assert_eq!(e.state(0, &t, &|_| 0).get(id).unwrap().tone, "Marimba");
+        assert_eq!(e.state(0, &t, &|_| 0).get(id).unwrap().tone, "Beep");
         for _ in 1..Alarms::MAX {
             e.set(alarm(1, 0, 0), 0, &t).unwrap();
         }

@@ -159,13 +159,13 @@ pub(crate) struct AppCtx {
     pub images: HashSet<(bool, String)>,
     /// A sound file of this app is playing.
     pub playing: bool,
-    /// Until when (monotonic milliseconds) the ringtone preview this app
+    /// Until when (monotonic milliseconds) the alarm tone preview this app
     /// started sounds; 0 when the app has none.
     pub preview_until_ms: u64,
     pub limits: wasmtime::StoreLimits,
 }
 
-/// How long a ringtone preview sounds (the audio side ends it then).
+/// How long an alarm tone preview sounds (the audio side ends it then).
 const PREVIEW_MS: u64 = 4000;
 
 /// The most timers an app may have at a time.
@@ -1351,7 +1351,7 @@ impl api::alarms::Host for AppCtx {
         match tone {
             Some(name) => {
                 self.preview_until_ms = now + PREVIEW_MS;
-                let _ = self.store.post(Command::PlaySound { name });
+                let _ = self.store.post(Command::PlayAlarmTone { name });
             }
             // Only the preview this app started, while it sounds: another
             // app's sound is not this app's to stop.

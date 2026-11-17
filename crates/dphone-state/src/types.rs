@@ -1637,7 +1637,7 @@ pub struct Alarm {
     /// 0 is a one-time alarm: it rings the next time the clock shows its
     /// time, and is then switched off.
     pub days: u8,
-    /// The ringtone it rings with (one of [`Alarms::tones`]).
+    /// The alarm tone it rings with (one of [`Alarms::tones`]).
     pub tone: String,
     pub enabled: bool,
 }
@@ -1660,7 +1660,8 @@ pub struct AlarmRinging {
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Alarms {
     pub alarms: Vec<Alarm>,
-    /// The ringtones an alarm can ring with.
+    /// The tones an alarm can ring with: the alarm clock's own, not the
+    /// ringtones.
     pub tones: Vec<String>,
     /// The idle screen shows the alarm icon now: an alarm will ring
     /// within [`Alarms::UPCOMING_SECS`] or is snoozed.

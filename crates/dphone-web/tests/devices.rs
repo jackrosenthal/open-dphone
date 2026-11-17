@@ -429,10 +429,10 @@ async fn alarms() {
     let l = login(p.addr).await;
     p.store.update::<st::Alarms, _>(|a| {
         a.alarms = vec![
-            st::Alarm { id: 1, hour: 8, minute: 0, days: 0b0000010, tone: "Chime".into(), enabled: true },
-            st::Alarm { id: 2, hour: 0, minute: 5, days: 0, tone: "Marimba".into(), enabled: false },
+            st::Alarm { id: 1, hour: 8, minute: 0, days: 0b0000010, tone: "Osmium".into(), enabled: true },
+            st::Alarm { id: 2, hour: 0, minute: 5, days: 0, tone: "Beep".into(), enabled: false },
         ];
-        a.tones = vec!["Marimba".into(), "Chime".into()];
+        a.tones = vec!["Beep".into(), "Osmium".into()];
         a.icon = true;
         a.next = Some((1, 1_794_844_800));
         a.snoozed = Some((2, 1_794_800_000));
@@ -440,10 +440,10 @@ async fn alarms() {
     });
     let expected = json!({
         "alarms": [
-            { "id": 1, "hour": 8, "days": 2, "tone": "Chime", "enabled": true },
-            { "id": 2, "minute": 5, "tone": "Marimba" },
+            { "id": 1, "hour": 8, "days": 2, "tone": "Osmium", "enabled": true },
+            { "id": 2, "minute": 5, "tone": "Beep" },
         ],
-        "tones": ["Marimba", "Chime"],
+        "tones": ["Beep", "Osmium"],
         "showIcon": true,
         "next": { "id": 1, "unixSecs": "1794844800" },
         "snoozed": { "id": 2, "unixSecs": "1794800000" },
@@ -459,11 +459,11 @@ async fn alarms() {
     assert_eq!(v["snapshot"]["ringing"], 1);
 
     // Each RPC becomes its command.
-    let weekly = st::Alarm { id: 0, hour: 6, minute: 30, days: 0b0111110, tone: "Chime".into(), enabled: true };
+    let weekly = st::Alarm { id: 0, hour: 6, minute: 30, days: 0b0111110, tone: "Osmium".into(), enabled: true };
     let cases: Vec<(&str, Value, Command)> = vec![
         (
             "SetAlarm",
-            json!({ "alarm": { "hour": 6, "minute": 30, "days": 62, "tone": "Chime", "enabled": true } }),
+            json!({ "alarm": { "hour": 6, "minute": 30, "days": 62, "tone": "Osmium", "enabled": true } }),
             Command::SetAlarm { alarm: weekly.clone() },
         ),
         (

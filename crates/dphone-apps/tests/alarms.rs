@@ -29,7 +29,7 @@ const WEEKDAYS: u8 = 0b0111110;
 /// and answers the commands, as the main role's does.  Nothing rings.
 fn alarm_clock(store: &Store) -> Arc<Mutex<Vec<Command>>> {
     store.update::<Alarms, _>(|a| {
-        a.tones = ["Marimba", "Classic", "Chime"].map(String::from).to_vec();
+        a.tones = ["Beep", "Buzzer", "Osmium"].map(String::from).to_vec();
         a.snooze_secs = 600;
     });
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -97,7 +97,7 @@ fn the_app_uses_the_alarm_clock_and_keeps_nothing_itself() {
 }
 
 #[test]
-fn an_alarm_is_added_with_a_time_days_and_a_ringtone() {
+fn an_alarm_is_added_with_a_time_days_and_a_tone() {
     let (mut r, log) = rig();
     r.launch(APP);
     // No alarms: an empty list.
@@ -107,8 +107,8 @@ fn an_alarm_is_added_with_a_time_days_and_a_ringtone() {
     r.softkey(APP, "New");
     assert_eq!(r.ui.texts(APP), ["New Alarm"]);
     let fields = rows(&r);
-    assert_eq!(fields.iter().map(|f| f.0.as_str()).collect::<Vec<_>>(), ["Time", "Repeat", "Ringtone"]);
-    assert_eq!(fields[1..], [row("Repeat", "Once"), row("Ringtone", "Marimba")]);
+    assert_eq!(fields.iter().map(|f| f.0.as_str()).collect::<Vec<_>>(), ["Time", "Repeat", "Tone"]);
+    assert_eq!(fields[1..], [row("Repeat", "Once"), row("Tone", "Beep")]);
     assert_eq!(r.ui.softkeys(APP), ["Save", "Cancel"]);
 
     // The time: Select opens a dialog over the fields, in which the time
@@ -152,26 +152,26 @@ fn an_alarm_is_added_with_a_time_days_and_a_ringtone() {
     r.softkey(APP, "OK");
     assert_eq!(rows(&r)[1], row("Repeat", "Weekdays"));
 
-    // The ringtone: Play sounds the highlighted one, Select takes it.
+    // The tone: Play sounds the highlighted one, Select takes it.
     r.key(APP, Key::Down);
     r.key(APP, Key::Select);
-    assert_eq!(r.ui.texts(APP), ["New Alarm", "Ringtone"]);
-    assert_eq!(rows(&r), [row("Marimba", ""), row("Classic", ""), row("Chime", "")]);
+    assert_eq!(r.ui.texts(APP), ["New Alarm", "Tone"]);
+    assert_eq!(rows(&r), [row("Beep", ""), row("Buzzer", ""), row("Osmium", "")]);
     assert_eq!(r.ui.softkeys(APP), ["Select", "Play", "Cancel"]);
     r.key(APP, Key::Down);
     r.key(APP, Key::Down);
     r.softkey(APP, "Select");
-    assert_eq!(rows(&r)[2], row("Ringtone", "Chime"));
+    assert_eq!(rows(&r)[2], row("Tone", "Osmium"));
 
     assert!(log.lock().unwrap().is_empty(), "nothing is set before Save");
     r.softkey(APP, "Save");
-    assert_eq!(*log.lock().unwrap(), [Command::SetAlarm { alarm: alarm(6, 30, WEEKDAYS, "Chime") }]);
+    assert_eq!(*log.lock().unwrap(), [Command::SetAlarm { alarm: alarm(6, 30, WEEKDAYS, "Osmium") }]);
     assert_eq!(rows(&r), [row("6:30 AM", "Weekdays")]);
     assert_eq!(r.ui.softkeys(APP), ["New", "Edit", "Disable", "Delete", "Exit"]);
 }
 
 #[test]
-fn the_ringtone_dialog_plays_a_tone_and_stops_it() {
+fn the_tone_dialog_plays_a_tone_and_stops_it() {
     let (mut r, _log) = rig();
     let audio = Arc::new(Mutex::new(Vec::new()));
     common::answer_commands(&r.store, Domain::Audio, audio.clone(), |_| Ok(Reply::Done));
@@ -183,15 +183,15 @@ fn the_ringtone_dialog_plays_a_tone_and_stops_it() {
     r.key(APP, Key::Down);
     r.softkey(APP, "Play");
     r.softkey(APP, "Cancel");
-    assert_eq!(*audio.lock().unwrap(), [Command::PlaySound { name: "Classic".into() }, Command::StopSound]);
+    assert_eq!(*audio.lock().unwrap(), [Command::PlayAlarmTone { name: "Buzzer".into() }, Command::StopSound]);
     // Cancel did not take the tone.
-    assert_eq!(rows(&r)[2], row("Ringtone", "Marimba"));
+    assert_eq!(rows(&r)[2], row("Tone", "Beep"));
 }
 
 #[test]
 fn alarms_are_changed_switched_and_deleted() {
     let (mut r, log) = rig();
-    for a in [alarm(8, 0, 0b0000010, "Marimba"), alarm(13, 15, 0, "Classic")] {
+    for a in [alarm(8, 0, 0b0000010, "Beep"), alarm(13, 15, 0, "Buzzer")] {
         r.store.send(Command::SetAlarm { alarm: a }).wait().unwrap();
     }
     log.lock().unwrap().clear();
@@ -210,7 +210,7 @@ fn alarms_are_changed_switched_and_deleted() {
     assert_eq!(r.ui.softkeys(APP), ["New", "Edit", "Disable", "Delete", "Exit"]);
     r.key(APP, Key::Select);
     assert_eq!(r.ui.texts(APP), ["Edit Alarm"]);
-    assert_eq!(rows(&r), [row("Time", "1:15 PM"), row("Repeat", "Once"), row("Ringtone", "Classic")]);
+    assert_eq!(rows(&r), [row("Time", "1:15 PM"), row("Repeat", "Once"), row("Tone", "Buzzer")]);
     r.key(APP, Key::Select);
     assert!(r.ui.shows(APP, "01:15 PM"));
     // Cancel closes the dialog, not the alarm's fields.
@@ -238,14 +238,14 @@ fn alarms_are_changed_switched_and_deleted() {
     assert_eq!(r.ui.softkeys(APP), ["New", "Edit", "Disable", "Delete", "Exit"]);
 
     let sent = log.lock().unwrap().clone();
-    let on = Alarm { id: 1, ..alarm(8, 0, 0b0000010, "Marimba") };
+    let on = Alarm { id: 1, ..alarm(8, 0, 0b0000010, "Beep") };
     assert_eq!(
         sent,
         [
             Command::SetAlarm { alarm: Alarm { enabled: false, ..on.clone() } },
             Command::SetAlarm { alarm: on },
-            Command::SetAlarm { alarm: Alarm { id: 2, enabled: false, ..alarm(13, 15, 0, "Classic") } },
-            Command::SetAlarm { alarm: Alarm { id: 2, enabled: false, ..alarm(13, 20, 0, "Classic") } },
+            Command::SetAlarm { alarm: Alarm { id: 2, enabled: false, ..alarm(13, 15, 0, "Buzzer") } },
+            Command::SetAlarm { alarm: Alarm { id: 2, enabled: false, ..alarm(13, 20, 0, "Buzzer") } },
             Command::RemoveAlarm { id: 2 },
         ]
     );
@@ -260,7 +260,7 @@ fn the_list_follows_changes_made_elsewhere() {
     r.launch(APP);
     assert_eq!(rows(&r), []);
     // From the web interface.
-    r.store.send(Command::SetAlarm { alarm: alarm(7, 5, 0x7f, "Chime") }).wait().unwrap();
+    r.store.send(Command::SetAlarm { alarm: alarm(7, 5, 0x7f, "Osmium") }).wait().unwrap();
     r.settle();
     assert_eq!(rows(&r), [row("7:05 AM", "Every day")]);
     // It rang and was snoozed: the list says so, and can end the snooze.
@@ -272,7 +272,7 @@ fn the_list_follows_changes_made_elsewhere() {
     assert_eq!(rows(&r)[0], row("7:05 AM", "Every day"));
     // An alarm that is being edited is not swept away by a change.
     r.softkey(APP, "Edit");
-    r.store.send(Command::SetAlarm { alarm: alarm(9, 0, 0, "Chime") }).wait().unwrap();
+    r.store.send(Command::SetAlarm { alarm: alarm(9, 0, 0, "Osmium") }).wait().unwrap();
     r.settle();
     assert_eq!(r.ui.texts(APP), ["Edit Alarm"]);
     r.softkey(APP, "Cancel");
@@ -283,7 +283,7 @@ fn the_list_follows_changes_made_elsewhere() {
 fn a_refusal_of_the_alarm_clock_is_shown() {
     let (mut r, _log) = rig();
     for _ in 0..Alarms::MAX {
-        r.store.send(Command::SetAlarm { alarm: alarm(8, 0, 0, "Marimba") }).wait().unwrap();
+        r.store.send(Command::SetAlarm { alarm: alarm(8, 0, 0, "Beep") }).wait().unwrap();
     }
     r.launch(APP);
     r.softkey(APP, "New");
@@ -314,11 +314,13 @@ impl Phone {
             s.time_synced = true;
         });
         alarm_clock(&store);
+        // The tones the phone has.
+        store.update::<Alarms, _>(|a| a.tones = ["Beep", "Buzzer", "Classic", "Osmium", "Rooster", "Argon"].map(String::from).to_vec());
         for a in [
-            alarm(6, 30, WEEKDAYS, "Chime"),
-            alarm(8, 0, 0b0000010, "Marimba"),
-            Alarm { enabled: false, ..alarm(9, 30, 0b1000001, "Classic") },
-            alarm(14, 45, 0, "Marimba"),
+            alarm(6, 30, WEEKDAYS, "Osmium"),
+            alarm(8, 0, 0b0000010, "Beep"),
+            Alarm { enabled: false, ..alarm(9, 30, 0b1000001, "Buzzer") },
+            alarm(14, 45, 0, "Beep"),
         ] {
             store.send(Command::SetAlarm { alarm: a }).wait().unwrap();
         }
@@ -415,7 +417,7 @@ fn the_screens_on_every_kind_of_display() {
         assert!(days != edited, "{model:?}");
         assert_eq!(days[..width * 12], edit[..width * 12], "{model:?}");
         p.tap(&[Key::Cancel, Key::Down, Key::Select]);
-        let tones = p.shot("7-ringtone");
+        let tones = p.shot("7-tone");
         assert!(tones != days, "{model:?}");
         p.tap(&[Key::Cancel]);
         assert_eq!(p.shot("8-closed")[..width * 12], edit[..width * 12], "{model:?}");

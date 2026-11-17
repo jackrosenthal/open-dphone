@@ -313,12 +313,12 @@ fn fabricate(store: &Store, model: Model) {
     store.update::<st::Alarms, _>(|a| {
         let alarm = |id, hour, minute, days, tone: &str, enabled| st::Alarm { id, hour, minute, days, tone: tone.into(), enabled };
         a.alarms = vec![
-            alarm(1, 6, 30, 0b0111110, "Chime", true),
-            alarm(2, 8, 0, 0b0000010, "Marimba", true),
-            alarm(3, 9, 30, 0b1000001, "Classic", false),
-            alarm(4, 14, 45, 0, "Marimba", true),
+            alarm(1, 6, 30, 0b0111110, "Osmium", true),
+            alarm(2, 8, 0, 0b0000010, "Beep", true),
+            alarm(3, 9, 30, 0b1000001, "Buzzer", false),
+            alarm(4, 14, 45, 0, "Beep", true),
         ];
-        a.tones = ["Marimba", "Classic", "Chime", "Pulse", "Rise", "Mellow"].map(String::from).to_vec();
+        a.tones = ["Beep", "Buzzer", "Classic", "Osmium", "Rooster", "Argon"].map(String::from).to_vec();
         a.icon = true;
         a.snooze_secs = 600;
         a.next = Some((4, st::clock::unix_secs() + 2 * 3600));

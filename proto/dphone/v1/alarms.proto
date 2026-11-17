@@ -42,7 +42,8 @@ message AlarmTime {
 
 message AlarmsSnapshot {
   repeated Alarm alarms = 1;
-  // The ringtones an alarm can ring with.
+  // The tones an alarm can ring with: the alarm clock's own, not the
+  // ringtones.
   repeated string tones = 2;
   // The next time an alarm rings, a snoozed alarm included.
   optional AlarmTime next = 3;

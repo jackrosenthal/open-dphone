@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use dphone_config::Config;
-use dphone_state::{Alarm, Alarms, Calls, Command, CommandError, Domain, Event, Reply, Topic};
+use dphone_state::{Alarm, Alarms, Calls, Command, CommandError, Domain, Reply, Topic};
 use log::{info, warn};
 use tokio::sync::Notify;
 
@@ -56,10 +56,6 @@ impl Runner {
     fn command(&mut self, command: Command, now: u64) -> Result<Reply, CommandError> {
         match command {
             Command::SetAlarm { alarm } => {
-                // A ringtone may have been added since the list was read.
-                if !self.tones.iter().any(|t| t.eq_ignore_ascii_case(&alarm.tone)) {
-                    self.tones = super::ringtones::all(&self.ctx.paths.nvdata);
-                }
                 self.engine.set(alarm, now, &self.tones).map(|id| Reply::Id(id.into())).map_err(CommandError::Invalid)
             }
             Command::RemoveAlarm { id } => self.engine.remove(id).map(|()| Reply::Done).map_err(CommandError::Invalid),
@@ -132,11 +128,7 @@ impl Runner {
                     }
                 }
                 _ = second.tick() => {}
-                wake = sub.changed() => {
-                    if wake.events.iter().any(|e| matches!(e, Event::ConfigApplied { .. })) {
-                        self.tones = super::ringtones::all(&self.ctx.paths.nvdata);
-                    }
-                }
+                _ = sub.changed() => {}
                 _ = shared.changed.notified() => {}
             }
         }
@@ -165,7 +157,7 @@ enum AlarmsAction {
         /// The days it rings on, e.g., mon,wed,fri; one time without
         #[arg(long)]
         days: Option<String>,
-        /// The ringtone; the phone's first without
+        /// The alarm tone; the phone's first without
         #[arg(long, default_value = "")]
         tone: String,
     },
@@ -262,7 +254,7 @@ pub fn start(ctx: &Context, audio: AudioService) -> AlarmService {
         shared: shared.clone(),
         engine: Engine::load(text.as_deref()),
         path,
-        tones: super::ringtones::all(&ctx.paths.nvdata),
+        tones: super::alarmtones::names(),
     };
     tokio::spawn(runner.run());
     register_diag(ctx);
@@ -280,7 +272,7 @@ mod tests {
         assert_eq!(parse_days("mon,Wed,friday"), Some(0b0101010));
         assert_eq!(parse_days("sun"), Some(1));
         assert_eq!(parse_days("mon,noday"), None);
-        let a = Alarm { id: 3, hour: 8, minute: 0, days: 0b0000010, tone: "Chime".into(), enabled: true };
-        assert_eq!(describe(&a), "3 08:00 mon Chime on\n");
+        let a = Alarm { id: 3, hour: 8, minute: 0, days: 0b0000010, tone: "Osmium".into(), enabled: true };
+        assert_eq!(describe(&a), "3 08:00 mon Osmium on\n");
     }
 }

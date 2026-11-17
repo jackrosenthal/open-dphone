@@ -358,7 +358,7 @@ fn an_app_stops_only_the_sound_the_app_started() {
             .drain(..)
             .map(|c| match c {
                 Command::PlayData { .. } => "play",
-                Command::PlaySound { .. } => "preview",
+                Command::PlayAlarmTone { .. } => "preview",
                 Command::StopSound => "stop",
                 _ => "other",
             })
@@ -384,7 +384,7 @@ fn an_app_stops_only_the_sound_the_app_started() {
     assert_eq!(asked(&audio), [] as [&str; 0]);
 
     // The preview the app started is the app's to stop, once.
-    ask(&mut r, "preview", "Classic");
+    ask(&mut r, "preview", "Buzzer");
     ask(&mut r, "preview", "");
     ask(&mut r, "preview", "");
     assert_eq!(asked(&audio), ["preview", "stop"]);

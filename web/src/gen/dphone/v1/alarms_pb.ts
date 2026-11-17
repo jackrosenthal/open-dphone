@@ -98,7 +98,8 @@ export type AlarmsSnapshot = Message<"dphone.v1.AlarmsSnapshot"> & {
   alarms: Alarm[];
 
   /**
-   * The ringtones an alarm can ring with.
+   * The tones an alarm can ring with: the alarm clock's own, not the
+   * ringtones.
    *
    * @generated from field: repeated string tones = 2;
    */

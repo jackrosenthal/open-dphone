@@ -137,6 +137,9 @@ pub enum Command {
     StopTone,
     /// Play a ringtone by name once (settings preview).
     PlaySound { name: String },
+    /// Play one of the alarm clock's tones by name for a few seconds (a
+    /// preview, as [`Command::PlaySound`] is for a ringtone).
+    PlayAlarmTone { name: String },
     /// Play a sound once for the app `app`, from `start_secs` in: `sound`
     /// is the content of a sound file, which the app holds in its data.
     /// [`crate::Event::PlaybackStopped`] follows when it ends, is stopped,
@@ -267,7 +270,7 @@ impl Command {
                 Domain::Calls
             }
             SetAudioPath { .. } | SetMute { .. } | SetVolume { .. } | AdjustVolume { .. }
-            | SetHeadsetMode { .. } | PlayTone { .. } | StopTone | PlaySound { .. }
+            | SetHeadsetMode { .. } | PlayTone { .. } | StopTone | PlaySound { .. } | PlayAlarmTone { .. }
             | PlayData { .. } | StopSound => Domain::Audio,
             InjectKey { .. } | InjectHook { .. } | Notify { .. } | DismissNotice { .. }
             | SetBacklight { .. } | SetContrast { .. } | ShowScreen { .. } | ResetIdleTimer => Domain::Ui,

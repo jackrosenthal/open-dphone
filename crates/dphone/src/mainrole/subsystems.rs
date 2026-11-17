@@ -49,6 +49,7 @@ pub mod net;
 pub mod paging;
 pub mod provisioning;
 pub mod remote;
+pub mod alarmtones;
 pub mod ringtones;
 pub mod syslog;
 pub mod system;

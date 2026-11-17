@@ -2,7 +2,7 @@
 //! clock itself is the phone's (the interface `alarms`): it keeps the
 //! alarms, rings them, and shows the ringing alarm with Snooze and Dismiss,
 //! whether or not this app runs.  Here the user adds, changes, enables,
-//! disables, and deletes alarms.  An alarm's time, days, and ringtone are a
+//! disables, and deletes alarms.  An alarm's time, days, and tone are a
 //! list of fields; Select on a field opens a dialog over the list in which
 //! the field is changed.
 
@@ -207,7 +207,7 @@ impl Alarms {
         let items = [
             ListItem::with_detail("Time", time_text(d.hour, d.minute)),
             ListItem::with_detail("Repeat", days_label(d.days)),
-            ListItem::with_detail("Ringtone", d.tone.clone()),
+            ListItem::with_detail("Tone", d.tone.clone()),
         ];
         let title = if d.id == 0 { "New Alarm" } else { "Edit Alarm" };
         self.list_widget(title, &items, self.edit_row);
@@ -271,7 +271,7 @@ impl Alarms {
         let (title, body) = match dialog {
             Dialog::Time => ("Time", (m.line_height * 2 + m.line_height + pad).min(room)),
             Dialog::Days => ("Repeat", rows(DAY_NAMES.len())),
-            Dialog::Tones => ("Ringtone", rows(alarms::tones().len().max(1))),
+            Dialog::Tones => ("Tone", rows(alarms::tones().len().max(1))),
         };
         let height = 2 * edge + head + body;
         let top = m.title_height + (below - height) / 2;
@@ -344,7 +344,7 @@ impl Alarms {
     }
 
     /// The rows of the dialog's list: the days, with a mark on each the
-    /// alarm repeats on, or the ringtones, with a mark on the alarm's.
+    /// alarm repeats on, or the tones, with a mark on the alarm's.
     fn draw_choices(&self) {
         let marked = |text: String, on: bool| ListItem {
             text,
@@ -367,7 +367,7 @@ impl Alarms {
         ui::set_selected(self.field, self.dialog_row.min(items.len().saturating_sub(1) as u32));
     }
 
-    /// Select in a dialog: a day is switched; a time or a ringtone is
+    /// Select in a dialog: a day is switched; a time or a tone is
     /// taken.
     fn dialog_select(&mut self) {
         match self.dialog {

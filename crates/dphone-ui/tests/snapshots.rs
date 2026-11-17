@@ -607,7 +607,7 @@ fn alarm_clock() {
         r.ui.pump();
         let plain = r.sim.frame(Screen::Main).unwrap().pixels;
         r.store.update::<Alarms, _>(|a| {
-            a.alarms = vec![Alarm { id: 1, hour: 8, minute: 0, days: 0b0111110, tone: "Chime".into(), enabled: true }];
+            a.alarms = vec![Alarm { id: 1, hour: 8, minute: 0, days: 0b0111110, tone: "Osmium".into(), enabled: true }];
             a.icon = true;
         });
         r.shot("70-idle-alarm-icon");
