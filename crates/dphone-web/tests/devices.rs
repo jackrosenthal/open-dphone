@@ -444,7 +444,6 @@ async fn alarms() {
             { "id": 2, "minute": 5, "tone": "Beep" },
         ],
         "tones": ["Beep", "Osmium"],
-        "showIcon": true,
         "next": { "id": 1, "unixSecs": "1794844800" },
         "snoozed": { "id": 2, "unixSecs": "1794800000" },
         "snoozeSecs": 600,
