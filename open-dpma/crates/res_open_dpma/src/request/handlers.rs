@@ -562,10 +562,13 @@ fn authenticate(credentials: &[u8]) -> Option<Vec<u8>> {
     users::runtime::phone_for_line(&line)
 }
 
-/// A request handed to AMI (`ami::messages::raise_event` was called): the
-/// reply waits for `DPMAMessageResponse`.
+/// A request for a method that AMI registered: its reply waits for
+/// `DPMAMessageResponse`.
 struct Forwarded {
     method: Vec<u8>,
+    /// The `Format` and `Parameters` of its `DPMAMessage` event; None: no
+    /// event.
+    event: Option<(&'static str, Vec<u8>)>,
 }
 
 /// The handler of both AsteriskRequest and HTTPRequest.
@@ -591,17 +594,18 @@ pub fn handle_http_or_asterisk(tx: Arc<Transaction>) -> i32 {
         append(&tx, &buf);
     }
     match forwarded {
-        Some(f) => queue_for_ami(&tx, f),
+        Some(f) => forward_to_ami(&tx, f),
         None => crate::session::send_and_destroy(&tx),
     }
     0
 }
 
-/// Keep the reply until AMI answers (`ami::messages::queue_request`: the
-/// official DPMA schedules the expiry, then links the queued message).
-/// When that fails, the reply is sent at once with just the HTTP header.
-fn queue_for_ami(tx: &Arc<Transaction>, f: Forwarded) {
-    if crate::ami::messages::queue_request(tx, &f.method).is_err() {
+/// Keep the reply until AMI answers, and raise the event
+/// (`ami::messages::forward`).  When the reply cannot be kept, it is sent
+/// at once with just the HTTP header.
+fn forward_to_ami(tx: &Arc<Transaction>, f: Forwarded) {
+    let event = f.event.as_ref().map(|(format, p)| (*format, p.as_slice()));
+    if crate::ami::messages::forward(tx, &f.method, event).is_err() {
         crate::session::send_and_destroy(tx);
     }
 }
@@ -720,14 +724,11 @@ fn xml_request(
             break 'code rq::PARSE;
         }
         if method::is_ami(&method) {
-            let text = params.text();
-            crate::ami::messages::raise_event(
-                &tx.key,
-                &method,
-                "XML",
-                text.as_deref().unwrap_or(b"(null)"),
-            );
-            return Some(Forwarded { method });
+            let text = params.text().unwrap_or_else(|| b"(null)".to_vec());
+            return Some(Forwarded {
+                method,
+                event: Some(("XML", text)),
+            });
         }
         rq::METHOD_NOT_FOUND
     };
@@ -792,10 +793,8 @@ fn json_request(
         // ast_json_dump_string fails for parameters that are not an object
         // or an array; then no event is raised, but the request still
         // waits for an answer.
-        if let Some(params) = params.dump() {
-            crate::ami::messages::raise_event(&tx.key, &method, "JSON", &params);
-        }
-        return Some(Forwarded { method });
+        let event = params.dump().map(|p| ("JSON", p));
+        return Some(Forwarded { method, event });
     }
     // The official DPMA passes the method name as the printf format of the
     // detail.

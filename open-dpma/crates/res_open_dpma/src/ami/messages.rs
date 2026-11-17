@@ -2,11 +2,10 @@
 //!
 //! AMI clients register method names with `DPMAMessageRegister`.  When a
 //! phone calls such a method in an AsteriskRequest or HTTPRequest (and no
-//! XML or JSON method of that name exists), the request handler raises a
-//! `DPMAMessage` event ([`raise_event`]) and queues the transaction's reply
-//! under the transaction key ([`queue_request`]).  `DPMAMessageResponse`
-//! with that key as `RequestID` completes the reply and sends it to the
-//! phone's session.
+//! XML or JSON method of that name exists), the request handler queues the
+//! transaction's reply under the transaction key and raises a
+//! `DPMAMessage` event ([`forward`]).  `DPMAMessageResponse` with that key
+//! as `RequestID` completes the reply and sends it to the phone's session.
 //!
 //! Each queued request also gets an expiry entry in the AMI scheduler
 //! context, which runs on its own thread: a request nobody answers is
@@ -215,13 +214,31 @@ fn unlink_token(token: usize) -> Option<QueuedMsg> {
 // The request side (the AsteriskRequest and HTTPRequest handler)
 // ---------------------------------------------------------------------------
 
+/// Forward the request of `tx` to AMI-registered `method`: queue its reply
+/// ([`queue_request`]), then raise the `DPMAMessage` event
+/// ([`raise_event`]) with `event`'s format and parameters, when there is
+/// one.  The reply is queued first, so that a client that answers the
+/// event at once finds it.  Err when the reply could not be queued; the
+/// handler then sends it.
+pub fn forward(
+    tx: &Arc<Transaction>,
+    method: &[u8],
+    event: Option<(&str, &[u8])>,
+) -> Result<(), ()> {
+    let queued = queue_request(tx, method);
+    if let Some((format, params)) = event {
+        raise_event(&tx.key, method, format, params);
+    }
+    queued
+}
+
 /// Raise the `DPMAMessage` event (category "agent", with the official
 /// DPMA's source location) for a request to an AMI-registered method.
 /// `request_id` is the transaction key, `format` "XML" or "JSON", and
 /// `params` the request's parameters: for XML the text content of the
 /// `<parameters>` element (`ast_xml_get_text`), for JSON the compact dump
 /// of the `"parameters"` value.
-pub fn raise_event(request_id: &[u8], method: &[u8], format: &str, params: &[u8]) {
+fn raise_event(request_id: &[u8], method: &[u8], format: &str, params: &[u8]) {
     manager::event_at(
         DPMA_MESSAGE_CATEGORY,
         "DPMAMessage",
@@ -238,13 +255,12 @@ pub fn raise_event(request_id: &[u8], method: &[u8], format: &str, params: &[u8]
     );
 }
 
-/// The end of the AsteriskRequest handler after an AMI forward: move the
-/// transaction's reply into a queued request keyed by the transaction key,
-/// schedule its expiry, and link it.  The handler must not send the reply
-/// when this succeeds; on Err the reply is left in the transaction for the
-/// handler to send (`send_and_destroy`), as the official DPMA does when the
-/// expiry cannot be scheduled.
-pub fn queue_request(tx: &Arc<Transaction>, method: &[u8]) -> Result<(), ()> {
+/// Move the transaction's reply into a queued request keyed by the
+/// transaction key, schedule its expiry, and link it.  The handler must
+/// not send the reply when this succeeds; on Err the reply is left in the
+/// transaction for the handler to send (`send_and_destroy`), as the
+/// official DPMA does when the expiry cannot be scheduled.
+fn queue_request(tx: &Arc<Transaction>, method: &[u8]) -> Result<(), ()> {
     let session_id = tx
         .session
         .as_ref()
@@ -568,13 +584,8 @@ pub fn devtest_commands() -> Vec<dpma_ast::cli::CliCommand> {
             outgoing: Mutex::new(Some(out)),
             ..Default::default()
         });
-        raise_event(
-            &tx.key,
-            method,
-            &String::from_utf8_lossy(format).to_ascii_uppercase(),
-            &params,
-        );
-        match queue_request(&tx, method) {
+        let format = String::from_utf8_lossy(format).to_ascii_uppercase();
+        match crate::ami::messages::forward(&tx, method, Some((&format, &params))) {
             Ok(()) => a.out(bformat!("Queued {}\n", tx.key)),
             Err(()) => {
                 session::send_and_destroy(&tx);
