@@ -10,8 +10,8 @@
 //! rings, is answered, and hangs up; 1002 itself is a scripted endpoint
 //! here.  Then the server's configuration changes and it tells the phone,
 //! which fetches the new one.  A phone that starts again with that
-//! configuration verifies its token and gets the configuration's digest in
-//! the answer.
+//! configuration verifies its token, gets the configuration's digest in
+//! the answer, and does not fetch what it already has.
 //!
 //! The phone's section also sets the Open DPhone options the server has
 //! for the phone's own behavior (`dphone_*`): each arrives as a setting of
@@ -390,6 +390,9 @@ fn provisions_and_registers_against_asterisk() {
     for said in ["metrics disabled (metrics_enabled)", "the serial console has the UART (serial_console is on)"] {
         wait_for(said, Duration::from_secs(30), || diag(&socket, &["log", "-n", "5000"]).filter(|l| l.contains(said)));
     }
+    // Without `active_locale` the server sends no locale setting, where it
+    // used to send an empty one.
+    assert!(!fetched.contains("id=\"locale\""), "{fetched}");
     assert!(nv.join("md5s/config").exists());
     let configurator = std::fs::read_to_string(nv.join("configurator.xml")).unwrap();
     assert!(configurator.contains("config_server_token"), "{configurator}");
@@ -457,9 +460,12 @@ fn provisions_and_registers_against_asterisk() {
     assert!(fetched.contains("America/Chicago"), "{fetched}");
 
     // A phone that starts with the configuration it has: the server
-    // answers its VerifyRequest with the digest of the configuration, and
-    // the digest is the cached one.
-    let cached = std::fs::read_to_string(nv.join("md5s/config")).unwrap();
+    // answers its VerifyRequest with the digest of the configuration, the
+    // digest is the cached one, and nothing is fetched.
+    let digest = nv.join("md5s/config");
+    let written = |p: &Path| std::fs::metadata(p).unwrap().modified().unwrap();
+    let (digest_before, fetched_before) = (written(&digest), written(&nv.join("fetched-config.xml")));
+    let cached = std::fs::read_to_string(&digest).unwrap();
     assert_eq!(cached.len(), 32, "{cached}");
     drop(main);
     let _ = std::fs::remove_file(&socket);
@@ -468,6 +474,8 @@ fn provisions_and_registers_against_asterisk() {
         diag(&socket, &["state", "provisioning"]).filter(|s| s.contains("phase: Provisioned"))
     });
     assert!(provisioning.contains(&format!("config_md5: \"{cached}\"")), "{provisioning}");
+    assert_eq!(written(&digest), digest_before, "the configuration was fetched again");
+    assert_eq!(written(&nv.join("fetched-config.xml")), fetched_before, "the configuration was fetched again");
     let zone = diag(&socket, &["config", "get", "time_zone"]).expect("config get");
     assert!(zone.contains("America/Chicago"), "{zone}");
 }
@@ -620,9 +628,13 @@ fn an_app_writes_a_value_that_an_app_on_another_phone_reads() {
     alice.says("stored greeting=\"hello from the writer\" by Alice Example");
     alice.says("stored progress=\"level 3\" by Alice Example");
 
-    // Bob's app is told of the shared key and reads it.
+    // Bob's app is told of the shared key and reads it.  Alice's own key
+    // is not Bob's.
     bob.says("changed StorageLocation::PbxShared greeting");
     bob.says("read greeting=\"hello from the writer\" by Alice Example");
+    let said = bob.log();
+    assert!(!said.contains("storeprobe: read progress="), "{said}");
+    assert!(!said.contains("changed StorageLocation::PbxPrivate"), "{said}");
 
     // Carol's phone is of another tenant: for her app there is no such
     // key.
@@ -639,6 +651,7 @@ fn an_app_writes_a_value_that_an_app_on_another_phone_reads() {
     ] {
         assert!(db.contains(key), "{key}: {db}");
     }
+    assert!(!db.contains("@elsewhere"), "{db}");
 
     // The server stops and starts again, and Alice's phone is reset:
     // nothing is left on it, and the app is installed anew.  Her data is

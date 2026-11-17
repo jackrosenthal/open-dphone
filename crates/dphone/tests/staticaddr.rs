@@ -30,7 +30,7 @@ mod common;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -237,8 +237,9 @@ async fn phone(nvdata: PathBuf) {
 // ------------------------------------------------------------------------
 // The network (the parent process).
 
-/// A minimal DHCP server on `ifname` leasing [`LEASED_IP`].
-async fn dhcp_server(ifname: &'static str) {
+/// A minimal DHCP server on `ifname` leasing [`LEASED_IP`].  Counts the
+/// messages it hears.
+async fn dhcp_server(ifname: &'static str, heard: Arc<AtomicU32>) {
     let sock = std::net::UdpSocket::bind("0.0.0.0:67").unwrap();
     sock.set_broadcast(true).unwrap();
     sock.set_nonblocking(true).unwrap();
@@ -248,6 +249,7 @@ async fn dhcp_server(ifname: &'static str) {
     loop {
         let (n, from) = sock.recv_from(&mut buf).await.unwrap();
         let Some(req) = dhcp4::Message::parse(&buf[..n]) else { continue };
+        heard.fetch_add(1, Ordering::Relaxed);
         let kind = match req.msg_type() {
             Some(MsgType::Discover) => MsgType::Offer,
             Some(MsgType::Request) => MsgType::Ack,
@@ -402,6 +404,7 @@ struct Net {
     fake: Arc<Mutex<FakeServer>>,
     seen: Arc<Mutex<Seen>>,
     pushes: tokio::sync::mpsc::UnboundedSender<Vec<Message>>,
+    dhcp_heard: Arc<AtomicU32>,
 }
 
 impl Net {
@@ -500,7 +503,8 @@ async fn network(mut nl: Netlink) {
     nl.set_up(pcpeer, true).await.unwrap();
     nl.addr_add(sw, IpAddr::V4(SERVER_IP), 24).await.unwrap();
 
-    tokio::spawn(dhcp_server("sw"));
+    let dhcp_heard = Arc::new(AtomicU32::new(0));
+    tokio::spawn(dhcp_server("sw", dhcp_heard.clone()));
     let mut fake = FakeServer::new();
     fake.token_reqs = "mac".into();
     fake.userlist_reqs = "disabled".into();
@@ -530,7 +534,7 @@ async fn network(mut nl: Netlink) {
     );
     let log = dir.path().join("phone.log");
     let _show = ShowOnPanic(log.clone());
-    let mut net = Net { nl, nvdata, log, fake, seen, pushes };
+    let mut net = Net { nl, nvdata, log, fake, seen, pushes, dhcp_heard };
     let long = FALLBACK + Duration::from_secs(40);
     let soon = Duration::from_secs(15);
 
@@ -556,12 +560,15 @@ async fn network(mut nl: Netlink) {
 
     // --- A boot with the saved static address ------------------------------
     drop(phone);
-    let (mark, from) = (net.mark(), net.log_text().len());
+    let (mark, from, dhcp) = (net.mark(), net.log_text().len(), net.dhcp_heard.load(Ordering::Relaxed));
     let phone = net.boot().await;
     net.address("the saved static address", Duration::from_secs(30), STATIC_IP).await;
     net.answered("the handshake after the boot", Duration::from_secs(30), mark, STATIC_IP, "Handshake").await;
     net.logged("the server's answer after the boot", soon, from, "the provisioning server answers at the static address").await;
-    println!("staticaddr: boot with the saved static address ok");
+    // From the start: this boot never asked the DHCP server for anything.
+    assert_eq!(net.dhcp_heard.load(Ordering::Relaxed), dhcp, "the boot with a saved static address used DHCP");
+    assert!(!net.seen.lock().unwrap().answered[mark..].iter().any(|(a, _)| *a != STATIC_IP));
+    println!("staticaddr: boot with the saved static address, no DHCP ok");
 
     // --- The server was down at boot: no bad address is assumed ------------
     // The phones and the PBX restart together, and the PBX takes longer.

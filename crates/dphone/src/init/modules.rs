@@ -296,4 +296,10 @@ mod tests {
     fn list_file() {
         assert_eq!(parse_list("# comment\ndw_dmac\n\n  bcmring_vpm # dsp\n"), ["dw_dmac", "bcmring_vpm"]);
     }
+
+    /// The D60 shares the D65's family but has no Bluetooth.
+    #[test]
+    fn the_d60_loads_no_bluetooth_modules() {
+        assert!(model_list(Model::D60).is_empty());
+    }
 }

@@ -464,8 +464,9 @@ fn start_trial_supervisor(dir: &Path, main: &[&str]) -> (KillOnDrop, PathBuf, Pa
 }
 
 /// An image whose main role fails at every start is not kept: during the
-/// trial the main role is retried, and after `MAX_TRIAL_CRASHES` failures
-/// the supervisor selects the previous bank and reboots.
+/// trial the full main role is retried (never the safe-mode one, which
+/// would come up and look fine), and after `MAX_TRIAL_CRASHES` failures the
+/// supervisor selects the previous bank and reboots.
 #[test]
 fn crash_looping_main_role_during_a_trial_rolls_back() {
     let dir = temp();
@@ -481,9 +482,35 @@ fn crash_looping_main_role_during_a_trial_rolls_back() {
     assert!(!trial.exists(), "the trial record is gone after the rollback");
     let text = std::fs::read_to_string(&log).unwrap();
     assert_eq!(text.matches("started main role").count(), 5, "{text}");
+    assert!(!text.contains("safe mode"), "safe mode must not be tried during a trial:\n{text}");
+    assert!(!text.contains("trial boot confirmed"), "{text}");
     assert!(text.contains("reverted to bank 1"), "{text}");
     let reason = std::fs::read_to_string(dir.path().join("nv/reboot_reason")).unwrap();
     assert_eq!(reason, "init: main role keeps failing during trial boot, reverted to bank 1\n");
+}
+
+/// A main role in safe mode comes up and says so, and that does not confirm
+/// a trial boot.
+#[test]
+fn safe_mode_does_not_confirm_a_trial() {
+    let dir = temp();
+    let nv = dir.path().join("nv");
+    let run = dir.path().join("run");
+    let (nv_s, run_s) = (nv.to_str().unwrap().to_owned(), run.to_str().unwrap().to_owned());
+    let (_sup, trial, marker, log) = start_trial_supervisor(
+        dir.path(),
+        &["main", "--sim", "--safe", "--no-ssh", "--nvdata", &nv_s, "--run-dir", &run_s],
+    );
+    let _show_log = ShowOnPanic(log.clone());
+    let logged = |what: &str| std::fs::read_to_string(&log).unwrap_or_default().contains(what);
+    // The supervisor says so when the beat that reports safe mode comes;
+    // a beat that confirmed the trial would have come in its place.  (The
+    // main role's own half of the confirmation does nothing in the
+    // simulator.)
+    wait_for("the safe-mode main role to report", Duration::from_secs(20), || logged("main role is up in safe mode"));
+    assert!(trial.exists(), "the trial record must stay");
+    assert!(!logged("trial boot confirmed") && !logged("main role reports healthy"));
+    assert!(!marker.exists(), "nothing failed, so nothing is rolled back");
 }
 
 /// A loopback port nothing listens on right now.
@@ -512,10 +539,10 @@ fn http(port: u16, method: &str, path: &str, body: &str) -> (u16, String) {
     (status, raw.split_once("\r\n\r\n").map(|(_, b)| b.to_owned()).unwrap_or_default())
 }
 
-/// The SSH listener opens when `ssh_enabled` is turned on, and closes
-/// again when it is turned off.
+/// With nothing set, the phone does not listen for SSH at any point; the
+/// listener opens when `ssh_enabled` is turned on, and closes again.
 #[test]
-fn the_ssh_setting_opens_and_closes_the_listener() {
+fn ssh_is_off_until_the_setting_turns_it_on() {
     let dir = temp();
     let port = free_port();
     let listen = format!("127.0.0.1:{port}");
@@ -523,6 +550,9 @@ fn the_ssh_setting_opens_and_closes_the_listener() {
     let _main = main;
     wait_for("diag socket", Duration::from_secs(10), || socket.exists());
     wait_for("healthy", Duration::from_secs(10), || diag(&socket, &["health"]).0 == 0);
+    let log = || diag(&socket, &["log", "-n", "100000"]).1;
+    assert!(!listening(port), "SSH listens although nothing turned it on");
+    assert!(!log().contains("ssh listening"), "{}", log());
 
     let settings = dir.path().join("nv/dphone_settings.txtpb");
     std::fs::write(&settings, "ssh_enabled: true\n").unwrap();

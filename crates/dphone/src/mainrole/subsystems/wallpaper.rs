@@ -176,7 +176,10 @@ mod tests {
         let shown = c.wallpaper_picture.expect("the picture");
         assert_eq!(shown.palette, None);
         assert!(shown.pixels().iter().all(|p| *p == 0x204060));
+        // A palette file on disk that the configuration does not name is
+        // not used.
         nv.write(PALETTE_FILE, b"sel_bg: \"#204060\"\n").unwrap();
+        assert_eq!(ui(&store).wallpaper_picture.unwrap().palette, None);
         // Named: the picture with its palette.
         let both = format!(r#"<config>{picture}<setting id="dphone_palette_file" value="user" url="file://wall.txtpb" conflict="freeze"/></config>"#);
         store.apply_fetched(&both).unwrap();
@@ -199,5 +202,12 @@ mod tests {
         store.apply_fetched("<config></config>").unwrap();
         let c = ui(&store);
         assert_eq!((c.theme.as_str(), c.theme_locked, c.wallpaper_picture.is_none()), ("dusk", false, true));
+        // A gray model has no wallpaper picture.
+        let mut gray = ConfigStore::open(Nvdata::new(&dir), Model::D50, tmp.path().join("tmp")).unwrap();
+        nv.write(WALLPAPER_FILE, PNG).unwrap();
+        gray.apply_fetched(&both).unwrap();
+        let mut out = UiConfig::default();
+        apply(&gray.config(), &nv, &mut out);
+        assert!(out.wallpaper_picture.is_none());
     }
 }

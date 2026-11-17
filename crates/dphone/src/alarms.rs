@@ -840,5 +840,7 @@ mod tests {
         r.collect();
         assert_eq!(r.sounds.last(), Some(&Sound::Silence));
         assert_eq!((r.ringing(), r.state().snoozed), (None, None));
+        r.run(3600);
+        assert_eq!(r.sounds.len(), 2);
     }
 }

@@ -89,6 +89,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let files = vec![dir.path().join("authorized_keys"), dir.path().join("provisioned_authorized_keys")];
         let (a, b) = (PublicKey::from_openssh(ED).unwrap(), PublicKey::from_openssh(OTHER).unwrap());
+        assert!(authorized_keys(&files).is_empty());
+        assert!(!is_authorized(&files, &a));
         std::fs::write(&files[1], format!("{OTHER}\n")).unwrap();
         assert!(is_authorized(&files, &b) && !is_authorized(&files, &a));
         std::fs::write(&files[0], format!("{ED}\n")).unwrap();

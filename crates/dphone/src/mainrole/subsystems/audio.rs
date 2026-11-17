@@ -1753,6 +1753,8 @@ mod volume_key_tests {
         // next key adjusts, though the speaker is what is open.
         let a = svc.store.get::<Audio>();
         assert_eq!((a.current_target(), a.volume(VolumeTarget::Current)), (VolumeTarget::Ringer, 6));
+        // No lamp for it, as for a ring.
+        assert_eq!(dphone_state::audio_lamps(&a, &svc.store.get::<Calls>()).0, dphone_state::LampState::OFF);
 
         // Another key: the same ring goes on, and the time starts again.
         key(&svc, 1);
@@ -1776,6 +1778,12 @@ mod volume_key_tests {
         assert_eq!((svc.store.get::<Audio>().ringer_volume, sounding(&svc).0), (0, true));
         svc.end_volume_preview(None);
         assert_eq!(sounding(&svc), (false, AudioPath::None));
+
+        // Setting the ringer's volume some other way (the menu, the web
+        // UI) is not the volume keys.
+        svc.command(Command::SetVolume { target: VolumeTarget::Ringer, level: 4 }).unwrap();
+        svc.command(Command::AdjustVolume { target: VolumeTarget::Ringer, delta: 1 }).unwrap();
+        assert_eq!((svc.store.get::<Audio>().ringer_volume, sounding(&svc).0), (5, false));
     }
 
     #[tokio::test]
@@ -1793,7 +1801,7 @@ mod volume_key_tests {
     }
 
     #[tokio::test]
-    async fn during_a_call_or_a_tone_the_keys_are_the_open_paths() {
+    async fn not_during_a_call() {
         // A call on the handset: the keys are the handset's.
         let svc = service();
         add_call(&svc, CallState::Active);
@@ -1803,6 +1811,12 @@ mod volume_key_tests {
         assert_eq!((a.handset_volume, a.ringer_volume), (6, 5));
         assert_eq!((sounding(&svc), preview(&svc)), ((false, AudioPath::Handset), None));
 
+        // A call with no path open (on hold): no ringer over it.
+        let svc = service();
+        add_call(&svc, CallState::Held { local: true, remote: false });
+        key(&svc, 1);
+        assert_eq!((sounding(&svc), preview(&svc)), ((false, AudioPath::None), None));
+
         // Dial tone on the speaker: the keys are the speaker's.
         let svc = service();
         svc.tone(Some(Tone::Dial));
@@ -1810,18 +1824,27 @@ mod volume_key_tests {
         let a = svc.store.get::<Audio>();
         assert_eq!((a.speaker_volume, a.ringer_volume), (6, 5));
         assert_eq!((sounding(&svc), preview(&svc)), ((false, AudioPath::Speaker), None));
+
+        // The handset off its hook with nothing sounding.
+        let svc = service();
+        svc.input_event(&Event::Hook { off_hook: true, source: InputSource::Physical });
+        key(&svc, 1);
+        assert_eq!((sounding(&svc), preview(&svc)), ((false, AudioPath::None), None));
     }
 
     #[tokio::test]
-    async fn while_ringing_for_a_call_the_keys_set_the_rings_volume() {
+    async fn not_while_ringing_for_a_call() {
         let svc = service();
         add_call(&svc, CallState::Ringing);
         svc.ring(Some("Bell Phone"));
         key(&svc, 1);
         // The ringer's volume changed, and the ring is the call's still:
-        // call control ends it.
+        // nothing ends it but call control.
         assert_eq!(svc.store.get::<Audio>().ringer_volume, 6);
         assert_eq!((sounding(&svc), preview(&svc)), ((true, AudioPath::Speaker), None));
+        svc.end_volume_preview(None);
+        svc.input_event(&Event::Key { key: Key::Digit(5), down: true, source: InputSource::Physical });
+        assert_eq!(sounding(&svc), (true, AudioPath::Speaker));
         svc.ring(None);
         assert_eq!(sounding(&svc), (false, AudioPath::None));
     }
@@ -1844,7 +1867,12 @@ mod volume_key_tests {
         assert!(svc.store.get::<Audio>().off_hook);
         svc.input_event(&Event::Hook { off_hook: false, source: InputSource::Physical });
 
+        // The volume keys themselves and key releases are not "another key".
         start(&svc);
+        for (key, down) in [(Key::VolumeUp, true), (Key::VolumeDown, true), (Key::VolumeUp, false), (Key::Digit(5), false)] {
+            svc.input_event(&Event::Key { key, down, source: InputSource::Physical });
+            assert!(preview(&svc).is_some(), "{key:?} {down}");
+        }
         svc.input_event(&Event::Key { key: Key::Digit(5), down: true, source: InputSource::Physical });
         stopped(&svc, "another key");
 
@@ -1866,29 +1894,38 @@ mod volume_key_tests {
         // Call control reserves the call's port first.
         let svc = service();
         key(&svc, 1);
+        let mine = preview(&svc).unwrap();
         let call = add_call(&svc, CallState::Ringing);
         let _ = svc.open(call);
         assert_eq!((sounding(&svc), preview(&svc)), ((false, AudioPath::None), None));
         svc.ring(Some("Bell Phone"));
+        // The preview's time coming up, or another key, does not stop
+        // the call's ring.
+        svc.end_volume_preview(Some(mine));
+        svc.end_volume_preview(None);
         assert_eq!((sounding(&svc), preview(&svc)), ((true, AudioPath::Speaker), None));
 
         // The ring itself coming first does the same.
         let svc = service();
         key(&svc, 1);
+        let mine = preview(&svc).unwrap();
         svc.ring(Some("Bell Phone"));
         assert_eq!(preview(&svc), None);
+        svc.end_volume_preview(Some(mine));
         assert_eq!(sounding(&svc), (true, AudioPath::Speaker));
     }
 
     #[tokio::test]
-    async fn the_keys_set_the_volume_of_a_ringtone_tried_in_the_settings() {
+    async fn a_ringtone_tried_in_the_settings_is_left_alone() {
         let svc = service();
         svc.command(Command::PlaySound { name: "Bell Phone".into() }).unwrap();
         assert!(sounding(&svc).0);
         key(&svc, 1);
-        // Its volume changes; it stays the settings' preview.
+        // Its volume changes; it stays the settings' preview, which
+        // another key does not end.
         assert_eq!(svc.store.get::<Audio>().ringer_volume, 6);
         assert_eq!(preview(&svc), None);
+        svc.input_event(&Event::Key { key: Key::Down, down: true, source: InputSource::Physical });
         assert!(sounding(&svc).0);
         svc.command(Command::StopSound).unwrap();
         assert_eq!(sounding(&svc), (false, AudioPath::None));

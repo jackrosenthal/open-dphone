@@ -440,6 +440,16 @@ mod tests {
             run(Shutdown::PowerOff, &["done"], true),
             (Shutdown::PowerOff, false, "dphone: done\n".to_string())
         );
+        // No temporary file is left beside it.
+        let names: Vec<_> = std::fs::read_dir(&nv).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names, ["reboot_reason"]);
+
+        // An image that must leave stock's files alone, or a stand-in
+        // nvdata: the file stays, and the phone still goes down.
+        assert_eq!(
+            run(Shutdown::Reboot, &["not", "written"], false),
+            (Shutdown::Reboot, false, "dphone: done\n".to_string())
+        );
 
         // A failure to hand over is reported.
         let e = shutdown_with(Shutdown::Reboot, &args(&[]), &paths, true, |_, _| Err("cannot signal PID 1: no".into()));

@@ -1160,5 +1160,9 @@ mod tests {
         let after = mapped(&store);
         assert_eq!(after.expansion_address, Some(Ipv4Addr::new(172, 20, 2, 3)));
         assert_eq!(before.restart_reasons(&after), ["expansion modules"]);
+        // Old-family phones have no expansion modules.
+        let mac = MacAddr::parse("00:0f:d3:01:02:03");
+        let old = map_config(NetConfig::new("D40", "3_0_0", mac), &store.config(), false, mac, false, None);
+        assert_eq!(old.expansion_address, None);
     }
 }

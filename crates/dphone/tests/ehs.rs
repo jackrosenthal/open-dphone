@@ -67,6 +67,8 @@ fn ehs_has_the_uart_by_default() {
     let (_, text) = diag(&socket, &["ehs"]);
     // The stock default for the "ehs" setting is auto-detection.
     assert!(text.contains("mode: Auto") && text.contains("adapter: none detected"), "{text}");
+    // Nothing tells the init role to run a console shell.
+    assert!(!run.join("serial-console").exists());
 }
 
 #[test]

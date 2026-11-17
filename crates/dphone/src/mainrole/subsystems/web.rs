@@ -291,8 +291,8 @@ mod tests {
     }
 
     /// A web upload on a phone: the image goes into the spare bank chunk by
-    /// chunk and is verified there, it is selected when the installation
-    /// is confirmed, and a broken upload leaves nothing to install.
+    /// chunk and is verified there, nothing is selected until the
+    /// installation is confirmed, and a broken upload selects nothing.
     #[test]
     fn an_upload_is_staged_in_flash_and_selected_by_the_install_command() {
         let model = Model::D60;
@@ -322,6 +322,7 @@ mod tests {
             upload.write(chunk).unwrap();
         }
         assert!(upload.finish().is_err());
+        assert_eq!(next_boot(), Bank::A);
         let e = system::install(&store, &mtd, model, STAGED_PATH, false, dir.path()).unwrap_err();
         assert!(format!("{e:?}").contains("upload it again"), "{e:?}");
 
@@ -346,5 +347,6 @@ mod tests {
         let mut upload = sink.begin(None).unwrap();
         let refused = image.chunks(16 * 1024).try_for_each(|c| upload.write(c)).and_then(|()| upload.finish().map(|_| ()));
         assert!(refused.unwrap_err().to_string().contains("dphone update abandon"));
+        assert_eq!(next_boot(), Bank::B);
     }
 }

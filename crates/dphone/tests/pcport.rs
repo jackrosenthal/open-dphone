@@ -339,6 +339,14 @@ async fn run(mut nl: Netlink) {
     dphone(&ctx, &["net", "bridge", "on"]).await;
     wait_kernel(&mut nl, "the bridge by command", Duration::from_secs(30), bridged_up).await;
     assert!(flag.exists());
+    // A settings change that is not about the network leaves the command's
+    // arrangement alone (provisioning reports one whenever the network
+    // comes up; on the D60 that undid the bridge 0.4 s after its lease).
+    // The network task answers `net status` once it has handled the change.
+    set(&[("blf_page_return_timeout", "7")]);
+    assert!(dphone(&ctx, &["net", "status"]).await.contains("PC jack bridged"));
+    let k = kernel(&mut nl).await;
+    assert!(bridged_up(&k), "a settings change undid 'dphone net bridge on': {k:?}");
     dphone(&ctx, &["net", "configured"]).await;
     wait_kernel(&mut nl, "the held arrangement again", Duration::from_secs(30), standalone_up).await;
     let text = dphone(&ctx, &["net", "bridge", "on", "--save"]).await;
@@ -359,6 +367,7 @@ async fn run(mut nl: Netlink) {
     deaf.store(true, Ordering::Relaxed);
     let lost = Instant::now();
     wait_kernel(&mut nl, "the lease to run out", Duration::from_secs(20), |k| k.address_on.is_none()).await;
+    assert!(kernel(&mut nl).await.bridge, "the bridge stays while the fallback time runs");
     wait_kernel(&mut nl, "the fallback to the plain arrangement", FALLBACK + Duration::from_secs(40), |k| !k.bridge && !k.pc_up).await;
     let took = lost.elapsed();
     assert!(took >= FALLBACK, "fell back after {took:?}, before the fallback time");
@@ -414,6 +423,13 @@ async fn run(mut nl: Netlink) {
     let status = dphone(&ctx, &["net", "status"]).await;
     assert!(status.contains("(plain)") && status.contains("twice"), "{status}");
     assert!(!frame_crosses(pcpeer, sw, ETH_TEST, pc_dst).await);
+    // A settings change that leaves the network settings as they were
+    // does not end it either (`net status` is answered once the change is
+    // handled).
+    set(&[("time_zone", "America/Chicago")]);
+    let status = dphone(&ctx, &["net", "status"]).await;
+    assert!(status.contains("(plain)") && status.contains("twice"), "an unrelated settings change must not end the fallback: {status}");
+    assert!(standalone_up(&kernel(&mut nl).await), "an unrelated settings change must not end the fallback");
     println!("pcport: settings that get no address are tried again once, then the plain arrangement stays ok");
 
     // --- Told otherwise: the settings are applied again -------------------

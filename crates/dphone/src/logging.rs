@@ -329,5 +329,8 @@ mod syslog_tests {
         let n = server.recv(&mut buf).unwrap();
         assert_eq!(std::str::from_utf8(&buf[..n]).unwrap(), format!("<12>Jan  1 00:00:00 dphone[{}]: t: sent", std::process::id()));
         set_remote(None, Level::Warn).unwrap();
+        send_remote(Level::Error, 0, "t", "after stop");
+        server.set_read_timeout(Some(std::time::Duration::from_millis(100))).unwrap();
+        assert!(server.recv(&mut buf).is_err());
     }
 }

@@ -59,13 +59,16 @@ async fn use_without_a_server_works_with_no_network() {
     assert!(store.post(Command::SkipProvisioning), "the choice is taken without the client");
     wait("the idle screen", || (phases(&store) == (Phase::Running, ProvisionPhase::Standalone)).then_some(())).await;
 
-    // The network comes up later, with a server announced.  When the user
-    // asks for provisioning again ("Reprovision" in the Reset menu), the
-    // server found is offered.
-    let (dpma, _) = client_starts(&store, early);
+    // The network comes up later, with a server announced: the phone stays
+    // as its user left it, and nothing is sent to the server.
+    let (dpma, server) = client_starts(&store, early);
     dpma.network(true, None, announced());
-    // (The client takes the network first.)
     tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(phases(&store), (Phase::Running, ProvisionPhase::Standalone));
+    assert_eq!(server.lock().unwrap().count("Handshake"), 0);
+
+    // Until the user asks for provisioning again ("Reprovision" in the
+    // Reset menu): then the server found is offered.
     store.send(Command::Reprovision).await.unwrap();
     wait("the server menu", || (phases(&store) == (Phase::Provisioning, ProvisionPhase::AwaitingServer)).then_some(())).await;
     assert_eq!(store.get::<Provisioning>().discovered, announced());
@@ -79,6 +82,8 @@ async fn an_address_entered_with_no_network_is_used_when_the_client_starts() {
     let p = store.get::<Provisioning>();
     assert_eq!(p.phase, ProvisionPhase::Idle);
     assert_eq!(p.server.as_ref().map(|s| (s.source, s.address.as_str())), Some((DiscoverySource::Manual, "10.0.0.9:5060")));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(store.get::<System>().phase, Phase::Provisioning, "still in setup");
     // What needs the client is refused, not lost.
     assert!(store.send(Command::SelectUser { id: "100".into(), pin: String::new() }).await.is_err());
 
@@ -97,8 +102,9 @@ async fn nothing_chosen_means_the_menu_when_the_client_starts() {
     let (store, early) = fresh_phone();
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(phases(&store), (Phase::Provisioning, ProvisionPhase::Idle));
-    let (dpma, _) = client_starts(&store, early);
+    let (dpma, server) = client_starts(&store, early);
     dpma.network(true, None, announced());
     wait("the server menu", || (phases(&store) == (Phase::Provisioning, ProvisionPhase::AwaitingServer)).then_some(())).await;
     assert_eq!(store.get::<Provisioning>().discovered, announced());
+    assert_eq!(server.lock().unwrap().count("Handshake"), 0, "the menu picks, not the client");
 }
