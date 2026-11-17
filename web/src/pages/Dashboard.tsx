@@ -1,13 +1,14 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Badge, Card, Dot, Empty, KeyValue, PageHeader, Spinner } from "../components/ui";
-import { CallDirection } from "../gen/dphone/v1/calls_pb";
-import { NetPhase } from "../gen/dphone/v1/network_pb";
-import { ProvisionPhase } from "../gen/dphone/v1/provisioning_pb";
-import { HealthState, SystemPhase, type StatusSnapshot } from "../gen/dphone/v1/status_pb";
+import { CallDirection, Codec } from "../gen/dphone/v1/calls_pb";
+import { Bank } from "../gen/dphone/v1/firmware_pb";
+import { Ipv4Source, NetPhase, VlanSource } from "../gen/dphone/v1/network_pb";
+import { DiscoverySource, ProvisionPhase } from "../gen/dphone/v1/provisioning_pb";
+import { HealthState, Subsystem, SystemPhase, type StatusSnapshot } from "../gen/dphone/v1/status_pb";
 import { RegistrationState } from "../gen/dphone/v1/accounts_pb";
 import { dateTime, duration } from "../lib/format";
-import { addressSourceNames, codecNames, discoverySourceNames, label, netPhaseNames, provisionPhaseNames, subsystemNames, systemPhaseNames, vlanSourceNames } from "../lib/labels";
+import { addressSourceNames, bankNames, codecNames, discoverySourceNames, label, modelName, netPhaseNames, provisionPhaseNames, subsystemNames, systemPhaseNames, vlanSourceNames } from "../lib/labels";
 import { useStatus } from "../lib/status";
 import { RegistrationBadge, callStateLabel } from "./common";
 import { ExpansionCard } from "./Expansion";
@@ -47,10 +48,10 @@ function problems(status: StatusSnapshot): Problem[] {
   for (const h of status.health) {
     if (h.state !== HealthState.FAILED && h.state !== HealthState.DEGRADED) continue;
     const failed = h.state === HealthState.FAILED;
-    list.push({ key: h.subsystem, name: label(subsystemNames, h.subsystem), state: failed ? "Failed" : "Degraded", why: reason(h.detail), tone: failed ? "red" : "amber" });
+    list.push({ key: `subsystem${h.subsystem}`, name: label(subsystemNames, h.subsystem, Subsystem[h.subsystem]), state: failed ? "Failed" : "Degraded", why: reason(h.detail), tone: failed ? "red" : "amber" });
   }
   const net = status.network;
-  if (net?.phase === NetPhase.FAILED && !list.some((p) => p.key === "net")) {
+  if (net?.phase === NetPhase.FAILED && !list.some((p) => p.key === `subsystem${Subsystem.NET}`)) {
     list.push({ key: "network", name: "Network", state: "Failed", why: reason(net.detail), tone: "red" });
   }
   for (const a of status.accounts) {
@@ -95,7 +96,7 @@ function StatusCard({ status }: { status: StatusSnapshot }) {
           {rest.map((h) => (
             <li key={h.subsystem} className="flex items-center gap-2">
               <Dot tone={healthTone[h.state]} />
-              <span>{label(subsystemNames, h.subsystem)}</span>
+              <span>{label(subsystemNames, h.subsystem, Subsystem[h.subsystem])}</span>
               {quietState[h.state] && <span className="text-xs text-slate-500 dark:text-slate-400">{quietState[h.state]}</span>}
             </li>
           ))}
@@ -115,7 +116,7 @@ export function Dashboard() {
     );
   }
   const sys = status.system!;
-  if (sys.phase === SystemPhase.RECOVERY) return <Recovery model={sys.model} />;
+  if (sys.phase === SystemPhase.RECOVERY) return <Recovery model={modelName(sys.model)} />;
   const net = status.network!;
   const prov = status.provisioning!;
   const calls = status.calls!;
@@ -163,7 +164,7 @@ export function Dashboard() {
                     <p className="truncate text-sm font-medium">{c.remote?.name || c.remote?.number}</p>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       {c.direction === CallDirection.INCOMING ? "Incoming" : "Outgoing"}
-                      {c.codec && <> · {label(codecNames, c.codec)}</>}
+                      {c.codec !== Codec.UNSPECIFIED && <> · {label(codecNames, c.codec, Codec[c.codec])}</>}
                       {c.durationSecs !== undefined ? ` · ${duration(Number(c.durationSecs) + elapsed)}` : ""}
                     </p>
                   </div>
@@ -183,12 +184,12 @@ export function Dashboard() {
         <Card title="Network" actions={<Badge tone={net.phase === NetPhase.UP ? "green" : net.phase === NetPhase.FAILED ? "red" : "amber"}>{label(netPhaseNames, net.phase, NetPhase[net.phase])}</Badge>}>
           <KeyValue
             rows={[
-              ["Address", net.ipv4Address && <>{net.ipv4Address}/{net.ipv4PrefixLen}{net.ipv4Source && <> ({label(addressSourceNames, net.ipv4Source)})</>}</>],
+              ["Address", net.ipv4Address && <>{net.ipv4Address}/{net.ipv4PrefixLen}{net.ipv4Source !== Ipv4Source.UNSPECIFIED && <> ({label(addressSourceNames, net.ipv4Source, Ipv4Source[net.ipv4Source])})</>}</>],
               ["Gateway", net.ipv4Gateway],
               ["DNS", net.dnsServers.map((s) => s.address).join(", ")],
               ["LAN port", net.lan?.up ? `${net.lan.speed} Mbps, ${net.lan.fullDuplex ? "full" : "half"} duplex` : "No link"],
               ["PC port", !net.pcPortEnabled ? "Disabled" : net.pc?.up ? `${net.pc.speed} Mbps` : "No link"],
-              ["Voice VLAN", net.voiceVlan !== undefined ? <>{net.voiceVlan}{net.vlanSource && <> ({label(vlanSourceNames, net.vlanSource)})</>}</> : "None"],
+              ["Voice VLAN", net.voiceVlan !== undefined ? <>{net.voiceVlan}{net.vlanSource !== VlanSource.UNSPECIFIED && <> ({label(vlanSourceNames, net.vlanSource, VlanSource[net.vlanSource])})</>}</> : "None"],
               ["Switch", net.lldpPresent ? `${net.lldpSystemName} ${net.lldpPortId}` : ""],
               ["MAC address", net.mac],
             ]}
@@ -198,7 +199,7 @@ export function Dashboard() {
         <Card title="Provisioning" actions={<Badge tone={prov.phase === ProvisionPhase.PROVISIONED ? "green" : prov.phase === ProvisionPhase.FAILED ? "red" : "gray"}>{label(provisionPhaseNames, prov.phase, ProvisionPhase[prov.phase])}</Badge>}>
           <KeyValue
             rows={[
-              ["Server", prov.server && <>{prov.server.name} ({label(discoverySourceNames, prov.server.source)})</>],
+              ["Server", prov.server && <>{prov.server.name}{prov.server.source !== DiscoverySource.UNSPECIFIED && <> ({label(discoverySourceNames, prov.server.source, DiscoverySource[prov.server.source])})</>}</>],
               ["Software", prov.serverUserAgent],
               ["User", prov.assignedUser],
               ["Session", prov.attached ? "Connected" : "Disconnected"],
@@ -217,7 +218,7 @@ export function Dashboard() {
               ["Time zone", sys.timezone],
               ["Memory", `${Math.round(sys.memTotalKib / 1024)} MB`],
               ["Last reboot", sys.lastRebootReason],
-              ["Firmware", status.firmware ? `${status.firmware.runningVersion} (bank ${status.firmware.runningBank})` : ""],
+              ["Firmware", status.firmware ? <>{status.firmware.runningVersion}{status.firmware.runningBank !== Bank.UNSPECIFIED && <> (bank {label(bankNames, status.firmware.runningBank, Bank[status.firmware.runningBank])})</>}</> : ""],
               ["User agent", sys.userAgent],
             ]}
           />

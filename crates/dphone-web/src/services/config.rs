@@ -276,6 +276,16 @@ pub async fn set_theme(ctx: Ctx, req: pb::SetThemeRequest) -> Result<pb::SetThem
 
 // --------------------------------------------------------------- network
 
+/// The stock setting `network_vlan_discovery_mode`, read as the network
+/// subsystem reads it: anything but MANUAL and LLDP is no VLAN.
+fn vlan_discovery_mode(stored: &str) -> pb::VlanDiscoveryMode {
+    match stored.to_ascii_uppercase().as_str() {
+        "MANUAL" => pb::VlanDiscoveryMode::Manual,
+        "LLDP" => pb::VlanDiscoveryMode::Lldp,
+        _ => pb::VlanDiscoveryMode::None,
+    }
+}
+
 pub(crate) fn network_settings(app: &App) -> pb::NetworkSettings {
     let cfg = config_of(app);
     let n = cfg.network();
@@ -299,7 +309,7 @@ pub(crate) fn network_settings(app: &App) -> pb::NetworkSettings {
         primary_dns: ip(dns.first().copied()),
         secondary_dns: ip(dns.get(1).copied()),
         domain: n.domain.unwrap_or_default(),
-        vlan_discovery_mode: n.vlan_discovery_mode,
+        vlan_discovery_mode: vlan_discovery_mode(&n.vlan_discovery_mode).into(),
         vlan_id: n.vlan_id.map(u32::from),
         pc_vlan_id: n.pc_vlan_id.map(u32::from),
         pc_qos: n.pc_qos as u32,
@@ -354,10 +364,15 @@ pub async fn set_network_settings(
     if s.sip_qos > 7 || s.rtp_qos > 7 || s.pc_qos > 7 {
         return Err(ConnectError::invalid_argument("802.1p priority must be 0 to 7."));
     }
-    let mode = s.vlan_discovery_mode.to_ascii_uppercase();
-    if !matches!(mode.as_str(), "NONE" | "MANUAL" | "LLDP") {
-        return Err(ConnectError::invalid_argument("VLAN discovery is NONE, MANUAL, or LLDP"));
-    }
+    // The stock setting's values.
+    let mode = match s.vlan_discovery_mode.as_known() {
+        Some(pb::VlanDiscoveryMode::None) => "NONE",
+        Some(pb::VlanDiscoveryMode::Manual) => "MANUAL",
+        Some(pb::VlanDiscoveryMode::Lldp) => "LLDP",
+        Some(pb::VlanDiscoveryMode::Unspecified) | None => {
+            return Err(ConnectError::invalid_argument("no VLAN discovery mode"));
+        }
+    };
     if mode == "MANUAL" && s.vlan_id.is_none() {
         return Err(ConnectError::invalid_argument("Enter a voice VLAN ID."));
     }
@@ -379,7 +394,7 @@ pub async fn set_network_settings(
         ("network_primary_dns_server", s.primary_dns.clone()),
         ("network_secondary_dns_server", s.secondary_dns.clone()),
         ("network_domain_name", s.domain.clone()),
-        ("network_vlan_discovery_mode", mode),
+        ("network_vlan_discovery_mode", mode.to_owned()),
         ("network_vlan_id", num(s.vlan_id)),
         ("pc_vlan_id", num(s.pc_vlan_id)),
         ("pc_qos", s.pc_qos.to_string()),

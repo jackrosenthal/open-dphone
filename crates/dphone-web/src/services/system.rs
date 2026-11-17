@@ -277,7 +277,7 @@ pub async fn tail_logs(
 
 // ---------------------------------------------------------------- screen
 
-/// The keys a model has, by stock key name.
+/// The keys a model has.
 fn model_keys(model: st::Model) -> Vec<pb::Key> {
     let mut keys: Vec<Key> = (1..=model.line_keys()).map(Key::Line).collect();
     keys.extend((1..=4).map(Key::Soft));
@@ -306,7 +306,7 @@ fn model_keys(model: st::Model) -> Vec<pb::Key> {
         st::Model::D65 => keys.extend([Key::BlfPageLeft, Key::BlfPageRight]),
         _ => {}
     }
-    keys.into_iter().map(|key| pb::Key { name: key.name() }).collect()
+    keys.into_iter().map(convert::key).collect()
 }
 
 pub async fn get_screen_layout(
@@ -330,8 +330,8 @@ pub async fn get_screen_layout(
         });
     }
     Ok(pb::GetScreenLayoutResponse {
-        model: model.name().to_owned(),
-        skin: convert::skin(model).to_owned(),
+        model: convert::model(model).into(),
+        skin: convert::skin(model).into(),
         screens,
         keys: model_keys(model),
         softkey_bar_height: model.softkey_bar_height() as u32,
@@ -344,9 +344,9 @@ fn lamps(app: &App) -> Vec<pb::Lamp> {
     let mut out = Vec::new();
     let mut add = |key: Key, lamp: st::LampState| {
         out.push(pb::Lamp {
-            key: key.name(),
-            color: convert::lamp_color(lamp.color).to_owned(),
-            blink: convert::lamp_blink(lamp.blink).to_owned(),
+            key: Some(convert::key(key)).into(),
+            color: convert::lamp_color(lamp.color).into(),
+            blink: convert::lamp_blink(lamp.blink).into(),
         })
     };
     for k in &keys.line_keys {
@@ -432,7 +432,7 @@ pub async fn watch_screen(
 }
 
 pub async fn press_key(ctx: Ctx, req: pb::PressKeyRequest) -> Result<pb::PressKeyResponse, ConnectError> {
-    let key = Key::from_name(&req.key).ok_or_else(|| ConnectError::invalid_argument(format!("unknown key {:?}", req.key)))?;
+    let key = req.key.as_option().and_then(convert::key_from).ok_or_else(|| ConnectError::invalid_argument("no such key"))?;
     let store = &ctx.app.store;
     match req.action.as_known().unwrap_or(pb::KeyAction::Tap) {
         pb::KeyAction::Down => {

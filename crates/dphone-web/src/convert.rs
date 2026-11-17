@@ -8,17 +8,29 @@ fn secs_until(mono: u64) -> u32 {
     (mono.saturating_sub(mono_ms()) / 1000).min(u32::MAX as u64) as u32
 }
 
-pub fn skin(model: st::Model) -> &'static str {
+pub fn model(m: st::Model) -> pb::Model {
+    match m {
+        st::Model::D40 => pb::Model::MODEL_D40,
+        st::Model::D45 => pb::Model::MODEL_D45,
+        st::Model::D50 => pb::Model::MODEL_D50,
+        st::Model::D60 => pb::Model::MODEL_D60,
+        st::Model::D62 => pb::Model::MODEL_D62,
+        st::Model::D65 => pb::Model::MODEL_D65,
+        st::Model::D70 => pb::Model::MODEL_D70,
+    }
+}
+
+pub fn skin(model: st::Model) -> pb::Skin {
     match model.skin() {
-        st::Skin::SmallGray => "small_gray",
-        st::Skin::LargeGray => "large_gray",
-        st::Skin::Color => "color",
+        st::Skin::SmallGray => pb::Skin::SmallGray,
+        st::Skin::LargeGray => pb::Skin::LargeGray,
+        st::Skin::Color => pb::Skin::Color,
     }
 }
 
 pub fn system(s: &st::System, uptime_secs: u64) -> pb::SystemInfo {
     pb::SystemInfo {
-        model: s.model.name().to_owned(),
+        model: model(s.model).into(),
         version: s.version.dotted(),
         phase: match s.phase {
             st::Phase::Starting => pb::SystemPhase::Starting,
@@ -37,7 +49,7 @@ pub fn system(s: &st::System, uptime_secs: u64) -> pb::SystemInfo {
         mem_total_kib: s.mem_total_kib,
         uptime_secs,
         unix_time: st::clock::unix_secs(),
-        skin: skin(s.model).to_owned(),
+        skin: skin(s.model).into(),
         user_agent: s.model.user_agent(&s.version),
         has_bluetooth: s.model.bluetooth(),
         has_expansion: s.model.expansion_modules(),
@@ -64,11 +76,11 @@ pub fn network(n: &st::Network, mac: String) -> pb::NetworkStatus {
         pc_port_enabled: n.pc_port_enabled,
         mac,
         ipv4_source: match n.ipv4.source {
-            st::AddrSource::Dhcp => "dhcp",
-            st::AddrSource::Static => "static",
-            _ => "",
+            st::AddrSource::Dhcp => pb::Ipv4Source::Dhcp,
+            st::AddrSource::Static => pb::Ipv4Source::Static,
+            st::AddrSource::None | st::AddrSource::Slaac | st::AddrSource::Dhcp6 => pb::Ipv4Source::Unspecified,
         }
-        .to_owned(),
+        .into(),
         ipv4_address: opt(n.ipv4.address),
         ipv4_prefix_len: n.ipv4.prefix_len as u32,
         ipv4_gateway: opt(n.ipv4.gateway),
@@ -85,12 +97,12 @@ pub fn network(n: &st::Network, mac: String) -> pb::NetworkStatus {
         ntp_servers: n.ntp_servers.iter().map(|host| pb::NtpServer { host: host.clone() }).collect(),
         ntp_synced: n.ntp_synced_mono_ms.is_some(),
         vlan_source: match n.vlan.source {
-            st::VlanSource::None => "",
-            st::VlanSource::Config => "config",
-            st::VlanSource::Lldp => "lldp",
-            st::VlanSource::Dhcp => "dhcp",
+            st::VlanSource::None => pb::VlanSource::Unspecified,
+            st::VlanSource::Config => pb::VlanSource::Config,
+            st::VlanSource::Lldp => pb::VlanSource::Lldp,
+            st::VlanSource::Dhcp => pb::VlanSource::Dhcp,
         }
-        .to_owned(),
+        .into(),
         voice_vlan: n.vlan.voice_id.map(u32::from),
         pc_vlan: n.vlan.pc_id.map(u32::from),
         vlan_priority: n.vlan.voice_priority as u32,
@@ -107,12 +119,12 @@ pub fn network(n: &st::Network, mac: String) -> pb::NetworkStatus {
 fn server(s: &st::DiscoveredServer) -> pb::ProvisioningServer {
     pb::ProvisioningServer {
         source: match s.source {
-            st::DiscoverySource::Saved => "saved",
-            st::DiscoverySource::DhcpOption66 => "dhcp",
-            st::DiscoverySource::Mdns => "mdns",
-            st::DiscoverySource::Manual => "manual",
+            st::DiscoverySource::Saved => pb::DiscoverySource::Saved,
+            st::DiscoverySource::DhcpOption66 => pb::DiscoverySource::Dhcp,
+            st::DiscoverySource::Mdns => pb::DiscoverySource::Mdns,
+            st::DiscoverySource::Manual => pb::DiscoverySource::Manual,
         }
-        .to_owned(),
+        .into(),
         name: s.name.clone(),
         address: s.address.clone(),
     }
@@ -219,24 +231,42 @@ pub fn audio_path_from(p: buffa::EnumValue<pb::AudioPath>) -> Option<st::AudioPa
     }
 }
 
-fn end_cause(c: &st::EndCause) -> String {
+fn codec(c: st::Codec) -> pb::Codec {
     match c {
-        st::EndCause::LocalHangup => "Hung up".into(),
-        st::EndCause::RemoteHangup => "Remote party hung up".into(),
-        st::EndCause::Rejected => "Declined".into(),
-        st::EndCause::Canceled { answered_elsewhere: true } => "Answered elsewhere".into(),
-        st::EndCause::Canceled { answered_elsewhere: false } => "Canceled".into(),
-        st::EndCause::Busy => "Busy".into(),
-        st::EndCause::NoAnswer => "No answer".into(),
-        st::EndCause::Transferred => "Transferred".into(),
-        st::EndCause::Failed { code, reason } => format!("{code} {reason}"),
-        st::EndCause::Error(e) => e.clone(),
+        st::Codec::Pcmu => pb::Codec::CODEC_PCMU,
+        st::Codec::Pcma => pb::Codec::CODEC_PCMA,
+        st::Codec::G722 => pb::Codec::CODEC_G722,
+        st::Codec::G726_32 => pb::Codec::CODEC_G726_32,
+        st::Codec::G729 => pb::Codec::CODEC_G729,
+        st::Codec::Ilbc => pb::Codec::CODEC_ILBC,
+        st::Codec::Opus => pb::Codec::CODEC_OPUS,
+        st::Codec::L16 => pb::Codec::CODEC_L16,
+        st::Codec::L16Wide => pb::Codec::CODEC_L16_WIDE,
+    }
+}
+
+/// The cause, and the SIP status code and the text of the causes that
+/// carry them.
+fn end_cause(c: &st::EndCause) -> (pb::EndCause, u32, String) {
+    use pb::EndCause as E;
+    match c {
+        st::EndCause::LocalHangup => (E::LocalHangup, 0, String::new()),
+        st::EndCause::RemoteHangup => (E::RemoteHangup, 0, String::new()),
+        st::EndCause::Rejected => (E::Rejected, 0, String::new()),
+        st::EndCause::Canceled { answered_elsewhere: true } => (E::AnsweredElsewhere, 0, String::new()),
+        st::EndCause::Canceled { answered_elsewhere: false } => (E::Canceled, 0, String::new()),
+        st::EndCause::Busy => (E::Busy, 0, String::new()),
+        st::EndCause::NoAnswer => (E::NoAnswer, 0, String::new()),
+        st::EndCause::Transferred => (E::Transferred, 0, String::new()),
+        st::EndCause::Failed { code, reason } => (E::Failed, u32::from(*code), reason.clone()),
+        st::EndCause::Error(e) => (E::Error, 0, e.clone()),
     }
 }
 
 pub fn call(c: &st::Call, focused: bool) -> pb::Call {
     use pb::CallState as S;
-    let (mut held_locally, mut held_remotely, mut cause) = (false, false, String::new());
+    let (mut held_locally, mut held_remotely) = (false, false);
+    let mut cause = (pb::EndCause::Unspecified, 0, String::new());
     let state = match &c.state {
         st::CallState::Dialing => S::Dialing,
         st::CallState::Proceeding => S::Proceeding,
@@ -265,28 +295,30 @@ pub fn call(c: &st::Call, focused: bool) -> pb::Call {
         remote: Some(party(&c.remote)).into(),
         started_unix: c.started_unix,
         duration_secs: c.duration_secs(mono_ms()),
-        codec: c.codec.map(|c| c.name().to_owned()).unwrap_or_default(),
+        codec: c.codec.map(codec).unwrap_or_default().into(),
         srtp: c.srtp,
         muted: c.muted,
         in_conference: c.in_conference,
         held_locally,
         held_remotely,
-        end_cause: cause,
+        end_cause: cause.0.into(),
         focused,
         rx_packets: c.stats.rx_packets,
         tx_packets: c.stats.tx_packets,
         rx_lost: c.stats.rx_lost,
         jitter_ms: c.stats.jitter_ms as u32,
         paging: c.paging,
+        end_code: cause.1,
+        end_reason: cause.2,
     }
 }
 
 pub fn audio(a: &st::Audio) -> pb::AudioStatus {
     let (dsp, dsp_detail) = match &a.dsp {
-        st::DspStatus::NotStarted => ("not_started", String::new()),
-        st::DspStatus::Starting => ("starting", String::new()),
-        st::DspStatus::Running => ("running", String::new()),
-        st::DspStatus::Failed(e) => ("failed", e.clone()),
+        st::DspStatus::NotStarted => (pb::DspState::NotStarted, String::new()),
+        st::DspStatus::Starting => (pb::DspState::Starting, String::new()),
+        st::DspStatus::Running => (pb::DspState::Running, String::new()),
+        st::DspStatus::Failed(e) => (pb::DspState::Failed, e.clone()),
     };
     pb::AudioStatus {
         path: audio_path(a.path).into(),
@@ -298,7 +330,7 @@ pub fn audio(a: &st::Audio) -> pb::AudioStatus {
         speaker_volume: a.speaker_volume as u32,
         ringer_volume: a.ringer_volume as u32,
         ringing: a.ringing,
-        dsp: dsp.to_owned(),
+        dsp: dsp.into(),
         dsp_detail,
     }
 }
@@ -362,9 +394,9 @@ pub fn firmware(u: &st::Update, version: &st::FirmwareVersion) -> pb::FirmwareSt
         st::UpdatePhase::Failed(e) => (P::Failed, 0, e.clone()),
     };
     let (trial, trial_boots_left, rollback_reason) = match &u.trial {
-        st::TrialBoot::None => ("", 0, String::new()),
-        st::TrialBoot::Pending { boots_left } => ("pending", *boots_left as u32, String::new()),
-        st::TrialBoot::RolledBack { reason } => ("rolled_back", 0, reason.clone()),
+        st::TrialBoot::None => (pb::TrialBoot::Unspecified, 0, String::new()),
+        st::TrialBoot::Pending { boots_left } => (pb::TrialBoot::Pending, *boots_left as u32, String::new()),
+        st::TrialBoot::RolledBack { reason } => (pb::TrialBoot::RolledBack, 0, reason.clone()),
     };
     pb::FirmwareStatus {
         phase: phase.into(),
@@ -372,17 +404,33 @@ pub fn firmware(u: &st::Update, version: &st::FirmwareVersion) -> pb::FirmwareSt
         error,
         running_version: version.dotted(),
         running_bank: match u.running_bank {
-            Some(st::Bank::A) => "A",
-            Some(st::Bank::B) => "B",
-            None => "",
+            Some(st::Bank::A) => pb::Bank::BANK_A,
+            Some(st::Bank::B) => pb::Bank::BANK_B,
+            None => pb::Bank::BANK_UNSPECIFIED,
         }
-        .to_owned(),
-        trial: trial.to_owned(),
+        .into(),
+        trial: trial.into(),
         trial_boots_left,
         rollback_reason,
         incoming_version: u.incoming_version.clone(),
         incoming_is_stock: u.incoming_is_stock,
         uploaded: None.into(),
+    }
+}
+
+fn subsystem(s: st::Subsystem) -> pb::Subsystem {
+    match s {
+        st::Subsystem::Core => pb::Subsystem::Core,
+        st::Subsystem::Config => pb::Subsystem::Config,
+        st::Subsystem::Net => pb::Subsystem::Net,
+        st::Subsystem::Sip => pb::Subsystem::Sip,
+        st::Subsystem::Media => pb::Subsystem::Media,
+        st::Subsystem::Dpma => pb::Subsystem::Dpma,
+        st::Subsystem::Ui => pb::Subsystem::Ui,
+        st::Subsystem::Apps => pb::Subsystem::Apps,
+        st::Subsystem::Web => pb::Subsystem::Web,
+        st::Subsystem::Ssh => pb::Subsystem::Ssh,
+        st::Subsystem::Update => pb::Subsystem::Update,
     }
 }
 
@@ -398,9 +446,19 @@ pub fn health(h: &st::Health) -> Vec<pb::SubsystemHealth> {
                 st::HealthStatus::Degraded(d) => (H::Degraded, d.clone()),
                 st::HealthStatus::Failed(d) => (H::Failed, d.clone()),
             };
-            pb::SubsystemHealth { subsystem: format!("{s:?}").to_lowercase(), state: state.into(), detail }
+            pb::SubsystemHealth { subsystem: subsystem(*s).into(), state: state.into(), detail }
         })
         .collect()
+}
+
+/// The kind of an app, which the app manager gives by the names of the
+/// manifest's kinds.
+fn app_kind(kind: &str) -> pb::AppKind {
+    match kind {
+        "foreground" => pb::AppKind::Foreground,
+        "background" => pb::AppKind::Background,
+        _ => pb::AppKind::Unspecified,
+    }
 }
 
 pub fn apps(a: &st::Apps) -> pb::AppsSnapshot {
@@ -417,7 +475,7 @@ pub fn apps(a: &st::Apps) -> pb::AppsSnapshot {
                 id: i.id.clone(),
                 display_name: if i.display_name.is_empty() { i.name.clone() } else { i.display_name.clone() },
                 description: i.description.clone(),
-                kind: i.kind.clone(),
+                kind: app_kind(&i.kind).into(),
                 has_idle: i.has_idle,
                 hidden: i.hidden,
                 builtin: i.builtin,
@@ -452,22 +510,102 @@ pub fn log_entry(e: &st::LogEntry) -> pb::LogEntry {
     }
 }
 
-pub fn lamp_color(c: st::LampColor) -> &'static str {
+pub fn lamp_color(c: st::LampColor) -> pb::LampColor {
     match c {
-        st::LampColor::Off => "off",
-        st::LampColor::Red => "red",
-        st::LampColor::Green => "green",
-        st::LampColor::Amber => "amber",
+        st::LampColor::Off => pb::LampColor::Off,
+        st::LampColor::Red => pb::LampColor::Red,
+        st::LampColor::Green => pb::LampColor::Green,
+        st::LampColor::Amber => pb::LampColor::Amber,
     }
 }
 
-pub fn lamp_blink(b: st::Blink) -> &'static str {
+pub fn lamp_blink(b: st::Blink) -> pb::LampBlink {
     match b {
-        st::Blink::Solid => "solid",
-        st::Blink::Slow => "slow",
-        st::Blink::Fast => "fast",
-        st::Blink::Wink => "wink",
+        st::Blink::Solid => pb::LampBlink::Solid,
+        st::Blink::Slow => pb::LampBlink::Slow,
+        st::Blink::Fast => pb::LampBlink::Fast,
+        st::Blink::Wink => pb::LampBlink::Wink,
     }
+}
+
+pub fn key(k: st::Key) -> pb::Key {
+    use pb::key::Kind as K;
+    let (kind, index, module) = match k {
+        st::Key::Digit(d) => (K::Digit, u32::from(d), 0),
+        st::Key::Star => (K::Star, 0, 0),
+        st::Key::Pound => (K::Pound, 0, 0),
+        st::Key::Up => (K::Up, 0, 0),
+        st::Key::Down => (K::Down, 0, 0),
+        st::Key::Left => (K::Left, 0, 0),
+        st::Key::Right => (K::Right, 0, 0),
+        st::Key::Select => (K::Select, 0, 0),
+        st::Key::Cancel => (K::Cancel, 0, 0),
+        st::Key::VolumeUp => (K::VolumeUp, 0, 0),
+        st::Key::VolumeDown => (K::VolumeDown, 0, 0),
+        st::Key::Soft(n) => (K::Soft, u32::from(n), 0),
+        st::Key::Line(n) => (K::Line, u32::from(n), 0),
+        st::Key::Blf(n) => (K::Blf, u32::from(n), 0),
+        st::Key::Mute => (K::Mute, 0, 0),
+        st::Key::Speaker => (K::Speaker, 0, 0),
+        st::Key::Headset => (K::Headset, 0, 0),
+        st::Key::Hold => (K::Hold, 0, 0),
+        st::Key::Transfer => (K::Transfer, 0, 0),
+        st::Key::Redial => (K::Redial, 0, 0),
+        st::Key::Messages => (K::Messages, 0, 0),
+        st::Key::Conference => (K::Conference, 0, 0),
+        st::Key::Info => (K::Info, 0, 0),
+        st::Key::BlfPageLeft => (K::BlfPageLeft, 0, 0),
+        st::Key::BlfPageRight => (K::BlfPageRight, 0, 0),
+        st::Key::Status => (K::Status, 0, 0),
+        st::Key::Contacts => (K::Contacts, 0, 0),
+        st::Key::Apps => (K::Apps, 0, 0),
+        st::Key::Menu => (K::Menu, 0, 0),
+        st::Key::Expansion { module, key } => (K::Expansion, u32::from(key), u32::from(module)),
+        st::Key::Unknown(code) => (K::Raw, u32::from(code), 0),
+    };
+    pb::Key { kind: kind.into(), index, module }
+}
+
+/// The key a message names; `None` for one that no phone has (an
+/// unspecified kind, or an index out of range).  `index` and `module` are
+/// ignored where the kind has no use for them.
+pub fn key_from(k: &pb::Key) -> Option<st::Key> {
+    use pb::key::Kind as K;
+    let numbered = |max: u32| (1..=max).contains(&k.index).then_some(k.index as u8);
+    Some(match k.kind.as_known()? {
+        K::Unspecified => return None,
+        K::Digit => st::Key::Digit((k.index <= 9).then_some(k.index as u8)?),
+        K::Star => st::Key::Star,
+        K::Pound => st::Key::Pound,
+        K::Up => st::Key::Up,
+        K::Down => st::Key::Down,
+        K::Left => st::Key::Left,
+        K::Right => st::Key::Right,
+        K::Select => st::Key::Select,
+        K::Cancel => st::Key::Cancel,
+        K::VolumeUp => st::Key::VolumeUp,
+        K::VolumeDown => st::Key::VolumeDown,
+        K::Soft => st::Key::Soft(numbered(4)?),
+        K::Line => st::Key::Line(numbered(6)?),
+        K::Blf => st::Key::Blf(numbered(10)?),
+        K::Mute => st::Key::Mute,
+        K::Speaker => st::Key::Speaker,
+        K::Headset => st::Key::Headset,
+        K::Hold => st::Key::Hold,
+        K::Transfer => st::Key::Transfer,
+        K::Redial => st::Key::Redial,
+        K::Messages => st::Key::Messages,
+        K::Conference => st::Key::Conference,
+        K::Info => st::Key::Info,
+        K::BlfPageLeft => st::Key::BlfPageLeft,
+        K::BlfPageRight => st::Key::BlfPageRight,
+        K::Status => st::Key::Status,
+        K::Contacts => st::Key::Contacts,
+        K::Apps => st::Key::Apps,
+        K::Menu => st::Key::Menu,
+        K::Expansion => st::Key::Expansion { module: u8::try_from(k.module).ok()?, key: u8::try_from(k.index).ok()? },
+        K::Raw => st::Key::Unknown(u16::try_from(k.index).ok()?),
+    })
 }
 
 fn bluetooth_device(d: &st::BluetoothDevice) -> pb::BluetoothDevice {
@@ -559,5 +697,39 @@ pub fn expansion(e: &st::Expansion) -> pb::ExpansionSnapshot {
             })
             .collect(),
         error: e.error.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_round_trip() {
+        let keys = [
+            st::Key::Digit(0), st::Key::Digit(9), st::Key::Star, st::Key::Pound, st::Key::Up, st::Key::Down,
+            st::Key::Left, st::Key::Right, st::Key::Select, st::Key::Cancel, st::Key::VolumeUp,
+            st::Key::VolumeDown, st::Key::Soft(1), st::Key::Soft(4), st::Key::Line(6), st::Key::Blf(10),
+            st::Key::Mute, st::Key::Speaker, st::Key::Headset, st::Key::Hold, st::Key::Transfer,
+            st::Key::Redial, st::Key::Messages, st::Key::Conference, st::Key::Info, st::Key::BlfPageLeft,
+            st::Key::BlfPageRight, st::Key::Status, st::Key::Contacts, st::Key::Apps, st::Key::Menu,
+            st::Key::Expansion { module: 1, key: 17 }, st::Key::Unknown(700),
+        ];
+        for k in keys {
+            assert_eq!(key_from(&key(k)), Some(k), "{k:?}");
+        }
+        let kind = |kind: pb::key::Kind, index: u32| pb::Key { kind: kind.into(), index, module: 0 };
+        for bad in [
+            pb::Key::default(),
+            kind(pb::key::Kind::KIND_DIGIT, 10),
+            kind(pb::key::Kind::KIND_SOFT, 0),
+            kind(pb::key::Kind::KIND_SOFT, 5),
+            kind(pb::key::Kind::KIND_LINE, 7),
+            kind(pb::key::Kind::KIND_BLF, 11),
+            kind(pb::key::Kind::KIND_EXPANSION, 256),
+            kind(pb::key::Kind::KIND_RAW, 65536),
+        ] {
+            assert_eq!(key_from(&bad), None, "{bad:?}");
+        }
     }
 }

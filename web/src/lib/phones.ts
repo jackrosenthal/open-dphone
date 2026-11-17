@@ -51,6 +51,18 @@
 // Units are those of the reference photograph each family was measured
 // from; the page scales the drawing.
 
+import { Model } from "../gen/dphone/v1/model_pb";
+import { Key_Kind as K, type Key } from "../gen/dphone/v1/screen_pb";
+
+/// A key as the ScreenService names it: its kind, and its index where the
+/// kind has several keys.
+export type KeyId = Pick<Key, "kind" | "index" | "module">;
+
+/// The key of a kind (and of an index, where the kind has several keys).
+export const key = (kind: K, index = 0): KeyId => ({ kind, index, module: 0 });
+
+export const sameKey = (a: KeyId, b: KeyId) => a.kind === b.kind && a.index === b.index && a.module === b.module;
+
 export type Legend =
   | { icon: string }
   | { text: string }
@@ -60,8 +72,7 @@ export type Legend =
   | { digit: string; letters?: string };
 
 export type PanelKey = {
-  /// Key name as the ScreenService uses it ("line1", "sk2", "vup").
-  id: string;
+  key: KeyId;
   cx: number;
   cy: number;
   w: number;
@@ -74,9 +85,8 @@ export type PanelKey = {
   legend?: Legend;
   /// Legend size, in units.
   size?: number;
-  /// Lamp behind the key, by the lamp's key name in the stream.  The whole
-  /// key lights.
-  lamp?: string;
+  /// The key has a lamp behind it, which lights the whole key.
+  lamp?: boolean;
   /// No outline of its own: part of a larger drawn control (the new
   /// family's navigation disc; halves of a bar).
   bare?: boolean;
@@ -139,6 +149,8 @@ export function archedRect(x: number, y: number, w: number, h: number, r: number
 /// in it, and the 0 (new family), star, and pound keys have no row.
 const letters: Record<string, string> = { "1": "", "2": "ABC", "3": "DEF", "4": "GHI", "5": "JKL", "6": "MNO", "7": "PQRS", "8": "TUV", "9": "WXYZ" };
 const digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
+/// The key of a dial-pad legend.
+const dialKey = (d: string): KeyId => (d === "*" ? key(K.STAR) : d === "#" ? key(K.POUND) : key(K.DIGIT, Number(d)));
 
 /// A dial key's legend: the star is drawn, centered; the others are type.
 /// The old family prints OPER above the 0.
@@ -164,7 +176,7 @@ function newFamily(lineKeys: number, pageKey: boolean): Panel {
     [697, 289],
   ];
   for (let i = 0; i < lineKeys; i++) {
-    keys.push({ id: `line${i + 1}`, cx: linePos[i][0], cy: linePos[i][1], w: 30, h: 16, r: 8, fill: SILVER, lamp: `line${i + 1}` });
+    keys.push({ key: key(K.LINE, i + 1), cx: linePos[i][0], cy: linePos[i][1], w: 30, h: 16, r: 8, fill: SILVER, lamp: true });
   }
   // D65: one silver rocker under the line keys, as wide as the two columns
   // of line keys together, pages the rapid-dial keys: the left half is the
@@ -173,8 +185,8 @@ function newFamily(lineKeys: number, pageKey: boolean): Panel {
   const rocker = { x0: Math.min(...linePos.map((p) => p[0])) - 15, x1: Math.max(...linePos.map((p) => p[0])) + 15, cy: 327, h: 16 };
   const rockerMid = (rocker.x0 + rocker.x1) / 2;
   if (pageKey) {
-    keys.push({ id: "blfleft", cx: (rocker.x0 + rockerMid) / 2, cy: rocker.cy, w: rockerMid - rocker.x0, h: rocker.h, r: 6, fill: SILVER, bare: true });
-    keys.push({ id: "blfright", cx: (rockerMid + rocker.x1) / 2, cy: rocker.cy, w: rocker.x1 - rockerMid, h: rocker.h, r: 6, fill: SILVER, bare: true });
+    keys.push({ key: key(K.BLF_PAGE_LEFT), cx: (rocker.x0 + rockerMid) / 2, cy: rocker.cy, w: rockerMid - rocker.x0, h: rocker.h, r: 6, fill: SILVER, bare: true });
+    keys.push({ key: key(K.BLF_PAGE_RIGHT), cx: (rockerMid + rocker.x1) / 2, cy: rocker.cy, w: rocker.x1 - rockerMid, h: rocker.h, r: 6, fill: SILVER, bare: true });
   }
   // The rocker's print: a triangle toward each end (the icons page-left and
   // page-right, 11 units, 11 units in from the end) and a fine line across
@@ -192,44 +204,45 @@ function newFamily(lineKeys: number, pageKey: boolean): Panel {
 
   // Soft keys: silver ovals under the display.
   const softX = [355, 427, 500, 573];
-  softX.forEach((cx, i) => keys.push({ id: `sk${i + 1}`, cx, cy: 378, w: 42, h: 15, r: 7.5, fill: SILVER }));
+  softX.forEach((cx, i) => keys.push({ key: key(K.SOFT, i + 1), cx, cy: 378, w: 42, h: 15, r: 7.5, fill: SILVER }));
 
   // Headset, speaker, mute: silver ovals with gray icons.
-  [
-    ["hdst", "headset", 462],
-    ["spkr", "speaker", 514],
-    ["mute", "mute", 566],
-  ].forEach(([id, icon, cy]) =>
-    keys.push({ id: id as string, cx: 327, cy: cy as number, w: 46, h: 22, r: 11, fill: SILVER, ink: "#69727d", legend: { icon: icon as string }, size: 18, lamp: id as string }),
+  const audio: [K, string, number][] = [
+    [K.HEADSET, "headset", 462],
+    [K.SPEAKER, "speaker", 514],
+    [K.MUTE, "mute", 566],
+  ];
+  audio.forEach(([kind, icon, cy]) =>
+    keys.push({ key: key(kind), cx: 327, cy, w: 46, h: 22, r: 11, fill: SILVER, ink: "#69727d", legend: { icon }, size: 18, lamp: true }),
   );
 
   // Dial pad: black keys, white print.
   digits.forEach((d, i) =>
-    keys.push({ id: d, cx: 409 + (i % 3) * 59, cy: 462 + Math.floor(i / 3) * 51.5, w: 46, h: 35, r: 3, arch: 1.9, fill: BLACK, ink: white, legend: dialLegend(d), size: 15.5 }),
+    keys.push({ key: dialKey(d), cx: 409 + (i % 3) * 59, cy: 462 + Math.floor(i / 3) * 51.5, w: 46, h: 35, r: 3, arch: 1.9, fill: BLACK, ink: white, legend: dialLegend(d), size: 15.5 }),
   );
   // Volume: one black bar under the dial pad.
-  keys.push({ id: "vdn", cx: 438, cy: 670, w: 62, h: 20, r: 3, fill: BLACK, ink: white, legend: { icon: "minus" }, size: 14, bare: true });
-  keys.push({ id: "vup", cx: 500, cy: 670, w: 62, h: 20, r: 3, fill: BLACK, ink: white, legend: { icon: "plus" }, size: 14, bare: true });
+  keys.push({ key: key(K.VOLUME_DOWN), cx: 438, cy: 670, w: 62, h: 20, r: 3, fill: BLACK, ink: white, legend: { icon: "minus" }, size: 14, bare: true });
+  keys.push({ key: key(K.VOLUME_UP), cx: 500, cy: 670, w: 62, h: 20, r: 3, fill: BLACK, ink: white, legend: { icon: "plus" }, size: 14, bare: true });
 
   // Check and X: the two ends of one bar above the pad.
-  keys.push({ id: "select", cx: 623, cy: 446, w: 46, h: 20, r: 3, fill: BLACK, ink: white, legend: { icon: "check" }, size: 13, bare: true });
-  keys.push({ id: "cancel", cx: 669, cy: 446, w: 46, h: 20, r: 3, fill: BLACK, ink: white, legend: { icon: "x" }, size: 12, bare: true });
+  keys.push({ key: key(K.SELECT), cx: 623, cy: 446, w: 46, h: 20, r: 3, fill: BLACK, ink: white, legend: { icon: "check" }, size: 13, bare: true });
+  keys.push({ key: key(K.CANCEL), cx: 669, cy: 446, w: 46, h: 20, r: 3, fill: BLACK, ink: white, legend: { icon: "x" }, size: 12, bare: true });
   // Navigation: one disc, four directions, no center key.
-  const nav: [string, string, number, number][] = [
-    ["up", "up", 648, 490],
-    ["left", "left", 624, 514],
-    ["right", "right", 672, 514],
-    ["down", "down", 648, 538],
+  const nav: [K, string, number, number][] = [
+    [K.UP, "up", 648, 490],
+    [K.LEFT, "left", 624, 514],
+    [K.RIGHT, "right", 672, 514],
+    [K.DOWN, "down", 648, 538],
   ];
-  nav.forEach(([id, icon, cx, cy]) => keys.push({ id, cx, cy, w: 26, h: 26, r: 13, fill: BLACK, ink: white, legend: { icon }, size: 14, bare: true }));
+  nav.forEach(([kind, icon, cx, cy]) => keys.push({ key: key(kind), cx, cy, w: 26, h: 26, r: 13, fill: BLACK, ink: white, legend: { icon }, size: 14, bare: true }));
   // Messages, transfer, redial, hold: black ovals, white icons.
-  const feat: [string, number, number][] = [
-    ["msgs", 610, 590],
-    ["xfer", 688, 590],
-    ["redial", 610, 637],
-    ["hold", 688, 637],
+  const feat: [K, string, number, number][] = [
+    [K.MESSAGES, "msgs", 610, 590],
+    [K.TRANSFER, "xfer", 688, 590],
+    [K.REDIAL, "redial", 610, 637],
+    [K.HOLD, "hold", 688, 637],
   ];
-  feat.forEach(([id, cx, cy]) => keys.push({ id, cx, cy, w: 56, h: 25, r: 12.5, fill: BLACK, ink: white, legend: { icon: id }, size: 17 }));
+  feat.forEach(([kind, icon, cx, cy]) => keys.push({ key: key(kind), cx, cy, w: 56, h: 25, r: 12.5, fill: BLACK, ink: white, legend: { icon }, size: 17 }));
 
   return {
     viewBox: [-176, 44, 950, 760],
@@ -279,14 +292,17 @@ const OLD_SILVER = "#d5d8db";
 const PAPER_WHITE = "#fbfbfc";
 const PAPER_GRAY = "#c4c8cd";
 
+/// A key and the name of its legend: an icon, or a word in `words`.
+type Labeled = [K, string];
+
 type Old = {
   lineKeys: number;
   /// Feature key rows under the pad; three columns on the D50 and D70.
-  features: string[][];
+  features: Labeled[][];
   /// Words (D40, D45, D50) or icons (D70) on the feature keys.
   words: boolean;
-  top?: string[];
-  beside?: string;
+  top?: Labeled[];
+  beside?: Labeled;
   wing?: "paper" | "display";
 };
 
@@ -396,7 +412,7 @@ function oldFamily(v: Old, L: OldLayout): Panel {
   for (let i = 0; i < v.lineKeys; i++) {
     const cx = L.lineX[i % 2];
     const cy = y0 + i * step;
-    keys.push({ id: `line${i + 1}`, cx, cy, w: 27, h: 14, r: 7, fill: HOUSING_KEY, lamp: `line${i + 1}` });
+    keys.push({ key: key(K.LINE, i + 1), cx, cy, w: 27, h: 14, r: 7, fill: HOUSING_KEY, lamp: true });
     lines.push([bx + bw, cy, cx - 13.5, cy]);
   }
 
@@ -405,53 +421,54 @@ function oldFamily(v: Old, L: OldLayout): Panel {
   const [softY, softW, softH] = L.soft;
   const softX = [0, 1, 2, 3].map((i) => d.x + (d.w * (i + 0.5)) / 4);
   softX.forEach((cx, i) => {
-    keys.push({ id: `sk${i + 1}`, cx, cy: softY, w: softW, h: softH, r: 5, fill: TEAL });
+    keys.push({ key: key(K.SOFT, i + 1), cx, cy: softY, w: softW, h: softH, r: 5, fill: TEAL });
     lines.push([cx, by + bh - 2, cx, softY - softH / 2]);
   });
 
   // Headset, speaker, mute: silver keys, shaped like the dial keys, with
   // dark icons.
   const [sx, sy0, sstep, sw, sh] = L.side;
-  [
-    ["hdst", "headset-turned"],
-    ["spkr", "speaker-turned"],
-    ["mute", "mute-turned"],
-  ].forEach(([id, icon], i) =>
-    keys.push({ id, cx: sx, cy: sy0 + i * sstep, w: sw, h: sh, r: 3.5, arch: 1.3, fill: OLD_SILVER, ink: "#555b63", legend: { icon }, size: 20, lamp: id }),
+  const audio: Labeled[] = [
+    [K.HEADSET, "headset-turned"],
+    [K.SPEAKER, "speaker-turned"],
+    [K.MUTE, "mute-turned"],
+  ];
+  audio.forEach(([kind, icon], i) =>
+    keys.push({ key: key(kind), cx: sx, cy: sy0 + i * sstep, w: sw, h: sh, r: 3.5, arch: 1.3, fill: OLD_SILVER, ink: "#555b63", legend: { icon }, size: 20, lamp: true }),
   );
 
   // Dial pad.
   const [dx0, dy0, ddx, ddy, dw, dh] = L.dial;
   digits.forEach((dg, i) =>
-    keys.push({ id: dg, cx: dx0 + (i % 3) * ddx, cy: dy0 + Math.floor(i / 3) * ddy, w: dw, h: dh, r: 3, arch: 1.4, fill: KEY, ink: white, legend: dialLegend(dg, true), size: 12.9 }),
+    keys.push({ key: dialKey(dg), cx: dx0 + (i % 3) * ddx, cy: dy0 + Math.floor(i / 3) * ddy, w: dw, h: dh, r: 3, arch: 1.4, fill: KEY, ink: white, legend: dialLegend(dg, true), size: 12.9 }),
   );
   // Volume: one bar.
   const [vx, vy, vw] = L.volume;
-  keys.push({ id: "vdn", cx: vx - vw / 4, cy: vy, w: vw / 2, h: 16, r: 3, fill: KEY, ink: white, legend: { icon: "minus" }, size: 11, bare: true });
-  keys.push({ id: "vup", cx: vx + vw / 4, cy: vy, w: vw / 2, h: 16, r: 3, fill: KEY, ink: white, legend: { icon: "plus" }, size: 11, bare: true });
+  keys.push({ key: key(K.VOLUME_DOWN), cx: vx - vw / 4, cy: vy, w: vw / 2, h: 16, r: 3, fill: KEY, ink: white, legend: { icon: "minus" }, size: 11, bare: true });
+  keys.push({ key: key(K.VOLUME_UP), cx: vx + vw / 4, cy: vy, w: vw / 2, h: 16, r: 3, fill: KEY, ink: white, legend: { icon: "plus" }, size: 11, bare: true });
 
   // Right of the dial pad.
   const { fx, nav: n } = L;
   if (v.top && L.top) {
     const [ty, tw, th] = L.top;
-    v.top.forEach((id, i) => keys.push({ id, cx: fx[i], cy: ty, w: tw, h: th, r: 4, fill: KEY, ink: white, legend: { icon: id }, size: 16 }));
+    v.top.forEach(([kind, icon], i) => keys.push({ key: key(kind), cx: fx[i], cy: ty, w: tw, h: th, r: 4, fill: KEY, ink: white, legend: { icon }, size: 16 }));
   }
   // Navigation: five round keys, check in the center; X above and right.
-  const nav: [string, string, number, number][] = [
-    ["up", "up", n.x, n.y - n.step[1]],
-    ["cancel", "x", n.x + n.cancel[0], n.y + n.cancel[1]],
-    ["left", "left", n.x - n.step[0], n.y],
-    ["select", "check", n.x, n.y],
-    ["right", "right", n.x + n.step[0], n.y],
-    ["down", "down", n.x, n.y + n.step[1]],
+  const nav: [K, string, number, number][] = [
+    [K.UP, "up", n.x, n.y - n.step[1]],
+    [K.CANCEL, "x", n.x + n.cancel[0], n.y + n.cancel[1]],
+    [K.LEFT, "left", n.x - n.step[0], n.y],
+    [K.SELECT, "check", n.x, n.y],
+    [K.RIGHT, "right", n.x + n.step[0], n.y],
+    [K.DOWN, "down", n.x, n.y + n.step[1]],
   ];
-  nav.forEach(([id, icon, cx, cy]) => keys.push({ id, cx, cy, w: n.size, h: n.size, r: n.size / 2, fill: KEY, ink: white, legend: { icon }, size: (11 * n.size) / 23 }));
-  if (v.beside && L.beside && L.top) keys.push({ id: v.beside, cx: L.beside[0], cy: L.beside[1], w: L.top[1], h: L.top[2], r: 4, fill: KEY, ink: white, legend: { icon: v.beside }, size: 16 });
+  nav.forEach(([kind, icon, cx, cy]) => keys.push({ key: key(kind), cx, cy, w: n.size, h: n.size, r: n.size / 2, fill: KEY, ink: white, legend: { icon }, size: (11 * n.size) / 23 }));
+  if (v.beside && L.beside && L.top) keys.push({ key: key(v.beside[0]), cx: L.beside[0], cy: L.beside[1], w: L.top[1], h: L.top[2], r: 4, fill: KEY, ink: white, legend: { icon: v.beside[1] }, size: 16 });
   const [fy, fstep, fw, fh] = L.feature;
   v.features.forEach((row, r) =>
-    row.forEach((id, i) =>
+    row.forEach(([kind, id], i) =>
       keys.push({
-        id,
+        key: key(kind),
         cx: fx[i],
         cy: fy + r * fstep,
         w: fw,
@@ -522,7 +539,7 @@ function oldFamily(v: Old, L: OldLayout): Panel {
       shapes.push({ d: rect(wx + 20, wy - 3, 90, 10 * rowH + 6, 2), fill: "#08090a" });
       for (let i = 0; i < 10; i++) {
         shapes.push({ d: rect(wx + 23, wy + i * rowH, 84, rowH, 0), fill: i % 2 ? PAPER_GRAY : PAPER_WHITE });
-        keys.push({ id: `blf${i + 1}`, cx: wx + 139, cy: wy + (i + 0.5) * rowH, w: 27, h: 14, r: 5.5, fill: HOUSING_KEY, lamp: `blf${i + 1}` });
+        keys.push({ key: key(K.BLF, i + 1), cx: wx + 139, cy: wy + (i + 0.5) * rowH, w: 27, h: 14, r: 5.5, fill: HOUSING_KEY, lamp: true });
       }
     } else if (L.wing) {
       // D70: second display (ten entries and a page row), a key beside
@@ -534,14 +551,15 @@ function oldFamily(v: Old, L: OldLayout): Panel {
       side = { x: wx + g.dx, y: sy, w: sw, h: sh };
       shapes.push({ d: rect(wx + g.dx - 4, sy - 4, sw + 8, sh + 8, 2), fill: "#08090a" });
       for (let i = 0; i < 10; i++) {
-        keys.push({ id: `blf${i + 1}`, cx: wx + g.keyX, cy: sy + (i + 0.5) * (sh / 11), w: g.key[0], h: g.key[1], r: g.key[1] / 2, fill: HOUSING_KEY, lamp: `blf${i + 1}` });
+        keys.push({ key: key(K.BLF, i + 1), cx: wx + g.keyX, cy: sy + (i + 0.5) * (sh / 11), w: g.key[0], h: g.key[1], r: g.key[1] / 2, fill: HOUSING_KEY, lamp: true });
       }
-      [
-        ["blfleft", wx + g.dx + sw * g.pageX[0]],
-        ["blfright", wx + g.dx + sw * g.pageX[1]],
-      ].forEach(([id, cx]) => {
-        keys.push({ id: id as string, cx: cx as number, cy: sy + sh + g.pageY, w: g.page[0], h: g.page[1], r: 5, fill: TEAL });
-        lines.push([cx as number, sy + sh + 5, cx as number, sy + sh + g.pageY - g.page[1] / 2]);
+      const pages: [K, number][] = [
+        [K.BLF_PAGE_LEFT, wx + g.dx + sw * g.pageX[0]],
+        [K.BLF_PAGE_RIGHT, wx + g.dx + sw * g.pageX[1]],
+      ];
+      pages.forEach(([kind, cx]) => {
+        keys.push({ key: key(kind), cx, cy: sy + sh + g.pageY, w: g.page[0], h: g.page[1], r: 5, fill: TEAL });
+        lines.push([cx, sy + sh + 5, cx, sy + sh + g.pageY - g.page[1] / 2]);
       });
     }
     vbRight = xr + 24;
@@ -594,21 +612,24 @@ function oldFamily(v: Old, L: OldLayout): Panel {
   };
 }
 
-const two = [
-  ["msgs", "xfer"],
-  ["redial", "hold"],
+const two: Labeled[][] = [
+  [[K.MESSAGES, "msgs"], [K.TRANSFER, "xfer"]],
+  [[K.REDIAL, "redial"], [K.HOLD, "hold"]],
 ];
-const three = [
-  ["msgs", "xfer", "conf"],
-  ["redial", "hold", "info"],
+const three: Labeled[][] = [
+  [[K.MESSAGES, "msgs"], [K.TRANSFER, "xfer"], [K.CONFERENCE, "conf"]],
+  [[K.REDIAL, "redial"], [K.HOLD, "hold"], [K.INFO, "info"]],
 ];
 
-export const panels: Record<string, Panel> = {
-  D40: oldFamily({ lineKeys: 2, features: two, words: true }, layouts.D40),
-  D45: oldFamily({ lineKeys: 2, features: two, words: true }, layouts.D40),
-  D50: oldFamily({ lineKeys: 4, features: three, words: true, wing: "paper" }, layouts.D50),
-  D70: oldFamily({ lineKeys: 6, features: three, words: false, top: ["apps", "dir", "menu"], beside: "status", wing: "display" }, layouts.D70),
-  D60: newFamily(2, false),
-  D62: newFamily(2, false),
-  D65: newFamily(6, true),
+export const panels: Partial<Record<Model, Panel>> = {
+  [Model.D40]: oldFamily({ lineKeys: 2, features: two, words: true }, layouts.D40),
+  [Model.D45]: oldFamily({ lineKeys: 2, features: two, words: true }, layouts.D40),
+  [Model.D50]: oldFamily({ lineKeys: 4, features: three, words: true, wing: "paper" }, layouts.D50),
+  [Model.D70]: oldFamily(
+    { lineKeys: 6, features: three, words: false, top: [[K.APPS, "apps"], [K.CONTACTS, "dir"], [K.MENU, "menu"]], beside: [K.STATUS, "status"], wing: "display" },
+    layouts.D70,
+  ),
+  [Model.D60]: newFamily(2, false),
+  [Model.D62]: newFamily(2, false),
+  [Model.D65]: newFamily(6, true),
 };

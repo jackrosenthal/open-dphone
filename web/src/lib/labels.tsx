@@ -4,10 +4,12 @@
 // the raw identifier in the monospace font, so a missing entry is visible.
 
 import type { ReactNode } from "react";
-import { UpdatePhase } from "../gen/dphone/v1/firmware_pb";
-import { NetPhase } from "../gen/dphone/v1/network_pb";
-import { ProvisionPhase } from "../gen/dphone/v1/provisioning_pb";
-import { SystemPhase } from "../gen/dphone/v1/status_pb";
+import { Codec, EndCause, type Call } from "../gen/dphone/v1/calls_pb";
+import { Bank, UpdatePhase } from "../gen/dphone/v1/firmware_pb";
+import { Model } from "../gen/dphone/v1/model_pb";
+import { Ipv4Source, NetPhase, VlanSource } from "../gen/dphone/v1/network_pb";
+import { DiscoverySource, ProvisionPhase } from "../gen/dphone/v1/provisioning_pb";
+import { Subsystem, SystemPhase } from "../gen/dphone/v1/status_pb";
 
 type Names = Record<string | number, string>;
 
@@ -17,18 +19,33 @@ export function label(names: Names, value: string | number | undefined, raw?: st
   return names[value] ?? <code className="font-mono text-[0.9em]">{raw ?? String(value)}</code>;
 }
 
+const modelNames: Record<number, string> = {
+  [Model.D40]: "D40",
+  [Model.D45]: "D45",
+  [Model.D50]: "D50",
+  [Model.D60]: "D60",
+  [Model.D62]: "D62",
+  [Model.D65]: "D65",
+  [Model.D70]: "D70",
+};
+
+/// A model's name ("D60"); empty for none.
+export function modelName(model: Model | undefined): string {
+  return model === undefined ? "" : (modelNames[model] ?? "");
+}
+
 export const subsystemNames: Names = {
-  core: "Core",
-  config: "Configuration",
-  net: "Network",
-  sip: "SIP",
-  media: "Media",
-  dpma: "DPMA",
-  ui: "Phone UI",
-  apps: "Apps",
-  web: "Web",
-  ssh: "SSH",
-  update: "Firmware",
+  [Subsystem.CORE]: "Core",
+  [Subsystem.CONFIG]: "Configuration",
+  [Subsystem.NET]: "Network",
+  [Subsystem.SIP]: "SIP",
+  [Subsystem.MEDIA]: "Media",
+  [Subsystem.DPMA]: "DPMA",
+  [Subsystem.UI]: "Phone UI",
+  [Subsystem.APPS]: "Apps",
+  [Subsystem.WEB]: "Web",
+  [Subsystem.SSH]: "SSH",
+  [Subsystem.UPDATE]: "Firmware",
 };
 
 export const systemPhaseNames: Names = {
@@ -73,21 +90,53 @@ export const updatePhaseNames: Names = {
   [UpdatePhase.FAILED]: "Failed",
 };
 
+/// The firmware banks.
+export const bankNames: Names = { [Bank.A]: "A", [Bank.B]: "B" };
 /// Where the IPv4 address came from.
-export const addressSourceNames: Names = { dhcp: "DHCP", static: "Static" };
+export const addressSourceNames: Names = { [Ipv4Source.DHCP]: "DHCP", [Ipv4Source.STATIC]: "Static" };
 /// Where the voice VLAN came from.
-export const vlanSourceNames: Names = { config: "Manual", lldp: "LLDP-MED", dhcp: "DHCP" };
+export const vlanSourceNames: Names = { [VlanSource.CONFIG]: "Manual", [VlanSource.LLDP]: "LLDP-MED", [VlanSource.DHCP]: "DHCP" };
 /// How a provisioning server was found.
-export const discoverySourceNames: Names = { saved: "Saved", dhcp: "DHCP option 66", mdns: "mDNS", manual: "Manual" };
-/// Codecs, which the phone reports by their SDP encoding names.
-export const codecNames: Names = {
-  PCMU: "G.711 µ-law",
-  PCMA: "G.711 A-law",
-  G722: "G.722",
-  "G726-32": "G.726",
-  G729: "G.729",
-  iLBC: "iLBC",
-  opus: "Opus",
-  L16: "L16",
-  "L16-256": "L16 wideband",
+export const discoverySourceNames: Names = {
+  [DiscoverySource.SAVED]: "Saved",
+  [DiscoverySource.DHCP]: "DHCP option 66",
+  [DiscoverySource.MDNS]: "mDNS",
+  [DiscoverySource.MANUAL]: "Manual",
 };
+export const codecNames: Names = {
+  [Codec.PCMU]: "G.711 µ-law",
+  [Codec.PCMA]: "G.711 A-law",
+  [Codec.G722]: "G.722",
+  [Codec.G726_32]: "G.726",
+  [Codec.G729]: "G.729",
+  [Codec.ILBC]: "iLBC",
+  [Codec.OPUS]: "Opus",
+  [Codec.L16]: "L16",
+  [Codec.L16_WIDE]: "L16 wideband",
+};
+
+const endCauseNames: Names = {
+  [EndCause.LOCAL_HANGUP]: "Hung up",
+  [EndCause.REMOTE_HANGUP]: "Remote party hung up",
+  [EndCause.REJECTED]: "Declined",
+  [EndCause.CANCELED]: "Canceled",
+  [EndCause.ANSWERED_ELSEWHERE]: "Answered elsewhere",
+  [EndCause.BUSY]: "Busy",
+  [EndCause.NO_ANSWER]: "No answer",
+  [EndCause.TRANSFERRED]: "Transferred",
+  [EndCause.FAILED]: "Failed",
+  [EndCause.ERROR]: "Failed",
+};
+
+/// Why a call ended: the SIP status of a failure, the text of an error,
+/// or else the cause's name.  Empty while the call is up.
+export function endCause(call: Call): ReactNode {
+  if (call.endCause === EndCause.UNSPECIFIED) return "";
+  const detail =
+    call.endCause === EndCause.FAILED
+      ? [call.endCode ? String(call.endCode) : "", call.endReason].filter(Boolean).join(" ")
+      : call.endCause === EndCause.ERROR
+        ? call.endReason
+        : "";
+  return detail || label(endCauseNames, call.endCause, EndCause[call.endCause]);
+}

@@ -3,6 +3,7 @@ syntax = "proto3";
 package dphone.v1;
 
 import "dphone/v1/config.proto";
+import "dphone/v1/model.proto";
 
 // Firmware update.  The image itself is uploaded with a plain authenticated
 // HTTP POST to /upload/firmware (streamed to the phone, not buffered); that
@@ -32,11 +33,34 @@ enum UpdatePhase {
   UPDATE_PHASE_FAILED = 10;
 }
 
+// A flash bank: a kernel and a root filesystem.
+enum Bank {
+  BANK_UNSPECIFIED = 0;
+  // k0 and root0.
+  BANK_A = 1;
+  // k1 and root1.
+  BANK_B = 2;
+}
+
+// Where the phone is in a trial boot of new firmware.
+enum TrialBoot {
+  // Not in a trial.
+  TRIAL_BOOT_UNSPECIFIED = 0;
+  // Running new firmware that has not yet been declared healthy; see
+  // `trial_boots_left`.
+  TRIAL_BOOT_PENDING = 1;
+  // The last trial failed, and the phone went back to the other bank.
+  TRIAL_BOOT_ROLLED_BACK = 2;
+}
+
 message UploadedFirmware {
   string upload_id = 1;
   uint64 size = 2;
   string version = 3;
-  string model = 4;
+  // The model the image's label names; UNSPECIFIED when it names none, or
+  // a model this firmware does not know (`model_matches` tells the two
+  // apart).
+  Model model = 4;
   // A stock Digium image: installing it leaves Open DPhone.
   bool is_stock = 5;
   // The image is for this phone's model.
@@ -48,10 +72,9 @@ message FirmwareStatus {
   uint32 percent = 2;
   string error = 3;
   string running_version = 4;
-  // "A" (k0 + root0), "B" (k1 + root1), or "".
-  string running_bank = 5;
-  // "", "pending", or "rolled_back".
-  string trial = 6;
+  // UNSPECIFIED when not known.
+  Bank running_bank = 5;
+  TrialBoot trial = 6;
   uint32 trial_boots_left = 7;
   string rollback_reason = 8;
   string incoming_version = 9;

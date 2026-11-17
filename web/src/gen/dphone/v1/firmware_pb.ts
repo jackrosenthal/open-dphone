@@ -6,13 +6,15 @@ import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobu
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { BoolSetting } from "./config_pb";
 import { file_dphone_v1_config } from "./config_pb";
+import type { Model } from "./model_pb";
+import { file_dphone_v1_model } from "./model_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file dphone/v1/firmware.proto.
  */
 export const file_dphone_v1_firmware: GenFile = /*@__PURE__*/
-  fileDesc("ChhkcGhvbmUvdjEvZmlybXdhcmUucHJvdG8SCWRwaG9uZS52MSJ8ChBVcGxvYWRlZEZpcm13YXJlEhEKCXVwbG9hZF9pZBgBIAEoCRIMCgRzaXplGAIgASgEEg8KB3ZlcnNpb24YAyABKAkSDQoFbW9kZWwYBCABKAkSEAoIaXNfc3RvY2sYBSABKAgSFQoNbW9kZWxfbWF0Y2hlcxgGIAEoCCKsAgoORmlybXdhcmVTdGF0dXMSJQoFcGhhc2UYASABKA4yFi5kcGhvbmUudjEuVXBkYXRlUGhhc2USDwoHcGVyY2VudBgCIAEoDRINCgVlcnJvchgDIAEoCRIXCg9ydW5uaW5nX3ZlcnNpb24YBCABKAkSFAoMcnVubmluZ19iYW5rGAUgASgJEg0KBXRyaWFsGAYgASgJEhgKEHRyaWFsX2Jvb3RzX2xlZnQYByABKA0SFwoPcm9sbGJhY2tfcmVhc29uGAggASgJEhgKEGluY29taW5nX3ZlcnNpb24YCSABKAkSGQoRaW5jb21pbmdfaXNfc3RvY2sYCiABKAgSLQoIdXBsb2FkZWQYCyABKAsyGy5kcGhvbmUudjEuVXBsb2FkZWRGaXJtd2FyZSIUChJHZXRGaXJtd2FyZVJlcXVlc3QiQAoTR2V0RmlybXdhcmVSZXNwb25zZRIpCgZzdGF0dXMYASABKAsyGS5kcGhvbmUudjEuRmlybXdhcmVTdGF0dXMiFgoUV2F0Y2hGaXJtd2FyZVJlcXVlc3QiQgoVV2F0Y2hGaXJtd2FyZVJlc3BvbnNlEikKBnN0YXR1cxgBIAEoCzIZLmRwaG9uZS52MS5GaXJtd2FyZVN0YXR1cyJAChZJbnN0YWxsRmlybXdhcmVSZXF1ZXN0EhEKCXVwbG9hZF9pZBgBIAEoCRITCgthbGxvd19zdG9jaxgCIAEoCCIZChdJbnN0YWxsRmlybXdhcmVSZXNwb25zZSIpChREaXNjYXJkVXBsb2FkUmVxdWVzdBIRCgl1cGxvYWRfaWQYASABKAkiFwoVRGlzY2FyZFVwbG9hZFJlc3BvbnNlIhUKE0NvbmZpcm1UcmlhbFJlcXVlc3QiFgoUQ29uZmlybVRyaWFsUmVzcG9uc2UiEQoPUm9sbGJhY2tSZXF1ZXN0IhIKEFJvbGxiYWNrUmVzcG9uc2UiJQojR2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlcXVlc3QiTgokR2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlc3BvbnNlEiYKBmlnbm9yZRgBIAEoCzIWLmRwaG9uZS52MS5Cb29sU2V0dGluZyI1CiNTZXRQcm92aXNpb25lZEZpcm13YXJlUG9saWN5UmVxdWVzdBIOCgZpZ25vcmUYASABKAgiTgokU2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlc3BvbnNlEiYKBmlnbm9yZRgBIAEoCzIWLmRwaG9uZS52MS5Cb29sU2V0dGluZyrCAgoLVXBkYXRlUGhhc2USHAoYVVBEQVRFX1BIQVNFX1VOU1BFQ0lGSUVEEAASFQoRVVBEQVRFX1BIQVNFX0lETEUQARIaChZVUERBVEVfUEhBU0VfUkVDRUlWSU5HEAISGQoVVVBEQVRFX1BIQVNFX0NIRUNLSU5HEAMSGAoUVVBEQVRFX1BIQVNFX0VSQVNJTkcQBBIfChtVUERBVEVfUEhBU0VfV1JJVElOR19LRVJORUwQBRIfChtVUERBVEVfUEhBU0VfV1JJVElOR19ST09URlMQBhIaChZVUERBVEVfUEhBU0VfVkVSSUZZSU5HEAcSGwoXVVBEQVRFX1BIQVNFX0NPTU1JVFRJTkcQCBIZChVVUERBVEVfUEhBU0VfQ09NUExFVEUQCRIXChNVUERBVEVfUEhBU0VfRkFJTEVEEAoy+wUKD0Zpcm13YXJlU2VydmljZRJMCgtHZXRGaXJtd2FyZRIdLmRwaG9uZS52MS5HZXRGaXJtd2FyZVJlcXVlc3QaHi5kcGhvbmUudjEuR2V0RmlybXdhcmVSZXNwb25zZRJUCg1XYXRjaEZpcm13YXJlEh8uZHBob25lLnYxLldhdGNoRmlybXdhcmVSZXF1ZXN0GiAuZHBob25lLnYxLldhdGNoRmlybXdhcmVSZXNwb25zZTABElgKD0luc3RhbGxGaXJtd2FyZRIhLmRwaG9uZS52MS5JbnN0YWxsRmlybXdhcmVSZXF1ZXN0GiIuZHBob25lLnYxLkluc3RhbGxGaXJtd2FyZVJlc3BvbnNlElIKDURpc2NhcmRVcGxvYWQSHy5kcGhvbmUudjEuRGlzY2FyZFVwbG9hZFJlcXVlc3QaIC5kcGhvbmUudjEuRGlzY2FyZFVwbG9hZFJlc3BvbnNlEk8KDENvbmZpcm1UcmlhbBIeLmRwaG9uZS52MS5Db25maXJtVHJpYWxSZXF1ZXN0Gh8uZHBob25lLnYxLkNvbmZpcm1UcmlhbFJlc3BvbnNlEkMKCFJvbGxiYWNrEhouZHBob25lLnYxLlJvbGxiYWNrUmVxdWVzdBobLmRwaG9uZS52MS5Sb2xsYmFja1Jlc3BvbnNlEn8KHEdldFByb3Zpc2lvbmVkRmlybXdhcmVQb2xpY3kSLi5kcGhvbmUudjEuR2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlcXVlc3QaLy5kcGhvbmUudjEuR2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlc3BvbnNlEn8KHFNldFByb3Zpc2lvbmVkRmlybXdhcmVQb2xpY3kSLi5kcGhvbmUudjEuU2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlcXVlc3QaLy5kcGhvbmUudjEuU2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlc3BvbnNlYgZwcm90bzM", [file_dphone_v1_config]);
+  fileDesc("ChhkcGhvbmUvdjEvZmlybXdhcmUucHJvdG8SCWRwaG9uZS52MSKOAQoQVXBsb2FkZWRGaXJtd2FyZRIRCgl1cGxvYWRfaWQYASABKAkSDAoEc2l6ZRgCIAEoBBIPCgd2ZXJzaW9uGAMgASgJEh8KBW1vZGVsGAQgASgOMhAuZHBob25lLnYxLk1vZGVsEhAKCGlzX3N0b2NrGAUgASgIEhUKDW1vZGVsX21hdGNoZXMYBiABKAgi0wIKDkZpcm13YXJlU3RhdHVzEiUKBXBoYXNlGAEgASgOMhYuZHBob25lLnYxLlVwZGF0ZVBoYXNlEg8KB3BlcmNlbnQYAiABKA0SDQoFZXJyb3IYAyABKAkSFwoPcnVubmluZ192ZXJzaW9uGAQgASgJEiUKDHJ1bm5pbmdfYmFuaxgFIAEoDjIPLmRwaG9uZS52MS5CYW5rEiMKBXRyaWFsGAYgASgOMhQuZHBob25lLnYxLlRyaWFsQm9vdBIYChB0cmlhbF9ib290c19sZWZ0GAcgASgNEhcKD3JvbGxiYWNrX3JlYXNvbhgIIAEoCRIYChBpbmNvbWluZ192ZXJzaW9uGAkgASgJEhkKEWluY29taW5nX2lzX3N0b2NrGAogASgIEi0KCHVwbG9hZGVkGAsgASgLMhsuZHBob25lLnYxLlVwbG9hZGVkRmlybXdhcmUiFAoSR2V0RmlybXdhcmVSZXF1ZXN0IkAKE0dldEZpcm13YXJlUmVzcG9uc2USKQoGc3RhdHVzGAEgASgLMhkuZHBob25lLnYxLkZpcm13YXJlU3RhdHVzIhYKFFdhdGNoRmlybXdhcmVSZXF1ZXN0IkIKFVdhdGNoRmlybXdhcmVSZXNwb25zZRIpCgZzdGF0dXMYASABKAsyGS5kcGhvbmUudjEuRmlybXdhcmVTdGF0dXMiQAoWSW5zdGFsbEZpcm13YXJlUmVxdWVzdBIRCgl1cGxvYWRfaWQYASABKAkSEwoLYWxsb3dfc3RvY2sYAiABKAgiGQoXSW5zdGFsbEZpcm13YXJlUmVzcG9uc2UiKQoURGlzY2FyZFVwbG9hZFJlcXVlc3QSEQoJdXBsb2FkX2lkGAEgASgJIhcKFURpc2NhcmRVcGxvYWRSZXNwb25zZSIVChNDb25maXJtVHJpYWxSZXF1ZXN0IhYKFENvbmZpcm1UcmlhbFJlc3BvbnNlIhEKD1JvbGxiYWNrUmVxdWVzdCISChBSb2xsYmFja1Jlc3BvbnNlIiUKI0dldFByb3Zpc2lvbmVkRmlybXdhcmVQb2xpY3lSZXF1ZXN0Ik4KJEdldFByb3Zpc2lvbmVkRmlybXdhcmVQb2xpY3lSZXNwb25zZRImCgZpZ25vcmUYASABKAsyFi5kcGhvbmUudjEuQm9vbFNldHRpbmciNQojU2V0UHJvdmlzaW9uZWRGaXJtd2FyZVBvbGljeVJlcXVlc3QSDgoGaWdub3JlGAEgASgIIk4KJFNldFByb3Zpc2lvbmVkRmlybXdhcmVQb2xpY3lSZXNwb25zZRImCgZpZ25vcmUYASABKAsyFi5kcGhvbmUudjEuQm9vbFNldHRpbmcqwgIKC1VwZGF0ZVBoYXNlEhwKGFVQREFURV9QSEFTRV9VTlNQRUNJRklFRBAAEhUKEVVQREFURV9QSEFTRV9JRExFEAESGgoWVVBEQVRFX1BIQVNFX1JFQ0VJVklORxACEhkKFVVQREFURV9QSEFTRV9DSEVDS0lORxADEhgKFFVQREFURV9QSEFTRV9FUkFTSU5HEAQSHwobVVBEQVRFX1BIQVNFX1dSSVRJTkdfS0VSTkVMEAUSHwobVVBEQVRFX1BIQVNFX1dSSVRJTkdfUk9PVEZTEAYSGgoWVVBEQVRFX1BIQVNFX1ZFUklGWUlORxAHEhsKF1VQREFURV9QSEFTRV9DT01NSVRUSU5HEAgSGQoVVVBEQVRFX1BIQVNFX0NPTVBMRVRFEAkSFwoTVVBEQVRFX1BIQVNFX0ZBSUxFRBAKKjQKBEJhbmsSFAoQQkFOS19VTlNQRUNJRklFRBAAEgoKBkJBTktfQRABEgoKBkJBTktfQhACKlsKCVRyaWFsQm9vdBIaChZUUklBTF9CT09UX1VOU1BFQ0lGSUVEEAASFgoSVFJJQUxfQk9PVF9QRU5ESU5HEAESGgoWVFJJQUxfQk9PVF9ST0xMRURfQkFDSxACMvsFCg9GaXJtd2FyZVNlcnZpY2USTAoLR2V0RmlybXdhcmUSHS5kcGhvbmUudjEuR2V0RmlybXdhcmVSZXF1ZXN0Gh4uZHBob25lLnYxLkdldEZpcm13YXJlUmVzcG9uc2USVAoNV2F0Y2hGaXJtd2FyZRIfLmRwaG9uZS52MS5XYXRjaEZpcm13YXJlUmVxdWVzdBogLmRwaG9uZS52MS5XYXRjaEZpcm13YXJlUmVzcG9uc2UwARJYCg9JbnN0YWxsRmlybXdhcmUSIS5kcGhvbmUudjEuSW5zdGFsbEZpcm13YXJlUmVxdWVzdBoiLmRwaG9uZS52MS5JbnN0YWxsRmlybXdhcmVSZXNwb25zZRJSCg1EaXNjYXJkVXBsb2FkEh8uZHBob25lLnYxLkRpc2NhcmRVcGxvYWRSZXF1ZXN0GiAuZHBob25lLnYxLkRpc2NhcmRVcGxvYWRSZXNwb25zZRJPCgxDb25maXJtVHJpYWwSHi5kcGhvbmUudjEuQ29uZmlybVRyaWFsUmVxdWVzdBofLmRwaG9uZS52MS5Db25maXJtVHJpYWxSZXNwb25zZRJDCghSb2xsYmFjaxIaLmRwaG9uZS52MS5Sb2xsYmFja1JlcXVlc3QaGy5kcGhvbmUudjEuUm9sbGJhY2tSZXNwb25zZRJ/ChxHZXRQcm92aXNpb25lZEZpcm13YXJlUG9saWN5Ei4uZHBob25lLnYxLkdldFByb3Zpc2lvbmVkRmlybXdhcmVQb2xpY3lSZXF1ZXN0Gi8uZHBob25lLnYxLkdldFByb3Zpc2lvbmVkRmlybXdhcmVQb2xpY3lSZXNwb25zZRJ/ChxTZXRQcm92aXNpb25lZEZpcm13YXJlUG9saWN5Ei4uZHBob25lLnYxLlNldFByb3Zpc2lvbmVkRmlybXdhcmVQb2xpY3lSZXF1ZXN0Gi8uZHBob25lLnYxLlNldFByb3Zpc2lvbmVkRmlybXdhcmVQb2xpY3lSZXNwb25zZWIGcHJvdG8z", [file_dphone_v1_config, file_dphone_v1_model]);
 
 /**
  * @generated from message dphone.v1.UploadedFirmware
@@ -34,9 +36,13 @@ export type UploadedFirmware = Message<"dphone.v1.UploadedFirmware"> & {
   version: string;
 
   /**
-   * @generated from field: string model = 4;
+   * The model the image's label names; UNSPECIFIED when it names none, or
+   * a model this firmware does not know (`model_matches` tells the two
+   * apart).
+   *
+   * @generated from field: dphone.v1.Model model = 4;
    */
-  model: string;
+  model: Model;
 
   /**
    * A stock Digium image: installing it leaves Open DPhone.
@@ -85,18 +91,16 @@ export type FirmwareStatus = Message<"dphone.v1.FirmwareStatus"> & {
   runningVersion: string;
 
   /**
-   * "A" (k0 + root0), "B" (k1 + root1), or "".
+   * UNSPECIFIED when not known.
    *
-   * @generated from field: string running_bank = 5;
+   * @generated from field: dphone.v1.Bank running_bank = 5;
    */
-  runningBank: string;
+  runningBank: Bank;
 
   /**
-   * "", "pending", or "rolled_back".
-   *
-   * @generated from field: string trial = 6;
+   * @generated from field: dphone.v1.TrialBoot trial = 6;
    */
-  trial: string;
+  trial: TrialBoot;
 
   /**
    * @generated from field: uint32 trial_boots_left = 7;
@@ -443,6 +447,73 @@ export enum UpdatePhase {
  */
 export const UpdatePhaseSchema: GenEnum<UpdatePhase> = /*@__PURE__*/
   enumDesc(file_dphone_v1_firmware, 0);
+
+/**
+ * A flash bank: a kernel and a root filesystem.
+ *
+ * @generated from enum dphone.v1.Bank
+ */
+export enum Bank {
+  /**
+   * @generated from enum value: BANK_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * k0 and root0.
+   *
+   * @generated from enum value: BANK_A = 1;
+   */
+  A = 1,
+
+  /**
+   * k1 and root1.
+   *
+   * @generated from enum value: BANK_B = 2;
+   */
+  B = 2,
+}
+
+/**
+ * Describes the enum dphone.v1.Bank.
+ */
+export const BankSchema: GenEnum<Bank> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_firmware, 1);
+
+/**
+ * Where the phone is in a trial boot of new firmware.
+ *
+ * @generated from enum dphone.v1.TrialBoot
+ */
+export enum TrialBoot {
+  /**
+   * Not in a trial.
+   *
+   * @generated from enum value: TRIAL_BOOT_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Running new firmware that has not yet been declared healthy; see
+   * `trial_boots_left`.
+   *
+   * @generated from enum value: TRIAL_BOOT_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * The last trial failed, and the phone went back to the other bank.
+   *
+   * @generated from enum value: TRIAL_BOOT_ROLLED_BACK = 2;
+   */
+  ROLLED_BACK = 2,
+}
+
+/**
+ * Describes the enum dphone.v1.TrialBoot.
+ */
+export const TrialBootSchema: GenEnum<TrialBoot> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_firmware, 2);
 
 /**
  * Firmware update.  The image itself is uploaded with a plain authenticated

@@ -1,7 +1,7 @@
 import { useMutation } from "@connectrpc/connect-query";
 import { useState } from "react";
 import { Alert, Badge, Button, Card, ConfirmButton, Empty, Field, Input, KeyValue, PageHeader, Spinner } from "../components/ui";
-import { ProvisionPhase, ProvisioningService } from "../gen/dphone/v1/provisioning_pb";
+import { DiscoverySource, ProvisionPhase, ProvisioningService } from "../gen/dphone/v1/provisioning_pb";
 import { dateTime } from "../lib/format";
 import { discoverySourceNames, label, provisionPhaseNames } from "../lib/labels";
 import { useStatus } from "../lib/status";
@@ -50,7 +50,7 @@ export function Provisioning() {
               rows={[
                 ["Server", p.server ? `${p.server.name}` : ""],
                 ["Address", p.server?.address],
-                ["Discovery", label(discoverySourceNames, p.server?.source)],
+                ["Discovery", p.server && p.server.source !== DiscoverySource.UNSPECIFIED ? label(discoverySourceNames, p.server.source, DiscoverySource[p.server.source]) : ""],
                 ["Software", p.serverUserAgent],
                 ["User", p.assignedUser],
                 ["Session", p.attached ? "Connected" : "Disconnected"],
@@ -85,7 +85,7 @@ export function Provisioning() {
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{d.name}</p>
                       <p className="truncate text-xs text-slate-500">
-                        {d.address} · {label(discoverySourceNames, d.source)}
+                        {d.address} · {d.source !== DiscoverySource.UNSPECIFIED && label(discoverySourceNames, d.source, DiscoverySource[d.source])}
                       </p>
                     </div>
                     <Button size="sm" onClick={() => start.mutate({ server: d.address })}>

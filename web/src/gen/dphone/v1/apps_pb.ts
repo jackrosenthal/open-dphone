@@ -2,8 +2,8 @@
 // @generated from file dphone/v1/apps.proto (package dphone.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { App as App$1 } from "../settings/v1/settings_pb";
 import { file_dphone_settings_v1_settings } from "../settings/v1/settings_pb";
 import type { SettingSource } from "./config_pb";
@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/v1/apps.proto.
  */
 export const file_dphone_v1_apps: GenFile = /*@__PURE__*/
-  fileDesc("ChRkcGhvbmUvdjEvYXBwcy5wcm90bxIJZHBob25lLnYxIsIBCgNBcHASDAoEbmFtZRgBIAEoCRIKCgJpZBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSEwoLZGVzY3JpcHRpb24YBCABKAkSDAoEa2luZBgFIAEoCRIQCghoYXNfaWRsZRgGIAEoCBIOCgZoaWRkZW4YByABKAgSDwoHYnVpbHRpbhgIIAEoCBIPCgdydW5uaW5nGAkgASgIEhIKCmZvcmVncm91bmQYCiABKAgSEAoIZGlzYWJsZWQYCyABKAgibwoMRGlzYWJsZWRBcHBzEiUKBGFwcHMYASADKAsyFy5kcGhvbmUuc2V0dGluZ3MudjEuQXBwEigKBnNvdXJjZRgCIAEoDjIYLmRwaG9uZS52MS5TZXR0aW5nU291cmNlEg4KBmxvY2tlZBgDIAEoCCJSCgxBcHBzU25hcHNob3QSHAoEYXBwcxgBIAMoCzIOLmRwaG9uZS52MS5BcHASEgoKZm9yZWdyb3VuZBgCIAEoCRIQCghpZGxlX2FwcBgDIAEoCSIRCg9MaXN0QXBwc1JlcXVlc3QiPQoQTGlzdEFwcHNSZXNwb25zZRIpCghzbmFwc2hvdBgBIAEoCzIXLmRwaG9uZS52MS5BcHBzU25hcHNob3QiEgoQV2F0Y2hBcHBzUmVxdWVzdCI+ChFXYXRjaEFwcHNSZXNwb25zZRIpCghzbmFwc2hvdBgBIAEoCzIXLmRwaG9uZS52MS5BcHBzU25hcHNob3QiIAoQTGF1bmNoQXBwUmVxdWVzdBIMCgRuYW1lGAEgASgJIhMKEUxhdW5jaEFwcFJlc3BvbnNlIh8KD0Nsb3NlQXBwUmVxdWVzdBIMCgRuYW1lGAEgASgJIhIKEENsb3NlQXBwUmVzcG9uc2UiJgoRSW5zdGFsbEFwcFJlcXVlc3QSEQoJdXBsb2FkX2lkGAEgASgJIhQKEkluc3RhbGxBcHBSZXNwb25zZSIgChBSZW1vdmVBcHBSZXF1ZXN0EgwKBG5hbWUYASABKAkiEwoRUmVtb3ZlQXBwUmVzcG9uc2UiGAoWR2V0RGlzYWJsZWRBcHBzUmVxdWVzdCJJChdHZXREaXNhYmxlZEFwcHNSZXNwb25zZRIuCg1kaXNhYmxlZF9hcHBzGAEgASgLMhcuZHBob25lLnYxLkRpc2FibGVkQXBwcyI1ChRTZXRBcHBFbmFibGVkUmVxdWVzdBIMCgRuYW1lGAEgASgJEg8KB2VuYWJsZWQYAiABKAgiRwoVU2V0QXBwRW5hYmxlZFJlc3BvbnNlEi4KDWRpc2FibGVkX2FwcHMYASABKAsyFy5kcGhvbmUudjEuRGlzYWJsZWRBcHBzMuoECgtBcHBzU2VydmljZRJDCghMaXN0QXBwcxIaLmRwaG9uZS52MS5MaXN0QXBwc1JlcXVlc3QaGy5kcGhvbmUudjEuTGlzdEFwcHNSZXNwb25zZRJICglXYXRjaEFwcHMSGy5kcGhvbmUudjEuV2F0Y2hBcHBzUmVxdWVzdBocLmRwaG9uZS52MS5XYXRjaEFwcHNSZXNwb25zZTABEkYKCUxhdW5jaEFwcBIbLmRwaG9uZS52MS5MYXVuY2hBcHBSZXF1ZXN0GhwuZHBob25lLnYxLkxhdW5jaEFwcFJlc3BvbnNlEkMKCENsb3NlQXBwEhouZHBob25lLnYxLkNsb3NlQXBwUmVxdWVzdBobLmRwaG9uZS52MS5DbG9zZUFwcFJlc3BvbnNlEkkKCkluc3RhbGxBcHASHC5kcGhvbmUudjEuSW5zdGFsbEFwcFJlcXVlc3QaHS5kcGhvbmUudjEuSW5zdGFsbEFwcFJlc3BvbnNlEkYKCVJlbW92ZUFwcBIbLmRwaG9uZS52MS5SZW1vdmVBcHBSZXF1ZXN0GhwuZHBob25lLnYxLlJlbW92ZUFwcFJlc3BvbnNlElgKD0dldERpc2FibGVkQXBwcxIhLmRwaG9uZS52MS5HZXREaXNhYmxlZEFwcHNSZXF1ZXN0GiIuZHBob25lLnYxLkdldERpc2FibGVkQXBwc1Jlc3BvbnNlElIKDVNldEFwcEVuYWJsZWQSHy5kcGhvbmUudjEuU2V0QXBwRW5hYmxlZFJlcXVlc3QaIC5kcGhvbmUudjEuU2V0QXBwRW5hYmxlZFJlc3BvbnNlYgZwcm90bzM", [file_dphone_settings_v1_settings, file_dphone_v1_config]);
+  fileDesc("ChRkcGhvbmUvdjEvYXBwcy5wcm90bxIJZHBob25lLnYxItYBCgNBcHASDAoEbmFtZRgBIAEoCRIKCgJpZBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSEwoLZGVzY3JpcHRpb24YBCABKAkSIAoEa2luZBgFIAEoDjISLmRwaG9uZS52MS5BcHBLaW5kEhAKCGhhc19pZGxlGAYgASgIEg4KBmhpZGRlbhgHIAEoCBIPCgdidWlsdGluGAggASgIEg8KB3J1bm5pbmcYCSABKAgSEgoKZm9yZWdyb3VuZBgKIAEoCBIQCghkaXNhYmxlZBgLIAEoCCJvCgxEaXNhYmxlZEFwcHMSJQoEYXBwcxgBIAMoCzIXLmRwaG9uZS5zZXR0aW5ncy52MS5BcHASKAoGc291cmNlGAIgASgOMhguZHBob25lLnYxLlNldHRpbmdTb3VyY2USDgoGbG9ja2VkGAMgASgIIlIKDEFwcHNTbmFwc2hvdBIcCgRhcHBzGAEgAygLMg4uZHBob25lLnYxLkFwcBISCgpmb3JlZ3JvdW5kGAIgASgJEhAKCGlkbGVfYXBwGAMgASgJIhEKD0xpc3RBcHBzUmVxdWVzdCI9ChBMaXN0QXBwc1Jlc3BvbnNlEikKCHNuYXBzaG90GAEgASgLMhcuZHBob25lLnYxLkFwcHNTbmFwc2hvdCISChBXYXRjaEFwcHNSZXF1ZXN0Ij4KEVdhdGNoQXBwc1Jlc3BvbnNlEikKCHNuYXBzaG90GAEgASgLMhcuZHBob25lLnYxLkFwcHNTbmFwc2hvdCIgChBMYXVuY2hBcHBSZXF1ZXN0EgwKBG5hbWUYASABKAkiEwoRTGF1bmNoQXBwUmVzcG9uc2UiHwoPQ2xvc2VBcHBSZXF1ZXN0EgwKBG5hbWUYASABKAkiEgoQQ2xvc2VBcHBSZXNwb25zZSImChFJbnN0YWxsQXBwUmVxdWVzdBIRCgl1cGxvYWRfaWQYASABKAkiFAoSSW5zdGFsbEFwcFJlc3BvbnNlIiAKEFJlbW92ZUFwcFJlcXVlc3QSDAoEbmFtZRgBIAEoCSITChFSZW1vdmVBcHBSZXNwb25zZSIYChZHZXREaXNhYmxlZEFwcHNSZXF1ZXN0IkkKF0dldERpc2FibGVkQXBwc1Jlc3BvbnNlEi4KDWRpc2FibGVkX2FwcHMYASABKAsyFy5kcGhvbmUudjEuRGlzYWJsZWRBcHBzIjUKFFNldEFwcEVuYWJsZWRSZXF1ZXN0EgwKBG5hbWUYASABKAkSDwoHZW5hYmxlZBgCIAEoCCJHChVTZXRBcHBFbmFibGVkUmVzcG9uc2USLgoNZGlzYWJsZWRfYXBwcxgBIAEoCzIXLmRwaG9uZS52MS5EaXNhYmxlZEFwcHMqVQoHQXBwS2luZBIYChRBUFBfS0lORF9VTlNQRUNJRklFRBAAEhcKE0FQUF9LSU5EX0ZPUkVHUk9VTkQQARIXChNBUFBfS0lORF9CQUNLR1JPVU5EEAIy6gQKC0FwcHNTZXJ2aWNlEkMKCExpc3RBcHBzEhouZHBob25lLnYxLkxpc3RBcHBzUmVxdWVzdBobLmRwaG9uZS52MS5MaXN0QXBwc1Jlc3BvbnNlEkgKCVdhdGNoQXBwcxIbLmRwaG9uZS52MS5XYXRjaEFwcHNSZXF1ZXN0GhwuZHBob25lLnYxLldhdGNoQXBwc1Jlc3BvbnNlMAESRgoJTGF1bmNoQXBwEhsuZHBob25lLnYxLkxhdW5jaEFwcFJlcXVlc3QaHC5kcGhvbmUudjEuTGF1bmNoQXBwUmVzcG9uc2USQwoIQ2xvc2VBcHASGi5kcGhvbmUudjEuQ2xvc2VBcHBSZXF1ZXN0GhsuZHBob25lLnYxLkNsb3NlQXBwUmVzcG9uc2USSQoKSW5zdGFsbEFwcBIcLmRwaG9uZS52MS5JbnN0YWxsQXBwUmVxdWVzdBodLmRwaG9uZS52MS5JbnN0YWxsQXBwUmVzcG9uc2USRgoJUmVtb3ZlQXBwEhsuZHBob25lLnYxLlJlbW92ZUFwcFJlcXVlc3QaHC5kcGhvbmUudjEuUmVtb3ZlQXBwUmVzcG9uc2USWAoPR2V0RGlzYWJsZWRBcHBzEiEuZHBob25lLnYxLkdldERpc2FibGVkQXBwc1JlcXVlc3QaIi5kcGhvbmUudjEuR2V0RGlzYWJsZWRBcHBzUmVzcG9uc2USUgoNU2V0QXBwRW5hYmxlZBIfLmRwaG9uZS52MS5TZXRBcHBFbmFibGVkUmVxdWVzdBogLmRwaG9uZS52MS5TZXRBcHBFbmFibGVkUmVzcG9uc2ViBnByb3RvMw", [file_dphone_settings_v1_settings, file_dphone_v1_config]);
 
 /**
  * @generated from message dphone.v1.App
@@ -41,9 +41,9 @@ export type App = Message<"dphone.v1.App"> & {
   description: string;
 
   /**
-   * @generated from field: string kind = 5;
+   * @generated from field: dphone.v1.AppKind kind = 5;
    */
-  kind: string;
+  kind: AppKind;
 
   /**
    * @generated from field: bool has_idle = 6;
@@ -395,6 +395,38 @@ export type SetAppEnabledResponse = Message<"dphone.v1.SetAppEnabledResponse"> &
  */
 export const SetAppEnabledResponseSchema: GenMessage<SetAppEnabledResponse> = /*@__PURE__*/
   messageDesc(file_dphone_v1_apps, 18);
+
+/**
+ * How an app runs.
+ *
+ * @generated from enum dphone.v1.AppKind
+ */
+export enum AppKind {
+  /**
+   * @generated from enum value: APP_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Runs while it is on screen.
+   *
+   * @generated from enum value: APP_KIND_FOREGROUND = 1;
+   */
+  FOREGROUND = 1,
+
+  /**
+   * Starts with the phone and runs without being on screen.
+   *
+   * @generated from enum value: APP_KIND_BACKGROUND = 2;
+   */
+  BACKGROUND = 2,
+}
+
+/**
+ * Describes the enum dphone.v1.AppKind.
+ */
+export const AppKindSchema: GenEnum<AppKind> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_apps, 0);
 
 /**
  * Phone apps (WebAssembly packages).  A package is uploaded with a plain

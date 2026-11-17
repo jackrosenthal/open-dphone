@@ -100,11 +100,13 @@ pub async fn set_dnd(ctx: Ctx, req: pb::SetDndRequest) -> Result<pb::SetDndRespo
 }
 
 pub async fn set_forward(ctx: Ctx, req: pb::SetForwardRequest) -> Result<pb::SetForwardResponse, ConnectError> {
-    let kind = match req.kind.as_str() {
-        "always" => ForwardKind::Always,
-        "busy" => ForwardKind::Busy,
-        "no_answer" => ForwardKind::NoAnswer,
-        other => return Err(ConnectError::invalid_argument(format!("unknown forward kind {other:?}"))),
+    let kind = match req.kind.as_known() {
+        Some(pb::ForwardKind::FORWARD_KIND_ALWAYS) => ForwardKind::Always,
+        Some(pb::ForwardKind::FORWARD_KIND_BUSY) => ForwardKind::Busy,
+        Some(pb::ForwardKind::FORWARD_KIND_NO_ANSWER) => ForwardKind::NoAnswer,
+        Some(pb::ForwardKind::FORWARD_KIND_UNSPECIFIED) | None => {
+            return Err(ConnectError::invalid_argument("not a forward kind"));
+        }
     };
     let no_answer_secs = u16::try_from(req.no_answer_secs).ok().filter(|s| *s > 0);
     command(&ctx.app.store, Command::SetForward { kind, target: req.target.trim().to_owned(), no_answer_secs })

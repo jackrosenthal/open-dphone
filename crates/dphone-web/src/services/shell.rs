@@ -2,7 +2,7 @@
 
 use crate::http::Ctx;
 use crate::rpc::{Code, ConnectError, Sink};
-use crate::shell::{OpenError, Session, ShellExit, ShellSize, CLIENT_SILENCE, MAX_INPUT, MAX_SHELLS, SHELL_IDLE};
+use crate::shell::{EndReason, OpenError, Session, ShellExit, ShellSize, CLIENT_SILENCE, MAX_INPUT, MAX_SHELLS, SHELL_IDLE};
 use crate::{pb, App};
 use std::sync::Arc;
 use std::time::Duration;
@@ -66,14 +66,21 @@ pub async fn open_shell(
         }
     };
     let reason = exit.reason;
-    let exit = if reason.is_empty() { exit } else { ShellExit { reason, ..session.terminate().await } };
+    let exit = if reason.is_none() { exit } else { ShellExit { reason, ..session.terminate().await } };
     session.terminate().await;
-    log::info!("web shell from {} ended ({})", ctx.peer, if reason.is_empty() { "exited" } else { reason });
+    log::info!("web shell from {} ended ({})", ctx.peer, reason.map_or("exited", EndReason::text));
     let _ = sink
         .send(&message(Event::Exited(Box::new(pb::ShellExited {
             exit_code: exit.code,
             signal: exit.signal,
-            reason: exit.reason.to_owned(),
+            reason: match exit.reason {
+                None => pb::ShellEndReason::Unspecified,
+                Some(EndReason::Idle) => pb::ShellEndReason::Idle,
+                Some(EndReason::PageGone) => pb::ShellEndReason::PageGone,
+                Some(EndReason::LoggedOut) => pb::ShellEndReason::LoggedOut,
+                Some(EndReason::Closed) => pb::ShellEndReason::Closed,
+            }
+            .into(),
         }))))
         .await;
     Ok(())
@@ -125,19 +132,19 @@ async fn run(app: &App, token: &str, session: &Session, sink: &Sink<pb::OpenShel
                     return Some(exit);
                 }
                 if session.idle_for() >= SHELL_IDLE {
-                    return Some(ShellExit { reason: "idle", ..Default::default() });
+                    return Some(ShellExit::ended(EndReason::Idle));
                 }
                 if session.silent_for() >= CLIENT_SILENCE {
-                    return Some(ShellExit { reason: "page gone", ..Default::default() });
+                    return Some(ShellExit::ended(EndReason::PageGone));
                 }
                 if last_touch.elapsed() >= TOUCH {
                     last_touch = tokio::time::Instant::now();
                     if app.sessions.touch(token).is_none() {
-                        return Some(ShellExit { reason: "logged out", ..Default::default() });
+                        return Some(ShellExit::ended(EndReason::LoggedOut));
                     }
                 }
             }
-            _ = session.close_requested() => return Some(ShellExit { reason: "closed", ..Default::default() }),
+            _ = session.close_requested() => return Some(ShellExit::ended(EndReason::Closed)),
             _ = sink.closed() => return None,
         }
     }

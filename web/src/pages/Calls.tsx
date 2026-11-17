@@ -1,9 +1,9 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button, Card, ConfirmButton, Empty, Field, Input, PageHeader, Select, Toggle, td, th } from "../components/ui";
-import { CallDirection, CallLogKind, CallState, CallsService, type Call } from "../gen/dphone/v1/calls_pb";
+import { CallDirection, CallLogKind, CallState, CallsService, Codec, EndCause, ForwardKind, type Call } from "../gen/dphone/v1/calls_pb";
 import { dateTime, duration } from "../lib/format";
-import { codecNames, label } from "../lib/labels";
+import { codecNames, endCause, label } from "../lib/labels";
 import { useStatus } from "../lib/status";
 import { PagingCard } from "./Paging";
 import { ErrorNote, callStateLabel } from "./common";
@@ -28,10 +28,10 @@ function CallRow({ call, onError, elapsed }: { call: Call; onError: (e: unknown)
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {call.remote?.name ? `${call.remote.number} · ` : ""}
             {call.direction === CallDirection.INCOMING ? "Incoming" : "Outgoing"} · Line {call.account + 1}
-            {call.codec && <> · {label(codecNames, call.codec)}</>}
+            {call.codec !== Codec.UNSPECIFIED && <> · {label(codecNames, call.codec, Codec[call.codec])}</>}
             {call.srtp ? " · SRTP" : ""}
             {call.durationSecs !== undefined && call.state !== CallState.ENDED ? ` · ${duration(Number(call.durationSecs) + elapsed)}` : ""}
-            {call.endCause ? ` · ${call.endCause}` : ""}
+            {call.endCause !== EndCause.UNSPECIFIED && <> · {endCause(call)}</>}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -153,7 +153,7 @@ export function Calls() {
                 className="flex items-end gap-2"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  forward.mutate({ kind: "always", target: forwardValue.trim() }, { onSuccess: () => setFwd(undefined) });
+                  forward.mutate({ kind: ForwardKind.ALWAYS, target: forwardValue.trim() }, { onSuccess: () => setFwd(undefined) });
                 }}
               >
                 <Field label="Forward calls to" className="flex-1">

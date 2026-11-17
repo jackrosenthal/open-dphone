@@ -4,13 +4,15 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { Model, Skin } from "./model_pb";
+import { file_dphone_v1_model } from "./model_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file dphone/v1/screen.proto.
  */
 export const file_dphone_v1_screen: GenFile = /*@__PURE__*/
-  fileDesc("ChZkcGhvbmUvdjEvc2NyZWVuLnByb3RvEglkcGhvbmUudjEiWwoKU2NyZWVuSW5mbxIfCgJpZBgBIAEoDjITLmRwaG9uZS52MS5TY3JlZW5JZBINCgV3aWR0aBgCIAEoDRIOCgZoZWlnaHQYAyABKA0SDQoFY29sb3IYBCABKAgiMQoETGFtcBILCgNrZXkYASABKAkSDQoFY29sb3IYAiABKAkSDQoFYmxpbmsYAyABKAkiEwoDS2V5EgwKBG5hbWUYASABKAkiGAoWR2V0U2NyZWVuTGF5b3V0UmVxdWVzdCKyAQoXR2V0U2NyZWVuTGF5b3V0UmVzcG9uc2USDQoFbW9kZWwYASABKAkSDAoEc2tpbhgCIAEoCRImCgdzY3JlZW5zGAMgAygLMhUuZHBob25lLnYxLlNjcmVlbkluZm8SHAoEa2V5cxgEIAMoCzIOLmRwaG9uZS52MS5LZXkSGgoSc29mdGtleV9iYXJfaGVpZ2h0GAUgASgNEhgKEG1pcnJvcl9hdmFpbGFibGUYBiABKAgiSgoSV2F0Y2hTY3JlZW5SZXF1ZXN0EiMKBnNjcmVlbhgBIAEoDjITLmRwaG9uZS52MS5TY3JlZW5JZBIPCgdtYXhfZnBzGAIgASgNIokBChNXYXRjaFNjcmVlblJlc3BvbnNlEgsKA3BuZxgBIAEoDBINCgV3aWR0aBgCIAEoDRIOCgZoZWlnaHQYAyABKA0SHgoFbGFtcHMYBCADKAsyDy5kcGhvbmUudjEuTGFtcBIUCgxiYWNrbGlnaHRfb24YBSABKAgSEAoIb2ZmX2hvb2sYBiABKAgiRAoPUHJlc3NLZXlSZXF1ZXN0EgsKA2tleRgBIAEoCRIkCgZhY3Rpb24YAiABKA4yFC5kcGhvbmUudjEuS2V5QWN0aW9uIhIKEFByZXNzS2V5UmVzcG9uc2UiIgoOU2V0SG9va1JlcXVlc3QSEAoIb2ZmX2hvb2sYASABKAgiEQoPU2V0SG9va1Jlc3BvbnNlKk0KCFNjcmVlbklkEhkKFVNDUkVFTl9JRF9VTlNQRUNJRklFRBAAEhIKDlNDUkVFTl9JRF9NQUlOEAESEgoOU0NSRUVOX0lEX1NJREUQAipjCglLZXlBY3Rpb24SGgoWS0VZX0FDVElPTl9VTlNQRUNJRklFRBAAEhIKDktFWV9BQ1RJT05fVEFQEAESEwoPS0VZX0FDVElPTl9ET1dOEAISEQoNS0VZX0FDVElPTl9VUBADMsACCg1TY3JlZW5TZXJ2aWNlElgKD0dldFNjcmVlbkxheW91dBIhLmRwaG9uZS52MS5HZXRTY3JlZW5MYXlvdXRSZXF1ZXN0GiIuZHBob25lLnYxLkdldFNjcmVlbkxheW91dFJlc3BvbnNlEk4KC1dhdGNoU2NyZWVuEh0uZHBob25lLnYxLldhdGNoU2NyZWVuUmVxdWVzdBoeLmRwaG9uZS52MS5XYXRjaFNjcmVlblJlc3BvbnNlMAESQwoIUHJlc3NLZXkSGi5kcGhvbmUudjEuUHJlc3NLZXlSZXF1ZXN0GhsuZHBob25lLnYxLlByZXNzS2V5UmVzcG9uc2USQAoHU2V0SG9vaxIZLmRwaG9uZS52MS5TZXRIb29rUmVxdWVzdBoaLmRwaG9uZS52MS5TZXRIb29rUmVzcG9uc2ViBnByb3RvMw");
+  fileDesc("ChZkcGhvbmUvdjEvc2NyZWVuLnByb3RvEglkcGhvbmUudjEiWwoKU2NyZWVuSW5mbxIfCgJpZBgBIAEoDjITLmRwaG9uZS52MS5TY3JlZW5JZBINCgV3aWR0aBgCIAEoDRIOCgZoZWlnaHQYAyABKA0SDQoFY29sb3IYBCABKAgibQoETGFtcBIbCgNrZXkYASABKAsyDi5kcGhvbmUudjEuS2V5EiMKBWNvbG9yGAIgASgOMhQuZHBob25lLnYxLkxhbXBDb2xvchIjCgVibGluaxgDIAEoDjIULmRwaG9uZS52MS5MYW1wQmxpbmsi+gQKA0tleRIhCgRraW5kGAEgASgOMhMuZHBob25lLnYxLktleS5LaW5kEg0KBWluZGV4GAIgASgNEg4KBm1vZHVsZRgDIAEoDSKwBAoES2luZBIUChBLSU5EX1VOU1BFQ0lGSUVEEAASDgoKS0lORF9ESUdJVBABEg0KCUtJTkRfU1RBUhACEg4KCktJTkRfUE9VTkQQAxILCgdLSU5EX1VQEAQSDQoJS0lORF9ET1dOEAUSDQoJS0lORF9MRUZUEAYSDgoKS0lORF9SSUdIVBAHEg8KC0tJTkRfU0VMRUNUEAgSDwoLS0lORF9DQU5DRUwQCRISCg5LSU5EX1ZPTFVNRV9VUBAKEhQKEEtJTkRfVk9MVU1FX0RPV04QCxINCglLSU5EX1NPRlQQDBINCglLSU5EX0xJTkUQDRIMCghLSU5EX0JMRhAOEg0KCUtJTkRfTVVURRAPEhAKDEtJTkRfU1BFQUtFUhAQEhAKDEtJTkRfSEVBRFNFVBAREg0KCUtJTkRfSE9MRBASEhEKDUtJTkRfVFJBTlNGRVIQExIPCgtLSU5EX1JFRElBTBAUEhEKDUtJTkRfTUVTU0FHRVMQFRITCg9LSU5EX0NPTkZFUkVOQ0UQFhINCglLSU5EX0lORk8QFxIWChJLSU5EX0JMRl9QQUdFX0xFRlQQGBIXChNLSU5EX0JMRl9QQUdFX1JJR0hUEBkSDwoLS0lORF9TVEFUVVMQGhIRCg1LSU5EX0NPTlRBQ1RTEBsSDQoJS0lORF9BUFBTEBwSDQoJS0lORF9NRU5VEB0SEgoOS0lORF9FWFBBTlNJT04QHhIMCghLSU5EX1JBVxAfIhgKFkdldFNjcmVlbkxheW91dFJlcXVlc3Qi1QEKF0dldFNjcmVlbkxheW91dFJlc3BvbnNlEh8KBW1vZGVsGAEgASgOMhAuZHBob25lLnYxLk1vZGVsEh0KBHNraW4YAiABKA4yDy5kcGhvbmUudjEuU2tpbhImCgdzY3JlZW5zGAMgAygLMhUuZHBob25lLnYxLlNjcmVlbkluZm8SHAoEa2V5cxgEIAMoCzIOLmRwaG9uZS52MS5LZXkSGgoSc29mdGtleV9iYXJfaGVpZ2h0GAUgASgNEhgKEG1pcnJvcl9hdmFpbGFibGUYBiABKAgiSgoSV2F0Y2hTY3JlZW5SZXF1ZXN0EiMKBnNjcmVlbhgBIAEoDjITLmRwaG9uZS52MS5TY3JlZW5JZBIPCgdtYXhfZnBzGAIgASgNIokBChNXYXRjaFNjcmVlblJlc3BvbnNlEgsKA3BuZxgBIAEoDBINCgV3aWR0aBgCIAEoDRIOCgZoZWlnaHQYAyABKA0SHgoFbGFtcHMYBCADKAsyDy5kcGhvbmUudjEuTGFtcBIUCgxiYWNrbGlnaHRfb24YBSABKAgSEAoIb2ZmX2hvb2sYBiABKAgiVAoPUHJlc3NLZXlSZXF1ZXN0EhsKA2tleRgBIAEoCzIOLmRwaG9uZS52MS5LZXkSJAoGYWN0aW9uGAIgASgOMhQuZHBob25lLnYxLktleUFjdGlvbiISChBQcmVzc0tleVJlc3BvbnNlIiIKDlNldEhvb2tSZXF1ZXN0EhAKCG9mZl9ob29rGAEgASgIIhEKD1NldEhvb2tSZXNwb25zZSpNCghTY3JlZW5JZBIZChVTQ1JFRU5fSURfVU5TUEVDSUZJRUQQABISCg5TQ1JFRU5fSURfTUFJThABEhIKDlNDUkVFTl9JRF9TSURFEAIqYwoJS2V5QWN0aW9uEhoKFktFWV9BQ1RJT05fVU5TUEVDSUZJRUQQABISCg5LRVlfQUNUSU9OX1RBUBABEhMKD0tFWV9BQ1RJT05fRE9XThACEhEKDUtFWV9BQ1RJT05fVVAQAyp7CglMYW1wQ29sb3ISGgoWTEFNUF9DT0xPUl9VTlNQRUNJRklFRBAAEhIKDkxBTVBfQ09MT1JfT0ZGEAESEgoOTEFNUF9DT0xPUl9SRUQQAhIUChBMQU1QX0NPTE9SX0dSRUVOEAMSFAoQTEFNUF9DT0xPUl9BTUJFUhAEKnwKCUxhbXBCbGluaxIaChZMQU1QX0JMSU5LX1VOU1BFQ0lGSUVEEAASFAoQTEFNUF9CTElOS19TT0xJRBABEhMKD0xBTVBfQkxJTktfU0xPVxACEhMKD0xBTVBfQkxJTktfRkFTVBADEhMKD0xBTVBfQkxJTktfV0lOSxAEMsACCg1TY3JlZW5TZXJ2aWNlElgKD0dldFNjcmVlbkxheW91dBIhLmRwaG9uZS52MS5HZXRTY3JlZW5MYXlvdXRSZXF1ZXN0GiIuZHBob25lLnYxLkdldFNjcmVlbkxheW91dFJlc3BvbnNlEk4KC1dhdGNoU2NyZWVuEh0uZHBob25lLnYxLldhdGNoU2NyZWVuUmVxdWVzdBoeLmRwaG9uZS52MS5XYXRjaFNjcmVlblJlc3BvbnNlMAESQwoIUHJlc3NLZXkSGi5kcGhvbmUudjEuUHJlc3NLZXlSZXF1ZXN0GhsuZHBob25lLnYxLlByZXNzS2V5UmVzcG9uc2USQAoHU2V0SG9vaxIZLmRwaG9uZS52MS5TZXRIb29rUmVxdWVzdBoaLmRwaG9uZS52MS5TZXRIb29rUmVzcG9uc2ViBnByb3RvMw", [file_dphone_v1_model]);
 
 /**
  * @generated from message dphone.v1.ScreenInfo
@@ -49,25 +51,22 @@ export const ScreenInfoSchema: GenMessage<ScreenInfo> = /*@__PURE__*/
  */
 export type Lamp = Message<"dphone.v1.Lamp"> & {
   /**
-   * Key name the lamp belongs to ("line1", "msgs", "mute", ...).
+   * The key the lamp belongs to (a line key, a rapid-dial key, Messages,
+   * Mute, Headset, or Speaker).
    *
-   * @generated from field: string key = 1;
+   * @generated from field: dphone.v1.Key key = 1;
    */
-  key: string;
+  key?: Key | undefined;
 
   /**
-   * "off", "red", "green", or "amber".
-   *
-   * @generated from field: string color = 2;
+   * @generated from field: dphone.v1.LampColor color = 2;
    */
-  color: string;
+  color: LampColor;
 
   /**
-   * "solid", "slow", "fast", or "wink".
-   *
-   * @generated from field: string blink = 3;
+   * @generated from field: dphone.v1.LampBlink blink = 3;
    */
-  blink: string;
+  blink: LampBlink;
 };
 
 /**
@@ -84,11 +83,21 @@ export const LampSchema: GenMessage<Lamp> = /*@__PURE__*/
  */
 export type Key = Message<"dphone.v1.Key"> & {
   /**
-   * The stock key name ("1", "sk1", "line2", "vup", ...).
-   *
-   * @generated from field: string name = 1;
+   * @generated from field: dphone.v1.Key.Kind kind = 1;
    */
-  name: string;
+  kind: Key_Kind;
+
+  /**
+   * @generated from field: uint32 index = 2;
+   */
+  index: number;
+
+  /**
+   * KIND_EXPANSION only.
+   *
+   * @generated from field: uint32 module = 3;
+   */
+  module: number;
 };
 
 /**
@@ -97,6 +106,211 @@ export type Key = Message<"dphone.v1.Key"> & {
  */
 export const KeySchema: GenMessage<Key> = /*@__PURE__*/
   messageDesc(file_dphone_v1_screen, 2);
+
+/**
+ * What a key is.  Keys of a kind that has more than one are told apart
+ * by `index` (and, on an expansion module, `module`).
+ *
+ * @generated from enum dphone.v1.Key.Kind
+ */
+export enum Key_Kind {
+  /**
+   * @generated from enum value: KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * A dial-pad digit; `index` is the digit, 0 to 9.
+   *
+   * @generated from enum value: KIND_DIGIT = 1;
+   */
+  DIGIT = 1,
+
+  /**
+   * @generated from enum value: KIND_STAR = 2;
+   */
+  STAR = 2,
+
+  /**
+   * @generated from enum value: KIND_POUND = 3;
+   */
+  POUND = 3,
+
+  /**
+   * @generated from enum value: KIND_UP = 4;
+   */
+  UP = 4,
+
+  /**
+   * @generated from enum value: KIND_DOWN = 5;
+   */
+  DOWN = 5,
+
+  /**
+   * @generated from enum value: KIND_LEFT = 6;
+   */
+  LEFT = 6,
+
+  /**
+   * @generated from enum value: KIND_RIGHT = 7;
+   */
+  RIGHT = 7,
+
+  /**
+   * The check-mark key.
+   *
+   * @generated from enum value: KIND_SELECT = 8;
+   */
+  SELECT = 8,
+
+  /**
+   * The X key.
+   *
+   * @generated from enum value: KIND_CANCEL = 9;
+   */
+  CANCEL = 9,
+
+  /**
+   * @generated from enum value: KIND_VOLUME_UP = 10;
+   */
+  VOLUME_UP = 10,
+
+  /**
+   * @generated from enum value: KIND_VOLUME_DOWN = 11;
+   */
+  VOLUME_DOWN = 11,
+
+  /**
+   * A softkey under the screen; `index` is 1 to 4 from the left.
+   *
+   * @generated from enum value: KIND_SOFT = 12;
+   */
+  SOFT = 12,
+
+  /**
+   * A line key beside the screen; `index` is 1 to 6 from the top.
+   *
+   * @generated from enum value: KIND_LINE = 13;
+   */
+  LINE = 13,
+
+  /**
+   * A rapid-dial (BLF) key of the D50 or D70; `index` is 1 to 10 from
+   * the top.
+   *
+   * @generated from enum value: KIND_BLF = 14;
+   */
+  BLF = 14,
+
+  /**
+   * @generated from enum value: KIND_MUTE = 15;
+   */
+  MUTE = 15,
+
+  /**
+   * @generated from enum value: KIND_SPEAKER = 16;
+   */
+  SPEAKER = 16,
+
+  /**
+   * @generated from enum value: KIND_HEADSET = 17;
+   */
+  HEADSET = 17,
+
+  /**
+   * @generated from enum value: KIND_HOLD = 18;
+   */
+  HOLD = 18,
+
+  /**
+   * @generated from enum value: KIND_TRANSFER = 19;
+   */
+  TRANSFER = 19,
+
+  /**
+   * @generated from enum value: KIND_REDIAL = 20;
+   */
+  REDIAL = 20,
+
+  /**
+   * Voicemail ("Msgs").
+   *
+   * @generated from enum value: KIND_MESSAGES = 21;
+   */
+  MESSAGES = 21,
+
+  /**
+   * D50, D70.
+   *
+   * @generated from enum value: KIND_CONFERENCE = 22;
+   */
+  CONFERENCE = 22,
+
+  /**
+   * D50, D70.
+   *
+   * @generated from enum value: KIND_INFO = 23;
+   */
+  INFO = 23,
+
+  /**
+   * The previous page of rapid-dial keys (D70).
+   *
+   * @generated from enum value: KIND_BLF_PAGE_LEFT = 24;
+   */
+  BLF_PAGE_LEFT = 24,
+
+  /**
+   * The next page of rapid-dial keys (D70), and the D65's page key.
+   *
+   * @generated from enum value: KIND_BLF_PAGE_RIGHT = 25;
+   */
+  BLF_PAGE_RIGHT = 25,
+
+  /**
+   * The D70's feature keys.
+   *
+   * @generated from enum value: KIND_STATUS = 26;
+   */
+  STATUS = 26,
+
+  /**
+   * @generated from enum value: KIND_CONTACTS = 27;
+   */
+  CONTACTS = 27,
+
+  /**
+   * @generated from enum value: KIND_APPS = 28;
+   */
+  APPS = 28,
+
+  /**
+   * @generated from enum value: KIND_MENU = 29;
+   */
+  MENU = 29,
+
+  /**
+   * A key of an expansion module: `module` from 0, and `index`, the key
+   * on that module, from 0.
+   *
+   * @generated from enum value: KIND_EXPANSION = 30;
+   */
+  EXPANSION = 30,
+
+  /**
+   * A key whose function is not established; `index` is its input event
+   * code.
+   *
+   * @generated from enum value: KIND_RAW = 31;
+   */
+  RAW = 31,
+}
+
+/**
+ * Describes the enum dphone.v1.Key.Kind.
+ */
+export const Key_KindSchema: GenEnum<Key_Kind> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_screen, 2, 0);
 
 /**
  * @generated from message dphone.v1.GetScreenLayoutRequest
@@ -116,16 +330,14 @@ export const GetScreenLayoutRequestSchema: GenMessage<GetScreenLayoutRequest> = 
  */
 export type GetScreenLayoutResponse = Message<"dphone.v1.GetScreenLayoutResponse"> & {
   /**
-   * @generated from field: string model = 1;
+   * @generated from field: dphone.v1.Model model = 1;
    */
-  model: string;
+  model: Model;
 
   /**
-   * "small_gray", "large_gray", or "color".
-   *
-   * @generated from field: string skin = 2;
+   * @generated from field: dphone.v1.Skin skin = 2;
    */
-  skin: string;
+  skin: Skin;
 
   /**
    * @generated from field: repeated dphone.v1.ScreenInfo screens = 3;
@@ -232,9 +444,9 @@ export const WatchScreenResponseSchema: GenMessage<WatchScreenResponse> = /*@__P
  */
 export type PressKeyRequest = Message<"dphone.v1.PressKeyRequest"> & {
   /**
-   * @generated from field: string key = 1;
+   * @generated from field: dphone.v1.Key key = 1;
    */
-  key: string;
+  key?: Key | undefined;
 
   /**
    * @generated from field: dphone.v1.KeyAction action = 2;
@@ -352,6 +564,88 @@ export enum KeyAction {
  */
 export const KeyActionSchema: GenEnum<KeyAction> = /*@__PURE__*/
   enumDesc(file_dphone_v1_screen, 1);
+
+/**
+ * @generated from enum dphone.v1.LampColor
+ */
+export enum LampColor {
+  /**
+   * @generated from enum value: LAMP_COLOR_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: LAMP_COLOR_OFF = 1;
+   */
+  OFF = 1,
+
+  /**
+   * @generated from enum value: LAMP_COLOR_RED = 2;
+   */
+  RED = 2,
+
+  /**
+   * @generated from enum value: LAMP_COLOR_GREEN = 3;
+   */
+  GREEN = 3,
+
+  /**
+   * Red and green together.
+   *
+   * @generated from enum value: LAMP_COLOR_AMBER = 4;
+   */
+  AMBER = 4,
+}
+
+/**
+ * Describes the enum dphone.v1.LampColor.
+ */
+export const LampColorSchema: GenEnum<LampColor> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_screen, 2);
+
+/**
+ * @generated from enum dphone.v1.LampBlink
+ */
+export enum LampBlink {
+  /**
+   * @generated from enum value: LAMP_BLINK_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Steady.
+   *
+   * @generated from enum value: LAMP_BLINK_SOLID = 1;
+   */
+  SOLID = 1,
+
+  /**
+   * About once a second: a held call.
+   *
+   * @generated from enum value: LAMP_BLINK_SLOW = 2;
+   */
+  SLOW = 2,
+
+  /**
+   * About twice a second: ringing.
+   *
+   * @generated from enum value: LAMP_BLINK_FAST = 3;
+   */
+  FAST = 3,
+
+  /**
+   * A short flash every few seconds, e.g., message waiting.
+   *
+   * @generated from enum value: LAMP_BLINK_WINK = 4;
+   */
+  WINK = 4,
+}
+
+/**
+ * Describes the enum dphone.v1.LampBlink.
+ */
+export const LampBlinkSchema: GenEnum<LampBlink> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_screen, 3);
 
 /**
  * Screen mirror and key injection.

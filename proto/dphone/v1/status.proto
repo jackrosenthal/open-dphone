@@ -5,6 +5,7 @@ package dphone.v1;
 import "dphone/v1/accounts.proto";
 import "dphone/v1/calls.proto";
 import "dphone/v1/firmware.proto";
+import "dphone/v1/model.proto";
 import "dphone/v1/network.proto";
 import "dphone/v1/provisioning.proto";
 
@@ -34,7 +35,7 @@ enum HealthState {
 }
 
 message SystemInfo {
-  string model = 1;
+  Model model = 1;
   // "3.0.0"
   string version = 2;
   SystemPhase phase = 3;
@@ -47,8 +48,7 @@ message SystemInfo {
   uint32 mem_total_kib = 11;
   uint64 uptime_secs = 12;
   uint64 unix_time = 13;
-  // "small_gray", "large_gray", or "color".
-  string skin = 14;
+  Skin skin = 14;
   string user_agent = 15;
   // The model has a Bluetooth controller.
   bool has_bluetooth = 16;
@@ -56,8 +56,30 @@ message SystemInfo {
   bool has_expansion = 17;
 }
 
+// A subsystem of the phone's main program.
+enum Subsystem {
+  SUBSYSTEM_UNSPECIFIED = 0;
+  SUBSYSTEM_CORE = 1;
+  // The configuration.
+  SUBSYSTEM_CONFIG = 2;
+  // The network.
+  SUBSYSTEM_NET = 3;
+  SUBSYSTEM_SIP = 4;
+  SUBSYSTEM_MEDIA = 5;
+  // Provisioning.
+  SUBSYSTEM_DPMA = 6;
+  // The phone's user interface.
+  SUBSYSTEM_UI = 7;
+  SUBSYSTEM_APPS = 8;
+  // The web interface.
+  SUBSYSTEM_WEB = 9;
+  SUBSYSTEM_SSH = 10;
+  // Firmware updates.
+  SUBSYSTEM_UPDATE = 11;
+}
+
 message SubsystemHealth {
-  string subsystem = 1;
+  Subsystem subsystem = 1;
   HealthState state = 2;
   string detail = 3;
 }

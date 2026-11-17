@@ -26,9 +26,20 @@ enum ProvisionPhase {
   PROVISION_PHASE_FAILED = 10;
 }
 
+// How the phone found a provisioning server.
+enum DiscoverySource {
+  DISCOVERY_SOURCE_UNSPECIFIED = 0;
+  // The server the phone was provisioned by before.
+  DISCOVERY_SOURCE_SAVED = 1;
+  // DHCP option 66.
+  DISCOVERY_SOURCE_DHCP = 2;
+  DISCOVERY_SOURCE_MDNS = 3;
+  // Entered by hand.
+  DISCOVERY_SOURCE_MANUAL = 4;
+}
+
 message ProvisioningServer {
-  // "saved", "dhcp", "mdns", or "manual".
-  string source = 1;
+  DiscoverySource source = 1;
   string name = 2;
   string address = 3;
 }

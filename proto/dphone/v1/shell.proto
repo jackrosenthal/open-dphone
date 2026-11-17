@@ -25,13 +25,27 @@ message ShellStarted {
   string session_id = 1;
 }
 
+// Why the phone ended a shell session.
+enum ShellEndReason {
+  // The phone did not: the shell exited by itself.
+  SHELL_END_REASON_UNSPECIFIED = 0;
+  // No input for 30 minutes.
+  SHELL_END_REASON_IDLE = 1;
+  // The page sent nothing, not even the heartbeat, for 75 seconds.
+  SHELL_END_REASON_PAGE_GONE = 2;
+  // The web session ended.
+  SHELL_END_REASON_LOGGED_OUT = 3;
+  // CloseShell.
+  SHELL_END_REASON_CLOSED = 4;
+}
+
 message ShellExited {
   // The exit code, when the shell exited by itself.
   int32 exit_code = 1;
   // The signal number, when a signal ended it; otherwise 0.
   int32 signal = 2;
-  // The session ended for another reason (e.g., "idle"); otherwise empty.
-  string reason = 3;
+  // Why the phone ended the session, if it did.
+  ShellEndReason reason = 3;
 }
 
 message OpenShellResponse {

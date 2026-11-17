@@ -2,7 +2,7 @@
 //! HTTP/1.1 so that the wire format itself is what is checked.
 
 use dphone_config::{ConfigStore, Nvdata};
-use dphone_state::{Command, Domain, Model, Reply, Store};
+use dphone_state::{Command, Domain, ForwardKind, Key, Model, Reply, Store};
 use dphone_web::{pb, FileFirmwareSink, FirmwareInfo, WebOptions, WebServer};
 use buffa::Message;
 use std::net::SocketAddr;
@@ -47,6 +47,10 @@ async fn phone() -> Phone {
             Ok(FirmwareInfo { version: "2_9_28".into(), model: "D60".into(), is_stock: true })
         } else if data.starts_with(b"OPEN") {
             Ok(FirmwareInfo { version: "3_0_1".into(), model: "D60".into(), is_stock: false })
+        } else if data.starts_with(b"D70") {
+            Ok(FirmwareInfo { version: "3_0_1".into(), model: "D70".into(), is_stock: false })
+        } else if data.starts_with(b"D99") {
+            Ok(FirmwareInfo { version: "3_0_1".into(), model: "D99".into(), is_stock: false })
         } else {
             Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "no label"))
         }
@@ -193,7 +197,7 @@ async fn static_files_and_authentication() {
     // GetSession works without one and says so.
     let r = request(p.addr, "POST", "/dphone.v1.AuthService/GetSession", &[("Content-Type", "application/json")], b"{}", None).await;
     assert_eq!(r.status, 200);
-    assert_eq!(r.json()["session"]["model"], "D60");
+    assert_eq!(r.json()["session"]["model"], "MODEL_D60");
     assert!(r.json()["session"].get("authenticated").is_none());
 
     assert_eq!(login(p.addr, "wrong").await.err().unwrap().status, 401);
@@ -227,8 +231,18 @@ async fn static_files_and_authentication() {
     let r = rpc_json(p.addr, &s, "StatusService/GetStatus", "{}").await;
     assert_eq!(r.status, 200);
     assert_eq!(r.header("content-type"), Some("application/json"));
-    assert_eq!(r.json()["status"]["system"]["model"], "D60");
+    assert_eq!(r.json()["status"]["system"]["model"], "MODEL_D60");
+    assert_eq!(r.json()["status"]["system"]["skin"], "SKIN_COLOR");
     assert_eq!(r.json()["status"]["system"]["userAgent"], "Digium D60 3_0_0");
+    assert_eq!(r.json()["status"]["health"][0]["subsystem"], "SUBSYSTEM_CORE");
+
+    // The screen's layout: the model, its skin, and its keys.
+    let v = rpc_json(p.addr, &s, "ScreenService/GetScreenLayout", "{}").await.json();
+    assert_eq!((&v["model"], &v["skin"]), (&serde_json::json!("MODEL_D60"), &serde_json::json!("SKIN_COLOR")));
+    let keys = v["keys"].as_array().unwrap();
+    assert_eq!(keys[0], serde_json::json!({ "kind": "KIND_LINE", "index": 1 }));
+    assert!(keys.contains(&serde_json::json!({ "kind": "KIND_DIGIT" })));
+    assert!(keys.contains(&serde_json::json!({ "kind": "KIND_VOLUME_UP" })));
 
     // Unknown methods, wrong content types, and bad messages.
     assert_eq!(rpc_json(p.addr, &s, "StatusService/Nope", "{}").await.json()["code"], "unimplemented");
@@ -255,7 +269,7 @@ async fn protobuf_codec_and_streaming() {
     assert_eq!(r.status, 200);
     assert_eq!(r.header("content-type"), Some("application/proto"));
     let status = pb::GetStatusResponse::decode_from_slice(&r.body[..]).unwrap().status.unwrap();
-    assert_eq!(status.system.unwrap().model, "D60");
+    assert_eq!(status.system.unwrap().model.as_known(), Some(pb::Model::MODEL_D60));
 
     // Server streaming, binary codec: enveloped request, enveloped messages.
     p.store.log_line(dphone_state::Level::Warn, "test", "first line".into());
@@ -377,14 +391,19 @@ async fn configuration_accounts_and_contacts() {
     assert_eq!(rpc_json(p.addr, &s, "AccountsService/SetAccounts", body).await.status, 400);
 
     // Network settings validate before anything is stored.
-    let r = rpc_json(p.addr, &s, "NetworkService/SetNetworkSettings", r#"{"settings":{"dhcp":false,"staticIp":"10.0.0.5","subnetMask":"255.0.255.0","vlanDiscoveryMode":"NONE"}}"#).await;
+    let r = rpc_json(p.addr, &s, "NetworkService/SetNetworkSettings", r#"{"settings":{"dhcp":false,"staticIp":"10.0.0.5","subnetMask":"255.0.255.0","vlanDiscoveryMode":"VLAN_DISCOVERY_MODE_NONE"}}"#).await;
     assert_eq!(r.status, 400);
-    let r = rpc_json(p.addr, &s, "NetworkService/SetNetworkSettings", r#"{"settings":{"dhcp":false,"staticIp":"10.0.0.5","subnetMask":"255.255.255.0","gateway":"10.0.0.1","vlanDiscoveryMode":"MANUAL","vlanId":30,"sipDscp":26,"rtpDscp":46,"sipQos":3,"rtpQos":6,"pcQos":1}}"#).await;
+    let r = rpc_json(p.addr, &s, "NetworkService/SetNetworkSettings", r#"{"settings":{"dhcp":true}}"#).await;
+    assert_eq!(r.status, 400);
+    let r = rpc_json(p.addr, &s, "NetworkService/SetNetworkSettings", r#"{"settings":{"dhcp":false,"staticIp":"10.0.0.5","subnetMask":"255.255.255.0","gateway":"10.0.0.1","vlanDiscoveryMode":"VLAN_DISCOVERY_MODE_MANUAL","vlanId":30,"sipDscp":26,"rtpDscp":46,"sipQos":3,"rtpQos":6,"pcQos":1}}"#).await;
     assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
     let net = p.config.lock().unwrap().config().network();
     assert!(!net.dhcp);
     assert_eq!(net.static_ip, Some("10.0.0.5".parse().unwrap()));
     assert_eq!(net.vlan_id, Some(30));
+    assert_eq!(net.vlan_discovery_mode, "MANUAL");
+    let v = rpc_json(p.addr, &s, "NetworkService/GetNetwork", "{}").await.json();
+    assert_eq!(v["settings"]["vlanDiscoveryMode"], "VLAN_DISCOVERY_MODE_MANUAL");
 
     // Contacts: write, read back, export in the stock XML, delete.
     let body = r#"{"name":"local.xml","groups":[{"id":"g","name":"Office","contacts":[{"firstName":"Morgan","lastName":"Li","numbers":[{"dial":"104","label":"Ext","primary":true},{"dial":"5551230104"}]}]}]}"#;
@@ -431,6 +450,36 @@ async fn commands_uploads_backup_and_password() {
         seen.lock().unwrap()[0],
         Command::Dial { target: "100".into(), account: Some(dphone_state::AccountId(1)), path: None }
     );
+    // A forwarding rule is named by its kind.
+    let r = rpc_json(p.addr, &s, "CallsService/SetForward", r#"{"kind":"FORWARD_KIND_BUSY","target":"200"}"#).await;
+    assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    assert_eq!(seen.lock().unwrap()[1], Command::SetForward { kind: ForwardKind::Busy, target: "200".into(), no_answer_secs: None });
+    assert_eq!(rpc_json(p.addr, &s, "CallsService/SetForward", r#"{"target":"200"}"#).await.status, 400);
+
+    // A key is a kind, and an index where the kind has several keys.
+    let rx = p.store.handle(Domain::Ui);
+    let pressed = Arc::new(Mutex::new(Vec::new()));
+    let pressed2 = pressed.clone();
+    std::thread::spawn(move || {
+        while let Some(env) = rx.recv() {
+            pressed2.lock().unwrap().push(env.command.clone());
+            env.done();
+        }
+    });
+    let r = rpc_json(p.addr, &s, "ScreenService/PressKey", r#"{"key":{"kind":"KIND_LINE","index":2},"action":"KEY_ACTION_DOWN"}"#).await;
+    assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    let r = rpc_json(p.addr, &s, "ScreenService/PressKey", r#"{"key":{"kind":"KIND_EXPANSION","module":1,"index":17},"action":"KEY_ACTION_UP"}"#).await;
+    assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
+    assert_eq!(
+        *pressed.lock().unwrap(),
+        [
+            Command::InjectKey { key: Key::Line(2), down: true },
+            Command::InjectKey { key: Key::Expansion { module: 1, key: 17 }, down: false },
+        ]
+    );
+    for bad in [r#"{}"#, r#"{"key":{}}"#, r#"{"key":{"kind":"KIND_SOFT","index":5}}"#, r#"{"key":{"kind":"KIND_DIGIT","index":10}}"#] {
+        assert_eq!(rpc_json(p.addr, &s, "ScreenService/PressKey", bad).await.status, 400, "{bad}");
+    }
 
     // Firmware upload: streamed to the sink, described, then installed.
     let up = |body: &'static [u8]| {
@@ -442,6 +491,7 @@ async fn commands_uploads_backup_and_password() {
     assert_eq!(r.status, 200, "{:?}", String::from_utf8_lossy(&r.body));
     let v = r.json();
     assert_eq!((v["isStock"].as_bool(), v["version"].as_str(), v["size"].as_str()), (Some(true), Some("2_9_28"), Some("16")));
+    assert_eq!((&v["model"], &v["modelMatches"]), (&serde_json::json!("MODEL_D60"), &serde_json::json!(true)));
     let id = v["uploadId"].as_str().unwrap().to_owned();
     let v = rpc_json(p.addr, &s, "FirmwareService/GetFirmware", "{}").await.json();
     assert_eq!(v["status"]["uploaded"]["uploadId"], id.as_str());
@@ -466,6 +516,12 @@ async fn commands_uploads_backup_and_password() {
         }
         other => panic!("{other:?}"),
     }
+    // An image for another model, and one for a model this firmware does
+    // not know.
+    let v = up(b"D70 image body").await.json();
+    assert_eq!((&v["model"], v.get("modelMatches")), (&serde_json::json!("MODEL_D70"), None));
+    let v = up(b"D99 image body").await.json();
+    assert_eq!((v.get("model"), v.get("modelMatches")), (None, None));
     // Too large is refused from the declared length.
     let big = vec![b'O'; (1 << 20) + 1];
     let r = request(p.addr, "POST", "/upload/firmware", &[("Cookie", &s.cookie), ("X-Csrf-Token", &s.csrf)], &big, None).await;

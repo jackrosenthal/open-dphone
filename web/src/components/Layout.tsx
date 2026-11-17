@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Logo } from "../App";
 import { AuthService } from "../gen/dphone/v1/auth_pb";
 import { SystemService } from "../gen/dphone/v1/system_pb";
+import { modelName } from "../lib/labels";
 import { setSession, useSession } from "../lib/session";
 import { StatusProvider, useStatus } from "../lib/status";
 import { client } from "../lib/transport";
@@ -85,7 +86,7 @@ function Shell() {
           <Logo className="size-9" />
           <div className="min-w-0">
             <p className="font-semibold leading-tight">Open DPhone</p>
-            <p className="truncate text-xs text-slate-500 dark:text-slate-400">{sys ? `${sys.model} · ${sys.version}` : " "}</p>
+            <p className="truncate text-xs text-slate-500 dark:text-slate-400">{sys ? `${modelName(sys.model)} · ${sys.version}` : " "}</p>
           </div>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">

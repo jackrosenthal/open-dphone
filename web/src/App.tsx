@@ -2,6 +2,8 @@ import { RouterProvider } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { Alert, Button, Field, Input, Spinner } from "./components/ui";
 import { AuthService } from "./gen/dphone/v1/auth_pb";
+import type { Model } from "./gen/dphone/v1/model_pb";
+import { modelName } from "./lib/labels";
 import { setSession, useSession } from "./lib/session";
 import { client, errorMessage } from "./lib/transport";
 import { router } from "./router";
@@ -48,7 +50,8 @@ function Logo({ className = "size-10" }: { className?: string }) {
 }
 export { Logo };
 
-function Login({ model, hostname }: { model?: string; hostname?: string }) {
+function Login({ model, hostname }: { model?: Model; hostname?: string }) {
+  const name = modelName(model);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -75,7 +78,7 @@ function Login({ model, hostname }: { model?: string; hostname?: string }) {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Open DPhone</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {model ? `Digium ${model}` : ""}
+              {name ? `Digium ${name}` : ""}
               {hostname ? ` · ${hostname}` : ""}
             </p>
           </div>

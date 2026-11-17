@@ -46,6 +46,49 @@ enum AudioPath {
   AUDIO_PATH_SPEAKER = 4;
 }
 
+// An audio codec.
+enum Codec {
+  CODEC_UNSPECIFIED = 0;
+  // G.711 mu-law.
+  CODEC_PCMU = 1;
+  // G.711 A-law.
+  CODEC_PCMA = 2;
+  CODEC_G722 = 3;
+  // G.726 at 32 kbit/s.
+  CODEC_G726_32 = 4;
+  CODEC_G729 = 5;
+  CODEC_ILBC = 6;
+  CODEC_OPUS = 7;
+  // 16-bit linear PCM at 16 kHz.
+  CODEC_L16 = 8;
+  // 16-bit linear PCM at 32 kHz (stock's "L16-256").
+  CODEC_L16_WIDE = 9;
+}
+
+// Why a call ended.
+enum EndCause {
+  // The call has not ended.
+  END_CAUSE_UNSPECIFIED = 0;
+  // This phone hung up.
+  END_CAUSE_LOCAL_HANGUP = 1;
+  // The other party hung up.
+  END_CAUSE_REMOTE_HANGUP = 2;
+  // This phone declined the incoming call.
+  END_CAUSE_REJECTED = 3;
+  // The caller gave up.
+  END_CAUSE_CANCELED = 4;
+  // The incoming call was answered elsewhere.
+  END_CAUSE_ANSWERED_ELSEWHERE = 5;
+  END_CAUSE_BUSY = 6;
+  END_CAUSE_NO_ANSWER = 7;
+  // The call was transferred.
+  END_CAUSE_TRANSFERRED = 8;
+  // A SIP failure response: `end_code` and `end_reason`.
+  END_CAUSE_FAILED = 9;
+  // A transport or media failure, which `end_reason` describes.
+  END_CAUSE_ERROR = 10;
+}
+
 message Party {
   string name = 1;
   string number = 2;
@@ -61,20 +104,36 @@ message Call {
   uint64 started_unix = 6;
   // Seconds since answer; absent before answer.
   optional uint64 duration_secs = 7;
-  string codec = 8;
+  // UNSPECIFIED until the codec is agreed.
+  Codec codec = 8;
   bool srtp = 9;
   bool muted = 10;
   bool in_conference = 11;
   bool held_locally = 12;
   bool held_remotely = 13;
   // Why the call ended, when state is ENDED.
-  string end_cause = 14;
+  EndCause end_cause = 14;
   bool focused = 15;
   uint32 rx_packets = 16;
   uint32 tx_packets = 17;
   uint32 rx_lost = 18;
   uint32 jitter_ms = 19;
   bool paging = 20;
+  // END_CAUSE_FAILED: the SIP status code.
+  uint32 end_code = 21;
+  // END_CAUSE_FAILED: the SIP reason phrase.  END_CAUSE_ERROR: what
+  // failed.
+  string end_reason = 22;
+}
+
+// The state of the DSP that runs the audio.
+enum DspState {
+  DSP_STATE_UNSPECIFIED = 0;
+  DSP_STATE_NOT_STARTED = 1;
+  DSP_STATE_STARTING = 2;
+  DSP_STATE_RUNNING = 3;
+  // `dsp_detail` says why.
+  DSP_STATE_FAILED = 4;
 }
 
 message AudioStatus {
@@ -87,8 +146,7 @@ message AudioStatus {
   uint32 speaker_volume = 7;
   uint32 ringer_volume = 8;
   bool ringing = 9;
-  // "not_started", "starting", "running", or "failed".
-  string dsp = 10;
+  DspState dsp = 10;
   string dsp_detail = 11;
 }
 
@@ -210,9 +268,19 @@ message SetDndRequest {
 
 message SetDndResponse {}
 
+// A call forwarding rule.
+enum ForwardKind {
+  FORWARD_KIND_UNSPECIFIED = 0;
+  // Every call.
+  FORWARD_KIND_ALWAYS = 1;
+  // Calls that come while the phone is busy.
+  FORWARD_KIND_BUSY = 2;
+  // Calls not answered in `no_answer_secs`.
+  FORWARD_KIND_NO_ANSWER = 3;
+}
+
 message SetForwardRequest {
-  // "always", "busy", or "no_answer".
-  string kind = 1;
+  ForwardKind kind = 1;
   // Empty turns the rule off.
   string target = 2;
   uint32 no_answer_secs = 3;

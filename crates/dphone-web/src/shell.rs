@@ -184,18 +184,47 @@ fn open_pty(size: ShellSize) -> io::Result<(OwnedFd, OwnedFd)> {
     Ok((master, slave))
 }
 
+/// Why the server ended a session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EndReason {
+    /// No input for [`SHELL_IDLE`].
+    Idle,
+    /// Nothing from the page for [`CLIENT_SILENCE`].
+    PageGone,
+    /// The web session ended.
+    LoggedOut,
+    /// The page asked.
+    Closed,
+}
+
+impl EndReason {
+    /// For the log.
+    pub fn text(self) -> &'static str {
+        match self {
+            EndReason::Idle => "idle",
+            EndReason::PageGone => "page gone",
+            EndReason::LoggedOut => "logged out",
+            EndReason::Closed => "closed",
+        }
+    }
+}
+
 /// How a shell ended.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ShellExit {
     pub code: i32,
     pub signal: i32,
-    /// Set when the server ended the session ("idle", "closed", ...).
-    pub reason: &'static str,
+    /// Set when the server ended the session.
+    pub reason: Option<EndReason>,
 }
 
 impl ShellExit {
     fn from_status(status: ExitStatus) -> Self {
-        ShellExit { code: status.code().unwrap_or(0), signal: status.signal().unwrap_or(0), reason: "" }
+        ShellExit { code: status.code().unwrap_or(0), signal: status.signal().unwrap_or(0), reason: None }
+    }
+
+    pub fn ended(reason: EndReason) -> Self {
+        ShellExit { reason: Some(reason), ..Default::default() }
     }
 }
 

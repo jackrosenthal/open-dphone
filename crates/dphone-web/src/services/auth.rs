@@ -17,7 +17,7 @@ fn session_message(ctx: &Ctx, session: Option<&sess::Session>, default_password:
         authenticated: session.is_some(),
         csrf_token: session.map(|s| s.csrf.clone()).unwrap_or_default(),
         user: session.map(|s| s.user.clone()).unwrap_or_default(),
-        model: sys.model.name().to_owned(),
+        model: crate::convert::model(sys.model).into(),
         version: sys.version.dotted(),
         hostname: sys.hostname.clone(),
         default_password,

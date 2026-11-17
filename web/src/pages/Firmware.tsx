@@ -1,9 +1,9 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useRef, useState, type ReactNode } from "react";
 import { Alert, Badge, Button, Card, ConfirmButton, Dpma, KeyValue, Spinner, Toggle } from "../components/ui";
-import { FirmwareService, UpdatePhase } from "../gen/dphone/v1/firmware_pb";
+import { Bank, FirmwareService, TrialBoot, UpdatePhase } from "../gen/dphone/v1/firmware_pb";
 import { bytes } from "../lib/format";
-import { label, updatePhaseNames } from "../lib/labels";
+import { bankNames, label, modelName, updatePhaseNames } from "../lib/labels";
 import { useStatus } from "../lib/status";
 import { upload } from "../lib/upload";
 import { ErrorNote } from "./common";
@@ -98,7 +98,7 @@ export function FirmwareCard() {
     <Card title="Firmware" actions={working && <Badge tone="blue">Updating</Badge>}>
       <div className="space-y-4">
         <ErrorNote error={error} />
-        {fw.trial === "pending" && (
+        {fw.trial === TrialBoot.PENDING && (
           <Alert tone="blue" title={`Firmware trial: ${fw.trialBootsLeft} ${fw.trialBootsLeft === 1 ? "boot" : "boots"} left.`}>
             <div className="mt-2 flex gap-2">
               <Button size="sm" onClick={() => confirm.mutate({})}>
@@ -108,11 +108,11 @@ export function FirmwareCard() {
             </div>
           </Alert>
         )}
-        {fw.trial === "rolled_back" && <Alert tone="red" title="The last firmware update was rolled back.">{fw.rollbackReason}</Alert>}
+        {fw.trial === TrialBoot.ROLLED_BACK && <Alert tone="red" title="The last firmware update was rolled back.">{fw.rollbackReason}</Alert>}
         <KeyValue
           rows={[
             ["Version", `Open DPhone ${fw.runningVersion}`],
-            ["Active bank", fw.runningBank],
+            ["Active bank", fw.runningBank !== Bank.UNSPECIFIED ? label(bankNames, fw.runningBank, Bank[fw.runningBank]) : ""],
           ]}
         />
         {working ? (
@@ -126,11 +126,11 @@ export function FirmwareCard() {
             <KeyValue
               rows={[
                 ["Upload", `${up.isStock ? "Digium" : "Open DPhone"} ${version(up.version)}`],
-                ["Model", up.model],
+                ["Model", modelName(up.model)],
                 ["Size", bytes(up.size)],
               ]}
             />
-            {!up.modelMatches && <Alert tone="red" title={`This firmware is for the ${up.model}.`} />}
+            {!up.modelMatches && <Alert tone="red" title={modelName(up.model) ? `This firmware is for the ${modelName(up.model)}.` : "This firmware is for another model."} />}
             <div className="flex gap-2">
               {up.isStock ? (
                 <ConfirmButton label="Install" title="Install stock Digium firmware?" confirmLabel="Install" onConfirm={() => install.mutateAsync({ uploadId: up.uploadId, allowStock: true })} />

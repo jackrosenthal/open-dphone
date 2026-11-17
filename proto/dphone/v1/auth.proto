@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package dphone.v1;
 
+import "dphone/v1/model.proto";
+
 // Web login.  Login, Logout, and GetSession are the only RPCs that work
 // without a session.  While web configuration is disabled (`web_ui_enabled`
 // is 0), GetSession is the only RPC of any service that is answered.
@@ -18,7 +20,7 @@ message Session {
   string csrf_token = 2;
   string user = 3;
   // Shown on the login page.
-  string model = 4;
+  Model model = 4;
   string version = 5;
   string hostname = 6;
   // The phone is still using the default password.

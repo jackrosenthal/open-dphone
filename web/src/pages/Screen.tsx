@@ -1,48 +1,67 @@
 import { useQuery } from "@connectrpc/connect-query";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Card, PageHeader, Spinner } from "../components/ui";
-import { KeyAction, ScreenId, ScreenService, type Lamp } from "../gen/dphone/v1/screen_pb";
+import { Model } from "../gen/dphone/v1/model_pb";
+import { KeyAction, Key_Kind as K, LampBlink, LampColor, ScreenId, ScreenService, type Lamp } from "../gen/dphone/v1/screen_pb";
+import { modelName } from "../lib/labels";
 import { PhoneIcon } from "../lib/phoneIcons";
-import { archedRect, panels, type Panel, type PanelKey } from "../lib/phones";
+import { archedRect, key, panels, sameKey, type KeyId, type Panel, type PanelKey } from "../lib/phones";
 import { useStream, type StreamStatus } from "../lib/stream";
 import { client, errorMessage } from "../lib/transport";
 
-const lampFill: Record<string, string> = { red: "#ef4444", green: "#22c55e", amber: "#f59e0b" };
+const lampFill: Partial<Record<LampColor, string>> = { [LampColor.RED]: "#ef4444", [LampColor.GREEN]: "#22c55e", [LampColor.AMBER]: "#f59e0b" };
+const blinkClass: Partial<Record<LampBlink, string>> = { [LampBlink.SLOW]: "lamp-slow", [LampBlink.FAST]: "lamp-fast", [LampBlink.WINK]: "lamp-wink" };
 
-/// Names for keys whose print is an icon or nothing.
-function keyName(id: string): string {
-  const n = id.replace(/\D/g, "");
-  if (id.startsWith("sk")) return `Softkey ${n}`;
-  if (id.startsWith("line")) return `Line key ${n}`;
-  if (/^blf\d/.test(id)) return `Rapid dial key ${n}`;
-  return (
-    {
-      blfleft: "Previous page",
-      blfright: "Next page",
-      hdst: "Headset",
-      spkr: "Speaker",
-      mute: "Mute",
-      vdn: "Volume down",
-      vup: "Volume up",
-      select: "Select",
-      cancel: "Cancel",
-      up: "Up",
-      down: "Down",
-      left: "Left",
-      right: "Right",
-      msgs: "Messages",
-      xfer: "Transfer",
-      redial: "Redial",
-      hold: "Hold",
-      conf: "Conference",
-      info: "Info",
-      apps: "Apps",
-      dir: "Contacts",
-      menu: "Menu",
-      status: "Status",
-    }[id] ?? id
-  );
+const keyNames: Partial<Record<K, string>> = {
+  [K.STAR]: "*",
+  [K.POUND]: "#",
+  [K.BLF_PAGE_LEFT]: "Previous page",
+  [K.BLF_PAGE_RIGHT]: "Next page",
+  [K.HEADSET]: "Headset",
+  [K.SPEAKER]: "Speaker",
+  [K.MUTE]: "Mute",
+  [K.VOLUME_DOWN]: "Volume down",
+  [K.VOLUME_UP]: "Volume up",
+  [K.SELECT]: "Select",
+  [K.CANCEL]: "Cancel",
+  [K.UP]: "Up",
+  [K.DOWN]: "Down",
+  [K.LEFT]: "Left",
+  [K.RIGHT]: "Right",
+  [K.MESSAGES]: "Messages",
+  [K.TRANSFER]: "Transfer",
+  [K.REDIAL]: "Redial",
+  [K.HOLD]: "Hold",
+  [K.CONFERENCE]: "Conference",
+  [K.INFO]: "Info",
+  [K.APPS]: "Apps",
+  [K.CONTACTS]: "Contacts",
+  [K.MENU]: "Menu",
+  [K.STATUS]: "Status",
+};
+
+/// What a key is called, for keys whose print is an icon or nothing.
+function keyName(k: KeyId): string {
+  switch (k.kind) {
+    case K.DIGIT:
+      return String(k.index);
+    case K.SOFT:
+      return `Softkey ${k.index}`;
+    case K.LINE:
+      return `Line key ${k.index}`;
+    case K.BLF:
+      return `Rapid dial key ${k.index}`;
+    case K.EXPANSION:
+      return `Expansion key ${k.module}.${k.index}`;
+    case K.RAW:
+      return `Key ${k.index}`;
+    default:
+      return keyNames[k.kind] ?? K[k.kind];
+  }
 }
+
+/// A React key for a key.
+const keyId = (k: KeyId) => `${k.kind}.${k.index}.${k.module}`;
 
 type Meta = { lamps: Lamp[]; backlight: boolean; offHook: boolean };
 
@@ -100,14 +119,14 @@ function Legend({ k }: { k: PanelKey }) {
   );
 }
 
-function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: string; keys: string[]; sideSize?: { width: number; height: number } }) {
+function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: Model; keys: KeyId[]; sideSize?: { width: number; height: number } }) {
   const [meta, setMeta] = useState<Meta>({ lamps: [], backlight: true, offHook: false });
   const [error, setError] = useState("");
-  const held = useRef<string>(undefined);
+  const held = useRef<KeyId>(undefined);
   const [mainUrl, mainStatus] = useMirror(ScreenId.MAIN, true, setMeta);
   const [sideUrl] = useMirror(ScreenId.SIDE, !!panel.side && !!sideSize);
 
-  const press = (key: string, action: KeyAction) =>
+  const press = (key: KeyId, action: KeyAction) =>
     client(ScreenService)
       .pressKey({ key, action })
       .then(() => setError(""))
@@ -118,11 +137,11 @@ function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: string; 
       .then(() => setError(""))
       .catch((e) => setError(errorMessage(e)));
 
-  const lamp = (id?: string) => meta.lamps.find((l) => l.key === id && l.color !== "off");
+  const lamp = (k: KeyId) => meta.lamps.find((l) => l.key && sameKey(l.key, k) && l.color !== LampColor.OFF);
   const [vx, vy, vw, vh] = panel.viewBox;
   const d = panel.display;
   const hs = panel.handset;
-  const mwi = lamp("msgs");
+  const mwi = lamp(key(K.MESSAGES));
 
   return (
     <>
@@ -131,7 +150,7 @@ function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: string; 
           <Alert tone="red">{error}</Alert>
         </div>
       )}
-      <svg viewBox={`${vx} ${vy} ${vw} ${vh}`} className="mx-auto block h-auto w-full select-none" style={{ maxWidth: vw * panel.unit }} role="group" aria-label={`${model} front panel`}>
+      <svg viewBox={`${vx} ${vy} ${vw} ${vh}`} className="mx-auto block h-auto w-full select-none" style={{ maxWidth: vw * panel.unit }} role="group" aria-label={`${modelName(model)} front panel`}>
         <defs>
           <linearGradient id="gloss" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0" stopColor="#fff" stopOpacity="0.16" />
@@ -196,36 +215,36 @@ function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: string; 
         <path d={panel.mwi.d} fill={panel.mwi.off}>
           <title>Message waiting</title>
         </path>
-        {mwi && <path d={panel.mwi.d} fill={lampFill[mwi.color]} className={mwi.blink !== "solid" ? `lamp-${mwi.blink}` : undefined} pointerEvents="none" />}
+        {mwi && <path d={panel.mwi.d} fill={lampFill[mwi.color]} className={blinkClass[mwi.blink]} pointerEvents="none" />}
         <path d={panel.mwi.d} fill="none" stroke="#00000040" strokeWidth={0.7} pointerEvents="none" />
 
         {/* Keys. */}
         {panel.keys
-          .filter((k) => keys.includes(k.id))
+          .filter((k) => keys.some((x) => sameKey(x, k.key)))
           .map((k) => {
-            const l = lamp(k.lamp);
+            const l = k.lamp ? lamp(k.key) : undefined;
             const box = { x: k.cx - k.w / 2, y: k.cy - k.h / 2, width: k.w, height: k.h, rx: k.r };
             const release = () => {
-              if (held.current === k.id) {
+              if (held.current && sameKey(held.current, k.key)) {
                 held.current = undefined;
-                press(k.id, KeyAction.UP);
+                press(k.key, KeyAction.UP);
               }
             };
             return (
               <g
-                key={k.id}
+                key={keyId(k.key)}
                 role="button"
-                aria-label={keyName(k.id)}
+                aria-label={keyName(k.key)}
                 className="cursor-pointer outline-none [&:active>.key-face]:brightness-150"
                 onPointerDown={(e) => {
                   e.currentTarget.setPointerCapture(e.pointerId);
-                  held.current = k.id;
-                  press(k.id, KeyAction.DOWN);
+                  held.current = k.key;
+                  press(k.key, KeyAction.DOWN);
                 }}
                 onPointerUp={release}
                 onPointerCancel={release}
               >
-                <title>{keyName(k.id)}</title>
+                <title>{keyName(k.key)}</title>
                 {k.arch ? (
                   <path className="key-face" d={archedRect(box.x, box.y, box.width, box.height, k.r, k.arch)} fill={k.fill} stroke="#00000066" strokeWidth={0.8} />
                 ) : (
@@ -233,9 +252,9 @@ function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: string; 
                 )}
                 {l &&
                   (k.arch ? (
-                    <path d={archedRect(box.x, box.y, box.width, box.height, k.r, k.arch)} fill={lampFill[l.color]} className={l.blink !== "solid" ? `lamp-${l.blink}` : undefined} />
+                    <path d={archedRect(box.x, box.y, box.width, box.height, k.r, k.arch)} fill={lampFill[l.color]} className={blinkClass[l.blink]} />
                   ) : (
-                    <rect {...box} fill={lampFill[l.color]} className={l.blink !== "solid" ? `lamp-${l.blink}` : undefined} />
+                    <rect {...box} fill={lampFill[l.color]} className={blinkClass[l.blink]} />
                   ))}
                 <Legend k={k} />
               </g>
@@ -284,15 +303,15 @@ export function Screen() {
   if (layout.error) return <Alert tone="red">{errorMessage(layout.error)}</Alert>;
   if (!layout.data) return <Spinner />;
   const { screens, model, mirrorAvailable } = layout.data;
-  const keys = layout.data.keys.map((k) => k.name);
+  const keys: KeyId[] = layout.data.keys;
   const side = screens.find((s) => s.id === ScreenId.SIDE);
   const panel = panels[model];
   // Keys the phone reports that the drawing has no place for: listed
   // plainly rather than given an invented position.
-  const unplaced = panel ? keys.filter((id) => !panel.keys.some((k) => k.id === id)) : keys;
-  const tap = (id: string) =>
+  const unplaced = panel ? keys.filter((k) => !panel.keys.some((p) => sameKey(p.key, k))) : keys;
+  const tap = (k: KeyId) =>
     client(ScreenService)
-      .pressKey({ key: id, action: KeyAction.TAP })
+      .pressKey({ key: k, action: KeyAction.TAP })
       .then(() => setError(""))
       .catch((e) => setError(errorMessage(e)));
 
@@ -306,9 +325,9 @@ export function Screen() {
           {panel && <Phone panel={panel} model={model} keys={keys} sideSize={side} />}
           {unplaced.length > 0 && (
             <div className="mx-auto mt-4 flex max-w-xl flex-wrap gap-2">
-              {unplaced.map((id) => (
-                <button key={id} type="button" className="rounded-md bg-slate-200 px-3 py-2 text-xs font-medium dark:bg-slate-700" onClick={() => tap(id)}>
-                  {id}
+              {unplaced.map((k) => (
+                <button key={keyId(k)} type="button" className="rounded-md bg-slate-200 px-3 py-2 text-xs font-medium dark:bg-slate-700" onClick={() => tap(k)}>
+                  {keyName(k)}
                 </button>
               ))}
             </div>

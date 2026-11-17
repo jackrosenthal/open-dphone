@@ -350,7 +350,7 @@ async fn open_write_resize_exit() {
     assert_eq!(write(p.addr, &l, &t.id, "exit 3\n").await.0, 200);
     t.until(|t| t.exited.is_some() && t.end.is_some()).await;
     let exited = t.exited.clone().unwrap();
-    assert_eq!((exited.exit_code, exited.signal, exited.reason.as_str()), (3, 0, ""));
+    assert_eq!((exited.exit_code, exited.signal, exited.reason.as_known()), (3, 0, Some(pb::ShellEndReason::Unspecified)));
     assert_eq!(t.end, Some(serde_json::json!({})));
 
     // The session is gone.
@@ -417,7 +417,7 @@ async fn session_cap_ownership_and_cleanup() {
     let (status, _) = call(p.addr, &l, "ShellService/CloseShell", serde_json::json!({ "sessionId": b.id })).await;
     assert_eq!(status, 200);
     b.until(|t| t.exited.is_some()).await;
-    assert_eq!(b.exited.clone().unwrap().reason, "closed");
+    assert_eq!(b.exited.clone().unwrap().reason.as_known(), Some(pb::ShellEndReason::Closed));
     wait_gone(pid_b).await;
 
     // The last shell goes the same way when its stream drops.

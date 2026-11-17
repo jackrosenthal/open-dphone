@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/v1/network.proto.
  */
 export const file_dphone_v1_network: GenFile = /*@__PURE__*/
-  fileDesc("ChdkcGhvbmUvdjEvbmV0d29yay5wcm90bxIJZHBob25lLnYxIjoKCFBvcnRMaW5rEgoKAnVwGAEgASgIEg0KBXNwZWVkGAIgASgNEhMKC2Z1bGxfZHVwbGV4GAMgASgIIjIKC0lwdjZBZGRyZXNzEg8KB2FkZHJlc3MYASABKAkSEgoKcHJlZml4X2xlbhgCIAEoDSIcCglEbnNTZXJ2ZXISDwoHYWRkcmVzcxgBIAEoCSIZCglOdHBTZXJ2ZXISDAoEaG9zdBgBIAEoCSKGBgoNTmV0d29ya1N0YXR1cxIiCgVwaGFzZRgBIAEoDjITLmRwaG9uZS52MS5OZXRQaGFzZRIOCgZkZXRhaWwYAiABKAkSIAoDbGFuGAMgASgLMhMuZHBob25lLnYxLlBvcnRMaW5rEh8KAnBjGAQgASgLMhMuZHBob25lLnYxLlBvcnRMaW5rEhcKD3BjX3BvcnRfZW5hYmxlZBgFIAEoCBILCgNtYWMYBiABKAkSEwoLaXB2NF9zb3VyY2UYByABKAkSFAoMaXB2NF9hZGRyZXNzGAggASgJEhcKD2lwdjRfcHJlZml4X2xlbhgJIAEoDRIUCgxpcHY0X2dhdGV3YXkYCiABKAkSEgoKbGVhc2Vfc2VjcxgLIAEoDRITCgtkaGNwX3NlcnZlchgMIAEoCRIuCg5pcHY2X2FkZHJlc3NlcxgNIAMoCzIWLmRwaG9uZS52MS5JcHY2QWRkcmVzcxIpCgtkbnNfc2VydmVycxgOIAMoCzIULmRwaG9uZS52MS5EbnNTZXJ2ZXISDgoGZG9tYWluGA8gASgJEhgKEGRoY3BfdGZ0cF9zZXJ2ZXIYECABKAkSKQoLbnRwX3NlcnZlcnMYESADKAsyFC5kcGhvbmUudjEuTnRwU2VydmVyEhIKCm50cF9zeW5jZWQYEiABKAgSEwoLdmxhbl9zb3VyY2UYEyABKAkSFwoKdm9pY2VfdmxhbhgUIAEoDUgAiAEBEhQKB3BjX3ZsYW4YFSABKA1IAYgBARIVCg12bGFuX3ByaW9yaXR5GBYgASgNEgwKBGRzY3AYFyABKA0SFAoMbGxkcF9wcmVzZW50GBggASgIEhgKEGxsZHBfc3lzdGVtX25hbWUYGSABKAkSFAoMbGxkcF9wb3J0X2lkGBogASgJEhcKD2xsZHBfY2hhc3Npc19pZBgbIAEoCRIdChVsbGRwX3BvcnRfZGVzY3JpcHRpb24YHCABKAkSDwoHcHJvZmlsZRgdIAEoCUINCgtfdm9pY2VfdmxhbkIKCghfcGNfdmxhbiL2AwoPTmV0d29ya1NldHRpbmdzEh4KFmFkZHJlc3NpbmdfcHJvdmlzaW9uZWQYFiABKAgSDAoEZGhjcBgBIAEoCBIRCglzdGF0aWNfaXAYAiABKAkSEwoLc3VibmV0X21hc2sYAyABKAkSDwoHZ2F0ZXdheRgEIAEoCRITCgtwcmltYXJ5X2RucxgFIAEoCRIVCg1zZWNvbmRhcnlfZG5zGAYgASgJEg4KBmRvbWFpbhgHIAEoCRIbChN2bGFuX2Rpc2NvdmVyeV9tb2RlGAggASgJEhQKB3ZsYW5faWQYCSABKA1IAIgBARIXCgpwY192bGFuX2lkGAogASgNSAGIAQESDgoGcGNfcW9zGAsgASgNEhQKDHBjX3BvcnRfbW9kZRgMIAEoCRIVCg1sYW5fcG9ydF9tb2RlGA0gASgJEhAKCHNpcF9kc2NwGA4gASgNEhAKCHJ0cF9kc2NwGA8gASgNEg8KB3NpcF9xb3MYECABKA0SDwoHcnRwX3FvcxgRIAEoDRIZChFkb3QxeF9wYXNzdGhyb3VnaBgSIAEoCBISCgpudHBfc2VydmVyGBMgASgJEhEKCXRpbWVfem9uZRgUIAEoCRIUCgxpcHY2X2VuYWJsZWQYFSABKAhCCgoIX3ZsYW5faWRCDQoLX3BjX3ZsYW5faWQiEwoRR2V0TmV0d29ya1JlcXVlc3QibAoSR2V0TmV0d29ya1Jlc3BvbnNlEigKBnN0YXR1cxgBIAEoCzIYLmRwaG9uZS52MS5OZXR3b3JrU3RhdHVzEiwKCHNldHRpbmdzGAIgASgLMhouZHBob25lLnYxLk5ldHdvcmtTZXR0aW5ncyIVChNXYXRjaE5ldHdvcmtSZXF1ZXN0IkAKFFdhdGNoTmV0d29ya1Jlc3BvbnNlEigKBnN0YXR1cxgBIAEoCzIYLmRwaG9uZS52MS5OZXR3b3JrU3RhdHVzIlgKGVNldE5ldHdvcmtTZXR0aW5nc1JlcXVlc3QSLAoIc2V0dGluZ3MYASABKAsyGi5kcGhvbmUudjEuTmV0d29ya1NldHRpbmdzEg0KBWFwcGx5GAIgASgIIhwKGlNldE5ldHdvcmtTZXR0aW5nc1Jlc3BvbnNlIhIKEFJlbmV3RGhjcFJlcXVlc3QiEwoRUmVuZXdEaGNwUmVzcG9uc2UiEQoPU3luY1RpbWVSZXF1ZXN0IhIKEFN5bmNUaW1lUmVzcG9uc2UqfAoITmV0UGhhc2USGQoVTkVUX1BIQVNFX1VOU1BFQ0lGSUVEEAASEgoOTkVUX1BIQVNFX0RPV04QARIZChVORVRfUEhBU0VfQ09ORklHVVJJTkcQAhIQCgxORVRfUEhBU0VfVVAQAxIUChBORVRfUEhBU0VfRkFJTEVEEAQyngMKDk5ldHdvcmtTZXJ2aWNlEkkKCkdldE5ldHdvcmsSHC5kcGhvbmUudjEuR2V0TmV0d29ya1JlcXVlc3QaHS5kcGhvbmUudjEuR2V0TmV0d29ya1Jlc3BvbnNlElEKDFdhdGNoTmV0d29yaxIeLmRwaG9uZS52MS5XYXRjaE5ldHdvcmtSZXF1ZXN0Gh8uZHBob25lLnYxLldhdGNoTmV0d29ya1Jlc3BvbnNlMAESYQoSU2V0TmV0d29ya1NldHRpbmdzEiQuZHBob25lLnYxLlNldE5ldHdvcmtTZXR0aW5nc1JlcXVlc3QaJS5kcGhvbmUudjEuU2V0TmV0d29ya1NldHRpbmdzUmVzcG9uc2USRgoJUmVuZXdEaGNwEhsuZHBob25lLnYxLlJlbmV3RGhjcFJlcXVlc3QaHC5kcGhvbmUudjEuUmVuZXdEaGNwUmVzcG9uc2USQwoIU3luY1RpbWUSGi5kcGhvbmUudjEuU3luY1RpbWVSZXF1ZXN0GhsuZHBob25lLnYxLlN5bmNUaW1lUmVzcG9uc2ViBnByb3RvMw");
+  fileDesc("ChdkcGhvbmUvdjEvbmV0d29yay5wcm90bxIJZHBob25lLnYxIjoKCFBvcnRMaW5rEgoKAnVwGAEgASgIEg0KBXNwZWVkGAIgASgNEhMKC2Z1bGxfZHVwbGV4GAMgASgIIjIKC0lwdjZBZGRyZXNzEg8KB2FkZHJlc3MYASABKAkSEgoKcHJlZml4X2xlbhgCIAEoDSIcCglEbnNTZXJ2ZXISDwoHYWRkcmVzcxgBIAEoCSIZCglOdHBTZXJ2ZXISDAoEaG9zdBgBIAEoCSK0BgoNTmV0d29ya1N0YXR1cxIiCgVwaGFzZRgBIAEoDjITLmRwaG9uZS52MS5OZXRQaGFzZRIOCgZkZXRhaWwYAiABKAkSIAoDbGFuGAMgASgLMhMuZHBob25lLnYxLlBvcnRMaW5rEh8KAnBjGAQgASgLMhMuZHBob25lLnYxLlBvcnRMaW5rEhcKD3BjX3BvcnRfZW5hYmxlZBgFIAEoCBILCgNtYWMYBiABKAkSKgoLaXB2NF9zb3VyY2UYByABKA4yFS5kcGhvbmUudjEuSXB2NFNvdXJjZRIUCgxpcHY0X2FkZHJlc3MYCCABKAkSFwoPaXB2NF9wcmVmaXhfbGVuGAkgASgNEhQKDGlwdjRfZ2F0ZXdheRgKIAEoCRISCgpsZWFzZV9zZWNzGAsgASgNEhMKC2RoY3Bfc2VydmVyGAwgASgJEi4KDmlwdjZfYWRkcmVzc2VzGA0gAygLMhYuZHBob25lLnYxLklwdjZBZGRyZXNzEikKC2Ruc19zZXJ2ZXJzGA4gAygLMhQuZHBob25lLnYxLkRuc1NlcnZlchIOCgZkb21haW4YDyABKAkSGAoQZGhjcF90ZnRwX3NlcnZlchgQIAEoCRIpCgtudHBfc2VydmVycxgRIAMoCzIULmRwaG9uZS52MS5OdHBTZXJ2ZXISEgoKbnRwX3N5bmNlZBgSIAEoCBIqCgt2bGFuX3NvdXJjZRgTIAEoDjIVLmRwaG9uZS52MS5WbGFuU291cmNlEhcKCnZvaWNlX3ZsYW4YFCABKA1IAIgBARIUCgdwY192bGFuGBUgASgNSAGIAQESFQoNdmxhbl9wcmlvcml0eRgWIAEoDRIMCgRkc2NwGBcgASgNEhQKDGxsZHBfcHJlc2VudBgYIAEoCBIYChBsbGRwX3N5c3RlbV9uYW1lGBkgASgJEhQKDGxsZHBfcG9ydF9pZBgaIAEoCRIXCg9sbGRwX2NoYXNzaXNfaWQYGyABKAkSHQoVbGxkcF9wb3J0X2Rlc2NyaXB0aW9uGBwgASgJEg8KB3Byb2ZpbGUYHSABKAlCDQoLX3ZvaWNlX3ZsYW5CCgoIX3BjX3ZsYW4ilAQKD05ldHdvcmtTZXR0aW5ncxIeChZhZGRyZXNzaW5nX3Byb3Zpc2lvbmVkGBYgASgIEgwKBGRoY3AYASABKAgSEQoJc3RhdGljX2lwGAIgASgJEhMKC3N1Ym5ldF9tYXNrGAMgASgJEg8KB2dhdGV3YXkYBCABKAkSEwoLcHJpbWFyeV9kbnMYBSABKAkSFQoNc2Vjb25kYXJ5X2RucxgGIAEoCRIOCgZkb21haW4YByABKAkSOQoTdmxhbl9kaXNjb3ZlcnlfbW9kZRgIIAEoDjIcLmRwaG9uZS52MS5WbGFuRGlzY292ZXJ5TW9kZRIUCgd2bGFuX2lkGAkgASgNSACIAQESFwoKcGNfdmxhbl9pZBgKIAEoDUgBiAEBEg4KBnBjX3FvcxgLIAEoDRIUCgxwY19wb3J0X21vZGUYDCABKAkSFQoNbGFuX3BvcnRfbW9kZRgNIAEoCRIQCghzaXBfZHNjcBgOIAEoDRIQCghydHBfZHNjcBgPIAEoDRIPCgdzaXBfcW9zGBAgASgNEg8KB3J0cF9xb3MYESABKA0SGQoRZG90MXhfcGFzc3Rocm91Z2gYEiABKAgSEgoKbnRwX3NlcnZlchgTIAEoCRIRCgl0aW1lX3pvbmUYFCABKAkSFAoMaXB2Nl9lbmFibGVkGBUgASgIQgoKCF92bGFuX2lkQg0KC19wY192bGFuX2lkIhMKEUdldE5ldHdvcmtSZXF1ZXN0ImwKEkdldE5ldHdvcmtSZXNwb25zZRIoCgZzdGF0dXMYASABKAsyGC5kcGhvbmUudjEuTmV0d29ya1N0YXR1cxIsCghzZXR0aW5ncxgCIAEoCzIaLmRwaG9uZS52MS5OZXR3b3JrU2V0dGluZ3MiFQoTV2F0Y2hOZXR3b3JrUmVxdWVzdCJAChRXYXRjaE5ldHdvcmtSZXNwb25zZRIoCgZzdGF0dXMYASABKAsyGC5kcGhvbmUudjEuTmV0d29ya1N0YXR1cyJYChlTZXROZXR3b3JrU2V0dGluZ3NSZXF1ZXN0EiwKCHNldHRpbmdzGAEgASgLMhouZHBob25lLnYxLk5ldHdvcmtTZXR0aW5ncxINCgVhcHBseRgCIAEoCCIcChpTZXROZXR3b3JrU2V0dGluZ3NSZXNwb25zZSISChBSZW5ld0RoY3BSZXF1ZXN0IhMKEVJlbmV3RGhjcFJlc3BvbnNlIhEKD1N5bmNUaW1lUmVxdWVzdCISChBTeW5jVGltZVJlc3BvbnNlKnwKCE5ldFBoYXNlEhkKFU5FVF9QSEFTRV9VTlNQRUNJRklFRBAAEhIKDk5FVF9QSEFTRV9ET1dOEAESGQoVTkVUX1BIQVNFX0NPTkZJR1VSSU5HEAISEAoMTkVUX1BIQVNFX1VQEAMSFAoQTkVUX1BIQVNFX0ZBSUxFRBAEKlcKCklwdjRTb3VyY2USGwoXSVBWNF9TT1VSQ0VfVU5TUEVDSUZJRUQQABIUChBJUFY0X1NPVVJDRV9ESENQEAESFgoSSVBWNF9TT1VSQ0VfU1RBVElDEAIqbQoKVmxhblNvdXJjZRIbChdWTEFOX1NPVVJDRV9VTlNQRUNJRklFRBAAEhYKElZMQU5fU09VUkNFX0NPTkZJRxABEhQKEFZMQU5fU09VUkNFX0xMRFAQAhIUChBWTEFOX1NPVVJDRV9ESENQEAMqlAEKEVZsYW5EaXNjb3ZlcnlNb2RlEiMKH1ZMQU5fRElTQ09WRVJZX01PREVfVU5TUEVDSUZJRUQQABIcChhWTEFOX0RJU0NPVkVSWV9NT0RFX05PTkUQARIeChpWTEFOX0RJU0NPVkVSWV9NT0RFX01BTlVBTBACEhwKGFZMQU5fRElTQ09WRVJZX01PREVfTExEUBADMp4DCg5OZXR3b3JrU2VydmljZRJJCgpHZXROZXR3b3JrEhwuZHBob25lLnYxLkdldE5ldHdvcmtSZXF1ZXN0Gh0uZHBob25lLnYxLkdldE5ldHdvcmtSZXNwb25zZRJRCgxXYXRjaE5ldHdvcmsSHi5kcGhvbmUudjEuV2F0Y2hOZXR3b3JrUmVxdWVzdBofLmRwaG9uZS52MS5XYXRjaE5ldHdvcmtSZXNwb25zZTABEmEKElNldE5ldHdvcmtTZXR0aW5ncxIkLmRwaG9uZS52MS5TZXROZXR3b3JrU2V0dGluZ3NSZXF1ZXN0GiUuZHBob25lLnYxLlNldE5ldHdvcmtTZXR0aW5nc1Jlc3BvbnNlEkYKCVJlbmV3RGhjcBIbLmRwaG9uZS52MS5SZW5ld0RoY3BSZXF1ZXN0GhwuZHBob25lLnYxLlJlbmV3RGhjcFJlc3BvbnNlEkMKCFN5bmNUaW1lEhouZHBob25lLnYxLlN5bmNUaW1lUmVxdWVzdBobLmRwaG9uZS52MS5TeW5jVGltZVJlc3BvbnNlYgZwcm90bzM");
 
 /**
  * @generated from message dphone.v1.PortLink
@@ -132,11 +132,9 @@ export type NetworkStatus = Message<"dphone.v1.NetworkStatus"> & {
   mac: string;
 
   /**
-   * "dhcp", "static", or "".
-   *
-   * @generated from field: string ipv4_source = 7;
+   * @generated from field: dphone.v1.Ipv4Source ipv4_source = 7;
    */
-  ipv4Source: string;
+  ipv4Source: Ipv4Source;
 
   /**
    * @generated from field: string ipv4_address = 8;
@@ -194,11 +192,9 @@ export type NetworkStatus = Message<"dphone.v1.NetworkStatus"> & {
   ntpSynced: boolean;
 
   /**
-   * "config", "lldp", "dhcp", or "".
-   *
-   * @generated from field: string vlan_source = 19;
+   * @generated from field: dphone.v1.VlanSource vlan_source = 19;
    */
-  vlanSource: string;
+  vlanSource: VlanSource;
 
   /**
    * @generated from field: optional uint32 voice_vlan = 20;
@@ -309,11 +305,9 @@ export type NetworkSettings = Message<"dphone.v1.NetworkSettings"> & {
   domain: string;
 
   /**
-   * "NONE", "MANUAL", or "LLDP".
-   *
-   * @generated from field: string vlan_discovery_mode = 8;
+   * @generated from field: dphone.v1.VlanDiscoveryMode vlan_discovery_mode = 8;
    */
-  vlanDiscoveryMode: string;
+  vlanDiscoveryMode: VlanDiscoveryMode;
 
   /**
    * @generated from field: optional uint32 vlan_id = 9;
@@ -577,6 +571,115 @@ export enum NetPhase {
  */
 export const NetPhaseSchema: GenEnum<NetPhase> = /*@__PURE__*/
   enumDesc(file_dphone_v1_network, 0);
+
+/**
+ * Where the IPv4 address came from.
+ *
+ * @generated from enum dphone.v1.Ipv4Source
+ */
+export enum Ipv4Source {
+  /**
+   * No address.
+   *
+   * @generated from enum value: IPV4_SOURCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: IPV4_SOURCE_DHCP = 1;
+   */
+  DHCP = 1,
+
+  /**
+   * @generated from enum value: IPV4_SOURCE_STATIC = 2;
+   */
+  STATIC = 2,
+}
+
+/**
+ * Describes the enum dphone.v1.Ipv4Source.
+ */
+export const Ipv4SourceSchema: GenEnum<Ipv4Source> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_network, 1);
+
+/**
+ * Where the voice VLAN came from.
+ *
+ * @generated from enum dphone.v1.VlanSource
+ */
+export enum VlanSource {
+  /**
+   * No voice VLAN.
+   *
+   * @generated from enum value: VLAN_SOURCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * The phone's settings.
+   *
+   * @generated from enum value: VLAN_SOURCE_CONFIG = 1;
+   */
+  CONFIG = 1,
+
+  /**
+   * The switch, by LLDP-MED.
+   *
+   * @generated from enum value: VLAN_SOURCE_LLDP = 2;
+   */
+  LLDP = 2,
+
+  /**
+   * @generated from enum value: VLAN_SOURCE_DHCP = 3;
+   */
+  DHCP = 3,
+}
+
+/**
+ * Describes the enum dphone.v1.VlanSource.
+ */
+export const VlanSourceSchema: GenEnum<VlanSource> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_network, 2);
+
+/**
+ * How the phone finds its voice VLAN (the stock setting
+ * network_vlan_discovery_mode).
+ *
+ * @generated from enum dphone.v1.VlanDiscoveryMode
+ */
+export enum VlanDiscoveryMode {
+  /**
+   * @generated from enum value: VLAN_DISCOVERY_MODE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * No voice VLAN.
+   *
+   * @generated from enum value: VLAN_DISCOVERY_MODE_NONE = 1;
+   */
+  NONE = 1,
+
+  /**
+   * The VLAN `vlan_id` names.
+   *
+   * @generated from enum value: VLAN_DISCOVERY_MODE_MANUAL = 2;
+   */
+  MANUAL = 2,
+
+  /**
+   * The VLAN of the switch's LLDP-MED network policy.
+   *
+   * @generated from enum value: VLAN_DISCOVERY_MODE_LLDP = 3;
+   */
+  LLDP = 3,
+}
+
+/**
+ * Describes the enum dphone.v1.VlanDiscoveryMode.
+ */
+export const VlanDiscoveryModeSchema: GenEnum<VlanDiscoveryMode> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_network, 3);
 
 /**
  * @generated from service dphone.v1.NetworkService

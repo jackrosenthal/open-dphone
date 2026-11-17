@@ -188,7 +188,7 @@ async fn assert_open(addr: SocketAddr) -> Session {
     let r = post(addr, None, "/dphone.v1.AuthService/GetSession", json!({})).await;
     assert_eq!(r.status, 200);
     let v = r.json();
-    assert_eq!(v["session"]["model"], "D60");
+    assert_eq!(v["session"]["model"], "MODEL_D60");
     assert!(v["session"].get("webDisabled").is_none(), "{v}");
     // Without a session the services want a login, as ever.
     let r = post(addr, None, "/dphone.v1.StatusService/GetStatus", json!({})).await;

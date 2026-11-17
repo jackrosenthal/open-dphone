@@ -4,6 +4,7 @@ import { Button, Card, Dpma, Input, PageHeader, Select, Toggle } from "../compon
 import type { IdleSoftkey } from "../gen/dphone/settings/v1/settings_pb";
 import { ConfigService, SettingSource, type IdleSoftkeys as IdleSoftkeysMessage, type Setting } from "../gen/dphone/v1/config_pb";
 import type { Theme as ThemeMessage } from "../gen/dphone/v1/config_pb";
+import { Skin } from "../gen/dphone/v1/model_pb";
 import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
 
@@ -98,7 +99,7 @@ export function SettingsCard({ title, items, children, after, actions, className
         {children}
         <div className="grid gap-4 sm:grid-cols-2">
           {items
-            .filter((item) => !item.grayOnly || skin !== "color")
+            .filter((item) => !item.grayOnly || skin !== Skin.COLOR)
             .map((item) => (
               <div key={item.id} className={item.type === "bool" || item.wide ? "sm:col-span-2" : ""}>
                 <Control item={item} setting={byId.get(item.id)} value={value(item.id)} onChange={(v) => change(item.id, v)} />
@@ -233,7 +234,7 @@ function ThemeSelect() {
       setSaved(r.theme);
     },
   });
-  if (skin !== "color") return null;
+  if (skin !== Skin.COLOR) return null;
   const theme = saved ?? loaded.data?.theme;
   const choices = theme?.choices ?? [];
   const families = [...new Set(choices.map((c) => c.family))];

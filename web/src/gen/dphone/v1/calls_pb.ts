@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/v1/calls.proto.
  */
 export const file_dphone_v1_calls: GenFile = /*@__PURE__*/
-  fileDesc("ChVkcGhvbmUvdjEvY2FsbHMucHJvdG8SCWRwaG9uZS52MSIyCgVQYXJ0eRIMCgRuYW1lGAEgASgJEg4KBm51bWJlchgCIAEoCRILCgN1cmkYAyABKAkiywMKBENhbGwSCgoCaWQYASABKA0SDwoHYWNjb3VudBgCIAEoDRIrCglkaXJlY3Rpb24YAyABKA4yGC5kcGhvbmUudjEuQ2FsbERpcmVjdGlvbhIjCgVzdGF0ZRgEIAEoDjIULmRwaG9uZS52MS5DYWxsU3RhdGUSIAoGcmVtb3RlGAUgASgLMhAuZHBob25lLnYxLlBhcnR5EhQKDHN0YXJ0ZWRfdW5peBgGIAEoBBIaCg1kdXJhdGlvbl9zZWNzGAcgASgESACIAQESDQoFY29kZWMYCCABKAkSDAoEc3J0cBgJIAEoCBINCgVtdXRlZBgKIAEoCBIVCg1pbl9jb25mZXJlbmNlGAsgASgIEhQKDGhlbGRfbG9jYWxseRgMIAEoCBIVCg1oZWxkX3JlbW90ZWx5GA0gASgIEhEKCWVuZF9jYXVzZRgOIAEoCRIPCgdmb2N1c2VkGA8gASgIEhIKCnJ4X3BhY2tldHMYECABKA0SEgoKdHhfcGFja2V0cxgRIAEoDRIPCgdyeF9sb3N0GBIgASgNEhEKCWppdHRlcl9tcxgTIAEoDRIOCgZwYWdpbmcYFCABKAhCEAoOX2R1cmF0aW9uX3NlY3Mi+QEKC0F1ZGlvU3RhdHVzEiIKBHBhdGgYASABKA4yFC5kcGhvbmUudjEuQXVkaW9QYXRoEhAKCG9mZl9ob29rGAIgASgIEhQKDGhlYWRzZXRfbW9kZRgDIAEoCBINCgVtdXRlZBgEIAEoCBIWCg5oYW5kc2V0X3ZvbHVtZRgFIAEoDRIWCg5oZWFkc2V0X3ZvbHVtZRgGIAEoDRIWCg5zcGVha2VyX3ZvbHVtZRgHIAEoDRIVCg1yaW5nZXJfdm9sdW1lGAggASgNEg8KB3JpbmdpbmcYCSABKAgSCwoDZHNwGAogASgJEhIKCmRzcF9kZXRhaWwYCyABKAkihQEKDUZlYXR1cmVTdGF0dXMSCwoDZG5kGAEgASgIEhYKDmZvcndhcmRfYWx3YXlzGAIgASgJEhQKDGZvcndhcmRfYnVzeRgDIAEoCRIZChFmb3J3YXJkX25vX2Fuc3dlchgEIAEoCRIeChZmb3J3YXJkX25vX2Fuc3dlcl9zZWNzGAUgASgNIlkKCU13aVN0YXR1cxIPCgdhY2NvdW50GAEgASgNEg8KB3dhaXRpbmcYAiABKAgSFAoMbmV3X21lc3NhZ2VzGAMgASgNEhQKDG9sZF9tZXNzYWdlcxgEIAEoDSK8AQoNQ2FsbHNTbmFwc2hvdBIeCgVjYWxscxgBIAMoCzIPLmRwaG9uZS52MS5DYWxsEiUKBWF1ZGlvGAIgASgLMhYuZHBob25lLnYxLkF1ZGlvU3RhdHVzEioKCGZlYXR1cmVzGAMgASgLMhguZHBob25lLnYxLkZlYXR1cmVTdGF0dXMSIQoDbXdpGAQgAygLMhQuZHBob25lLnYxLk13aVN0YXR1cxIVCg1taXNzZWRfdW5zZWVuGAUgASgNIp0BCgxDYWxsTG9nRW50cnkSCgoCaWQYASABKAQSJAoEa2luZBgCIAEoDjIWLmRwaG9uZS52MS5DYWxsTG9nS2luZBIfCgVwYXJ0eRgDIAEoCzIQLmRwaG9uZS52MS5QYXJ0eRIPCgdhY2NvdW50GAQgASgNEhIKCnN0YXJ0X3VuaXgYBSABKAQSFQoNZHVyYXRpb25fc2VjcxgGIAEoDSIRCg9HZXRDYWxsc1JlcXVlc3QiPgoQR2V0Q2FsbHNSZXNwb25zZRIqCghzbmFwc2hvdBgBIAEoCzIYLmRwaG9uZS52MS5DYWxsc1NuYXBzaG90IhMKEVdhdGNoQ2FsbHNSZXF1ZXN0IkAKEldhdGNoQ2FsbHNSZXNwb25zZRIqCghzbmFwc2hvdBgBIAEoCzIYLmRwaG9uZS52MS5DYWxsc1NuYXBzaG90ImMKC0RpYWxSZXF1ZXN0Eg4KBnRhcmdldBgBIAEoCRIUCgdhY2NvdW50GAIgASgNSACIAQESIgoEcGF0aBgDIAEoDjIULmRwaG9uZS52MS5BdWRpb1BhdGhCCgoIX2FjY291bnQiHAoMRGlhbFJlc3BvbnNlEgwKBGNhbGwYASABKA0iQQoNQW5zd2VyUmVxdWVzdBIMCgRjYWxsGAEgASgNEiIKBHBhdGgYAiABKA4yFC5kcGhvbmUudjEuQXVkaW9QYXRoIhAKDkFuc3dlclJlc3BvbnNlIh0KDUhhbmd1cFJlcXVlc3QSDAoEY2FsbBgBIAEoDSIQCg5IYW5ndXBSZXNwb25zZSIbCgtIb2xkUmVxdWVzdBIMCgRjYWxsGAEgASgNIg4KDEhvbGRSZXNwb25zZSIdCg1SZXN1bWVSZXF1ZXN0EgwKBGNhbGwYASABKA0iEAoOUmVzdW1lUmVzcG9uc2UiTwoPVHJhbnNmZXJSZXF1ZXN0EgwKBGNhbGwYASABKA0SEAoGdGFyZ2V0GAIgASgJSAASFgoMY29uc3VsdF9jYWxsGAMgASgNSABCBAoCdG8iEgoQVHJhbnNmZXJSZXNwb25zZSIvCg9TZW5kRHRtZlJlcXVlc3QSDAoEY2FsbBgBIAEoDRIOCgZkaWdpdHMYAiABKAkiEgoQU2VuZER0bWZSZXNwb25zZSIfCg5TZXRNdXRlUmVxdWVzdBINCgVtdXRlZBgBIAEoCCIRCg9TZXRNdXRlUmVzcG9uc2UiHAoNU2V0RG5kUmVxdWVzdBILCgNkbmQYASABKAgiEAoOU2V0RG5kUmVzcG9uc2UiSQoRU2V0Rm9yd2FyZFJlcXVlc3QSDAoEa2luZBgBIAEoCRIOCgZ0YXJnZXQYAiABKAkSFgoObm9fYW5zd2VyX3NlY3MYAyABKA0iFAoSU2V0Rm9yd2FyZFJlc3BvbnNlIhMKEUdldENhbGxMb2dSZXF1ZXN0IlUKEkdldENhbGxMb2dSZXNwb25zZRIoCgdlbnRyaWVzGAEgAygLMhcuZHBob25lLnYxLkNhbGxMb2dFbnRyeRIVCg1taXNzZWRfdW5zZWVuGAIgASgNIhUKE0NsZWFyQ2FsbExvZ1JlcXVlc3QiFgoUQ2xlYXJDYWxsTG9nUmVzcG9uc2UqaQoNQ2FsbERpcmVjdGlvbhIeChpDQUxMX0RJUkVDVElPTl9VTlNQRUNJRklFRBAAEhsKF0NBTExfRElSRUNUSU9OX0lOQ09NSU5HEAESGwoXQ0FMTF9ESVJFQ1RJT05fT1VUR09JTkcQAirqAQoJQ2FsbFN0YXRlEhoKFkNBTExfU1RBVEVfVU5TUEVDSUZJRUQQABIWChJDQUxMX1NUQVRFX0RJQUxJTkcQARIZChVDQUxMX1NUQVRFX1BST0NFRURJTkcQAhIXChNDQUxMX1NUQVRFX1JJTkdCQUNLEAMSFgoSQ0FMTF9TVEFURV9SSU5HSU5HEAQSFQoRQ0FMTF9TVEFURV9BQ1RJVkUQBRITCg9DQUxMX1NUQVRFX0hFTEQQBhIbChdDQUxMX1NUQVRFX1RSQU5TRkVSUklORxAHEhQKEENBTExfU1RBVEVfRU5ERUQQCCqEAQoJQXVkaW9QYXRoEhoKFkFVRElPX1BBVEhfVU5TUEVDSUZJRUQQABITCg9BVURJT19QQVRIX05PTkUQARIWChJBVURJT19QQVRIX0hBTkRTRVQQAhIWChJBVURJT19QQVRIX0hFQURTRVQQAxIWChJBVURJT19QQVRIX1NQRUFLRVIQBCp8CgtDYWxsTG9nS2luZBIdChlDQUxMX0xPR19LSU5EX1VOU1BFQ0lGSUVEEAASGAoUQ0FMTF9MT0dfS0lORF9NSVNTRUQQARIaChZDQUxMX0xPR19LSU5EX1JFQ0VJVkVEEAISGAoUQ0FMTF9MT0dfS0lORF9QTEFDRUQQAzLBBwoMQ2FsbHNTZXJ2aWNlEkMKCEdldENhbGxzEhouZHBob25lLnYxLkdldENhbGxzUmVxdWVzdBobLmRwaG9uZS52MS5HZXRDYWxsc1Jlc3BvbnNlEksKCldhdGNoQ2FsbHMSHC5kcGhvbmUudjEuV2F0Y2hDYWxsc1JlcXVlc3QaHS5kcGhvbmUudjEuV2F0Y2hDYWxsc1Jlc3BvbnNlMAESNwoERGlhbBIWLmRwaG9uZS52MS5EaWFsUmVxdWVzdBoXLmRwaG9uZS52MS5EaWFsUmVzcG9uc2USPQoGQW5zd2VyEhguZHBob25lLnYxLkFuc3dlclJlcXVlc3QaGS5kcGhvbmUudjEuQW5zd2VyUmVzcG9uc2USPQoGSGFuZ3VwEhguZHBob25lLnYxLkhhbmd1cFJlcXVlc3QaGS5kcGhvbmUudjEuSGFuZ3VwUmVzcG9uc2USNwoESG9sZBIWLmRwaG9uZS52MS5Ib2xkUmVxdWVzdBoXLmRwaG9uZS52MS5Ib2xkUmVzcG9uc2USPQoGUmVzdW1lEhguZHBob25lLnYxLlJlc3VtZVJlcXVlc3QaGS5kcGhvbmUudjEuUmVzdW1lUmVzcG9uc2USQwoIVHJhbnNmZXISGi5kcGhvbmUudjEuVHJhbnNmZXJSZXF1ZXN0GhsuZHBob25lLnYxLlRyYW5zZmVyUmVzcG9uc2USQwoIU2VuZER0bWYSGi5kcGhvbmUudjEuU2VuZER0bWZSZXF1ZXN0GhsuZHBob25lLnYxLlNlbmREdG1mUmVzcG9uc2USQAoHU2V0TXV0ZRIZLmRwaG9uZS52MS5TZXRNdXRlUmVxdWVzdBoaLmRwaG9uZS52MS5TZXRNdXRlUmVzcG9uc2USPQoGU2V0RG5kEhguZHBob25lLnYxLlNldERuZFJlcXVlc3QaGS5kcGhvbmUudjEuU2V0RG5kUmVzcG9uc2USSQoKU2V0Rm9yd2FyZBIcLmRwaG9uZS52MS5TZXRGb3J3YXJkUmVxdWVzdBodLmRwaG9uZS52MS5TZXRGb3J3YXJkUmVzcG9uc2USSQoKR2V0Q2FsbExvZxIcLmRwaG9uZS52MS5HZXRDYWxsTG9nUmVxdWVzdBodLmRwaG9uZS52MS5HZXRDYWxsTG9nUmVzcG9uc2USTwoMQ2xlYXJDYWxsTG9nEh4uZHBob25lLnYxLkNsZWFyQ2FsbExvZ1JlcXVlc3QaHy5kcGhvbmUudjEuQ2xlYXJDYWxsTG9nUmVzcG9uc2ViBnByb3RvMw");
+  fileDesc("ChVkcGhvbmUvdjEvY2FsbHMucHJvdG8SCWRwaG9uZS52MSIyCgVQYXJ0eRIMCgRuYW1lGAEgASgJEg4KBm51bWJlchgCIAEoCRILCgN1cmkYAyABKAkimAQKBENhbGwSCgoCaWQYASABKA0SDwoHYWNjb3VudBgCIAEoDRIrCglkaXJlY3Rpb24YAyABKA4yGC5kcGhvbmUudjEuQ2FsbERpcmVjdGlvbhIjCgVzdGF0ZRgEIAEoDjIULmRwaG9uZS52MS5DYWxsU3RhdGUSIAoGcmVtb3RlGAUgASgLMhAuZHBob25lLnYxLlBhcnR5EhQKDHN0YXJ0ZWRfdW5peBgGIAEoBBIaCg1kdXJhdGlvbl9zZWNzGAcgASgESACIAQESHwoFY29kZWMYCCABKA4yEC5kcGhvbmUudjEuQ29kZWMSDAoEc3J0cBgJIAEoCBINCgVtdXRlZBgKIAEoCBIVCg1pbl9jb25mZXJlbmNlGAsgASgIEhQKDGhlbGRfbG9jYWxseRgMIAEoCBIVCg1oZWxkX3JlbW90ZWx5GA0gASgIEiYKCWVuZF9jYXVzZRgOIAEoDjITLmRwaG9uZS52MS5FbmRDYXVzZRIPCgdmb2N1c2VkGA8gASgIEhIKCnJ4X3BhY2tldHMYECABKA0SEgoKdHhfcGFja2V0cxgRIAEoDRIPCgdyeF9sb3N0GBIgASgNEhEKCWppdHRlcl9tcxgTIAEoDRIOCgZwYWdpbmcYFCABKAgSEAoIZW5kX2NvZGUYFSABKA0SEgoKZW5kX3JlYXNvbhgWIAEoCUIQCg5fZHVyYXRpb25fc2VjcyKOAgoLQXVkaW9TdGF0dXMSIgoEcGF0aBgBIAEoDjIULmRwaG9uZS52MS5BdWRpb1BhdGgSEAoIb2ZmX2hvb2sYAiABKAgSFAoMaGVhZHNldF9tb2RlGAMgASgIEg0KBW11dGVkGAQgASgIEhYKDmhhbmRzZXRfdm9sdW1lGAUgASgNEhYKDmhlYWRzZXRfdm9sdW1lGAYgASgNEhYKDnNwZWFrZXJfdm9sdW1lGAcgASgNEhUKDXJpbmdlcl92b2x1bWUYCCABKA0SDwoHcmluZ2luZxgJIAEoCBIgCgNkc3AYCiABKA4yEy5kcGhvbmUudjEuRHNwU3RhdGUSEgoKZHNwX2RldGFpbBgLIAEoCSKFAQoNRmVhdHVyZVN0YXR1cxILCgNkbmQYASABKAgSFgoOZm9yd2FyZF9hbHdheXMYAiABKAkSFAoMZm9yd2FyZF9idXN5GAMgASgJEhkKEWZvcndhcmRfbm9fYW5zd2VyGAQgASgJEh4KFmZvcndhcmRfbm9fYW5zd2VyX3NlY3MYBSABKA0iWQoJTXdpU3RhdHVzEg8KB2FjY291bnQYASABKA0SDwoHd2FpdGluZxgCIAEoCBIUCgxuZXdfbWVzc2FnZXMYAyABKA0SFAoMb2xkX21lc3NhZ2VzGAQgASgNIrwBCg1DYWxsc1NuYXBzaG90Eh4KBWNhbGxzGAEgAygLMg8uZHBob25lLnYxLkNhbGwSJQoFYXVkaW8YAiABKAsyFi5kcGhvbmUudjEuQXVkaW9TdGF0dXMSKgoIZmVhdHVyZXMYAyABKAsyGC5kcGhvbmUudjEuRmVhdHVyZVN0YXR1cxIhCgNtd2kYBCADKAsyFC5kcGhvbmUudjEuTXdpU3RhdHVzEhUKDW1pc3NlZF91bnNlZW4YBSABKA0inQEKDENhbGxMb2dFbnRyeRIKCgJpZBgBIAEoBBIkCgRraW5kGAIgASgOMhYuZHBob25lLnYxLkNhbGxMb2dLaW5kEh8KBXBhcnR5GAMgASgLMhAuZHBob25lLnYxLlBhcnR5Eg8KB2FjY291bnQYBCABKA0SEgoKc3RhcnRfdW5peBgFIAEoBBIVCg1kdXJhdGlvbl9zZWNzGAYgASgNIhEKD0dldENhbGxzUmVxdWVzdCI+ChBHZXRDYWxsc1Jlc3BvbnNlEioKCHNuYXBzaG90GAEgASgLMhguZHBob25lLnYxLkNhbGxzU25hcHNob3QiEwoRV2F0Y2hDYWxsc1JlcXVlc3QiQAoSV2F0Y2hDYWxsc1Jlc3BvbnNlEioKCHNuYXBzaG90GAEgASgLMhguZHBob25lLnYxLkNhbGxzU25hcHNob3QiYwoLRGlhbFJlcXVlc3QSDgoGdGFyZ2V0GAEgASgJEhQKB2FjY291bnQYAiABKA1IAIgBARIiCgRwYXRoGAMgASgOMhQuZHBob25lLnYxLkF1ZGlvUGF0aEIKCghfYWNjb3VudCIcCgxEaWFsUmVzcG9uc2USDAoEY2FsbBgBIAEoDSJBCg1BbnN3ZXJSZXF1ZXN0EgwKBGNhbGwYASABKA0SIgoEcGF0aBgCIAEoDjIULmRwaG9uZS52MS5BdWRpb1BhdGgiEAoOQW5zd2VyUmVzcG9uc2UiHQoNSGFuZ3VwUmVxdWVzdBIMCgRjYWxsGAEgASgNIhAKDkhhbmd1cFJlc3BvbnNlIhsKC0hvbGRSZXF1ZXN0EgwKBGNhbGwYASABKA0iDgoMSG9sZFJlc3BvbnNlIh0KDVJlc3VtZVJlcXVlc3QSDAoEY2FsbBgBIAEoDSIQCg5SZXN1bWVSZXNwb25zZSJPCg9UcmFuc2ZlclJlcXVlc3QSDAoEY2FsbBgBIAEoDRIQCgZ0YXJnZXQYAiABKAlIABIWCgxjb25zdWx0X2NhbGwYAyABKA1IAEIECgJ0byISChBUcmFuc2ZlclJlc3BvbnNlIi8KD1NlbmREdG1mUmVxdWVzdBIMCgRjYWxsGAEgASgNEg4KBmRpZ2l0cxgCIAEoCSISChBTZW5kRHRtZlJlc3BvbnNlIh8KDlNldE11dGVSZXF1ZXN0Eg0KBW11dGVkGAEgASgIIhEKD1NldE11dGVSZXNwb25zZSIcCg1TZXREbmRSZXF1ZXN0EgsKA2RuZBgBIAEoCCIQCg5TZXREbmRSZXNwb25zZSJhChFTZXRGb3J3YXJkUmVxdWVzdBIkCgRraW5kGAEgASgOMhYuZHBob25lLnYxLkZvcndhcmRLaW5kEg4KBnRhcmdldBgCIAEoCRIWCg5ub19hbnN3ZXJfc2VjcxgDIAEoDSIUChJTZXRGb3J3YXJkUmVzcG9uc2UiEwoRR2V0Q2FsbExvZ1JlcXVlc3QiVQoSR2V0Q2FsbExvZ1Jlc3BvbnNlEigKB2VudHJpZXMYASADKAsyFy5kcGhvbmUudjEuQ2FsbExvZ0VudHJ5EhUKDW1pc3NlZF91bnNlZW4YAiABKA0iFQoTQ2xlYXJDYWxsTG9nUmVxdWVzdCIWChRDbGVhckNhbGxMb2dSZXNwb25zZSppCg1DYWxsRGlyZWN0aW9uEh4KGkNBTExfRElSRUNUSU9OX1VOU1BFQ0lGSUVEEAASGwoXQ0FMTF9ESVJFQ1RJT05fSU5DT01JTkcQARIbChdDQUxMX0RJUkVDVElPTl9PVVRHT0lORxACKuoBCglDYWxsU3RhdGUSGgoWQ0FMTF9TVEFURV9VTlNQRUNJRklFRBAAEhYKEkNBTExfU1RBVEVfRElBTElORxABEhkKFUNBTExfU1RBVEVfUFJPQ0VFRElORxACEhcKE0NBTExfU1RBVEVfUklOR0JBQ0sQAxIWChJDQUxMX1NUQVRFX1JJTkdJTkcQBBIVChFDQUxMX1NUQVRFX0FDVElWRRAFEhMKD0NBTExfU1RBVEVfSEVMRBAGEhsKF0NBTExfU1RBVEVfVFJBTlNGRVJSSU5HEAcSFAoQQ0FMTF9TVEFURV9FTkRFRBAIKoQBCglBdWRpb1BhdGgSGgoWQVVESU9fUEFUSF9VTlNQRUNJRklFRBAAEhMKD0FVRElPX1BBVEhfTk9ORRABEhYKEkFVRElPX1BBVEhfSEFORFNFVBACEhYKEkFVRElPX1BBVEhfSEVBRFNFVBADEhYKEkFVRElPX1BBVEhfU1BFQUtFUhAEKrQBCgVDb2RlYxIVChFDT0RFQ19VTlNQRUNJRklFRBAAEg4KCkNPREVDX1BDTVUQARIOCgpDT0RFQ19QQ01BEAISDgoKQ09ERUNfRzcyMhADEhEKDUNPREVDX0c3MjZfMzIQBBIOCgpDT0RFQ19HNzI5EAUSDgoKQ09ERUNfSUxCQxAGEg4KCkNPREVDX09QVVMQBxINCglDT0RFQ19MMTYQCBISCg5DT0RFQ19MMTZfV0lERRAJKqMCCghFbmRDYXVzZRIZChVFTkRfQ0FVU0VfVU5TUEVDSUZJRUQQABIaChZFTkRfQ0FVU0VfTE9DQUxfSEFOR1VQEAESGwoXRU5EX0NBVVNFX1JFTU9URV9IQU5HVVAQAhIWChJFTkRfQ0FVU0VfUkVKRUNURUQQAxIWChJFTkRfQ0FVU0VfQ0FOQ0VMRUQQBBIgChxFTkRfQ0FVU0VfQU5TV0VSRURfRUxTRVdIRVJFEAUSEgoORU5EX0NBVVNFX0JVU1kQBhIXChNFTkRfQ0FVU0VfTk9fQU5TV0VSEAcSGQoVRU5EX0NBVVNFX1RSQU5TRkVSUkVEEAgSFAoQRU5EX0NBVVNFX0ZBSUxFRBAJEhMKD0VORF9DQVVTRV9FUlJPUhAKKoUBCghEc3BTdGF0ZRIZChVEU1BfU1RBVEVfVU5TUEVDSUZJRUQQABIZChVEU1BfU1RBVEVfTk9UX1NUQVJURUQQARIWChJEU1BfU1RBVEVfU1RBUlRJTkcQAhIVChFEU1BfU1RBVEVfUlVOTklORxADEhQKEERTUF9TVEFURV9GQUlMRUQQBCp8CgtDYWxsTG9nS2luZBIdChlDQUxMX0xPR19LSU5EX1VOU1BFQ0lGSUVEEAASGAoUQ0FMTF9MT0dfS0lORF9NSVNTRUQQARIaChZDQUxMX0xPR19LSU5EX1JFQ0VJVkVEEAISGAoUQ0FMTF9MT0dfS0lORF9QTEFDRUQQAyp3CgtGb3J3YXJkS2luZBIcChhGT1JXQVJEX0tJTkRfVU5TUEVDSUZJRUQQABIXChNGT1JXQVJEX0tJTkRfQUxXQVlTEAESFQoRRk9SV0FSRF9LSU5EX0JVU1kQAhIaChZGT1JXQVJEX0tJTkRfTk9fQU5TV0VSEAMywQcKDENhbGxzU2VydmljZRJDCghHZXRDYWxscxIaLmRwaG9uZS52MS5HZXRDYWxsc1JlcXVlc3QaGy5kcGhvbmUudjEuR2V0Q2FsbHNSZXNwb25zZRJLCgpXYXRjaENhbGxzEhwuZHBob25lLnYxLldhdGNoQ2FsbHNSZXF1ZXN0Gh0uZHBob25lLnYxLldhdGNoQ2FsbHNSZXNwb25zZTABEjcKBERpYWwSFi5kcGhvbmUudjEuRGlhbFJlcXVlc3QaFy5kcGhvbmUudjEuRGlhbFJlc3BvbnNlEj0KBkFuc3dlchIYLmRwaG9uZS52MS5BbnN3ZXJSZXF1ZXN0GhkuZHBob25lLnYxLkFuc3dlclJlc3BvbnNlEj0KBkhhbmd1cBIYLmRwaG9uZS52MS5IYW5ndXBSZXF1ZXN0GhkuZHBob25lLnYxLkhhbmd1cFJlc3BvbnNlEjcKBEhvbGQSFi5kcGhvbmUudjEuSG9sZFJlcXVlc3QaFy5kcGhvbmUudjEuSG9sZFJlc3BvbnNlEj0KBlJlc3VtZRIYLmRwaG9uZS52MS5SZXN1bWVSZXF1ZXN0GhkuZHBob25lLnYxLlJlc3VtZVJlc3BvbnNlEkMKCFRyYW5zZmVyEhouZHBob25lLnYxLlRyYW5zZmVyUmVxdWVzdBobLmRwaG9uZS52MS5UcmFuc2ZlclJlc3BvbnNlEkMKCFNlbmREdG1mEhouZHBob25lLnYxLlNlbmREdG1mUmVxdWVzdBobLmRwaG9uZS52MS5TZW5kRHRtZlJlc3BvbnNlEkAKB1NldE11dGUSGS5kcGhvbmUudjEuU2V0TXV0ZVJlcXVlc3QaGi5kcGhvbmUudjEuU2V0TXV0ZVJlc3BvbnNlEj0KBlNldERuZBIYLmRwaG9uZS52MS5TZXREbmRSZXF1ZXN0GhkuZHBob25lLnYxLlNldERuZFJlc3BvbnNlEkkKClNldEZvcndhcmQSHC5kcGhvbmUudjEuU2V0Rm9yd2FyZFJlcXVlc3QaHS5kcGhvbmUudjEuU2V0Rm9yd2FyZFJlc3BvbnNlEkkKCkdldENhbGxMb2cSHC5kcGhvbmUudjEuR2V0Q2FsbExvZ1JlcXVlc3QaHS5kcGhvbmUudjEuR2V0Q2FsbExvZ1Jlc3BvbnNlEk8KDENsZWFyQ2FsbExvZxIeLmRwaG9uZS52MS5DbGVhckNhbGxMb2dSZXF1ZXN0Gh8uZHBob25lLnYxLkNsZWFyQ2FsbExvZ1Jlc3BvbnNlYgZwcm90bzM");
 
 /**
  * @generated from message dphone.v1.Party
@@ -81,9 +81,11 @@ export type Call = Message<"dphone.v1.Call"> & {
   durationSecs?: bigint | undefined;
 
   /**
-   * @generated from field: string codec = 8;
+   * UNSPECIFIED until the codec is agreed.
+   *
+   * @generated from field: dphone.v1.Codec codec = 8;
    */
-  codec: string;
+  codec: Codec;
 
   /**
    * @generated from field: bool srtp = 9;
@@ -113,9 +115,9 @@ export type Call = Message<"dphone.v1.Call"> & {
   /**
    * Why the call ended, when state is ENDED.
    *
-   * @generated from field: string end_cause = 14;
+   * @generated from field: dphone.v1.EndCause end_cause = 14;
    */
-  endCause: string;
+  endCause: EndCause;
 
   /**
    * @generated from field: bool focused = 15;
@@ -146,6 +148,21 @@ export type Call = Message<"dphone.v1.Call"> & {
    * @generated from field: bool paging = 20;
    */
   paging: boolean;
+
+  /**
+   * END_CAUSE_FAILED: the SIP status code.
+   *
+   * @generated from field: uint32 end_code = 21;
+   */
+  endCode: number;
+
+  /**
+   * END_CAUSE_FAILED: the SIP reason phrase.  END_CAUSE_ERROR: what
+   * failed.
+   *
+   * @generated from field: string end_reason = 22;
+   */
+  endReason: string;
 };
 
 /**
@@ -205,11 +222,9 @@ export type AudioStatus = Message<"dphone.v1.AudioStatus"> & {
   ringing: boolean;
 
   /**
-   * "not_started", "starting", "running", or "failed".
-   *
-   * @generated from field: string dsp = 10;
+   * @generated from field: dphone.v1.DspState dsp = 10;
    */
-  dsp: string;
+  dsp: DspState;
 
   /**
    * @generated from field: string dsp_detail = 11;
@@ -754,11 +769,9 @@ export const SetDndResponseSchema: GenMessage<SetDndResponse> = /*@__PURE__*/
  */
 export type SetForwardRequest = Message<"dphone.v1.SetForwardRequest"> & {
   /**
-   * "always", "busy", or "no_answer".
-   *
-   * @generated from field: string kind = 1;
+   * @generated from field: dphone.v1.ForwardKind kind = 1;
    */
-  kind: string;
+  kind: ForwardKind;
 
   /**
    * Empty turns the rule off.
@@ -973,6 +986,205 @@ export const AudioPathSchema: GenEnum<AudioPath> = /*@__PURE__*/
   enumDesc(file_dphone_v1_calls, 2);
 
 /**
+ * An audio codec.
+ *
+ * @generated from enum dphone.v1.Codec
+ */
+export enum Codec {
+  /**
+   * @generated from enum value: CODEC_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * G.711 mu-law.
+   *
+   * @generated from enum value: CODEC_PCMU = 1;
+   */
+  PCMU = 1,
+
+  /**
+   * G.711 A-law.
+   *
+   * @generated from enum value: CODEC_PCMA = 2;
+   */
+  PCMA = 2,
+
+  /**
+   * @generated from enum value: CODEC_G722 = 3;
+   */
+  G722 = 3,
+
+  /**
+   * G.726 at 32 kbit/s.
+   *
+   * @generated from enum value: CODEC_G726_32 = 4;
+   */
+  G726_32 = 4,
+
+  /**
+   * @generated from enum value: CODEC_G729 = 5;
+   */
+  G729 = 5,
+
+  /**
+   * @generated from enum value: CODEC_ILBC = 6;
+   */
+  ILBC = 6,
+
+  /**
+   * @generated from enum value: CODEC_OPUS = 7;
+   */
+  OPUS = 7,
+
+  /**
+   * 16-bit linear PCM at 16 kHz.
+   *
+   * @generated from enum value: CODEC_L16 = 8;
+   */
+  L16 = 8,
+
+  /**
+   * 16-bit linear PCM at 32 kHz (stock's "L16-256").
+   *
+   * @generated from enum value: CODEC_L16_WIDE = 9;
+   */
+  L16_WIDE = 9,
+}
+
+/**
+ * Describes the enum dphone.v1.Codec.
+ */
+export const CodecSchema: GenEnum<Codec> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_calls, 3);
+
+/**
+ * Why a call ended.
+ *
+ * @generated from enum dphone.v1.EndCause
+ */
+export enum EndCause {
+  /**
+   * The call has not ended.
+   *
+   * @generated from enum value: END_CAUSE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * This phone hung up.
+   *
+   * @generated from enum value: END_CAUSE_LOCAL_HANGUP = 1;
+   */
+  LOCAL_HANGUP = 1,
+
+  /**
+   * The other party hung up.
+   *
+   * @generated from enum value: END_CAUSE_REMOTE_HANGUP = 2;
+   */
+  REMOTE_HANGUP = 2,
+
+  /**
+   * This phone declined the incoming call.
+   *
+   * @generated from enum value: END_CAUSE_REJECTED = 3;
+   */
+  REJECTED = 3,
+
+  /**
+   * The caller gave up.
+   *
+   * @generated from enum value: END_CAUSE_CANCELED = 4;
+   */
+  CANCELED = 4,
+
+  /**
+   * The incoming call was answered elsewhere.
+   *
+   * @generated from enum value: END_CAUSE_ANSWERED_ELSEWHERE = 5;
+   */
+  ANSWERED_ELSEWHERE = 5,
+
+  /**
+   * @generated from enum value: END_CAUSE_BUSY = 6;
+   */
+  BUSY = 6,
+
+  /**
+   * @generated from enum value: END_CAUSE_NO_ANSWER = 7;
+   */
+  NO_ANSWER = 7,
+
+  /**
+   * The call was transferred.
+   *
+   * @generated from enum value: END_CAUSE_TRANSFERRED = 8;
+   */
+  TRANSFERRED = 8,
+
+  /**
+   * A SIP failure response: `end_code` and `end_reason`.
+   *
+   * @generated from enum value: END_CAUSE_FAILED = 9;
+   */
+  FAILED = 9,
+
+  /**
+   * A transport or media failure, which `end_reason` describes.
+   *
+   * @generated from enum value: END_CAUSE_ERROR = 10;
+   */
+  ERROR = 10,
+}
+
+/**
+ * Describes the enum dphone.v1.EndCause.
+ */
+export const EndCauseSchema: GenEnum<EndCause> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_calls, 4);
+
+/**
+ * The state of the DSP that runs the audio.
+ *
+ * @generated from enum dphone.v1.DspState
+ */
+export enum DspState {
+  /**
+   * @generated from enum value: DSP_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: DSP_STATE_NOT_STARTED = 1;
+   */
+  NOT_STARTED = 1,
+
+  /**
+   * @generated from enum value: DSP_STATE_STARTING = 2;
+   */
+  STARTING = 2,
+
+  /**
+   * @generated from enum value: DSP_STATE_RUNNING = 3;
+   */
+  RUNNING = 3,
+
+  /**
+   * `dsp_detail` says why.
+   *
+   * @generated from enum value: DSP_STATE_FAILED = 4;
+   */
+  FAILED = 4,
+}
+
+/**
+ * Describes the enum dphone.v1.DspState.
+ */
+export const DspStateSchema: GenEnum<DspState> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_calls, 5);
+
+/**
  * @generated from enum dphone.v1.CallLogKind
  */
 export enum CallLogKind {
@@ -1001,7 +1213,46 @@ export enum CallLogKind {
  * Describes the enum dphone.v1.CallLogKind.
  */
 export const CallLogKindSchema: GenEnum<CallLogKind> = /*@__PURE__*/
-  enumDesc(file_dphone_v1_calls, 3);
+  enumDesc(file_dphone_v1_calls, 6);
+
+/**
+ * A call forwarding rule.
+ *
+ * @generated from enum dphone.v1.ForwardKind
+ */
+export enum ForwardKind {
+  /**
+   * @generated from enum value: FORWARD_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Every call.
+   *
+   * @generated from enum value: FORWARD_KIND_ALWAYS = 1;
+   */
+  ALWAYS = 1,
+
+  /**
+   * Calls that come while the phone is busy.
+   *
+   * @generated from enum value: FORWARD_KIND_BUSY = 2;
+   */
+  BUSY = 2,
+
+  /**
+   * Calls not answered in `no_answer_secs`.
+   *
+   * @generated from enum value: FORWARD_KIND_NO_ANSWER = 3;
+   */
+  NO_ANSWER = 3,
+}
+
+/**
+ * Describes the enum dphone.v1.ForwardKind.
+ */
+export const ForwardKindSchema: GenEnum<ForwardKind> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_calls, 7);
 
 /**
  * @generated from service dphone.v1.CallsService

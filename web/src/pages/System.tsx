@@ -5,6 +5,7 @@ import { AuthService } from "../gen/dphone/v1/auth_pb";
 import { NetworkService } from "../gen/dphone/v1/network_pb";
 import { SystemService } from "../gen/dphone/v1/system_pb";
 import { dateTime } from "../lib/format";
+import { modelName } from "../lib/labels";
 import { getSession, setSession } from "../lib/session";
 import { useStatus } from "../lib/status";
 import { EhsPortCard, MetricsSwitch, SshCard, WebSwitch } from "./Ssh";
@@ -97,7 +98,7 @@ function DateTime() {
 }
 
 function Backup() {
-  const model = useStatus().status?.system?.model;
+  const model = modelName(useStatus().status?.system?.model);
   const [error, setError] = useState<unknown>();
   const [restored, setRestored] = useState(false);
   const file = useRef<HTMLInputElement>(null);
@@ -137,7 +138,7 @@ function Backup() {
             Restore Backup
           </Button>
           <div className="flex-1" />
-          <ConfirmButton label="Factory Reset" title="Factory reset?" confirmLabel="Factory Reset" requireText={model ?? "RESET"} onConfirm={() => reset.mutateAsync({ confirm: model ?? "" })} />
+          <ConfirmButton label="Factory Reset" title="Factory reset?" confirmLabel="Factory Reset" requireText={model || "RESET"} onConfirm={() => reset.mutateAsync({ confirm: model })} />
         </div>
       </div>
     </Card>

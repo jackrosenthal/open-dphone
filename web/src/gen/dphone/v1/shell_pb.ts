@@ -2,15 +2,15 @@
 // @generated from file dphone/v1/shell.proto (package dphone.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file dphone/v1/shell.proto.
  */
 export const file_dphone_v1_shell: GenFile = /*@__PURE__*/
-  fileDesc("ChVkcGhvbmUvdjEvc2hlbGwucHJvdG8SCWRwaG9uZS52MSIuChBPcGVuU2hlbGxSZXF1ZXN0EgwKBGNvbHMYASABKA0SDAoEcm93cxgCIAEoDSIiCgxTaGVsbFN0YXJ0ZWQSEgoKc2Vzc2lvbl9pZBgBIAEoCSJACgtTaGVsbEV4aXRlZBIRCglleGl0X2NvZGUYASABKAUSDgoGc2lnbmFsGAIgASgFEg4KBnJlYXNvbhgDIAEoCSKEAQoRT3BlblNoZWxsUmVzcG9uc2USKgoHc3RhcnRlZBgBIAEoCzIXLmRwaG9uZS52MS5TaGVsbFN0YXJ0ZWRIABIQCgZvdXRwdXQYAiABKAxIABIoCgZleGl0ZWQYAyABKAsyFi5kcGhvbmUudjEuU2hlbGxFeGl0ZWRIAEIHCgVldmVudCI1ChFXcml0ZVNoZWxsUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEgwKBGRhdGEYAiABKAwiFAoSV3JpdGVTaGVsbFJlc3BvbnNlIkQKElJlc2l6ZVNoZWxsUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEgwKBGNvbHMYAiABKA0SDAoEcm93cxgDIAEoDSIVChNSZXNpemVTaGVsbFJlc3BvbnNlIicKEUNsb3NlU2hlbGxSZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiFAoSQ2xvc2VTaGVsbFJlc3BvbnNlMrwCCgxTaGVsbFNlcnZpY2USSAoJT3BlblNoZWxsEhsuZHBob25lLnYxLk9wZW5TaGVsbFJlcXVlc3QaHC5kcGhvbmUudjEuT3BlblNoZWxsUmVzcG9uc2UwARJJCgpXcml0ZVNoZWxsEhwuZHBob25lLnYxLldyaXRlU2hlbGxSZXF1ZXN0Gh0uZHBob25lLnYxLldyaXRlU2hlbGxSZXNwb25zZRJMCgtSZXNpemVTaGVsbBIdLmRwaG9uZS52MS5SZXNpemVTaGVsbFJlcXVlc3QaHi5kcGhvbmUudjEuUmVzaXplU2hlbGxSZXNwb25zZRJJCgpDbG9zZVNoZWxsEhwuZHBob25lLnYxLkNsb3NlU2hlbGxSZXF1ZXN0Gh0uZHBob25lLnYxLkNsb3NlU2hlbGxSZXNwb25zZWIGcHJvdG8z");
+  fileDesc("ChVkcGhvbmUvdjEvc2hlbGwucHJvdG8SCWRwaG9uZS52MSIuChBPcGVuU2hlbGxSZXF1ZXN0EgwKBGNvbHMYASABKA0SDAoEcm93cxgCIAEoDSIiCgxTaGVsbFN0YXJ0ZWQSEgoKc2Vzc2lvbl9pZBgBIAEoCSJbCgtTaGVsbEV4aXRlZBIRCglleGl0X2NvZGUYASABKAUSDgoGc2lnbmFsGAIgASgFEikKBnJlYXNvbhgDIAEoDjIZLmRwaG9uZS52MS5TaGVsbEVuZFJlYXNvbiKEAQoRT3BlblNoZWxsUmVzcG9uc2USKgoHc3RhcnRlZBgBIAEoCzIXLmRwaG9uZS52MS5TaGVsbFN0YXJ0ZWRIABIQCgZvdXRwdXQYAiABKAxIABIoCgZleGl0ZWQYAyABKAsyFi5kcGhvbmUudjEuU2hlbGxFeGl0ZWRIAEIHCgVldmVudCI1ChFXcml0ZVNoZWxsUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEgwKBGRhdGEYAiABKAwiFAoSV3JpdGVTaGVsbFJlc3BvbnNlIkQKElJlc2l6ZVNoZWxsUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEgwKBGNvbHMYAiABKA0SDAoEcm93cxgDIAEoDSIVChNSZXNpemVTaGVsbFJlc3BvbnNlIicKEUNsb3NlU2hlbGxSZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiFAoSQ2xvc2VTaGVsbFJlc3BvbnNlKqsBCg5TaGVsbEVuZFJlYXNvbhIgChxTSEVMTF9FTkRfUkVBU09OX1VOU1BFQ0lGSUVEEAASGQoVU0hFTExfRU5EX1JFQVNPTl9JRExFEAESHgoaU0hFTExfRU5EX1JFQVNPTl9QQUdFX0dPTkUQAhIfChtTSEVMTF9FTkRfUkVBU09OX0xPR0dFRF9PVVQQAxIbChdTSEVMTF9FTkRfUkVBU09OX0NMT1NFRBAEMrwCCgxTaGVsbFNlcnZpY2USSAoJT3BlblNoZWxsEhsuZHBob25lLnYxLk9wZW5TaGVsbFJlcXVlc3QaHC5kcGhvbmUudjEuT3BlblNoZWxsUmVzcG9uc2UwARJJCgpXcml0ZVNoZWxsEhwuZHBob25lLnYxLldyaXRlU2hlbGxSZXF1ZXN0Gh0uZHBob25lLnYxLldyaXRlU2hlbGxSZXNwb25zZRJMCgtSZXNpemVTaGVsbBIdLmRwaG9uZS52MS5SZXNpemVTaGVsbFJlcXVlc3QaHi5kcGhvbmUudjEuUmVzaXplU2hlbGxSZXNwb25zZRJJCgpDbG9zZVNoZWxsEhwuZHBob25lLnYxLkNsb3NlU2hlbGxSZXF1ZXN0Gh0uZHBob25lLnYxLkNsb3NlU2hlbGxSZXNwb25zZWIGcHJvdG8z");
 
 /**
  * @generated from message dphone.v1.OpenShellRequest
@@ -70,11 +70,11 @@ export type ShellExited = Message<"dphone.v1.ShellExited"> & {
   signal: number;
 
   /**
-   * The session ended for another reason (e.g., "idle"); otherwise empty.
+   * Why the phone ended the session, if it did.
    *
-   * @generated from field: string reason = 3;
+   * @generated from field: dphone.v1.ShellEndReason reason = 3;
    */
-  reason: string;
+  reason: ShellEndReason;
 };
 
 /**
@@ -223,6 +223,54 @@ export type CloseShellResponse = Message<"dphone.v1.CloseShellResponse"> & {
  */
 export const CloseShellResponseSchema: GenMessage<CloseShellResponse> = /*@__PURE__*/
   messageDesc(file_dphone_v1_shell, 9);
+
+/**
+ * Why the phone ended a shell session.
+ *
+ * @generated from enum dphone.v1.ShellEndReason
+ */
+export enum ShellEndReason {
+  /**
+   * The phone did not: the shell exited by itself.
+   *
+   * @generated from enum value: SHELL_END_REASON_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * No input for 30 minutes.
+   *
+   * @generated from enum value: SHELL_END_REASON_IDLE = 1;
+   */
+  IDLE = 1,
+
+  /**
+   * The page sent nothing, not even the heartbeat, for 75 seconds.
+   *
+   * @generated from enum value: SHELL_END_REASON_PAGE_GONE = 2;
+   */
+  PAGE_GONE = 2,
+
+  /**
+   * The web session ended.
+   *
+   * @generated from enum value: SHELL_END_REASON_LOGGED_OUT = 3;
+   */
+  LOGGED_OUT = 3,
+
+  /**
+   * CloseShell.
+   *
+   * @generated from enum value: SHELL_END_REASON_CLOSED = 4;
+   */
+  CLOSED = 4,
+}
+
+/**
+ * Describes the enum dphone.v1.ShellEndReason.
+ */
+export const ShellEndReasonSchema: GenEnum<ShellEndReason> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_shell, 0);
 
 /**
  * A terminal on the phone: a root shell on a pseudo-terminal.

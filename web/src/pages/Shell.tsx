@@ -3,7 +3,7 @@ import { Terminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 import { Button, PageHeader } from "../components/ui";
-import { ShellService, type ShellExited } from "../gen/dphone/v1/shell_pb";
+import { ShellEndReason, ShellService, type ShellExited } from "../gen/dphone/v1/shell_pb";
 import { csrfToken } from "../lib/session";
 import { client, errorMessage } from "../lib/transport";
 
@@ -43,10 +43,10 @@ const theme: ITheme = {
 };
 
 function ended(e: ShellExited): string {
-  if (e.reason === "idle") return "Session timed out.";
-  if (e.reason === "logged out") return "Logged out.";
-  if (e.reason === "page gone") return "Connection lost.";
-  if (e.reason) return "Session closed.";
+  if (e.reason === ShellEndReason.IDLE) return "Session timed out.";
+  if (e.reason === ShellEndReason.LOGGED_OUT) return "Logged out.";
+  if (e.reason === ShellEndReason.PAGE_GONE) return "Connection lost.";
+  if (e.reason !== ShellEndReason.UNSPECIFIED) return "Session closed.";
   if (e.signal) return `Shell terminated by signal ${e.signal}.`;
   return e.exitCode === 0 ? "Shell exited." : `Shell exited with status ${e.exitCode}.`;
 }

@@ -4,13 +4,15 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { Model } from "./model_pb";
+import { file_dphone_v1_model } from "./model_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file dphone/v1/auth.proto.
  */
 export const file_dphone_v1_auth: GenFile = /*@__PURE__*/
-  fileDesc("ChRkcGhvbmUvdjEvYXV0aC5wcm90bxIJZHBob25lLnYxIqQBCgdTZXNzaW9uEhUKDWF1dGhlbnRpY2F0ZWQYASABKAgSEgoKY3NyZl90b2tlbhgCIAEoCRIMCgR1c2VyGAMgASgJEg0KBW1vZGVsGAQgASgJEg8KB3ZlcnNpb24YBSABKAkSEAoIaG9zdG5hbWUYBiABKAkSGAoQZGVmYXVsdF9wYXNzd29yZBgHIAEoCBIUCgx3ZWJfZGlzYWJsZWQYCCABKAgiLgoMTG9naW5SZXF1ZXN0EgwKBHVzZXIYASABKAkSEAoIcGFzc3dvcmQYAiABKAkiNAoNTG9naW5SZXNwb25zZRIjCgdzZXNzaW9uGAEgASgLMhIuZHBob25lLnYxLlNlc3Npb24iDwoNTG9nb3V0UmVxdWVzdCIQCg5Mb2dvdXRSZXNwb25zZSITChFHZXRTZXNzaW9uUmVxdWVzdCI5ChJHZXRTZXNzaW9uUmVzcG9uc2USIwoHc2Vzc2lvbhgBIAEoCzISLmRwaG9uZS52MS5TZXNzaW9uIkcKFUNoYW5nZVBhc3N3b3JkUmVxdWVzdBIYChBjdXJyZW50X3Bhc3N3b3JkGAEgASgJEhQKDG5ld19wYXNzd29yZBgCIAEoCSIYChZDaGFuZ2VQYXNzd29yZFJlc3BvbnNlMqoCCgtBdXRoU2VydmljZRI6CgVMb2dpbhIXLmRwaG9uZS52MS5Mb2dpblJlcXVlc3QaGC5kcGhvbmUudjEuTG9naW5SZXNwb25zZRI9CgZMb2dvdXQSGC5kcGhvbmUudjEuTG9nb3V0UmVxdWVzdBoZLmRwaG9uZS52MS5Mb2dvdXRSZXNwb25zZRJJCgpHZXRTZXNzaW9uEhwuZHBob25lLnYxLkdldFNlc3Npb25SZXF1ZXN0Gh0uZHBob25lLnYxLkdldFNlc3Npb25SZXNwb25zZRJVCg5DaGFuZ2VQYXNzd29yZBIgLmRwaG9uZS52MS5DaGFuZ2VQYXNzd29yZFJlcXVlc3QaIS5kcGhvbmUudjEuQ2hhbmdlUGFzc3dvcmRSZXNwb25zZWIGcHJvdG8z");
+  fileDesc("ChRkcGhvbmUvdjEvYXV0aC5wcm90bxIJZHBob25lLnYxIrYBCgdTZXNzaW9uEhUKDWF1dGhlbnRpY2F0ZWQYASABKAgSEgoKY3NyZl90b2tlbhgCIAEoCRIMCgR1c2VyGAMgASgJEh8KBW1vZGVsGAQgASgOMhAuZHBob25lLnYxLk1vZGVsEg8KB3ZlcnNpb24YBSABKAkSEAoIaG9zdG5hbWUYBiABKAkSGAoQZGVmYXVsdF9wYXNzd29yZBgHIAEoCBIUCgx3ZWJfZGlzYWJsZWQYCCABKAgiLgoMTG9naW5SZXF1ZXN0EgwKBHVzZXIYASABKAkSEAoIcGFzc3dvcmQYAiABKAkiNAoNTG9naW5SZXNwb25zZRIjCgdzZXNzaW9uGAEgASgLMhIuZHBob25lLnYxLlNlc3Npb24iDwoNTG9nb3V0UmVxdWVzdCIQCg5Mb2dvdXRSZXNwb25zZSITChFHZXRTZXNzaW9uUmVxdWVzdCI5ChJHZXRTZXNzaW9uUmVzcG9uc2USIwoHc2Vzc2lvbhgBIAEoCzISLmRwaG9uZS52MS5TZXNzaW9uIkcKFUNoYW5nZVBhc3N3b3JkUmVxdWVzdBIYChBjdXJyZW50X3Bhc3N3b3JkGAEgASgJEhQKDG5ld19wYXNzd29yZBgCIAEoCSIYChZDaGFuZ2VQYXNzd29yZFJlc3BvbnNlMqoCCgtBdXRoU2VydmljZRI6CgVMb2dpbhIXLmRwaG9uZS52MS5Mb2dpblJlcXVlc3QaGC5kcGhvbmUudjEuTG9naW5SZXNwb25zZRI9CgZMb2dvdXQSGC5kcGhvbmUudjEuTG9nb3V0UmVxdWVzdBoZLmRwaG9uZS52MS5Mb2dvdXRSZXNwb25zZRJJCgpHZXRTZXNzaW9uEhwuZHBob25lLnYxLkdldFNlc3Npb25SZXF1ZXN0Gh0uZHBob25lLnYxLkdldFNlc3Npb25SZXNwb25zZRJVCg5DaGFuZ2VQYXNzd29yZBIgLmRwaG9uZS52MS5DaGFuZ2VQYXNzd29yZFJlcXVlc3QaIS5kcGhvbmUudjEuQ2hhbmdlUGFzc3dvcmRSZXNwb25zZWIGcHJvdG8z", [file_dphone_v1_model]);
 
 /**
  * @generated from message dphone.v1.Session
@@ -36,9 +38,9 @@ export type Session = Message<"dphone.v1.Session"> & {
   /**
    * Shown on the login page.
    *
-   * @generated from field: string model = 4;
+   * @generated from field: dphone.v1.Model model = 4;
    */
-  model: string;
+  model: Model;
 
   /**
    * @generated from field: string version = 5;

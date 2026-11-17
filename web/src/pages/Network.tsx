@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useState } from "react";
 import { Alert, Badge, Button, Card, Dpma, Field, Input, KeyValue, PageHeader, Select, Spinner, Toggle } from "../components/ui";
 import { ConfigService } from "../gen/dphone/v1/config_pb";
-import { NetPhase, NetworkService, type NetworkSettings } from "../gen/dphone/v1/network_pb";
+import { Ipv4Source, NetPhase, NetworkService, VlanDiscoveryMode, VlanSource, type NetworkSettings } from "../gen/dphone/v1/network_pb";
 import { duration } from "../lib/format";
 import { addressSourceNames, label, netPhaseNames, vlanSourceNames } from "../lib/labels";
 import { useStatus } from "../lib/status";
@@ -102,7 +102,7 @@ export function Network() {
             actions={
               <>
                 <Badge tone={net.phase === NetPhase.UP ? "green" : net.phase === NetPhase.FAILED ? "red" : "amber"}>{label(netPhaseNames, net.phase, NetPhase[net.phase])}</Badge>
-                {net.ipv4Source === "dhcp" && (
+                {net.ipv4Source === Ipv4Source.DHCP && (
                   <Button size="sm" onClick={() => renew.mutate({})} busy={renew.isPending}>
                     Renew DHCP
                   </Button>
@@ -112,7 +112,7 @@ export function Network() {
           >
             <KeyValue
               rows={[
-                ["IP address", net.ipv4Address && <>{net.ipv4Address}/{net.ipv4PrefixLen}{net.ipv4Source && <> ({label(addressSourceNames, net.ipv4Source)})</>}</>],
+                ["IP address", net.ipv4Address && <>{net.ipv4Address}/{net.ipv4PrefixLen}{net.ipv4Source !== Ipv4Source.UNSPECIFIED && <> ({label(addressSourceNames, net.ipv4Source, Ipv4Source[net.ipv4Source])})</>}</>],
                 ["Gateway", net.ipv4Gateway],
                 ["DHCP server", net.dhcpServer],
                 ["Lease time", net.leaseSecs ? duration(net.leaseSecs) : ""],
@@ -132,7 +132,7 @@ export function Network() {
                 ["MAC address", net.mac],
                 ["LAN port", net.lan?.up ? `${net.lan.speed} Mbps, ${net.lan.fullDuplex ? "full" : "half"} duplex` : "No link"],
                 ["PC port", !net.pcPortEnabled ? "Disabled" : net.pc?.up ? `${net.pc.speed} Mbps, ${net.pc.fullDuplex ? "full" : "half"} duplex` : "No link"],
-                ["Voice VLAN", net.voiceVlan !== undefined ? <>{net.voiceVlan}, priority {net.vlanPriority}{net.vlanSource && <> ({label(vlanSourceNames, net.vlanSource)})</>}</> : "None"],
+                ["Voice VLAN", net.voiceVlan !== undefined ? <>{net.voiceVlan}, priority {net.vlanPriority}{net.vlanSource !== VlanSource.UNSPECIFIED && <> ({label(vlanSourceNames, net.vlanSource, VlanSource[net.vlanSource])})</>}</> : "None"],
                 ["PC port VLAN", net.pcVlan !== undefined ? String(net.pcVlan) : ""],
                 ["DSCP", String(net.dscp)],
                 ["Switch", net.lldpPresent ? net.lldpSystemName : ""],
@@ -179,14 +179,14 @@ export function Network() {
             <section className="grid gap-4 border-t border-slate-100 pt-5 dark:border-slate-800 sm:grid-cols-3">
               <Dpma on={dpma("vlanDiscoveryMode")}>
                 <Field label="VLAN discovery">
-                  <Select value={s.vlanDiscoveryMode.toUpperCase()} disabled={dpma("vlanDiscoveryMode")} onChange={(e) => set("vlanDiscoveryMode", e.target.value)}>
-                    <option value="LLDP">LLDP-MED</option>
-                    <option value="MANUAL">Manual</option>
-                    <option value="NONE">None</option>
+                  <Select value={s.vlanDiscoveryMode} disabled={dpma("vlanDiscoveryMode")} onChange={(e) => set("vlanDiscoveryMode", Number(e.target.value) as VlanDiscoveryMode)}>
+                    <option value={VlanDiscoveryMode.LLDP}>LLDP-MED</option>
+                    <option value={VlanDiscoveryMode.MANUAL}>Manual</option>
+                    <option value={VlanDiscoveryMode.NONE}>None</option>
                   </Select>
                 </Field>
               </Dpma>
-              {vlan("vlanId", "Voice VLAN ID", s.vlanDiscoveryMode.toUpperCase() !== "MANUAL")}
+              {vlan("vlanId", "Voice VLAN ID", s.vlanDiscoveryMode !== VlanDiscoveryMode.MANUAL)}
               {vlan("pcVlanId", "PC port VLAN ID")}
               {num("sipDscp", "SIP DSCP", 63)}
               {num("rtpDscp", "RTP DSCP", 63)}

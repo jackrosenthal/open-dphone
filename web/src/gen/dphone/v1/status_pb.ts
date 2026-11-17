@@ -10,6 +10,8 @@ import type { CallsSnapshot } from "./calls_pb";
 import { file_dphone_v1_calls } from "./calls_pb";
 import type { FirmwareStatus } from "./firmware_pb";
 import { file_dphone_v1_firmware } from "./firmware_pb";
+import type { Model, Skin } from "./model_pb";
+import { file_dphone_v1_model } from "./model_pb";
 import type { NetworkStatus } from "./network_pb";
 import { file_dphone_v1_network } from "./network_pb";
 import type { ProvisioningStatus } from "./provisioning_pb";
@@ -20,16 +22,16 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file dphone/v1/status.proto.
  */
 export const file_dphone_v1_status: GenFile = /*@__PURE__*/
-  fileDesc("ChZkcGhvbmUvdjEvc3RhdHVzLnByb3RvEglkcGhvbmUudjEi1wIKClN5c3RlbUluZm8SDQoFbW9kZWwYASABKAkSDwoHdmVyc2lvbhgCIAEoCRIlCgVwaGFzZRgDIAEoDjIWLmRwaG9uZS52MS5TeXN0ZW1QaGFzZRILCgNtYWMYBCABKAkSEAoIaG9zdG5hbWUYBSABKAkSEwoLdGltZV9zeW5jZWQYBiABKAgSEAoIdGltZXpvbmUYByABKAkSGgoSbGFzdF9yZWJvb3RfcmVhc29uGAggASgJEhEKCXNpbXVsYXRlZBgKIAEoCBIVCg1tZW1fdG90YWxfa2liGAsgASgNEhMKC3VwdGltZV9zZWNzGAwgASgEEhEKCXVuaXhfdGltZRgNIAEoBBIMCgRza2luGA4gASgJEhIKCnVzZXJfYWdlbnQYDyABKAkSFQoNaGFzX2JsdWV0b290aBgQIAEoCBIVCg1oYXNfZXhwYW5zaW9uGBEgASgIIlsKD1N1YnN5c3RlbUhlYWx0aBIRCglzdWJzeXN0ZW0YASABKAkSJQoFc3RhdGUYAiABKA4yFi5kcGhvbmUudjEuSGVhbHRoU3RhdGUSDgoGZGV0YWlsGAMgASgJIp8DCg5TdGF0dXNTbmFwc2hvdBIlCgZzeXN0ZW0YASABKAsyFS5kcGhvbmUudjEuU3lzdGVtSW5mbxIpCgduZXR3b3JrGAIgASgLMhguZHBob25lLnYxLk5ldHdvcmtTdGF0dXMSMwoMcHJvdmlzaW9uaW5nGAMgASgLMh0uZHBob25lLnYxLlByb3Zpc2lvbmluZ1N0YXR1cxIqCghhY2NvdW50cxgEIAMoCzIYLmRwaG9uZS52MS5BY2NvdW50U3RhdHVzEicKBWNhbGxzGAUgASgLMhguZHBob25lLnYxLkNhbGxzU25hcHNob3QSKwoIZmlybXdhcmUYBiABKAsyGS5kcGhvbmUudjEuRmlybXdhcmVTdGF0dXMSKgoGaGVhbHRoGAcgAygLMhouZHBob25lLnYxLlN1YnN5c3RlbUhlYWx0aBIPCgdoZWFsdGh5GAggASgIEhkKEWNvbmZpZ19nZW5lcmF0aW9uGAkgASgEEhYKDnJlc3RhcnRfbmVlZGVkGAogASgIEhQKDGNvbmZpZ19lcnJvchgLIAEoCSISChBHZXRTdGF0dXNSZXF1ZXN0Ij4KEUdldFN0YXR1c1Jlc3BvbnNlEikKBnN0YXR1cxgBIAEoCzIZLmRwaG9uZS52MS5TdGF0dXNTbmFwc2hvdCIUChJXYXRjaFN0YXR1c1JlcXVlc3QiQAoTV2F0Y2hTdGF0dXNSZXNwb25zZRIpCgZzdGF0dXMYASABKAsyGS5kcGhvbmUudjEuU3RhdHVzU25hcHNob3Qq2QEKC1N5c3RlbVBoYXNlEhwKGFNZU1RFTV9QSEFTRV9VTlNQRUNJRklFRBAAEhkKFVNZU1RFTV9QSEFTRV9TVEFSVElORxABEh0KGVNZU1RFTV9QSEFTRV9ORVRXT1JLX1dBSVQQAhIdChlTWVNURU1fUEhBU0VfUFJPVklTSU9OSU5HEAMSGAoUU1lTVEVNX1BIQVNFX1JVTk5JTkcQBBIZChVTWVNURU1fUEhBU0VfUkVDT1ZFUlkQBRIeChpTWVNURU1fUEhBU0VfU0hVVFRJTkdfRE9XThAGKqkBCgtIZWFsdGhTdGF0ZRIcChhIRUFMVEhfU1RBVEVfVU5TUEVDSUZJRUQQABIYChRIRUFMVEhfU1RBVEVfU1RPUFBFRBABEhkKFUhFQUxUSF9TVEFURV9TVEFSVElORxACEhMKD0hFQUxUSF9TVEFURV9PSxADEhkKFUhFQUxUSF9TVEFURV9ERUdSQURFRBAEEhcKE0hFQUxUSF9TVEFURV9GQUlMRUQQBTKnAQoNU3RhdHVzU2VydmljZRJGCglHZXRTdGF0dXMSGy5kcGhvbmUudjEuR2V0U3RhdHVzUmVxdWVzdBocLmRwaG9uZS52MS5HZXRTdGF0dXNSZXNwb25zZRJOCgtXYXRjaFN0YXR1cxIdLmRwaG9uZS52MS5XYXRjaFN0YXR1c1JlcXVlc3QaHi5kcGhvbmUudjEuV2F0Y2hTdGF0dXNSZXNwb25zZTABYgZwcm90bzM", [file_dphone_v1_accounts, file_dphone_v1_calls, file_dphone_v1_firmware, file_dphone_v1_network, file_dphone_v1_provisioning]);
+  fileDesc("ChZkcGhvbmUvdjEvc3RhdHVzLnByb3RvEglkcGhvbmUudjEi+gIKClN5c3RlbUluZm8SHwoFbW9kZWwYASABKA4yEC5kcGhvbmUudjEuTW9kZWwSDwoHdmVyc2lvbhgCIAEoCRIlCgVwaGFzZRgDIAEoDjIWLmRwaG9uZS52MS5TeXN0ZW1QaGFzZRILCgNtYWMYBCABKAkSEAoIaG9zdG5hbWUYBSABKAkSEwoLdGltZV9zeW5jZWQYBiABKAgSEAoIdGltZXpvbmUYByABKAkSGgoSbGFzdF9yZWJvb3RfcmVhc29uGAggASgJEhEKCXNpbXVsYXRlZBgKIAEoCBIVCg1tZW1fdG90YWxfa2liGAsgASgNEhMKC3VwdGltZV9zZWNzGAwgASgEEhEKCXVuaXhfdGltZRgNIAEoBBIdCgRza2luGA4gASgOMg8uZHBob25lLnYxLlNraW4SEgoKdXNlcl9hZ2VudBgPIAEoCRIVCg1oYXNfYmx1ZXRvb3RoGBAgASgIEhUKDWhhc19leHBhbnNpb24YESABKAgicQoPU3Vic3lzdGVtSGVhbHRoEicKCXN1YnN5c3RlbRgBIAEoDjIULmRwaG9uZS52MS5TdWJzeXN0ZW0SJQoFc3RhdGUYAiABKA4yFi5kcGhvbmUudjEuSGVhbHRoU3RhdGUSDgoGZGV0YWlsGAMgASgJIp8DCg5TdGF0dXNTbmFwc2hvdBIlCgZzeXN0ZW0YASABKAsyFS5kcGhvbmUudjEuU3lzdGVtSW5mbxIpCgduZXR3b3JrGAIgASgLMhguZHBob25lLnYxLk5ldHdvcmtTdGF0dXMSMwoMcHJvdmlzaW9uaW5nGAMgASgLMh0uZHBob25lLnYxLlByb3Zpc2lvbmluZ1N0YXR1cxIqCghhY2NvdW50cxgEIAMoCzIYLmRwaG9uZS52MS5BY2NvdW50U3RhdHVzEicKBWNhbGxzGAUgASgLMhguZHBob25lLnYxLkNhbGxzU25hcHNob3QSKwoIZmlybXdhcmUYBiABKAsyGS5kcGhvbmUudjEuRmlybXdhcmVTdGF0dXMSKgoGaGVhbHRoGAcgAygLMhouZHBob25lLnYxLlN1YnN5c3RlbUhlYWx0aBIPCgdoZWFsdGh5GAggASgIEhkKEWNvbmZpZ19nZW5lcmF0aW9uGAkgASgEEhYKDnJlc3RhcnRfbmVlZGVkGAogASgIEhQKDGNvbmZpZ19lcnJvchgLIAEoCSISChBHZXRTdGF0dXNSZXF1ZXN0Ij4KEUdldFN0YXR1c1Jlc3BvbnNlEikKBnN0YXR1cxgBIAEoCzIZLmRwaG9uZS52MS5TdGF0dXNTbmFwc2hvdCIUChJXYXRjaFN0YXR1c1JlcXVlc3QiQAoTV2F0Y2hTdGF0dXNSZXNwb25zZRIpCgZzdGF0dXMYASABKAsyGS5kcGhvbmUudjEuU3RhdHVzU25hcHNob3Qq2QEKC1N5c3RlbVBoYXNlEhwKGFNZU1RFTV9QSEFTRV9VTlNQRUNJRklFRBAAEhkKFVNZU1RFTV9QSEFTRV9TVEFSVElORxABEh0KGVNZU1RFTV9QSEFTRV9ORVRXT1JLX1dBSVQQAhIdChlTWVNURU1fUEhBU0VfUFJPVklTSU9OSU5HEAMSGAoUU1lTVEVNX1BIQVNFX1JVTk5JTkcQBBIZChVTWVNURU1fUEhBU0VfUkVDT1ZFUlkQBRIeChpTWVNURU1fUEhBU0VfU0hVVFRJTkdfRE9XThAGKqkBCgtIZWFsdGhTdGF0ZRIcChhIRUFMVEhfU1RBVEVfVU5TUEVDSUZJRUQQABIYChRIRUFMVEhfU1RBVEVfU1RPUFBFRBABEhkKFUhFQUxUSF9TVEFURV9TVEFSVElORxACEhMKD0hFQUxUSF9TVEFURV9PSxADEhkKFUhFQUxUSF9TVEFURV9ERUdSQURFRBAEEhcKE0hFQUxUSF9TVEFURV9GQUlMRUQQBSqBAgoJU3Vic3lzdGVtEhkKFVNVQlNZU1RFTV9VTlNQRUNJRklFRBAAEhIKDlNVQlNZU1RFTV9DT1JFEAESFAoQU1VCU1lTVEVNX0NPTkZJRxACEhEKDVNVQlNZU1RFTV9ORVQQAxIRCg1TVUJTWVNURU1fU0lQEAQSEwoPU1VCU1lTVEVNX01FRElBEAUSEgoOU1VCU1lTVEVNX0RQTUEQBhIQCgxTVUJTWVNURU1fVUkQBxISCg5TVUJTWVNURU1fQVBQUxAIEhEKDVNVQlNZU1RFTV9XRUIQCRIRCg1TVUJTWVNURU1fU1NIEAoSFAoQU1VCU1lTVEVNX1VQREFURRALMqcBCg1TdGF0dXNTZXJ2aWNlEkYKCUdldFN0YXR1cxIbLmRwaG9uZS52MS5HZXRTdGF0dXNSZXF1ZXN0GhwuZHBob25lLnYxLkdldFN0YXR1c1Jlc3BvbnNlEk4KC1dhdGNoU3RhdHVzEh0uZHBob25lLnYxLldhdGNoU3RhdHVzUmVxdWVzdBoeLmRwaG9uZS52MS5XYXRjaFN0YXR1c1Jlc3BvbnNlMAFiBnByb3RvMw", [file_dphone_v1_accounts, file_dphone_v1_calls, file_dphone_v1_firmware, file_dphone_v1_model, file_dphone_v1_network, file_dphone_v1_provisioning]);
 
 /**
  * @generated from message dphone.v1.SystemInfo
  */
 export type SystemInfo = Message<"dphone.v1.SystemInfo"> & {
   /**
-   * @generated from field: string model = 1;
+   * @generated from field: dphone.v1.Model model = 1;
    */
-  model: string;
+  model: Model;
 
   /**
    * "3.0.0"
@@ -89,11 +91,9 @@ export type SystemInfo = Message<"dphone.v1.SystemInfo"> & {
   unixTime: bigint;
 
   /**
-   * "small_gray", "large_gray", or "color".
-   *
-   * @generated from field: string skin = 14;
+   * @generated from field: dphone.v1.Skin skin = 14;
    */
-  skin: string;
+  skin: Skin;
 
   /**
    * @generated from field: string user_agent = 15;
@@ -127,9 +127,9 @@ export const SystemInfoSchema: GenMessage<SystemInfo> = /*@__PURE__*/
  */
 export type SubsystemHealth = Message<"dphone.v1.SubsystemHealth"> & {
   /**
-   * @generated from field: string subsystem = 1;
+   * @generated from field: dphone.v1.Subsystem subsystem = 1;
    */
-  subsystem: string;
+  subsystem: Subsystem;
 
   /**
    * @generated from field: dphone.v1.HealthState state = 2;
@@ -362,6 +362,91 @@ export enum HealthState {
  */
 export const HealthStateSchema: GenEnum<HealthState> = /*@__PURE__*/
   enumDesc(file_dphone_v1_status, 1);
+
+/**
+ * A subsystem of the phone's main program.
+ *
+ * @generated from enum dphone.v1.Subsystem
+ */
+export enum Subsystem {
+  /**
+   * @generated from enum value: SUBSYSTEM_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SUBSYSTEM_CORE = 1;
+   */
+  CORE = 1,
+
+  /**
+   * The configuration.
+   *
+   * @generated from enum value: SUBSYSTEM_CONFIG = 2;
+   */
+  CONFIG = 2,
+
+  /**
+   * The network.
+   *
+   * @generated from enum value: SUBSYSTEM_NET = 3;
+   */
+  NET = 3,
+
+  /**
+   * @generated from enum value: SUBSYSTEM_SIP = 4;
+   */
+  SIP = 4,
+
+  /**
+   * @generated from enum value: SUBSYSTEM_MEDIA = 5;
+   */
+  MEDIA = 5,
+
+  /**
+   * Provisioning.
+   *
+   * @generated from enum value: SUBSYSTEM_DPMA = 6;
+   */
+  DPMA = 6,
+
+  /**
+   * The phone's user interface.
+   *
+   * @generated from enum value: SUBSYSTEM_UI = 7;
+   */
+  UI = 7,
+
+  /**
+   * @generated from enum value: SUBSYSTEM_APPS = 8;
+   */
+  APPS = 8,
+
+  /**
+   * The web interface.
+   *
+   * @generated from enum value: SUBSYSTEM_WEB = 9;
+   */
+  WEB = 9,
+
+  /**
+   * @generated from enum value: SUBSYSTEM_SSH = 10;
+   */
+  SSH = 10,
+
+  /**
+   * Firmware updates.
+   *
+   * @generated from enum value: SUBSYSTEM_UPDATE = 11;
+   */
+  UPDATE = 11,
+}
+
+/**
+ * Describes the enum dphone.v1.Subsystem.
+ */
+export const SubsystemSchema: GenEnum<Subsystem> = /*@__PURE__*/
+  enumDesc(file_dphone_v1_status, 2);
 
 /**
  * @generated from service dphone.v1.StatusService

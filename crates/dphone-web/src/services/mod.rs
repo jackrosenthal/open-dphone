@@ -364,7 +364,7 @@ pub(crate) fn uploaded_firmware(app: &App, id: &str, size: u64, info: &FirmwareI
         upload_id: id.to_owned(),
         size,
         version: info.version.clone(),
-        model: info.model.clone(),
+        model: info.model.parse().map(crate::convert::model).unwrap_or_default().into(),
         is_stock: info.is_stock,
         model_matches: info.model.is_empty() || info.model.eq_ignore_ascii_case(model.name()),
     }
