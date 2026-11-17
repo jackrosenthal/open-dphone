@@ -194,7 +194,12 @@ fn a_factory_reset_from_the_menu_leads_to_the_server_menu() {
     };
     // A phone a server provisioned: the saved server (nothing answers
     // there), the configuration it sent with an account, the phone's own
-    // settings, and state of ours under open/.
+    // settings, and state of ours under open/.  The account shows once the
+    // SIP stack has bound its port, so the phone has a SIP port of its own:
+    // 5060 may be held by the other tests of this file, which run at the
+    // same time, or by a SIP server on the machine.
+    let sip_port = std::net::UdpSocket::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    put("ui-config.xml", &format!("<config>\n    <setting id=\"transport_udp_port\" value=\"{sip_port}\" />\n</config>\n"));
     put("configurator.xml", "<config>\n    <setting id=\"config_server_url\" value=\"sip:proxy@127.0.0.1:9\" />\n</config>\n");
     put(
         "fetched-config.xml",
