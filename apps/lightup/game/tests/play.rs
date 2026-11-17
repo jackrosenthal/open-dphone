@@ -267,7 +267,9 @@ fn auto_does_what_the_numbers_settle_in_one_pass() {
     let before = game.clone();
     assert!(game.auto());
     // Marks beside the 0 and beside the 1 that has its light, and a
-    // light below the 2, which has two cells for its two lights.
+    // light below the 2, which has two cells for its two lights.  The
+    // cell between the 0 and the 2, which the one wants marked and the
+    // other lit, is left alone.  Nothing beside the 3.
     assert_eq!(
         game.grid().to_text(),
         "x0x..#.\n\

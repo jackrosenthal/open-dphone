@@ -330,9 +330,10 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     // The puzzle is the one the seed gives, and it is written down.
     let puzzle = native(7, Difficulty::Easy, 11);
     assert_eq!(parse(&file(&r)), (puzzle.clone(), (0, 0)));
-    // A canvas for each row and one for the cursor.
+    // A canvas for each row and one for the cursor, each drawn once.
     let mut game = Game::new(puzzle.clone());
     assert_eq!(drawn(&r), expected(Model::D60, &game));
+    assert_eq!(r.ui.draw_count(APP), 9);
     let bounds: Vec<_> = r.ui.drawings(APP).into_iter().map(|d| d.0).collect();
     assert_eq!(
         (bounds[0].width, bounds[0].height, bounds[1].y - bounds[0].y),
@@ -343,7 +344,9 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
         (bounds[0].x, 239, 239)
     );
 
-    // The arrows and 2, 4, 5, 6 move the cursor.
+    // The arrows and 2, 4, 5, 6 move the cursor; only the cursor is
+    // drawn again.  At an edge nothing happens and nothing is drawn.
+    let mut draws = 9;
     for (key, dx, dy) in [
         (Key::Right, 1, 0),
         (Key::Digit(6), 1, 0),
@@ -359,7 +362,8 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
         (Key::Digit(2), 0, -1),
     ] {
         r.key(APP, key);
-        game.move_cursor(dx, dy);
+        draws += game.move_cursor(dx, dy) as u32;
+        assert_eq!(r.ui.draw_count(APP), draws, "{key:?}");
         assert_eq!(
             state(&mut r),
             (game.grid().clone(), game.cursor()),
@@ -367,13 +371,19 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
         );
         assert_eq!(drawn(&r), expected(Model::D60, &game), "{key:?}");
     }
+    assert_eq!(draws, 9 + 8);
     assert_eq!(game.cursor(), (0, 0));
 
     // 1 and Select put a light, or take it off a cell that has one; 3
     // puts a no-light mark, or takes it off; each puts its own in place
-    // of the other's.  On the first two white cells, in turn:
+    // of the other's.  7, 9, 0, star, and pound do nothing.  On every
+    // cell of the first two rows, in turn:
+    // black cells take nothing.
     let white: Vec<usize> = (0..puzzle.cells())
         .filter(|i| !puzzle.is_black(*i))
+        .collect();
+    let black: Vec<usize> = (0..puzzle.cells())
+        .filter(|i| puzzle.is_black(*i))
         .collect();
     let at = |r: &mut Rig, game: &mut Game, i: usize| {
         let to = (i % 7, i / 7);
@@ -381,28 +391,46 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
         game.set_cursor(to.0, to.1);
     };
     let acts = [
-        (Key::Digit(1), Act::Light),
-        (Key::Digit(1), Act::Light),
-        (Key::Digit(3), Act::Mark),
-        (Key::Digit(3), Act::Mark),
-        (Key::Select, Act::Light),
-        (Key::Digit(3), Act::Mark),
-        (Key::Digit(1), Act::Light),
-        (Key::Select, Act::Light),
-        (Key::Select, Act::Light),
+        (Key::Digit(1), Some(Act::Light)),
+        (Key::Digit(1), Some(Act::Light)),
+        (Key::Digit(3), Some(Act::Mark)),
+        (Key::Digit(3), Some(Act::Mark)),
+        (Key::Select, Some(Act::Light)),
+        (Key::Digit(3), Some(Act::Mark)),
+        (Key::Digit(1), Some(Act::Light)),
+        (Key::Select, Some(Act::Light)),
+        (Key::Digit(7), None),
+        (Key::Digit(9), None),
+        (Key::Digit(0), None),
+        (Key::Star, None),
+        (Key::Pound, None),
+        (Key::Select, Some(Act::Light)),
     ];
-    for &cell in [white[0], white[1]].iter() {
+    for &cell in [white[0], black[0], white[1], black[1]].iter() {
         at(&mut r, &mut game, cell);
         for (key, act) in acts {
+            let before = (r.ui.draw_count(APP), game.clone());
             r.key(APP, key);
-            game.toggle(act);
+            let changed = act.is_some_and(|a| game.toggle(a));
+            assert_eq!(changed, game != before.1);
             assert_eq!(
                 state(&mut r),
                 (game.grid().clone(), game.cursor()),
                 "{key:?} at {cell}"
             );
             assert_eq!(drawn(&r), expected(Model::D60, &game), "{key:?} at {cell}");
+            // Only the rows that changed were drawn again, and not the
+            // cursor.
+            let rows = expected(Model::D60, &game)
+                .iter()
+                .zip(expected(Model::D60, &before.1))
+                .filter(|(now, was)| *now != was)
+                .count() as u32;
+            assert_eq!(r.ui.draw_count(APP) - before.0, rows, "{key:?} at {cell}");
+            assert_eq!(rows > 0, changed);
+            assert!(rows <= 7);
         }
+        assert_eq!(puzzle.is_black(cell), !game.grid().has_light(cell));
     }
     assert!(!game.solved());
 
@@ -449,6 +477,22 @@ fn a_puzzle_from_new_to_solved_with_every_key() {
     assert!(game.grid().is_solved());
     assert_eq!(drawn(&r), expected(Model::D60, &game));
     assert_eq!(r.ui.softkeys(APP), ["New", "Help", "Exit", "Scores"]);
+    // The keys do nothing any more.
+    let draws = r.ui.draw_count(APP);
+    keys(
+        &mut r,
+        &[
+            Key::Left,
+            Key::Digit(1),
+            Key::Digit(3),
+            Key::Digit(5),
+            Key::Select,
+            Key::Digit(8),
+        ],
+    );
+    assert_eq!(r.ui.draw_count(APP), draws);
+    assert_eq!(parse(&file(&r)).0, *game.grid());
+    assert_eq!(r.ui.texts(APP), texts);
 
     // New: the list again, at the size and difficulty played, and Back
     // (the softkey or Cancel) is the solved puzzle as it was.
@@ -571,6 +615,8 @@ fn the_puzzle_is_kept_and_a_call_does_not_end_it() {
             .parse::<u64>()
             .unwrap()
     };
+    // Not written at every key.
+    assert_eq!(file(&r), WRONG);
 
     // A call's screen goes over the puzzle.  The puzzle, the marks, the
     // cursor, and the time so far are written down, and all is there
@@ -620,6 +666,7 @@ fn the_puzzle_is_kept_and_a_call_does_not_end_it() {
     .unwrap();
     r.launch(APP);
     assert_eq!(r.ui.texts(APP), ["Solved!", "Time 1:02:05"]);
+    assert!(drawn(&r)[10].is_empty());
     r.softkey(APP, "Exit");
 
     // A puzzle file that makes no sense is no puzzle: the list, at the
@@ -655,6 +702,11 @@ fn undo_takes_changes_back_one_by_one_and_is_kept() {
     let mut r = rig_with(Model::D60, WRONG);
     r.launch(APP);
     assert_eq!(r.ui.softkeys(APP), SOFTKEYS);
+    // Nothing to take back: nothing happens, and nothing is drawn.
+    let draws = r.ui.draw_count(APP);
+    r.softkey(APP, "Undo");
+    assert_eq!(r.ui.draw_count(APP), draws);
+    assert_eq!(drawn(&r), expected(Model::D60, &game));
 
     // Clearing the light under the cursor takes three errors off (the
     // lights at the other end of its row and below it are no longer
@@ -739,7 +791,22 @@ fn undo_takes_changes_back_one_by_one_and_is_kept() {
         assert_eq!(drawn(&r), expected(Model::D60, &game));
     }
     assert_eq!(game.grid(), start.grid());
+    let draws = r.ui.draw_count(APP);
+    r.softkey(APP, "Undo");
+    assert_eq!(r.ui.draw_count(APP), draws, "nothing left to take back");
     assert_eq!(state(&mut r), (start.grid().clone(), (4, 3)));
+
+    // Changes kept in a file that makes no sense are no changes.
+    r.key(APP, Key::Cancel);
+    std::fs::write(
+        storage(&r.nvdata).join("puzzle"),
+        WRONG.replace("cursor=3,1\n", "cursor=3,1\nundo=7.999L\n"),
+    )
+    .unwrap();
+    r.launch(APP);
+    let draws = r.ui.draw_count(APP);
+    r.softkey(APP, "Undo");
+    assert_eq!(r.ui.draw_count(APP), draws);
 }
 
 #[test]
@@ -764,6 +831,11 @@ fn key_8_does_what_the_numbers_settle_and_undo_takes_it_back_at_once() {
         assert_eq!(r.ui.softkeys(APP), SOFTKEYS);
         let undo = format!("\nundo={}\n", game.changes_text());
         assert!(undo.matches('+').count() >= 4 && file(&r).contains(&undo));
+        // Once more: there is nothing new to do, and nothing is drawn.
+        let draws = r.ui.draw_count(APP);
+        r.key(APP, Key::Digit(8));
+        assert!(!game.auto());
+        assert_eq!(r.ui.draw_count(APP), draws, "{model:?}");
         // A light by hand, and Undo twice: the light, and then all that
         // the key did, though the app was left and opened in between.
         keys(&mut r, &[Key::Right, Key::Digit(1)]);
@@ -839,6 +911,12 @@ fn help_shows_how_to_play_and_leaves_the_puzzle_as_it_was() {
         page(&r, 3);
         r.key(APP, Key::Up);
         page(&r, 2);
+        // The keys of the puzzle do nothing here.
+        keys(
+            &mut r,
+            &[Key::Digit(5), Key::Digit(1), Key::Digit(3), Key::Digit(6)],
+        );
+        page(&r, 2);
         r.softkey(APP, "Back");
         assert_eq!(beside(&r), PLAYING);
         assert_eq!(r.ui.softkeys(APP), SOFTKEYS);
@@ -876,7 +954,7 @@ fn help_shows_how_to_play_and_leaves_the_puzzle_as_it_was() {
 }
 
 #[test]
-fn generating_goes_on_in_turns_and_after_a_call() {
+fn generating_goes_on_in_turns_and_waits_while_a_call_has_the_screen() {
     let mut r = rig_with(Model::D60, WRONG);
     r.launch(APP);
     r.softkey(APP, "New");
@@ -892,10 +970,18 @@ fn generating_goes_on_in_turns_and_after_a_call() {
     choose_from_play(&mut r, 14, Difficulty::Hard);
     assert_eq!(r.ui.texts(APP), ["14x14 Hard", "Generating\u{2026}"]);
     assert_eq!(r.ui.softkeys(APP), ["New", "Exit"]);
-    // Something else takes the screen for a while; the work goes on
-    // after it.
+    assert!(r.ui.drawings(APP).is_empty());
+    // Something else takes the screen: the work stops, and nothing
+    // arrives however long that lasts.
     r.ui.cover(APP, true);
     r.settle();
+    assert_eq!(r.mgr.pump(), None, "no turn of the work is due");
+    assert!(generating(&r));
+    assert_eq!(
+        parse(&file(&r)).0,
+        native(7, Difficulty::Hard, 1),
+        "the puzzle before is still the one kept"
+    );
     r.ui.cover(APP, false);
     r.settle();
     wait(&mut r);
@@ -905,7 +991,7 @@ fn generating_goes_on_in_turns_and_after_a_call() {
     assert_eq!(parse(&file(&r)), (large.clone(), (0, 0)));
 
     // New while generating is the list again; Back from there is the
-    // puzzle there was.
+    // puzzle there was, untouched.
     r.key(APP, Key::Digit(1));
     let played = state(&mut r);
     choose_from_play(&mut r, 14, Difficulty::Hard);
@@ -913,6 +999,12 @@ fn generating_goes_on_in_turns_and_after_a_call() {
     r.softkey(APP, "New");
     assert_eq!(r.ui.texts(APP), ["New puzzle"]);
     assert_eq!(r.ui.softkeys(APP), ["Play", "Help", "Back", "Scores"]);
+    assert_eq!(r.mgr.pump(), None, "no turn of the abandoned work is due");
+    assert_eq!(
+        r.ui.texts(APP),
+        ["New puzzle"],
+        "the abandoned puzzle does not turn up"
+    );
     r.softkey(APP, "Back");
     assert_eq!(beside(&r), PLAYING);
     assert_eq!(state(&mut r), played);
@@ -1368,9 +1460,17 @@ fn pictures(model: Model) -> [Phone; 3] {
 }
 
 /// The display is sent something once for a key that changes something,
-/// and only the part that changed.  `pitch` is the size of a cell.
+/// and only the part that changed; nothing for a key that changes
+/// nothing.  `pitch` is the size of a cell.
 fn only_what_changed_is_sent(fresh: &mut Phone, pitch: usize) {
     let model = fresh.model;
+    // The cursor at an edge.
+    fresh.steady();
+    assert_eq!(
+        fresh.tap(&[Key::Left, Key::Up, Key::Digit(4), Key::Digit(2)]),
+        0,
+        "{model:?}"
+    );
     // One step: the two cells, and the lines around them.
     fresh.steady();
     let before = fresh.pixels().0;
@@ -1402,19 +1502,29 @@ fn only_what_changed_is_sent(fresh: &mut Phone, pitch: usize) {
         "{model:?}: {differ} pixels for {lit} cells"
     );
     // Once more, and with Select: the light goes, and is back.  A mark
-    // in its place, and the mark off: once each.
+    // in its place, and the mark off: once each.  The keys that do
+    // nothing: nothing.
     fresh.steady();
     assert_eq!(fresh.tap(&[Key::Digit(1), Key::Select]), 2, "{model:?}");
     assert_eq!(fresh.tap(&[Key::Digit(3)]), 1, "{model:?}");
     assert_eq!(fresh.tap(&[Key::Digit(3)]), 1, "{model:?}");
+    assert_eq!(
+        fresh.tap(&[Key::Digit(7), Key::Digit(9), Key::Digit(0)]),
+        0,
+        "{model:?}"
+    );
 }
 
 #[test]
 fn drawn_on_a_color_phone() {
     let [mut fresh, play, solved] = pictures(Model::D60);
-    // Lit cells are yellow, errors red, and the cursor blue.  All of the
-    // solved puzzle is lit.
+    // Lit cells are yellow, errors red, and the cursor blue.  Nothing is
+    // lit on the fresh puzzle, all of the solved one is, and that has no
+    // cursor and no red.
     let (yellow, red, blue, unlit) = (0xFFF070, 0xE02020, 0x1060F0, 0xC4C4C4);
+    // (But for the lit cell in the picture of the keys.)
+    assert!(fresh.count(yellow) > 0 && fresh.count(yellow) < 46 * 46);
+    assert_eq!(fresh.count(red), 0);
     assert!(fresh.count(unlit) > 100 * 16 * 16 && fresh.count(blue) > 4 * 17);
     assert!(play.count(yellow) > 30 * 16 * 16 && play.count(unlit) > 16 * 16);
     assert!(
@@ -1423,14 +1533,17 @@ fn drawn_on_a_color_phone() {
         play.count(red)
     );
     assert!(play.count(blue) > 4 * 17);
-    assert_eq!(solved.count(unlit), 0);
+    assert_eq!(
+        (solved.count(unlit), solved.count(red), solved.count(blue)),
+        (0, 0, 0)
+    );
     assert!(solved.count(yellow) > 100 * 16 * 16);
 
     only_what_changed_is_sent(&mut fresh, 17);
 
-    // A call comes in: its screen takes the display.  The puzzle waits,
-    // written down, and is on the display again, as it was, when the
-    // call is over.
+    // A call comes in: its screen takes the display, and the keys are
+    // the call's.  The puzzle waits, written down, and is on the display
+    // again, as it was, when the call is over.
     let mut p = play;
     p.tap(&[Key::Right, Key::Digit(3)]);
     p.steady();
@@ -1461,6 +1574,8 @@ fn drawn_on_a_color_phone() {
             .count()
             + 1
     );
+    p.tap(&[Key::Left, Key::Digit(4), Key::Digit(1), Key::Digit(5)]);
+    assert_eq!(p.file(), kept);
     p.store.update::<Calls, _>(|c| {
         c.calls.clear();
         c.focused = None;
@@ -1767,6 +1882,11 @@ fn a_solved_puzzles_time_is_on_every_phones_table_with_who_solved_it() {
     assert_eq!(table(&pbx, easy).rows()[0].when, T);
     let time = lightup_game::scores::clock(ms);
     assert_eq!(alice.ui.texts(APP), ["Solved!", &format!("Time {time}")]);
+    assert_eq!(waiting(&alice), "", "nothing waits");
+    // Only the table of that kind of puzzle was written.
+    for kind in Kind::all().filter(|k| *k != easy) {
+        assert!(table(&pbx, kind).rows().is_empty());
+    }
 
     // Bob's phone, with the table on its screen, is told, and shows it:
     // who, when, and the time.
@@ -1859,6 +1979,7 @@ fn a_solved_puzzles_time_is_on_every_phones_table_with_who_solved_it() {
         rows(&table(&pbx, easy)),
         [("101", "Alice", 83), ("102", "Bob", 125), ("101", "Alice", 300)]
     );
+    assert_eq!(waiting(&alice), "");
     alice.softkey(APP, "Exit");
     // And faster: the first row, and her others stay.
     put_puzzle(&alice, &almost(7, Difficulty::Easy, 8, 40_000));
@@ -1900,6 +2021,7 @@ fn a_solved_puzzles_time_is_on_every_phones_table_with_who_solved_it() {
         rows(&table(&pbx, Kind::new(10, Difficulty::Hard))),
         [("102", "Bob", 600)]
     );
+    assert_eq!(table(&pbx, easy).rows().len(), 4);
 }
 
 #[test]
@@ -1977,6 +2099,7 @@ fn two_phones_that_finish_at_once_are_both_on_the_table() {
     assert_eq!(writes.len(), 2, "one refused write and one over Bob's");
     assert_eq!(writes[0], Some(0));
     assert!(writes[1].is_some_and(|v| v > 0));
+    assert_eq!(waiting(&alice), "");
     alice.softkey(APP, "Scores");
     assert_eq!(listed(&alice).len(), 2);
 
@@ -2225,6 +2348,8 @@ fn a_time_set_out_of_reach_is_kept_and_written_when_the_store_is_in_reach() {
     assert!(lines[2].starts_with("10x10-easy 400"), "{kept}");
     alice.app_data.set_online(true);
     alice.settle();
+    assert_eq!(table(&pbx, easy).rows().len(), 2);
+    assert_eq!(waiting(&alice), kept);
     // When the app next starts, it writes them.
     alice.launch(APP);
     assert_eq!(

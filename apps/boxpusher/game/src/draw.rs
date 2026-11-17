@@ -525,4 +525,14 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn a_step_changes_only_the_pieces() {
+        let painter = Painter::new(14, Palette::color());
+        let mut game = sampler();
+        let (scenery, before) = (painter.scenery(game.level()), painter.pieces(&game));
+        game.undo();
+        assert_eq!(painter.scenery(game.level()), scenery);
+        assert_ne!(painter.pieces(&game), before);
+    }
 }

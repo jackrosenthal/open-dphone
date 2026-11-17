@@ -199,17 +199,22 @@ fn start_screen_flight_and_game_over() {
     // The whole display, and no softkeys.
     assert!(r.ui.full_screen(APP));
     assert!(r.ui.softkeys(APP).is_empty());
-    // One canvas over the whole window.
-    let bounds = r.ui.drawings(APP).remove(0).0;
+    // One canvas over the whole window, drawn once; nothing ticks on the
+    // start screen.
+    let (bounds, ops) = r.ui.drawings(APP).remove(0);
     assert_eq!(
         (bounds.x, bounds.y, bounds.width, bounds.height),
         (0, 0, 480, 272)
     );
+    assert!(openings(&ops, m).is_empty());
+    assert_eq!(r.ui.draw_count(APP), 1);
+    assert_eq!(r.mgr.pump(), None, "no timer on the start screen");
 
     // Select starts a game with a flap: the sparrow is where it flies, in
     // the middle of the field, and there is a score.
     r.key(APP, Key::Select);
     assert!(r.ui.texts(APP).is_empty());
+    assert!(r.ui.softkeys(APP).is_empty());
     let ops = drawing(&r);
     assert_eq!(bird_x(&ops), m.bird_x);
     let y0 = bird_y(&ops);
@@ -245,7 +250,7 @@ fn start_screen_flight_and_game_over() {
     next_tick(&mut r);
     assert!(bird_y(&drawing(&r)) < before);
 
-    // Left alone it hits the floor: the game is over.
+    // Left alone it hits the floor: the game is over and nothing ticks.
     let until = Instant::now() + Duration::from_secs(10);
     while !game_over(&r) {
         assert!(Instant::now() < until);
@@ -255,9 +260,14 @@ fn start_screen_flight_and_game_over() {
         r.ui.texts(APP),
         ["Game over", "Score 0   Best 0", BOARD_HINT]
     );
+    assert!(r.ui.softkeys(APP).is_empty());
     assert_eq!(bird_y(&drawing(&r)), m.field_h - m.bird_h);
+    assert_eq!(r.mgr.pump(), None, "no timer after the game");
 
-    // A key a moment after the crash is a new game.
+    // A key right after the crash is the last flap of the lost game, not
+    // a new game; a moment later it is.
+    r.key(APP, Key::Select);
+    assert!(game_over(&r));
     std::thread::sleep(Duration::from_millis(750));
     r.key(APP, Key::Select);
     assert!(!game_over(&r));
@@ -269,6 +279,7 @@ fn start_screen_flight_and_game_over() {
     r.key(APP, Key::Cancel);
     assert!(!r.mgr.is_running(APP));
     assert_eq!(r.ui.top(), None);
+    assert_eq!(r.mgr.pump(), None);
 }
 
 #[test]
@@ -283,6 +294,7 @@ fn a_covered_game_stops() {
     r.ui.cover(APP, true);
     r.settle();
     assert!(!r.mgr.is_running(APP));
+    assert_eq!(r.mgr.pump(), None, "its timer is gone");
 }
 
 #[test]
@@ -314,6 +326,14 @@ fn every_keypad_key_plays_and_cancel_leaves() {
         // second flap the sparrow is higher than after one.
         let twice = after(&mut r, key, Some(key));
         assert!(twice < once, "{key:?}: {twice} against {once}");
+    }
+    // The other keys are not the game's: nothing starts.  (Down and Up
+    // show the leaderboard and take it away.)
+    r.launch(APP);
+    for key in [Key::Left, Key::Right, Key::Soft(1), Key::Soft(4)] {
+        r.key(APP, key);
+        assert!(r.ui.shows(APP, "Desk Sparrow"), "{key:?}");
+        assert_eq!(r.mgr.pump(), None, "{key:?}");
     }
 }
 
@@ -376,6 +396,7 @@ fn points_the_best_score_and_the_seed() {
         }
         ahead_before = ahead;
     }
+    assert!(!best.exists(), "nothing is written during a game");
     while !game_over(&r) {
         next_tick(&mut r);
     }
@@ -385,8 +406,8 @@ fn points_the_best_score_and_the_seed() {
     );
     assert_eq!(file(&r, "best").as_deref(), Some("2"));
 
-    // A new run of the app shows the best score of its storage beside a
-    // worse game's.
+    // A worse game leaves the best score alone, in a new run of the app
+    // too.
     r.key(APP, Key::Cancel);
     std::fs::write(&best, "17").unwrap();
     r.launch(APP);
@@ -398,6 +419,7 @@ fn points_the_best_score_and_the_seed() {
         r.ui.texts(APP),
         ["Game over", "Score 0   Best 17", BOARD_HINT]
     );
+    assert_eq!(file(&r, "best").as_deref(), Some("17"));
 }
 
 #[test]
@@ -821,10 +843,14 @@ fn play_on(model: Model) -> Phone {
             .all(|p| *p == floor)
     );
 
-    // A digit reaches the game through the phone's keys, and starts it.
+    // The softkey keys do nothing now.  A digit reaches the game through
+    // the phone's keys, and starts it; it is no number to dial.
+    p.tap(Key::Soft(1));
+    assert_eq!(p.mgr.pump(), None);
     p.tap(Key::Digit(5));
     assert!(p.mgr.pump().is_some(), "the game's timer runs");
     assert_eq!(p.ui.screen_name(), "app:desksparrow");
+    assert_eq!(p.store.get::<dphone_state::Ui>().dial_buffer, "");
     let mut player = Player::new(m);
     let mut shot = false;
     let mut score = 0;
@@ -883,6 +909,7 @@ fn drawn_on_a_color_phone() {
     p.tap(Key::Cancel);
     assert_eq!(p.ui.screen_name(), "idle");
     assert!(!p.mgr.is_running(APP));
+    assert_eq!(p.store.get::<dphone_state::Ui>().dial_buffer, "");
 
     // A call comes in: its screen takes the display and the game stops.
     p.mgr.launch(APP).unwrap();
@@ -904,6 +931,7 @@ fn drawn_on_a_color_phone() {
     p.settle();
     assert_eq!(p.ui.screen_name(), "call");
     assert!(!p.mgr.is_running(APP));
+    assert_eq!(p.mgr.pump(), None, "nothing of the game still ticks");
 }
 
 #[test]
@@ -1063,7 +1091,9 @@ fn down_shows_the_leaderboard_between_games() {
     let start = picture(&r);
     r.key(APP, Key::Down);
     assert_eq!(r.ui.texts(APP), ["Leaderboard", "No scores yet."]);
+    assert!(r.ui.softkeys(APP).is_empty());
     assert!(r.ui.full_screen(APP));
+    assert_eq!(r.mgr.pump(), None, "nothing ticks");
     // A bigger plate, with the sparrow on it.
     assert_ne!(picture(&r), start);
     // Down or Up: the start screen again.
@@ -1075,15 +1105,23 @@ fn down_shows_the_leaderboard_between_games() {
     r.key(APP, Key::Up);
     assert_eq!(r.ui.texts(APP), START);
 
-    // Any key of the game starts one from the leaderboard too.
+    // Any key of the game starts one from the leaderboard too, and in a
+    // game Down and Up do nothing.
     r.key(APP, Key::Down);
     r.key(APP, Key::Digit(8));
     assert!(r.ui.texts(APP).is_empty());
     assert!(r.mgr.pump().is_some());
+    next_tick(&mut r);
+    let draws = r.ui.draw_count(APP);
+    r.key(APP, Key::Down);
+    r.key(APP, Key::Up);
+    assert!(r.ui.texts(APP).is_empty());
+    assert_eq!(r.ui.draw_count(APP), draws);
     while !game_over(&r) {
         next_tick(&mut r);
     }
     // After the game: the leaderboard over the end of the game, and back.
+    // A score of 0 is not on it.
     r.key(APP, Key::Down);
     assert_eq!(r.ui.texts(APP), ["Leaderboard", "No scores yet."]);
     r.key(APP, Key::Down);
@@ -1091,6 +1129,7 @@ fn down_shows_the_leaderboard_between_games() {
         r.ui.texts(APP),
         ["Game over", "Score 0   Best 0", BOARD_HINT]
     );
+    assert_eq!(on_pbx(&r.app_data), None);
     // Cancel leaves from the leaderboard as from anywhere.
     r.key(APP, Key::Up);
     r.key(APP, Key::Cancel);
@@ -1110,10 +1149,12 @@ fn a_score_is_on_every_phones_leaderboard_with_who_set_it() {
     alice.launch(APP);
     assert_eq!(play(&mut alice, 1), 1);
     assert_eq!(on_pbx(&pbx).as_deref(), Some("1\t101\tAlice\n"));
+    assert_eq!(waiting(&alice).as_deref(), Some(""), "nothing waits");
     // Bob's phone is told, and shows it with the date and time of her
-    // game.
+    // game; the row is not his.
     bob.settle();
     assert_eq!(bob.ui.texts(APP), ["Leaderboard", "1. Alice", T1.1, "1"]);
+    assert!(bob.ui.highlighted(APP).is_empty());
     // Alice's shows the same, with her row marked.
     alice.key(APP, Key::Down);
     assert_eq!(alice.ui.texts(APP), ["Leaderboard", "1. Alice", T1.1, "1"]);
@@ -1184,6 +1225,7 @@ fn a_score_is_on_every_phones_leaderboard_with_who_set_it() {
     carol.launch(APP);
     carol.key(APP, Key::Down);
     assert_eq!(carol.ui.texts(APP), all);
+    assert!(carol.ui.highlighted(APP).is_empty());
 }
 
 #[test]
@@ -1259,6 +1301,7 @@ fn two_who_finish_at_once_are_both_on_the_leaderboard() {
         alice.ui.texts(APP),
         ["Leaderboard", "1. Bob", T0.1, "3", "2. Alice", T1.1, "1"]
     );
+    assert_eq!(waiting(&alice).as_deref(), Some(""));
 }
 
 #[test]

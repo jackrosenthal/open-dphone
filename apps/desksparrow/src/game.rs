@@ -365,6 +365,11 @@ mod tests {
             }
             assert_eq!(g.bird_y(), r.height - r.bird_h);
             assert_eq!(g.score, 0);
+            // Nothing moves after the end.
+            let end = g.clone();
+            g.flap();
+            g.step();
+            assert_eq!(g, end);
         }
     }
 
