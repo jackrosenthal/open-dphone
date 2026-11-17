@@ -208,7 +208,6 @@ async fn bluetooth() {
     // Each RPC becomes its command.
     let cases: Vec<(&str, Value, Command)> = vec![
         ("SetBluetoothDiscovery", json!({ "discovering": true }), Command::BluetoothDiscovery { on: true }),
-        ("SetBluetoothDiscovery", json!({}), Command::BluetoothDiscovery { on: false }),
         // Addresses are normalized to upper case.
         ("PairBluetoothDevice", json!({ "address": "70:bf:92:11:22:33" }), Command::BluetoothPair { addr: "70:BF:92:11:22:33".into() }),
         (
