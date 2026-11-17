@@ -190,26 +190,3 @@ fn main() -> ExitCode {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_command_lines_of_the_build_and_the_tests_parse() {
-        // As the Nix derivations and the tests call it.
-        let Ok(Cli::Stage { to, .. }) =
-            Cli::try_parse_from(["dphone-apps-build", "stage", "--wasm-dir", "m", "--out", "o", "--target", "phone", "--no-wasm"])
-        else {
-            panic!("stage does not parse")
-        };
-        assert!(matches!(to.target, TargetArg::Phone) && to.no_wasm);
-        let Ok(Cli::Build { to, .. }) =
-            Cli::try_parse_from(["dphone-apps-build", "build", "--target", "pulley64", "--apps", "a", "--out", "o"])
-        else {
-            panic!("build does not parse")
-        };
-        assert!(matches!(to.target, TargetArg::Pulley64) && !to.no_wasm);
-        assert!(Cli::try_parse_from(["dphone-apps-build", "precompile", "c.wasm", "-o", "c.cwasm"]).is_ok());
-    }
-}

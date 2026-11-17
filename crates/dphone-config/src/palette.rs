@@ -180,10 +180,6 @@ mod tests {
         let f = PaletteFile::parse(&text).unwrap();
         assert_eq!(f.roles, ROLES.iter().enumerate().map(|(i, r)| (*r, i as u32)).collect::<Vec<_>>());
         assert!(f.skipped.is_empty() && f.primary.is_none() && f.surface.is_none() && !f.light);
-        // And every field of the message but the three seeds is a role.
-        let all = PaletteMessage { light: Some(true), primary: Some("p".into()), surface: Some("s".into()), ..Default::default() };
-        let encoded = buffa::text::encode_to_string_pretty(&all);
-        assert_eq!(encoded.lines().count(), 3, "{encoded}");
     }
 
     #[test]

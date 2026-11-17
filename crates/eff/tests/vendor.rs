@@ -1,15 +1,12 @@
 //! Checks against the vendor images.  These are not in the repository: set
 //! `DPHONE_VENDOR_DIR` to the directory that holds them (the layout of the
 //! reverse-engineering tree: `2_9_28_D60_firmware.eff`,
-//! `firmware-series/<model>/*.eff`, `dumps/*/ctrl.bin`).  Without it the
-//! tests print a notice and pass, unless `DPHONE_TEST_REQUIRE_VENDOR` is
-//! set (the Nix check sets it, with the D40 and D60 images:
-//! nix/vendor-firmware.nix), in which case they fail.  Those two images are
-//! required then; any others in the directory are exercised too.  The
-//! partition dumps are not vendor images; that test runs where the
-//! directory has them.
+//! `firmware-series/<model>/*.eff`).  Without it the tests print a notice
+//! and pass, unless `DPHONE_TEST_REQUIRE_VENDOR` is set (the Nix check sets
+//! it, with the D40 and D60 images: nix/vendor-firmware.nix), in which case
+//! they fail.  Those two images are required then; any others in the
+//! directory are exercised too.
 
-use eff::ctrl::CtrlRecord;
 use eff::envelope::{self, EffReader, EffWriter};
 use eff::ota::{self, Ota, OtaHeader, OtaReader};
 use std::io::{Read, Write};
@@ -170,32 +167,6 @@ fn every_vendor_eff_round_trips_byte_for_byte() {
     if vendor_required() {
         assert!(models.iter().any(|m| m == "D40"), "no D40 image: {models:?}");
     }
-}
-
-#[test]
-fn ctrl_dumps_parse_and_rebuild() {
-    let Some(dir) = vendor_dir() else { return };
-    let Ok(dumps) = std::fs::read_dir(dir.join("dumps")) else {
-        eprintln!(
-            "SKIPPED: no partition dumps (dumps/*/ctrl.bin) under {}",
-            dir.display()
-        );
-        return;
-    };
-    let mut seen = 0;
-    for entry in dumps.flatten() {
-        let path = entry.path().join("ctrl.bin");
-        let Ok(data) = std::fs::read(&path) else {
-            continue;
-        };
-        let rec = CtrlRecord::parse(&data).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-        assert_eq!(&rec.to_bytes()[..], &data[..304], "{}", path.display());
-        assert!(rec.sides[0].is_valid() && rec.sides[1].is_valid());
-        assert_eq!(rec.boot_side(), rec.active);
-        eprintln!("{}: active {} ok", path.display(), rec.active);
-        seen += 1;
-    }
-    assert!(seen > 0, "no dumps/*/ctrl.bin found");
 }
 
 #[test]

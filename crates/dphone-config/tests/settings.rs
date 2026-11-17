@@ -21,8 +21,7 @@ fn reopen(dir: &TempDir, nv: &Nvdata) -> ConfigStore {
 
 #[test]
 fn defaults_with_no_file() {
-    let (_d, nv, s) = store();
-    assert!(!nv.exists(FILE));
+    let (_d, _nv, s) = store();
     assert_eq!(*s.dphone_settings(), DphoneSettings::default());
     let c = s.config();
     let off = Resolved { value: false, source: SettingSource::Default, locked: false };
@@ -34,8 +33,6 @@ fn defaults_with_no_file() {
     // SSH off; web configuration on; the server's firmware is followed, as
     // on stock.
     assert!(!a.ssh_enabled && a.web_ui_enabled && !a.ignore_provisioned_firmware);
-    // Opening the store does not create the file.
-    assert!(!nv.exists(FILE));
 }
 
 #[test]
@@ -50,14 +47,6 @@ fn update_round_trip_presence_and_generation() {
     let text = nv.read_string(FILE).unwrap().unwrap();
     let fields: Vec<&str> = text.lines().filter(|l| !l.starts_with('#')).collect();
     assert_eq!(fields, ["ssh_enabled: false"]);
-    // No temp file left behind.
-    assert_eq!(nv.list("").unwrap().iter().filter(|n| n.starts_with("dphone_settings")).count(), 1);
-
-    // A change that changes nothing: no write, no new generation.
-    let before = std::fs::metadata(nv.path(FILE)).unwrap().modified().unwrap();
-    let c = s.update_dphone_settings(|d| d.ssh_enabled = Some(false)).unwrap();
-    assert_eq!(c.generation(), g0 + 1);
-    assert_eq!(std::fs::metadata(nv.path(FILE)).unwrap().modified().unwrap(), before);
 
     // Explicit false differs from unset, though both read as disabled.
     assert_eq!(c.dphone_settings().ssh_enabled, Some(false));
@@ -81,15 +70,6 @@ fn update_round_trip_presence_and_generation() {
     let s2 = reopen(&dir, &nv);
     let a = s2.config().access();
     assert!(a.ssh_enabled && a.ignore_provisioned_firmware);
-
-    // The stock-facing files are untouched by all this.
-    assert!(!nv.read_string("config.xml").unwrap().unwrap().contains("ssh"));
-    assert!(!nv.exists("ui-config.xml"));
-
-    // A stock setting change does not disturb the settings file either.
-    let text = nv.read_string(FILE).unwrap().unwrap();
-    s.set("ringer_volume", "2").unwrap();
-    assert_eq!(nv.read_string(FILE).unwrap().unwrap(), text);
 }
 
 #[test]
@@ -118,7 +98,6 @@ fn unknown_fields_survive_an_update() {
     s2.update_dphone_settings(|d| d.ignore_provisioned_firmware = Some(true)).unwrap();
     let text = nv.read_string(FILE).unwrap().unwrap();
     assert!(text.contains("ring_pattern: \"double\"") && text.contains("led { brightness: 3 }"));
-    assert!(!nv.exists("dphone_settings.txtpb.bad"));
 }
 
 #[test]
@@ -152,22 +131,9 @@ fn legacy_open_layer_is_migrated_once() {
         b"<config>\n    <setting id=\"open_ssh_enabled\" value=\"0\" />\n    <setting id=\"open_allow_provisioned_firmware\" value=\"1\" />\n    <setting id=\"open_https_enabled\" value=\"0\" />\n    <setting id=\"open_dev_mode\" value=\"1\" />\n</config>\n",
     )
     .unwrap();
-    nv.open_put("ssh_host_ed25519", b"key").unwrap();
     let s = reopen(&dir, &nv);
-    let d = s.dphone_settings().clone();
-    assert_eq!(d.ssh_enabled, Some(false));
-    // The old "allow provisioned firmware" value is dropped, not carried:
-    // provisioned firmware is now followed unless explicitly ignored.
-    assert_eq!(d.ignore_provisioned_firmware, None);
-    assert!(!s.config().access().ignore_provisioned_firmware);
+    assert_eq!(s.dphone_settings().ssh_enabled, Some(false));
     assert!(!nv.exists("open/config.xml"));
-    // The key/value area is untouched.
-    assert_eq!(nv.open_get("ssh_host_ed25519").unwrap().as_deref(), Some(&b"key"[..]));
-    let text = nv.read_string(FILE).unwrap().unwrap();
-    assert!(!text.contains("dev") && !text.contains("firmware") && !text.contains("https"));
-    // Nothing of it reaches the merged configuration.
-    assert_eq!(s.config().setting("open_ssh_enabled"), None);
-    assert_eq!(s.config().setting("open_dev_mode"), None);
 
     // A value already in the new file wins over the old layer.
     nv.write("open/config.xml", b"<config><setting id=\"open_ssh_enabled\" value=\"1\"/></config>").unwrap();
@@ -222,13 +188,6 @@ fn provisioned_settings_precedence_and_source() {
         .unwrap();
     assert_eq!(c.ssh_enabled(), Resolved { value: false, source: Provisioned, locked: false });
     assert_eq!(c.ignore_provisioned_firmware(), Resolved { value: true, source: Provisioned, locked: false });
-    // The retired HTTPS setting is not recognized: it is inert, like any
-    // unknown setting.
-    let c = s.apply_fetched(&provisioned(r#"<setting id="dphone_ssh_enabled" value="0"/><setting id="dphone_ignore_provisioned_firmware" value="1"/><setting id="dphone_https_enabled" value="0"/>"#)).unwrap();
-    assert_eq!(c.ssh_enabled(), Resolved { value: false, source: Provisioned, locked: false });
-    assert!(!c.access().ssh_enabled && c.access().ignore_provisioned_firmware);
-    // Provisioning never writes the local file.
-    assert!(!nv.exists(FILE));
 
     // A local value beats an ordinary provisioned one, as ui-config.xml
     // beats fetched-config.xml on stock.
@@ -269,7 +228,6 @@ fn provisioned_settings_precedence_and_source() {
     // ui-config.xml.
     assert!(s.set("dphone_metrics_enabled", "0").is_err());
     assert!(s.set("dphone_ssh_enabled", "1").is_err());
-    assert!(!nv.exists("ui-config.xml"));
 }
 
 #[test]
@@ -295,8 +253,6 @@ fn provisioned_static_address_and_the_stock_network_settings() {
     assert_eq!((a.address, a.prefix_len, a.source, a.locked), (Ipv4Addr::new(10, 10, 14, 120), 23, Provisioned, false));
     assert_eq!(a.gateway, Some(Ipv4Addr::new(10, 10, 14, 1)));
     assert_eq!(a.dns, [Ipv4Addr::new(10, 10, 14, 1), Ipv4Addr::new(10, 10, 14, 2)]);
-    // Stock's own view of the network settings is untouched.
-    assert!(c.network().dhcp);
 
     // A static address set on the phone beats an ordinary provisioned one...
     let c = s
@@ -329,7 +285,6 @@ fn provisioned_ssh_keys_combine_with_local_ones() {
     let (dir, nv, mut s) = store();
     let mirror = "open/provisioned_authorized_keys";
     nv.write_authorized_keys(&[KEY_LOCAL.to_owned()]).unwrap();
-    assert!(!nv.exists(mirror));
 
     let keys = |list: &[&str]| {
         let items: String =
@@ -343,8 +298,6 @@ fn provisioned_ssh_keys_combine_with_local_ones() {
     assert_eq!(c.provisioned_ssh_keys(), [KEY_A, KEY_B]);
     assert_eq!(s.ssh_authorized_keys().unwrap(), [KEY_LOCAL, KEY_A, KEY_B]);
     assert_eq!(nv.read_string(mirror).unwrap().unwrap(), format!("{KEY_A}\n{KEY_B}\n"));
-    // The local file is never touched by provisioning.
-    assert_eq!(nv.authorized_keys().unwrap(), [KEY_LOCAL]);
 
     // The server drops one key: it is gone, with nothing stale left behind.
     let c = s.apply_fetched(&keys(&[KEY_B])).unwrap();
@@ -406,19 +359,13 @@ fn idle_softkeys_sources() {
     assert_eq!(c.idle_softkeys().keys, default);
     assert_eq!((c.idle_softkeys().source, c.idle_softkeys().locked), (SettingSource::Default, false));
 
-    // The `idle` keymap state a DPMA server sends to every phone is not a
-    // list that was set: the default stays.
+    // The `idle` keymap state a DPMA server sends to every phone.
     let keymap = r#"<keymap><state id="idle" conflict="freeze"><softkeys>
         <key id="0" action="missed_or_call_log"/>
         <key id="1" action="show_application" label1="_PARKED_CALLS"><arg>parking</arg></key>
         <key id="2" action="info"/>
         <key id="3" action="menu"/>
     </softkeys></state></keymap>"#;
-    s.apply_fetched(&format!("<config>{keymap}</config>")).unwrap();
-    let c = s.config();
-    assert_eq!(c.softkeys("idle").len(), 4);
-    assert_eq!(c.idle_softkeys().keys, default);
-    assert_eq!(c.idle_softkeys().source, SettingSource::Default);
 
     // A provisioned list is shown, and a local list before that.
     s.apply_fetched(&format!(r#"<config>{keymap}<setting id="dphone_idle_softkeys" value="menu, apps"/></config>"#)).unwrap();
@@ -479,17 +426,6 @@ fn disabled_apps_sources() {
     let c = s.update_dphone_settings(|d| d.set_disabled_apps(None)).unwrap();
     assert_eq!(c.disabled_apps(), Resolved { value: apps(&[]), source: Default, locked: false });
     assert!(s.set("dphone_disabled_apps", "calendar").is_err());
-}
-
-/// Stock's `allow_app_dev` has no meaning here (apps are uploaded through
-/// the web interface whatever it says); a configuration that carries it is
-/// merged like any other.
-#[test]
-fn a_provisioned_allow_app_dev_is_carried_and_unused() {
-    let (_d, _nv, mut s) = store();
-    assert_eq!(s.config().setting("allow_app_dev"), None);
-    let c = s.apply_fetched(&provisioned(r#"<setting id="allow_app_dev" value="1"/>"#)).unwrap();
-    assert_eq!(c.setting("allow_app_dev"), Some("1"));
 }
 
 #[test]

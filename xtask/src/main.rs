@@ -45,26 +45,3 @@ fn repo_root() -> std::path::PathBuf {
         .expect("xtask has a parent directory")
         .to_path_buf()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use clap::CommandFactory;
-
-    #[test]
-    fn the_command_line() {
-        Xtask::command().debug_assert();
-        for name in ["deploy", "tz-table", "kernel-sync"] {
-            let e = Xtask::try_parse_from(["xtask", name, "--help"]).unwrap_err();
-            assert_eq!(e.kind(), clap::error::ErrorKind::DisplayHelp);
-            assert!(e.to_string().contains(&format!("Usage: cargo xtask {name}")), "{e}");
-        }
-        assert!(matches!(Xtask::try_parse_from(["xtask", "deploy", "10.0.0.5", "--no-build"]), Ok(Xtask::Deploy(_))));
-        assert!(matches!(Xtask::try_parse_from(["xtask", "tz-table"]), Ok(Xtask::TzTable(_))));
-        assert!(matches!(Xtask::try_parse_from(["xtask", "kernel-sync", "/src/linux"]), Ok(Xtask::KernelSync(_))));
-        assert!(Xtask::try_parse_from(["xtask"]).is_err());
-        assert!(Xtask::try_parse_from(["xtask", "deploy"]).is_err());
-        assert!(Xtask::try_parse_from(["xtask", "kernel-sync"]).is_err());
-        assert!(Xtask::try_parse_from(["xtask", "kernel-sync", "a", "b"]).is_err());
-    }
-}

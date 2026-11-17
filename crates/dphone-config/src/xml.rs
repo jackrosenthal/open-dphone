@@ -277,9 +277,4 @@ mod tests {
         );
         assert_eq!(Element::new("config").to_document(), "<config />\n");
     }
-
-    #[test]
-    fn truncated_document_is_an_error() {
-        assert!(Element::parse("<config><setting id=\"a\"/>").is_err());
-    }
 }

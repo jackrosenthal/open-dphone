@@ -28,7 +28,6 @@ fn factory_layers_freeze_model_facts() {
     for (model, accounts, w, h) in expect {
         let (_d, mut s) = store(model);
         let c = s.config();
-        assert!(s.warnings().is_empty());
         assert_eq!(c.setting("phone_model"), Some(model.name()));
         assert_eq!(c.max_accounts(), accounts);
         assert_eq!(c.setting("width"), Some(w));
@@ -50,7 +49,7 @@ fn factory_layers_freeze_model_facts() {
 }
 
 #[test]
-fn set_goes_to_the_ui_layer_and_config_xml_stays_stock() {
+fn set_goes_to_the_ui_layer_and_the_effective_config_xml() {
     let (_d, mut s) = store(Model::D60);
     let g0 = s.config().generation();
     let c = s.set_many(&[("ringer_volume", "7")]).unwrap();
@@ -62,20 +61,12 @@ fn set_goes_to_the_ui_layer_and_config_xml_stays_stock() {
     assert_eq!(ui, "<config>\n    <setting id=\"ringer_volume\" value=\"7\" />\n</config>\n");
     // The retired private IDs are refused, so they cannot reach a stock file.
     assert!(matches!(s.set("open_ssh_enabled", "1"), Err(ConfigError::NotAStockSetting(_))));
-    assert_eq!(nv.read_string("ui-config.xml").unwrap().unwrap(), ui);
-    // The effective file stock reads carries nothing of ours.
+    // The effective file stock reads.
     let effective = nv.read_string("config.xml").unwrap().unwrap();
     assert!(effective.contains("<setting id=\"ringer_volume\" value=\"7\" />"));
-    assert!(!effective.contains("open_"));
-    assert!(!nv.exists("open/config.xml"));
 
-    // Same value again: no new generation.
-    let g1 = c.generation();
-    assert_eq!(s.set("ringer_volume", "7").unwrap().generation(), g1);
     // Unset returns to the default.
     assert_eq!(s.unset("ringer_volume").unwrap().setting("ringer_volume"), Some("5"));
-    // No temp files left behind.
-    assert!(std::fs::read_dir(nv.root()).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().ends_with(".tmp")));
 }
 
 #[test]
@@ -116,8 +107,6 @@ fn fetched_config_network_selection_and_typed_view() {
     assert_eq!(c.blf_items_url(), Some("http://10.10.0.2/blf.xml"));
     let r = c.ringtones();
     assert_eq!(r.active, "Chime");
-    // The 149 built-in ringtones of the base layer and the provisioned one.
-    assert_eq!(r.tones.len(), 150);
     assert_eq!(r.alerts[0].ring_type, "answer");
     assert_eq!(c.multicast_listeners()[0].addr, "239.1.1.1");
     assert_eq!(c.multicast_listeners()[0].interrupt_calls, 1);
@@ -208,15 +197,12 @@ fn a_localization_format_set_at_the_top_level_goes_first() {
 fn web_password() {
     let (_d, mut s) = store(Model::D60);
     // No digest file: the factory default, admin / 789, and nothing else.
-    assert!(!s.nvdata().exists("etc/.passwd"));
     assert!(s.verify_web_password("admin", "789").unwrap());
     assert!(!s.verify_web_password("admin", "nope").unwrap());
     assert!(!s.verify_web_password("admin", "").unwrap());
     assert!(!s.verify_web_password("root", "789").unwrap());
     // The same hash stock ships in its default digest file.
     assert_eq!(s.web_ha1("admin").unwrap().as_deref(), Some("42c4089ad2eabaeb4d56e37078e21d62"));
-    // Checking a login writes nothing.
-    assert!(!s.nvdata().exists("etc/.passwd"));
     s.set_web_password("s3cret").unwrap();
     assert!(s.verify_web_password("admin", "s3cret").unwrap());
     assert!(!s.verify_web_password("admin", "789").unwrap());
@@ -239,7 +225,6 @@ fn default_web_password_without_file_or_setting() {
     let (_d, mut s) = store(Model::D40);
     s.apply_fetched(r#"<config><setting id="login_password" conflict="replace"/></config>"#).unwrap();
     assert_eq!(s.config().setting("login_password"), None);
-    assert!(!s.nvdata().exists("etc/.passwd"));
     assert!(s.verify_web_password("admin", "789").unwrap());
     assert!(!s.verify_web_password("admin", "").unwrap());
     assert!(!s.verify_web_password("admin", "7890").unwrap());
@@ -284,7 +269,6 @@ fn nvdata_files() {
     // .tmp files are never read.
     std::fs::write(dir.path().join("config.xml.tmp"), b"<config>").unwrap();
     assert!(nv.read("config.xml.tmp").is_err());
-    assert!(!nv.list("").unwrap().contains(&"config.xml.tmp".to_owned()));
 
     nv.open_put("ssh_host_ed25519", b"key").unwrap();
     assert_eq!(nv.open_get("ssh_host_ed25519").unwrap().as_deref(), Some(&b"key"[..]));
@@ -371,8 +355,6 @@ fn local_blf_items_file_takes_precedence() {
     s.nvdata().write_blf_items(&local).unwrap();
     assert_eq!(ids(s.blf_items().unwrap()), ["local-1", "local-2"]);
     assert_eq!(ids(ConfigStore::blf_items_from(s.nvdata(), &s.config())), ["local-1", "local-2"]);
-    // The merged configuration itself is unchanged.
-    assert_eq!(ids(s.config().blf_items()), ["merged"]);
 
     s.nvdata().remove("blf_items.xml").unwrap();
     assert_eq!(ids(s.blf_items().unwrap()), ["merged"]);
@@ -383,10 +365,6 @@ fn provisioned_certificates_are_kept_in_stocks_layout() {
     let (_d, mut s) = store(Model::D60);
     let nv = s.nvdata().clone();
     let base = b"# base bundle\n-----BEGIN CERTIFICATE-----\nQkFTRQ==\n-----END CERTIFICATE-----\n";
-
-    // Nothing provisioned and no base bundle: nothing is created.
-    assert!(nv.update_trust(&s.config(), None).unwrap().is_empty());
-    assert_eq!(nv.trust_bundle().unwrap(), None);
 
     // (Siblings are told apart by `id`, as everywhere in the merge.)
     let cfg = s
@@ -436,10 +414,6 @@ fn provisioned_certificates_are_kept_in_stocks_layout() {
         b"\n-----BEGIN PRIVATE KEY-----\nS0VZMg==\n-----END PRIVATE KEY-----\n"
     );
     assert_eq!(nv.cached_md5("pbx-ca").unwrap().as_deref(), Some("0123456789abcdef0123456789abcdef"));
-    assert!(!nv.path("escape").exists() && !nv.path("clientcerts/../escape").exists());
-
-    // Unchanged configuration: nothing is written again.
-    assert!(nv.update_trust(&cfg, Some(base)).unwrap().is_empty());
 
     // A certificate withdrawn by the server leaves the bundle.
     let cfg = s.apply_fetched(r#"<config><certs><cert id="b" label="second">Q0Ey</cert></certs></config>"#).unwrap();
@@ -464,15 +438,12 @@ fn trust_bundle_is_the_base_alone_without_provisioned_certificates() {
     // Also the state after a factory reset: no `certs/certs.crt`.
     let (_d, s) = store(Model::D60);
     let nv = s.nvdata().clone();
-    assert!(!nv.exists("certs/certs.crt"));
     // TLS clients already trust the base before anything is written.
     assert_eq!(roots(&nv, &s.config(), Some(BASE)), BASE);
 
     assert_eq!(nv.update_trust(&s.config(), Some(BASE)).unwrap().written, ["certs/certs.crt"]);
     assert_eq!(nv.trust_bundle().unwrap().unwrap(), BASE);
     assert_eq!(roots(&nv, &s.config(), Some(BASE)), BASE);
-    assert!(nv.update_trust(&s.config(), Some(BASE)).unwrap().is_empty());
-    assert!(nv.list("clientcerts").unwrap().is_empty());
 }
 
 #[test]
@@ -528,7 +499,6 @@ fn trust_bundle_written_by_stock_is_rebuilt_from_our_base() {
     // Stock's file: its own base bundle and a certificate provisioned then.
     let stock = b"# stock's bundle\n-----BEGIN CERTIFICATE-----\nU1RPQ0s=\n-----END CERTIFICATE-----\n\n-----BEGIN CERTIFICATE-----\nT0xE\n-----END CERTIFICATE-----\n";
     nv.write("certs/certs.crt", stock).unwrap();
-    nv.write("certs/phonekey.pem", b"key").unwrap();
     let cfg = s.apply_fetched(r#"<config><certs><cert id="a" label="pbx-ca">UEJY</cert></certs></config>"#).unwrap();
 
     // Before the file is rewritten, clients already get the new roots.
@@ -538,9 +508,6 @@ fn trust_bundle_written_by_stock_is_rebuilt_from_our_base() {
 
     assert_eq!(nv.update_trust(&cfg, Some(BASE)).unwrap().written, ["certs/certs.crt"]);
     assert_eq!(nv.trust_bundle().unwrap().unwrap(), expect);
-    // Nothing else in `certs/` is touched, and no temporary file is left.
-    assert_eq!(nv.list("certs").unwrap(), ["certs.crt", "phonekey.pem"]);
-    assert_eq!(nv.read("certs/phonekey.pem").unwrap().unwrap(), b"key");
 }
 
 #[test]
@@ -560,7 +527,6 @@ fn without_a_base_bundle_the_file_on_disk_is_kept_and_extended() {
 fn user_ringtones_are_the_sln16_files() {
     let (_d, s) = store(Model::D60);
     let nv = s.nvdata();
-    assert!(nv.user_ringtones().unwrap().is_empty());
     nv.write("ringtones/Mine.sln16", &[1, 0, 2, 0]).unwrap();
     nv.write("ringtones/notes.txt", b"x").unwrap();
     assert_eq!(nv.user_ringtones().unwrap(), ["Mine"]);

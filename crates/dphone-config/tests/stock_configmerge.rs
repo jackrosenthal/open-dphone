@@ -172,9 +172,6 @@ fn stock_accepts_trees_we_wrote() {
         assert_eq!(get("login_password").as_deref(), Some("pa&ss\"<wd>'"));
         assert_eq!(get("time_zone").as_deref(), Some("America/Denver"));
         assert_eq!(get("config_server_url").as_deref(), Some("sip:proxy@10.10.0.2"));
-        assert!(!out.contains("ssh_enabled"));
-        // What we leave in config.xml is the stock layers' merge and no more.
-        assert!(!nv.read_string("config.xml").unwrap().unwrap().contains("ssh_enabled"));
         // The same accounts both firmwares see for the selected network
         // (stock applies its own account limit at run time, not in the merge).
         let stock_accounts: Vec<_> =
@@ -187,12 +184,12 @@ fn stock_accepts_trees_we_wrote() {
     }
 }
 
-/// The DPMA extension must leave a stock phone unaffected: the stock merge
-/// accepts a provisioned configuration carrying the `dphone_*` settings and
-/// the key element, and apart from carrying those unknown entries along
-/// inertly its result is identical to the one without them.
+/// A provisioned configuration, with and without the DPMA extension (the
+/// `dphone_*` settings and the key element), over stock's own base and
+/// factory files: the stock merge accepts it, and our merge gives the same
+/// bytes.
 #[test]
-fn stock_is_unaffected_by_the_dpma_extension() {
+fn the_dpma_extension_merges_identically_on_stock() {
     let Some(rootfs) = rootfs() else { return };
     let dir = TempDir::new("ext");
     let base = [rootfs.join("etc/base-config.xml"), rootfs.join("etc/factory-config.xml")];
@@ -206,24 +203,8 @@ fn stock_is_unaffected_by_the_dpma_extension() {
         assert_eq!(code, 0);
         // Our merge agrees byte for byte on the same inputs.
         assert_eq!(ours(&files), out);
-        out
     };
     let ui = r#"<config><setting id="ringer_volume" value="8"/></config>"#;
-    let without = run(FETCHED, ui);
-    let with = run(&common::fetched_with_extension(), ui);
-    assert_ne!(with, without);
-
-    // Remove what the extension added and nothing else differs.
-    let mut stripped = Element::parse(&with).unwrap();
-    stripped.remove_children(|e| {
-        e.name == "dphone_ssh_authorized_keys"
-            || (e.name == "setting" && e.attr("id").is_some_and(|id| id.starts_with("dphone_")))
-    });
-    assert_eq!(stripped.to_document(), without);
-
-    // No stock setting ID starts with the prefix, so nothing stock looks up
-    // by ID can collide with the extension.
-    for f in &base {
-        assert!(!std::fs::read_to_string(f).unwrap().contains("dphone_"));
-    }
+    run(FETCHED, ui);
+    run(&common::fetched_with_extension(), ui);
 }

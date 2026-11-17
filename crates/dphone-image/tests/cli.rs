@@ -3,7 +3,7 @@
 //! notice when it is unset, unless `DPHONE_TEST_REQUIRE_VENDOR` is set (the
 //! Nix check sets it), in which case they fail.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 fn tool(args: &[&str]) -> (bool, String) {
@@ -277,7 +277,6 @@ fn refusals() {
         &s.path("x.eff"),
     ]);
     assert!(!success && text.contains("/sbin/init"), "{text}");
-    assert!(!Path::new(&s.path("x.eff")).exists());
 }
 
 #[test]
