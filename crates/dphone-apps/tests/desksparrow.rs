@@ -606,6 +606,9 @@ impl AppWindow for WatchedWindow {
         self.inner.clear(w)
     }
     fn set_bounds(&mut self, w: u32, bounds: Rect) {
+        if let Some(l) = self.seen.lock().unwrap().labels.get_mut(&w) {
+            l.width = bounds.width;
+        }
         self.inner.set_bounds(w, bounds)
     }
     fn set_visible(&mut self, w: u32, visible: bool) {
@@ -670,6 +673,9 @@ impl AppWindow for WatchedWindow {
     }
     fn theme_color(&self, role: ColorRole) -> Color {
         self.inner.theme_color(role)
+    }
+    fn text_size(&self, font: dphone_apps::Font, text: &str) -> (u16, u16) {
+        self.inner.text_size(font, text)
     }
     fn create_canvas(&mut self, parent: Option<u32>, bounds: Rect) -> u32 {
         self.inner.create_canvas(parent, bounds)
@@ -1602,9 +1608,9 @@ fn a_score_written_once_is_not_written_again() {
 /// The leaderboard on the simulated phone, with a picture of it.
 fn leaderboard_on(model: Model) -> Phone {
     let pbx = FakeStore::default();
-    // Among the dates and times, the widest there are in the font of the
-    // small gray screen (Nov 10, 2026 12:40 PM) and in those of the large
-    // gray and the color ones (May 20, 2026 10:48 AM).
+    // Among the dates and times, the widest there are in the small font
+    // of the gray screens (Nov 10, 2026 12:40 PM) and in that of the
+    // color ones (May 20, 2026 10:48 AM).
     write_board(
         &pbx,
         "23\t105\tPriya Raman\t1794314400\n\

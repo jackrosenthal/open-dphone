@@ -399,8 +399,15 @@ struct BoardView {
     title: Widget,
     /// Said in place of the rows when there are none.
     note: Widget,
-    /// The name, the date and time, and the score of each row.
-    rows: Vec<[Widget; 3]>,
+    /// The widgets of each row: a group under the whole line, which the
+    /// selection's colors fill between the texts, and the name, the date
+    /// and time, and the score.
+    rows: Vec<[Widget; 4]>,
+    /// The first row: the left of the rows, the width they share, and
+    /// the height of each; the others are under it.
+    first: Rect,
+    /// The width of the score's column, at the right of the line.
+    score_w: u16,
 }
 
 /// The window: a canvas under three lines of text on a plate, or under
@@ -465,38 +472,47 @@ impl Screen {
 
         // The leaderboard: a title, and a line for each row, the name at
         // the left, then the date and time the score was set, and the
-        // score at the right.  The date and the score are right-aligned in
-        // columns as wide as the widest of them in the skin's font with a
-        // gap before it: a date and time such as "May 10, 2026 12:00 AM"
-        // (146 pixels on the color screens, 138 on the large gray one, and
-        // 114 on the small one) and a score of four digits.  The plate is
-        // wider than the other to hold them, as wide as the screen on the
-        // gray ones.
-        let (board_w, when_w, score_w) = match m.skin {
-            Skin::Color => (440, 158, 44),
-            Skin::LargeGray => (m.width, 145, 35),
-            Skin::SmallGray => (m.width, 120, 30),
+        // score at the right.  The date and time are in the small font,
+        // left-aligned in a column as wide as the widest of them, which
+        // [`Screen::texts`] places; the score is right-aligned in a column
+        // as wide as a score of four digits with a gap before it.  The
+        // plate is wider than the other to hold them, as wide as the
+        // screen on the gray ones.
+        let (board_w, score_w) = match m.skin {
+            Skin::Color => (440, 44),
+            Skin::LargeGray => (m.width, 35),
+            Skin::SmallGray => (m.width, 30),
         };
         let b = plate_of(board_w, title_h + board::SIZE as u16 * line_h + 2 * pad);
-        let name_w = board_w - 2 * pad - when_w - score_w;
+        let first = Rect::new(
+            b.x + pad as i16,
+            b.y + (pad + title_h) as i16,
+            board_w - 2 * pad,
+            line_h,
+        );
         let board = BoardView {
             plate: b,
             title: centered(b, pad, title_h, title_font),
             note: centered(b, pad + title_h + line_h, line_h, Font::Normal),
             rows: (0..board::SIZE as u16)
                 .map(|i| {
-                    let y = b.y + (pad + title_h + i * line_h) as i16;
-                    let x = b.x + pad as i16;
-                    let cell = |x: i16, w: u16, align: Align| {
-                        text(Rect::new(x, y, w, line_h), Font::Normal, align)
+                    let y = first.y + (i * line_h) as i16;
+                    let under = ui::create(WidgetKind::Group, ROOT, Rect { y, ..first });
+                    ui::set_visible(under, false);
+                    let name_w = first.width - score_w;
+                    let cell = |x: i16, w: u16, font: Font, align: Align| {
+                        text(Rect::new(x, y, w, line_h), font, align)
                     };
                     [
-                        cell(x, name_w, Align::Left),
-                        cell(x + name_w as i16, when_w, Align::Right),
-                        cell(x + (name_w + when_w) as i16, score_w, Align::Right),
+                        under,
+                        cell(first.x, name_w, Font::Normal, Align::Left),
+                        cell(first.x, name_w, Font::Small, Align::Left),
+                        cell(first.x + name_w as i16, score_w, Font::Normal, Align::Right),
                     ]
                 })
                 .collect(),
+            first,
+            score_w,
         };
         let art = Art {
             sparrow: look
@@ -541,13 +557,32 @@ impl Screen {
         }
         ui::set_visible(b.title, title.is_some());
         ui::set_visible(b.note, title.is_some() && rows.is_empty());
+        if !rows.is_empty() {
+            // The date and time in a column as wide as the widest of
+            // them with a digit's width to spare, a digit's width after
+            // the name; the name has the rest.
+            let digit = canvas::text_size(Font::Normal, "0").width;
+            let widest = rows
+                .iter()
+                .map(|r| canvas::text_size(Font::Small, &r.when).width);
+            let when_w = widest.max().unwrap_or(0) + digit;
+            let first = b.first;
+            let name_w = first.width.saturating_sub(digit + when_w + b.score_w);
+            for (i, cells) in b.rows.iter().enumerate().take(rows.len()) {
+                let y = first.y + (i as u16 * first.height) as i16;
+                let when_x = first.x + (name_w + digit) as i16;
+                ui::set_bounds(cells[1], Rect::new(first.x, y, name_w, first.height));
+                ui::set_bounds(cells[2], Rect::new(when_x, y, when_w, first.height));
+            }
+        }
         for (i, cells) in b.rows.iter().enumerate() {
             let row = rows.get(i);
-            let texts = row.map(|r| [&r.name, &r.when, &r.score]);
-            for (j, &w) in cells.iter().enumerate() {
-                if let Some(texts) = texts {
-                    ui::set_text(w, texts[j]);
+            if let Some(r) = row {
+                for (&w, text) in cells[1..].iter().zip([&r.name, &r.when, &r.score]) {
+                    ui::set_text(w, text);
                 }
+            }
+            for &w in cells {
                 ui::set_highlight(w, row.is_some_and(|r| r.mine));
                 ui::set_visible(w, row.is_some());
             }
