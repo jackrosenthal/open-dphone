@@ -77,4 +77,4 @@ To return to stock firmware, upload a stock firmware image on the **System** pag
 
 ## Open DPMA
 
-Open DPMA is an open-source replacement for the original `res_digium_phone` Asterisk module.  Phones running Open DPhone also work with the original module, without app data and the [Open DPhone options](open-dpma/open-dphone-options.md).
+While Open DPhone's firmware is compatible with the original `res_digium_phone`, we also recommend you migrate to Open DPMA, which not only fixes several security issues and bugs with the original DPMA, but also adds additional configuration options for Open DPhone phones.
