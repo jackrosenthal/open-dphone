@@ -28,23 +28,48 @@ use rsipstack::transport::udp::UdpConnection;
 use rsipstack::transport::{SipAddr, SipConnection};
 use rsipstack::EndpointBuilder;
 use socket2::{Domain, Protocol, Socket, Type};
+use tokio::net::UdpSocket;
 use tokio_util::sync::CancellationToken;
 
 use super::Logger;
 use crate::sip::{self, runtime, Message, Transport};
+use crate::util::wait_until;
 
 /// Called with every incoming MESSAGE (after it was answered).
 pub type MessageHandler = Box<dyn Fn(Message) + Send + Sync>;
 
+/// How long [`SipEndpoint::close`] waits for `rsipstack`'s tasks to let
+/// go of the UDP sockets.
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// The simulator's SIP endpoint (see the module documentation).
 pub struct SipEndpoint {
-    inner: EndpointInnerRef,
+    /// `None` once closed.
+    inner: Option<EndpointInnerRef>,
     server: SocketAddr,
     transport: Transport,
     local: SocketAddr,
     log: Logger,
     cseq: AtomicU32,
     cancel: CancellationToken,
+    /// The UDP sockets, which [`SipEndpoint::close`] closes.
+    udp: Vec<Arc<UdpSocket>>,
+}
+
+/// A UDP transport on a socket bound to `local`; the socket is added to
+/// `sockets`.
+async fn udp_transport(
+    local: SocketAddr,
+    cancel: &CancellationToken,
+    sockets: &mut Vec<Arc<UdpSocket>>,
+) -> Result<UdpConnection> {
+    let s = std::net::UdpSocket::bind(local).with_context(|| format!("binding {local}"))?;
+    s.set_nonblocking(true)?;
+    let s = Arc::new(UdpSocket::from_std(s)?);
+    sockets.push(s.clone());
+    UdpConnection::from_socket(s, None, Some(cancel.child_token()))
+        .await
+        .map_err(|e| anyhow!("{e}"))
 }
 
 fn bind_stream(local: SocketAddr) -> Result<Socket> {
@@ -76,13 +101,11 @@ impl SipEndpoint {
             .with_user_agent("dpma-sim")
             .build();
         let layer = &endpoint.inner.transport_layer;
+        let mut udp = Vec::new();
         let local_addr = runtime().block_on(async {
             match transport {
                 Transport::Udp => {
-                    let c =
-                        UdpConnection::create_connection(local, None, Some(cancel.child_token()))
-                            .await
-                            .map_err(|e| anyhow!("binding {local}: {e}"))?;
+                    let c = udp_transport(local, &cancel, &mut udp).await?;
                     let addr = c.get_addr().addr.to_owned();
                     layer.add_transport(c.into());
                     Ok::<_, anyhow::Error>(SocketAddr::try_from(addr)?)
@@ -103,13 +126,7 @@ impl SipEndpoint {
                         TcpConnection::from_stream(stream, sip_addr, Some(cancel.child_token()))
                             .map_err(|e| anyhow!("{e}"))?;
                     layer.add_connection(SipConnection::Tcp(c));
-                    match UdpConnection::create_connection(
-                        local_addr,
-                        None,
-                        Some(cancel.child_token()),
-                    )
-                    .await
-                    {
+                    match udp_transport(local_addr, &cancel, &mut udp).await {
                         Ok(u) => layer.add_transport(u.into()),
                         Err(e) => log.log(
                             1,
@@ -141,13 +158,14 @@ impl SipEndpoint {
             }
         });
         Ok(SipEndpoint {
-            inner: endpoint.inner.clone(),
+            inner: Some(endpoint.inner.clone()),
             server,
             transport,
             local: local_addr,
             log,
             cseq: AtomicU32::new(rand::random::<u32>() % 10000 + 1),
             cancel,
+            udp,
         })
     }
 
@@ -194,6 +212,7 @@ impl SipEndpoint {
         from_uri: Option<&str>,
         to_uri: Option<&str>,
     ) -> Option<Message> {
+        let inner = self.inner.as_ref()?;
         let host = self.local.ip().to_string();
         let uri = |s: &str| rsipstack::sip::Uri::try_from(s).ok();
         let ruri_parsed = uri(ruri)?;
@@ -210,8 +229,7 @@ impl SipEndpoint {
             uri: uri(to_uri.unwrap_or(ruri))?,
             params: vec![],
         };
-        let via = self
-            .inner
+        let via = inner
             .get_via(
                 Some(SipAddr {
                     r#type: Some(match self.transport {
@@ -224,7 +242,7 @@ impl SipEndpoint {
             )
             .ok()?;
         let cseq = self.cseq.fetch_add(1, Ordering::SeqCst) + 1;
-        let mut request = self.inner.make_request(
+        let mut request = inner.make_request(
             Method::try_from(method).ok()?,
             ruri_parsed,
             via,
@@ -251,7 +269,7 @@ impl SipEndpoint {
             &format!(">>> {method} {ruri} ({} body bytes)", body.len()),
         );
         let key = TransactionKey::from_request(&request, TransactionRole::Client).ok()?;
-        let mut tx = Transaction::new_client(key, request, self.inner.clone(), None);
+        let mut tx = Transaction::new_client(key, request, inner.clone(), None);
         tx.destination = Some(SipAddr {
             r#type: Some(match self.transport {
                 Transport::Udp => rsipstack::sip::Transport::Udp,
@@ -271,9 +289,19 @@ impl SipEndpoint {
         None
     }
 
-    /// Stops receiving and closes the sockets.
+    /// Stops receiving and closes the sockets.  `rsipstack`'s tasks let go
+    /// of the UDP sockets on the runtime's threads once they see the
+    /// cancellation; this waits for them (up to [`CLOSE_TIMEOUT`]) and
+    /// closes the sockets itself, so that their port is free when it
+    /// returns.
     pub fn close(&mut self) {
         self.cancel.cancel();
+        self.inner = None;
+        for s in self.udp.drain(..) {
+            wait_until(CLOSE_TIMEOUT, Duration::from_millis(1), || {
+                Arc::strong_count(&s) == 1
+            });
+        }
     }
 }
 
