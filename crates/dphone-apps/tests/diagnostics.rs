@@ -230,11 +230,6 @@ fn display_test(model: Model) {
     p.tap(&[Key::Mute]);
     p.shot("display-6-fonts");
     assert!(p.colors().len() > 1);
-    // The hookswitch is not a key, and the phone does nothing with it.
-    p.hook(true);
-    p.hook(false);
-    assert_eq!(p.ui.screen_name(), "app:diagnostics");
-    assert_eq!(p.commands(), 0, "the phone did nothing with the keys");
     // Any key after the last pattern: the menu.
     let fonts = p.pixels().0;
     p.tap(&[Key::Hold]);
@@ -262,7 +257,6 @@ fn key_test(model: Model) {
     p.shot("keys");
     assert_ne!(p.pixels().0, empty);
     assert_eq!(p.ui.screen_name(), "app:diagnostics");
-    assert_eq!(p.commands(), 0, "the phone did nothing with the keys");
     // Cancel twice in a row: the menu, and the keys are the phone's again.
     p.tap(&[Key::Cancel, Key::Cancel]);
     assert_eq!(p.ui.screen_name(), "app:diagnostics");

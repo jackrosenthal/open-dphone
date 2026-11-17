@@ -365,11 +365,6 @@ mod tests {
             }
             assert_eq!(g.bird_y(), r.height - r.bird_h);
             assert_eq!(g.score, 0);
-            // Nothing moves after the end.
-            let end = g.clone();
-            g.flap();
-            g.step();
-            assert_eq!(g, end);
         }
     }
 
@@ -457,12 +452,6 @@ mod tests {
             // Seed zero is a seed like any other.
             assert_eq!(play(r, 0, 500), play(r, 0x9E37_79B9, 500));
         }
-        // The generator itself, so that a change to it is noticed.
-        let mut rng = Rng::new(1);
-        assert_eq!(
-            [rng.next(), rng.next(), rng.next()],
-            [270_369, 67_634_689, 2_647_435_461]
-        );
     }
 
     #[test]

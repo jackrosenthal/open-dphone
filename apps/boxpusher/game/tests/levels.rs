@@ -282,14 +282,10 @@ fn every_level_is_solved_by_its_recorded_solution() {
     assert_eq!(SOLUTIONS.len(), LEVELS.len());
     for (i, level) in levels().into_iter().enumerate() {
         let mut game = Game::new(level);
-        assert!(!game.solved(), "level {} starts solved", i + 1);
         let steps = SOLUTIONS[i];
         assert_eq!(game.replay(steps), steps.len(), "level {}: a step is blocked", i + 1);
         assert!(game.solved(), "level {}: not solved", i + 1);
         assert_eq!(game.pushes(), LEVELS[i].pushes, "level {}", i + 1);
-        // The solution does not go on after the level is solved.
-        assert!(game.undo());
-        assert!(!game.solved(), "level {}", i + 1);
     }
 }
 

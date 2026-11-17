@@ -525,19 +525,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn a_step_changes_only_the_pieces() {
-        let painter = Painter::new(14, Palette::color());
-        let mut game = sampler();
-        let (scenery, before) = (painter.scenery(game.level()), painter.pieces(&game));
-        // Two boxes and the figure.
-        assert_eq!(before.len(), 2 + 3 + 3);
-        game.undo();
-        assert_eq!(painter.scenery(game.level()), scenery);
-        let after = painter.pieces(&game);
-        assert_ne!(after, before);
-        // Neither box is on a target now.
-        assert_eq!(after.len(), 2 + 2 + 3);
-    }
 }

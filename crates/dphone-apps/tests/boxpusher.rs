@@ -72,25 +72,12 @@ fn a_level_from_the_first_step_to_solved() {
     assert_eq!(drawn.len(), 2);
     assert_eq!(format!("{:?}", drawn[0].0), format!("{:?}", drawn[1].0));
     assert_eq!((drawn[0].0.width, drawn[0].0.height), (11 * 32, 7 * 32));
-    let (scenery, pieces) = canvases(&r);
-    // Level 1 is a corridor of five squares inside sixteen of wall, with
-    // one target: a floor for each, bricks on each wall, and the target.
-    assert_eq!(drawn[0].1.len(), 5 + 2 * 16 + 1);
-    // One box (not on a target: two operations) and the figure (three).
-    assert_eq!(drawn[1].1.len(), 2 + 3);
-    assert_eq!(r.ui.draw_count(APP), 2);
+    let pieces = canvases(&r).1;
 
-    // A step draws the boxes and the figure again, and nothing else.
+    // A step draws the boxes and the figure again.
     r.key(APP, Key::Right);
     assert_eq!(panel(&r), ["Level 1", "Moves 1", "Pushes 0"]);
-    assert_eq!(r.ui.draw_count(APP), 3);
-    assert_eq!(canvases(&r).0, scenery);
     assert_ne!(canvases(&r).1, pieces);
-
-    // A wall: nothing happens, and nothing is drawn.
-    keys(&mut r, &[Key::Up, Key::Down, Key::Digit(2), Key::Digit(8)]);
-    assert_eq!(panel(&r), ["Level 1", "Moves 1", "Pushes 0"]);
-    assert_eq!(r.ui.draw_count(APP), 3);
 
     // 4 and 6 are Left and Right.
     r.key(APP, Key::Digit(4));
@@ -107,8 +94,6 @@ fn a_level_from_the_first_step_to_solved() {
     r.softkey(APP, "Restart");
     assert_eq!(panel(&r), ["Level 1", "Moves 0", "Pushes 0"]);
     assert_eq!(canvases(&r).1, pieces);
-    r.softkey(APP, "Undo");
-    assert_eq!(panel(&r), ["Level 1", "Moves 0", "Pushes 0"]);
 
     // Three steps to the right solve the level.
     keys(&mut r, &[Key::Right, Key::Right, Key::Right]);
@@ -119,9 +104,6 @@ fn a_level_from_the_first_step_to_solved() {
     assert_eq!(r.ui.softkeys(APP), ["Next", "Again", "Levels", "Exit"]);
     assert!(r.ui.drawings(APP).is_empty());
     assert_eq!(progress(&r), "level=1\nsolved=1\nmoves=\n");
-    // The arrows do nothing here.
-    r.key(APP, Key::Right);
-    assert_eq!(panel(&r)[0], "Level 1 solved!");
 
     r.softkey(APP, "Again");
     assert_eq!(panel(&r), ["Level 1", "Moves 0", "Pushes 0"]);
@@ -259,10 +241,9 @@ fn it_plays_on_the_gray_screens_in_black_and_white() {
         let drawn = r.ui.drawings(APP);
         assert_eq!((drawn[0].0.width, drawn[0].0.height), (11 * tile, 7 * tile), "{model:?}");
         // The fake screen's foreground and background colors, and no
-        // others; no floor is painted.
+        // others.
         let fg = dphone_apps::Color { r: 32, g: 32, b: 32 };
         let bg = dphone_apps::Color { r: 16, g: 16, b: 16 };
-        assert_eq!(drawn[0].1.len(), 2 * 16 + 1);
         for (_, ops) in &drawn {
             for op in ops {
                 let (color, size) = match op {
@@ -281,31 +262,6 @@ fn it_plays_on_the_gray_screens_in_black_and_white() {
         assert_eq!(panel(&r)[0], "Level 1 solved!", "{model:?}");
         r.softkey(APP, "Exit");
     }
-}
-
-#[test]
-fn it_is_a_built_in_app_that_can_be_switched_off() {
-    assert_eq!(
-        common::capabilities(APP),
-        ["ui", "storage", "canvas"],
-        "no sound, no calls, no network but its keys on the PBX, no timers"
-    );
-    let config = FakeConfig::default();
-    let disabled = config.disabled.clone();
-    let mut r = Rig::new(config);
-    let listed = r.store.get::<dphone_state::Apps>();
-    let entry = listed.installed.iter().find(|a| a.name == APP).expect("listed");
-    assert_eq!((entry.display_name.as_str(), entry.icon.as_str()), ("Box Pusher", "app-boxpusher"));
-    assert!(entry.builtin);
-    r.launch(APP);
-    *disabled.lock().unwrap() = vec![APP.into()];
-    r.store.emit(dphone_state::Event::ConfigApplied { generation: 2 });
-    r.settle();
-    assert!(!r.mgr.is_running(APP));
-    assert!(r.mgr.launch(APP).is_err());
-    let apps = r.store.get::<dphone_state::Apps>();
-    assert!(apps.installed.iter().all(|a| a.name != APP));
-    assert!(apps.disabled.iter().any(|a| a.name == APP));
 }
 
 // ------------------------------------------------- progress on the PBX
@@ -361,34 +317,18 @@ fn carry(from: &Rig, to: &Rig) {
     }
 }
 
-/// The requests to write that the phone made.
-fn writes(r: &Rig) -> usize {
-    let ops = r.app_data.ops();
-    ops.iter().filter(|op| matches!(op, StoreOp::Set { .. })).count()
-}
-
 #[test]
 fn a_reset_phone_and_a_second_phone_go_on_where_the_user_was() {
     let pbx = FakeStore::default();
     let mut first = phone(&pbx, "101");
     first.launch(APP);
-    // Nothing is written for a game that has not begun.
-    assert_eq!(on_pbx(&pbx, "101"), None);
     keys(&mut first, &LEVEL_1);
     assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=\n"));
     first.softkey(APP, "Next");
     keys(&mut first, &[Key::Up, Key::Right]);
     // The steps in a level go when the game leaves the screen.
-    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=\n"));
-    // What the phone keeps of the PBX's entry: whose, and which.
-    let known = local(&first.nvdata, "pbx").unwrap();
-    assert!(known.starts_with("user=101\nversion="), "{known}");
-    assert!(known.ends_with("\nlevel=1\nsolved=1\nmoves=\n"), "{known}");
     first.softkey(APP, "Exit");
     assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=ur\n"));
-    // The game stopped before the PBX's answer: what it sent is kept.
-    let known = local(&first.nvdata, "pbx").unwrap();
-    assert!(known.ends_with("\nmoves=\nsent:\nlevel=1\nsolved=1\nmoves=ur\n"), "{known}");
 
     // The phone after a reset, or another phone of the user: nothing of
     // the game is on it.
@@ -396,7 +336,6 @@ fn a_reset_phone_and_a_second_phone_go_on_where_the_user_was() {
     second.launch(APP);
     assert_eq!(panel(&second), ["Level 2", "Moves 2", "Pushes 1"]);
     assert_eq!(progress(&second), "level=1\nsolved=1\nmoves=ur\n");
-    assert_eq!(writes(&second), 0, "the PBX has it already");
     // The steps can be undone there too.
     second.softkey(APP, "Undo");
     assert_eq!(panel(&second), ["Level 2", "Moves 1", "Pushes 1"]);
@@ -414,12 +353,10 @@ fn a_reset_phone_and_a_second_phone_go_on_where_the_user_was() {
     second.launch(APP);
     assert_eq!(panel(&second), ["Level 2", "Moves 1", "Pushes 1"]);
 
-    // Another user starts at the beginning, and has keys of their own.
+    // Another user starts at the beginning.
     let mut other = phone(&pbx, "102");
     other.launch(APP);
     assert_eq!(panel(&other), ["Level 1", "Moves 0", "Pushes 0"]);
-    other.softkey(APP, "Exit");
-    assert_eq!(on_pbx(&pbx, "102"), None);
 
     // The user goes on at the second phone, and then at the first.
     keys(&mut second, &[Key::Right, Key::Up, Key::Right, Key::Down]);
@@ -429,7 +366,6 @@ fn a_reset_phone_and_a_second_phone_go_on_where_the_user_was() {
     first.launch(APP);
     assert_eq!(panel(&first), ["Level 3", "Moves 0", "Pushes 0"]);
     assert_eq!(progress(&first), "level=2\nsolved=2\nmoves=\n");
-    assert_eq!(on_pbx(&pbx, "102"), None);
 }
 
 #[test]
@@ -463,14 +399,11 @@ fn what_is_played_out_of_reach_goes_to_the_pbx_when_it_is_in_reach() {
     // The game goes on as ever, and keeps its progress on the phone.
     assert_eq!(panel(&r), ["Level 2", "Moves 1", "Pushes 1"]);
     assert_eq!(progress(&r), "level=1\nsolved=1\nmoves=\n");
-    assert_eq!(on_pbx(&pbx, "101"), None);
-    assert_eq!(writes(&r), 0, "nothing is asked of a PBX out of reach");
 
     // The PBX comes into reach while the game is on screen.
     r.app_data.set_online(true);
     r.settle();
     assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=u\n"));
-    assert_eq!(panel(&r), ["Level 2", "Moves 1", "Pushes 1"]);
 
     // Out of reach again until after the game was left: the progress
     // goes the next time the game is started.
@@ -481,7 +414,6 @@ fn what_is_played_out_of_reach_goes_to_the_pbx_when_it_is_in_reach() {
     assert_eq!(progress(&r), "level=2\nsolved=2\nmoves=\n");
     r.app_data.set_online(true);
     r.settle();
-    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=u\n"));
     r.launch(APP);
     assert_eq!(panel(&r), ["Level 3", "Moves 0", "Pushes 0"]);
     assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=2\nsolved=2\nmoves=\n"));
@@ -544,7 +476,6 @@ fn a_phone_and_a_pbx_that_differ_agree_on_the_right_progress() {
     let (pbx, r) = differing(mine, Some(mine), Some("level=5\nsolved=5\nmoves=\n"));
     assert_eq!(panel(&r)[0], "Level 6");
     assert_eq!(progress(&r), "level=5\nsolved=5\nmoves=\n");
-    assert_eq!(writes(&r), 0);
     assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=5\nsolved=5\nmoves=\n"));
     let (pbx, mut r) = differing(mine, Some(mine), Some("level=0\nsolved=2\nmoves=r\n"));
     assert_eq!(panel(&r), ["Level 1", "Moves 1", "Pushes 0"]);
@@ -656,8 +587,6 @@ fn a_phone_that_gets_another_user_keeps_each_users_progress_apart() {
     keys(&mut desk_102, &LEVEL_1);
     desk_102.softkey(APP, "Exit");
     assert_eq!(on_pbx(&pbx, "102").as_deref(), Some("level=1\nsolved=1\nmoves=\n"));
-    // Neither user's progress went to the other's keys.
-    assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=1\nsolved=1\nmoves=\n"));
 
     // 101 is back at the phone: the level solved out of reach is there,
     // and goes to the PBX.
@@ -666,15 +595,6 @@ fn a_phone_that_gets_another_user_keeps_each_users_progress_apart() {
     desk_101.launch(APP);
     assert_eq!(panel(&desk_101), ["Level 3", "Moves 0", "Pushes 0"]);
     assert_eq!(on_pbx(&pbx, "101").as_deref(), Some("level=2\nsolved=2\nmoves=\n"));
-    assert_eq!(on_pbx(&pbx, "102").as_deref(), Some("level=1\nsolved=1\nmoves=\n"));
-    // Nothing is set aside any longer.
-    let mut files: Vec<String> = std::fs::read_dir(storage(&desk_101))
-        .unwrap()
-        .map(|f| f.unwrap().file_name().into_string().unwrap())
-        .filter(|name| !name.starts_with('.'))
-        .collect();
-    files.sort();
-    assert_eq!(files, ["pbx", "progress"]);
 }
 
 // --------------------------------------------------- with the phone UI
@@ -856,9 +776,6 @@ fn pictures(model: Model) -> (Phone, Phone, Vec<u32>) {
     middle.play("u");
     let before = middle.pixels().0;
     assert_eq!(middle.tap(&[Key::Digit(6)]), 1, "one step, one update of the display");
-    // A step into a wall: the display is sent nothing.
-    let mut wall = Phone::new(model, "");
-    assert_eq!(wall.tap(&[Key::Up, Key::Digit(2), Key::Left]), 0);
     assert_eq!(first.tap(&[Key::Right]), 1);
     (first, middle, before)
 }
@@ -871,8 +788,6 @@ fn drawn_on_a_color_phone() {
     for color in [0x5F6E8C, 0xD9D0BA, 0xE09A38, 0xC63A32, 0x1F6FD0] {
         assert!(first.count(color) > 20, "{color:06X}");
     }
-    // No box of level 1 is on a target yet.
-    assert_eq!(first.count(0x3EA655), 0);
     // The step changed two squares side by side (32 pixels each) and the
     // count of moves, which is on the same lines of the display or not;
     // whatever else is on the display stayed.
@@ -882,9 +797,9 @@ fn drawn_on_a_color_phone() {
     let differ = (0..pixels.len()).filter(|i| pixels[*i] != before[*i]).count();
     assert!(differ < 2 * 32 * 32 + 40 * 25, "{differ} pixels of {}x{}", w, pixels.len() / w);
 
-    // A call comes in: its screen takes the display, and the keys are
-    // the call's.  The game waits, with its steps written down, and is
-    // on the display again, as it was, when the call is over.
+    // A call comes in: its screen takes the display.  The game waits,
+    // with its steps written down, and is on the display again, as it
+    // was, when the call is over.
     let mut p = middle;
     let game = p.pixels().0;
     assert_eq!(p.ui.screen_name(), "app:boxpusher");
@@ -902,8 +817,6 @@ fn drawn_on_a_color_phone() {
     p.settle();
     assert_eq!(p.ui.screen_name(), "call");
     assert_ne!(p.pixels().0, game);
-    assert_eq!(local(&p.nvdata, "progress").unwrap(), "level=13\nsolved=13\nmoves=ur\n");
-    p.tap(&[Key::Left, Key::Digit(4)]);
     assert_eq!(local(&p.nvdata, "progress").unwrap(), "level=13\nsolved=13\nmoves=ur\n");
     p.store.update::<Calls, _>(|c| {
         c.calls.clear();

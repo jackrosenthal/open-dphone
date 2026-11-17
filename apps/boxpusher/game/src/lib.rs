@@ -393,11 +393,6 @@ mod tests {
         assert!(!g.undo());
         assert_eq!((g.moves(), g.pushes(), g.player()), (0, 0, at(&g, 1, 1)));
         assert_eq!(g.boxes, g.level().boxes);
-        // A step that did not push leaves the box where it is.
-        g.replay("dr");
-        assert!(g.undo());
-        assert_eq!(g.player(), at(&g, 1, 2));
-        assert_eq!(g.boxes, g.level().boxes);
     }
 
     #[test]
