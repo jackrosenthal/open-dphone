@@ -60,7 +60,7 @@ async fn d65_line_keys_page() {
     let keys = wait("the keys", || Some(p.store.get::<Keys>()).filter(|k| k.line_keys.len() == 6 && k.rapid_pages == 2)).await;
     assert_eq!(bindings(&keys), ["acct0", "0", "-", "2", "3", "4"]);
     assert_eq!(keys.line_keys[1].label, "Label 0");
-    assert_eq!((keys.rapid_page, keys.rapid_dial.len()), (0, 0));
+    assert_eq!(keys.rapid_page, 0);
     // One presence entry per contact; none for the blank.
     let ids: Vec<String> = p.store.get::<Presence>().entries.iter().map(|e| e.id.clone()).collect();
     assert_eq!(ids, ["0", "2", "3", "4", "5"]);

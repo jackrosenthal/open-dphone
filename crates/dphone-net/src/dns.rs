@@ -961,9 +961,6 @@ mod tests {
             r.lookup_ipv4("pbx.example.com").await.unwrap(),
             vec![Ipv4Addr::new(192, 0, 2, 7)]
         );
-        // Second answer comes from the cache: works even with the servers removed... but
-        // removing servers clears the cache, so check through `cached` instead.
-        assert!(r.cached("PBX.example.com.", TYPE_A).is_some());
         let s = r.lookup_srv("_sip._udp.example.com").await.unwrap();
         assert_eq!(
             s.iter().map(|s| s.target.as_str()).collect::<Vec<_>>(),

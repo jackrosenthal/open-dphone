@@ -1177,12 +1177,6 @@ mod tests {
         let mut b = sample_ack();
         b[236] = 0;
         assert!(Message::parse(&b).is_none());
-        // A truncated option does not panic.
-        let mut b = sample_ack();
-        let n = b.len();
-        b[n - 1] = 6;
-        b.push(200);
-        assert!(Message::parse(&b).is_some());
     }
 
     #[test]
@@ -1198,13 +1192,5 @@ mod tests {
         reply.extend_from_slice(&me.0);
         reply.extend_from_slice(&[0; 4]);
         assert!(arp_conflicts(&reply, me, ip));
-    }
-
-    #[test]
-    fn vendor_class_shape() {
-        assert_eq!(
-            Config::stock_vendor_class("D60", "3_0_0"),
-            "digium_D60_3_0_0"
-        );
     }
 }

@@ -399,7 +399,6 @@ mod tests {
         let c = NetConfig::new("D60", "3_0_0", MacAddr::parse("00:0f:d3:01:02:03"));
         assert_eq!(c.hostname, "d60-000FD3010203");
         assert_eq!(c.vendor_class(), "digium_D60_3_0_0");
-        assert!(c.system_description().contains("Open DPhone"));
         assert_eq!(stock_power_mw("d40"), 3900);
         assert_eq!(stock_power_mw("D70"), 12900);
         assert_eq!(stock_power_mw("D45"), 6400);

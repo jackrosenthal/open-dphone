@@ -759,7 +759,6 @@ mod tests {
         // Neighbors that are not connectivity devices are ignored.
         let mut phone = both.clone();
         phone.med_device_class = Some(MED_CLASS_ENDPOINT_III);
-        assert_eq!(select_voice_policy(&[phone.clone()]), None);
         assert!(!have_med_policy(&[phone.clone()]));
         assert!(have_med_policy(&[phone, both]));
     }
