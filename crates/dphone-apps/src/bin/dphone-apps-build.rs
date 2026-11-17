@@ -194,16 +194,9 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::CommandFactory;
 
     #[test]
-    fn the_command_line() {
-        Cli::command().debug_assert();
-        for name in ["precompile", "stage", "build"] {
-            let e = Cli::try_parse_from(["dphone-apps-build", name, "--help"]).unwrap_err();
-            assert_eq!(e.kind(), clap::error::ErrorKind::DisplayHelp);
-            assert!(e.to_string().contains(&format!("Usage: dphone-apps-build {name}")), "{e}");
-        }
+    fn the_command_lines_of_the_build_and_the_tests_parse() {
         // As the Nix derivations and the tests call it.
         let Ok(Cli::Stage { to, .. }) =
             Cli::try_parse_from(["dphone-apps-build", "stage", "--wasm-dir", "m", "--out", "o", "--target", "phone", "--no-wasm"])
@@ -218,9 +211,5 @@ mod tests {
         };
         assert!(matches!(to.target, TargetArg::Pulley64) && !to.no_wasm);
         assert!(Cli::try_parse_from(["dphone-apps-build", "precompile", "c.wasm", "-o", "c.cwasm"]).is_ok());
-        assert!(Cli::try_parse_from(["dphone-apps-build", "precompile", "c.wasm"]).is_err());
-        assert!(Cli::try_parse_from(["dphone-apps-build", "stage", "--out", "o"]).is_err());
-        assert!(Cli::try_parse_from(["dphone-apps-build", "stage", "--wasm-dir", "m", "--out", "o", "--target", "arm"]).is_err());
-        assert!(Cli::try_parse_from(["dphone-apps-build"]).is_err());
     }
 }

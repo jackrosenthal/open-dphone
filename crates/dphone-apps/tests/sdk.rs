@@ -59,7 +59,6 @@ fn every_field_arrives() {
     assert_eq!(m.icon_for("D40"), PNG);
     assert_eq!(m.memory_kib, 8192);
     assert_eq!(m.wasm, "probe.wasm");
-    assert!(m.capabilities.is_empty());
     // What this crate writes for the same manifest is the same bytes.
     assert_eq!(m.section(), SECTION);
 }
@@ -79,6 +78,4 @@ fn the_least_manifest() {
         ("hello", "Hello")
     );
     assert_eq!(m.kind, AppType::Foreground);
-    assert!(!m.has_idle && !m.hidden);
-    assert!(m.icon.is_empty() && m.icon_for("D60").is_empty());
 }

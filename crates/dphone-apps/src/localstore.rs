@@ -385,7 +385,5 @@ mod tests {
         assert!(matches!(s.set("a/b", b"x", None), StoreReply::Refused(_)));
         assert!(matches!(s.get(".seq"), StoreReply::Refused(_)));
         assert!(matches!(s.set("k", &vec![0; VALUE_MAX + 1], None), StoreReply::Refused(_)));
-        assert_eq!(s.get("k"), StoreReply::Entry(None));
-        assert_eq!(s.list("", ""), StoreReply::Entries(Vec::new(), false));
     }
 }

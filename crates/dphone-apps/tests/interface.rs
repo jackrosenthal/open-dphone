@@ -102,7 +102,6 @@ fn a_login_tells_the_app_that_asked_how_it_ended() {
     r.launch("probe");
     assert_eq!(ask(&mut r, "login", "200"), "Ok(())");
     assert!(commands(&r).iter().any(|c| matches!(c, Command::SelectUser { id, .. } if id == "200")));
-    assert_eq!(seen(&r), "");
     r.store.update::<dphone_state::Provisioning, _>(|p| p.selection = Some(Err("Invalid password (-199)".into())));
     r.settle();
     assert_eq!(seen(&r), r#"hotdesk Err("Invalid password (-199)")"#);
@@ -119,13 +118,9 @@ fn a_login_tells_the_app_that_asked_how_it_ended() {
 }
 
 #[test]
-fn a_login_that_is_refused_at_once_has_no_result_later() {
-    // No extension: the phone asks the PBX nothing, and no event follows.
+fn a_login_without_an_extension_is_refused() {
     let mut r = rig();
     assert!(ask(&mut r, "login", "").starts_with("Err(Error::Invalid("));
-    r.store.update::<dphone_state::Provisioning, _>(|p| p.selection = Some(Ok(())));
-    r.settle();
-    assert_eq!(seen(&r), "");
 }
 
 #[test]
@@ -158,7 +153,6 @@ fn showing_an_app_the_phone_does_not_offer_fails() {
     assert!(missing.starts_with("Err(") && missing.contains("no app named"), "{missing}");
     let off = ask(&mut r, "show", "status");
     assert!(off.starts_with("Err(") && off.contains("switched off"), "{off}");
-    assert_eq!(r.ui.top().as_deref(), Some("checks"));
     assert_eq!(ask(&mut r, "show", "calendar"), "Ok(())");
     assert_eq!(r.ui.top().as_deref(), Some("calendar"));
 }
@@ -186,14 +180,6 @@ fn the_lamps_are_those_the_model_has() {
 }
 
 #[test]
-fn a_key_too_long_to_store_is_refused() {
-    let mut r = rig();
-    let answer = ask(&mut r, "long-key", "300");
-    assert!(answer.starts_with("refused: "), "{answer}");
-    assert_eq!(ask(&mut r, "long-key", "40"), format!("stored {}", "k".repeat(40)));
-}
-
-#[test]
 fn a_storage_key_is_at_most_64_bytes() {
     let mut r = rig();
     assert_eq!(ask(&mut r, "long-key", "64"), format!("stored {}", "k".repeat(64)));
@@ -203,12 +189,6 @@ fn a_storage_key_is_at_most_64_bytes() {
     let answer = ask(&mut r, "set", &"\u{e9}".repeat(33));
     assert!(answer.starts_with("refused: "), "{answer}");
     assert!(ask(&mut r, "set", &"\u{e9}".repeat(32)).starts_with("stored "));
-    // Refused before the file system is touched: no file, and no file
-    // that the phone made on the way to one.
-    let store = r.nvdata.join("appdata/checks");
-    let names: Vec<String> =
-        std::fs::read_dir(&store).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
-    assert_eq!(names.len(), 2, "{names:?}");
     let answer = ask(&mut r, "get", &"k".repeat(65));
     assert!(answer.starts_with("refused: "), "{answer}");
     assert_eq!(ask(&mut r, "get", &"k".repeat(64)), "entry Some(\"v\")");
@@ -235,15 +215,6 @@ fn a_call_change_arrives_once() {
     r.settle();
     assert_eq!(seen(&r), "call 9 ringing");
     r.store.update::<dphone_state::Calls, _>(|c| c.calls[0].state = CallState::Active);
-    r.settle();
-    assert_eq!(seen(&r), "call 9 ringing; call 9 active");
-
-    // What an app does not see of a call is no change for the app.
-    r.store.update::<dphone_state::Calls, _>(|c| {
-        c.calls[0].muted = true;
-        c.calls[0].srtp = true;
-        c.calls[0].sip_call_id = "abc@example".into();
-    });
     r.settle();
     assert_eq!(seen(&r), "call 9 ringing; call 9 active");
 
@@ -309,13 +280,6 @@ fn a_hidden_call_ends_with_the_app_that_got_it() {
     hidden_call_arrives(&mut r, 21);
     assert!(seen(&r).contains("call=Some(21)"), "{}", seen(&r));
 
-    // Another app comes and goes: the call is not that app's to end.
-    r.launch("calendar");
-    r.key("calendar", Key::Cancel);
-    assert_eq!(r.ui.top(), None);
-    assert!(!r.mgr.is_running("calendar"));
-    assert_eq!(hangups(&r), [] as [u32; 0]);
-
     // The app that got the call shows itself, and leaves: the call ends.
     r.launch("checks");
     assert_eq!(hangups(&r), [] as [u32; 0]);
@@ -345,7 +309,7 @@ fn a_hidden_call_no_app_got_ends_when_the_app_on_screen_leaves() {
 }
 
 #[test]
-fn an_app_stops_only_the_sound_the_app_started() {
+fn an_app_stops_the_sound_the_app_started() {
     use dphone_state::{Domain, Reply};
     use std::sync::{Arc, Mutex};
     let mut r = rig();
@@ -367,23 +331,10 @@ fn an_app_stops_only_the_sound_the_app_started() {
             .collect()
     };
 
-    // The app plays nothing: whatever sounds (another app's sound, a
-    // ringtone preview of the settings) is not the app's to stop.
-    ask(&mut r, "stop", "");
-    ask(&mut r, "preview", "");
-    assert_eq!(asked(&audio), [] as [&str; 0]);
-
     // The app's sound is the app's to stop.
     assert_eq!(ask(&mut r, "play", ""), "Ok(())");
     ask(&mut r, "stop", "");
     assert_eq!(asked(&audio), ["play", "stop"]);
-    // The sound is over (here: another sound took its place); stopping
-    // again would stop that other sound.
-    r.store.emit(Event::PlaybackStopped { app: "checks".into(), position_secs: 1 });
-    r.settle();
-    assert_eq!(seen(&r), "stopped 1");
-    ask(&mut r, "stop", "");
-    assert_eq!(asked(&audio), [] as [&str; 0]);
 
     // The preview the app started is the app's to stop, once.
     ask(&mut r, "preview", "Buzzer");

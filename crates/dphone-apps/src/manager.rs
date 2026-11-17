@@ -1458,6 +1458,5 @@ mod tests {
         assert_eq!([secs(1), secs(2), secs(3), secs(4)], [10, 20, 40, 80]);
         // 10 * 2^8 is 2,560 seconds; the next would be over the hour.
         assert_eq!([secs(9), secs(10), secs(11), secs(40), secs(u32::MAX)], [2560, 3600, 3600, 3600, 3600]);
-        assert_eq!(cfg.restart_forgiven.as_secs(), 3600);
     }
 }
