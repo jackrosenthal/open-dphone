@@ -2,7 +2,7 @@
 //! set an optional message.
 
 use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{InputMode, pbx_error_text, pbx_request};
+use dphone_app_sdk::{InputMode, PbxPresenceState};
 
 const SK_SELECT: u32 = 1;
 const SK_MESSAGE: u32 = 2;
@@ -13,15 +13,15 @@ const SK_RETRY: u32 = 6;
 
 #[derive(Clone)]
 struct Choice {
-    id: String,
-    presence: String,
+    id: u32,
+    state: PbxPresenceState,
     sub: String,
     active: bool,
 }
 
 impl Choice {
     fn label(&self) -> String {
-        let base = presence_label(&self.presence);
+        let base = presence_label(self.state);
         if self.sub.is_empty() {
             base.to_string()
         } else {
@@ -30,15 +30,28 @@ impl Choice {
     }
 }
 
-fn presence_label(token: &str) -> &str {
-    match token {
-        "available" => "Available",
-        "chat" => "Chat",
-        "away" => "Away",
-        "dnd" => "Do Not Disturb",
-        "xa" => "Extended Away",
-        "unavailable" => "Unavailable",
-        other => other,
+fn presence_label(state: PbxPresenceState) -> &'static str {
+    match state {
+        PbxPresenceState::Available => "Available",
+        PbxPresenceState::Chat => "Chat",
+        PbxPresenceState::Away => "Away",
+        PbxPresenceState::Dnd => "Do Not Disturb",
+        PbxPresenceState::Xa => "Extended Away",
+        PbxPresenceState::Unavailable => "Unavailable",
+        PbxPresenceState::NotSet => "Not Set",
+    }
+}
+
+/// The phone's presence for a state of the PBX's.
+fn presence_token(state: PbxPresenceState) -> &'static str {
+    match state {
+        PbxPresenceState::Available => "available",
+        PbxPresenceState::Chat => "chat",
+        PbxPresenceState::Away => "away",
+        PbxPresenceState::Dnd => "dnd",
+        PbxPresenceState::Xa => "xa",
+        PbxPresenceState::Unavailable => "unavailable",
+        PbxPresenceState::NotSet => "unknown",
     }
 }
 
@@ -78,14 +91,8 @@ impl Status {
     fn load(&mut self) {
         Message::show("Status", "Loading...", &[Softkey::new(SK_EXIT, "Exit")]);
         self.screen = Screen::Loading;
-        self.list_req = Some(pbx_request(
-            "switchvox.users.presence.options.getList",
-            Json::obj([]),
-        ));
-        self.info_req = Some(pbx_request(
-            "switchvox.users.presence.getInfo",
-            Json::obj([]),
-        ));
+        self.list_req = Some(pbx::presence_options());
+        self.info_req = Some(pbx::presence_info());
     }
 
     fn show_list(&mut self) {
@@ -128,13 +135,7 @@ impl Status {
         let Some(choice) = self.options.get(index).cloned() else {
             return;
         };
-        self.update_req = Some(pbx_request(
-            "switchvox.users.presence.update",
-            Json::obj([
-                ("presence_option_id", Json::str(choice.id.clone())),
-                ("message", Json::str(self.message.clone())),
-            ]),
-        ));
+        self.update_req = Some(pbx::set_presence(choice.id, &self.message));
         self.applying = Some(choice);
     }
 
@@ -142,21 +143,18 @@ impl Status {
         self.options.iter().position(|o| o.active)
     }
 
-    fn on_pbx(&mut self, id: u32, outcome: PbxOutcome) {
+    fn on_pbx(&mut self, id: u32, outcome: Result<PbxResult, PbxError>) {
         if self.list_req == Some(id) {
             self.list_req = None;
-            match &outcome {
-                PbxOutcome::Ok(text) => {
-                    let v = Json::parse(text).unwrap_or(Json::Null);
-                    self.options = v
-                        .path(&["presence_options", "presence_option"])
-                        .items()
+            match outcome {
+                Ok(PbxResult::PresenceOptions(options)) => {
+                    self.options = options
                         .into_iter()
                         .map(|o| Choice {
-                            id: o.get("id").text(),
-                            presence: o.get("presence").text(),
-                            sub: o.get("sub_presence").text(),
-                            active: o.get("active").truthy(),
+                            id: o.id,
+                            state: o.state,
+                            sub: o.sub_state,
+                            active: o.active,
                         })
                         .collect();
                     if self.options.is_empty() {
@@ -165,29 +163,29 @@ impl Status {
                         self.show_list();
                     }
                 }
-                other => self.show_error(&pbx_error_text(other)),
+                Ok(_) => self.show_error("No status options are available."),
+                Err(e) => self.show_error(&e.to_string()),
             }
         } else if self.info_req == Some(id) {
             self.info_req = None;
-            if let PbxOutcome::Ok(text) = &outcome {
-                let v = Json::parse(text).unwrap_or(Json::Null);
-                self.message = v.path(&["presence", "message"]).text();
+            if let Ok(PbxResult::Presence(p)) = outcome {
+                self.message = p.message;
             }
         } else if self.update_req == Some(id) {
             self.update_req = None;
-            match &outcome {
-                PbxOutcome::Ok(_) => {
+            match outcome {
+                Ok(_) => {
                     if let Some(c) = self.applying.take() {
-                        let _ = presence::set_status(&c.presence, &self.message);
+                        let _ = presence::set_status(presence_token(c.state), &self.message);
                         for o in &mut self.options {
                             o.active = o.id == c.id;
                         }
                     }
                     runtime::background();
                 }
-                other => {
+                Err(e) => {
                     self.applying = None;
-                    self.show_error(&pbx_error_text(other));
+                    self.show_error(&e.to_string());
                 }
             }
         }

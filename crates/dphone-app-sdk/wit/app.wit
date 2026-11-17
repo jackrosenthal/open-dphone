@@ -85,11 +85,174 @@ interface types {
     body: list<u8>,
   }
 
-  /// Result of a PBX request: the JSON text of `response.result`, or the
-  /// JSON text of `response.errors` / a transport error description.
-  variant pbx-outcome {
-    ok(string),
-    errors(string),
+  /// A presence state of the PBX (Asterisk's).
+  enum pbx-presence-state { not-set, unavailable, available, away, xa, chat, dnd }
+
+  /// The presence the phone's user has on the PBX (`pbx.presence-info`).
+  record pbx-presence {
+    /// The option that is set (`pbx-presence-option.id`).
+    option-id: u32,
+    state: pbx-presence-state,
+    /// The option's sub-state (may be empty).
+    sub-state: string,
+    /// The user's message (may be empty).
+    message: string,
+  }
+
+  /// A presence the user can choose (`pbx.presence-options`).
+  record pbx-presence-option {
+    id: u32,
+    state: pbx-presence-state,
+    /// May be empty.
+    sub-state: string,
+    /// The user made the option; otherwise the PBX has it.
+    by-user: bool,
+    /// The option is set.
+    active: bool,
+  }
+
+  /// A call waiting in a parking lot.
+  record parked-call {
+    /// The parking space: the number that takes the call.
+    space: string,
+    caller-name: string,
+    caller-number: string,
+    /// Seconds since the call was parked.
+    duration: u32,
+  }
+
+  record parking-lot {
+    name: string,
+    /// The lot's first and last parking spaces.
+    first-space: string,
+    last-space: string,
+    /// Seconds a call stays parked before it rings back.
+    timeout: u32,
+    /// The calls parked in a lot the phone may see (all lots, or those
+    /// of the phone's parking applications).
+    calls: list<parked-call>,
+  }
+
+  /// What the phone's user is in a call queue.
+  enum queue-membership {
+    /// A member who logged in.
+    logged-in,
+    /// A member who does not log in or out.
+    permanent,
+    /// A member who is logged out.
+    logged-out,
+    /// Not a member: the user manages the queue.
+    manager,
+  }
+
+  /// A call queue of the phone's queue applications (`pbx.queues`).
+  record call-queue {
+    /// Identifies the queue in the other queue functions.
+    id: string,
+    name: string,
+    membership: queue-membership,
+    paused: bool,
+    /// The counts the PBX lets the phone see, if any.
+    members: option<u32>,
+    members-logged-in: option<u32>,
+    callers-waiting: option<u32>,
+  }
+
+  record queue-member {
+    name: string,
+    membership: queue-membership,
+    /// Seconds on the call the member has, if any.
+    on-call: option<u32>,
+  }
+
+  record queue-caller {
+    name: string,
+    number: string,
+    /// 1 is the next to be answered.
+    position: u32,
+    /// Seconds waited.
+    waiting: u32,
+  }
+
+  /// Today's figures of a call queue (`pbx.queue-status`).
+  record queue-status {
+    id: string,
+    name: string,
+    members: u32,
+    /// The members logged in and not paused.
+    members-logged-in: u32,
+    members-on-call: u32,
+    callers-waiting: u32,
+    /// Calls today: completed and abandoned.
+    calls: u32,
+    completed-calls: u32,
+    abandoned-calls: u32,
+    /// The members and the waiting callers, if the PBX lets the phone see
+    /// them.
+    member-list: list<queue-member>,
+    caller-list: list<queue-caller>,
+  }
+
+  /// How `pbx.voicemail-messages` orders the messages.
+  enum voicemail-sort { date, id }
+
+  record voicemail-message {
+    /// Identifies the message in the other voicemail functions.
+    id: string,
+    caller-name: string,
+    caller-number: string,
+    /// When the message was left, in seconds since the Unix epoch; 0 when
+    /// the PBX's date is not one the phone can read.
+    date: u64,
+    /// Seconds.
+    duration: u32,
+    read: bool,
+  }
+
+  /// One page of a voicemail folder's messages.
+  record voicemail-page {
+    folder: string,
+    /// The page (from 1), and how many pages there are.
+    page: u32,
+    pages: u32,
+    /// The messages in the folder.
+    total: u32,
+    messages: list<voicemail-message>,
+  }
+
+  record voicemail-folder {
+    /// What the voicemail functions take as a folder.
+    name: string,
+    /// The messages in the folder.
+    count: u32,
+  }
+
+  /// What a `pbx` request ended in.
+  variant pbx-result {
+    /// The request was carried out.
+    done,
+    presence(pbx-presence),
+    presence-options(list<pbx-presence-option>),
+    parking-lots(list<parking-lot>),
+    queues(list<call-queue>),
+    queue-status(queue-status),
+    voicemail(voicemail-page),
+    voicemail-folders(list<voicemail-folder>),
+  }
+
+  /// The PBX's refusal of a request.
+  record pbx-server-error {
+    /// The DPMA error code, e.g., 27168: the account is not permitted to
+    /// do this.
+    code: u32,
+    message: string,
+  }
+
+  variant pbx-error {
+    /// The server answered with an error.
+    server(pbx-server-error),
+    /// The request did not reach the server, or the server's answer is
+    /// not the method's; the text says why.
     transport(string),
   }
 
@@ -254,7 +417,8 @@ interface types {
     softkey(u32),
     widget(tuple<widget, widget-event>),
     timer(timer-id),
-    pbx(tuple<request-id, pbx-outcome>),
+    /// The result of a `pbx` request.
+    pbx(tuple<request-id, result<pbx-result, pbx-error>>),
     http(tuple<request-id, result<http-response, string>>),
     /// A call changed (after `calls.observe(true)`): its state or the
     /// remote party's name or number.  The end of a call arrives once,
@@ -432,13 +596,72 @@ interface config {
   contact-lists: func() -> list<tuple<string, string>>;
 }
 
-/// Capability `pbx`: requests to the PBX application server, over the
-/// transport the provisioned account names (`dasp://` through DPMA, or
-/// HTTP).  The host adds the envelope and the credentials.
+/// Capability `pbx`: requests to the PBX's application server (Open DPMA,
+/// or the original DPMA), one function for each method the server has.
+/// The phone sends a request by the transport of the app's provisioned
+/// `<account>` (`dasp://` through the DPMA session, or HTTP), with the
+/// account's credentials and its `account_id`.  Every function returns an
+/// id at once; the result arrives as `event.pbx`.
 interface pbx {
-  use types.{request-id};
-  /// `parameters` is a JSON object text.  Result arrives as `event.pbx`.
-  request: func(method: string, parameters: string) -> request-id;
+  use types.{request-id, call-id, voicemail-sort};
+
+  /// The user's presence.  Ends `presence`.
+  presence-info: func() -> request-id;
+  /// The presences the user can choose.  Ends `presence-options`.
+  presence-options: func() -> request-id;
+  /// Sets the user's presence to an option (`pbx-presence-option.id`),
+  /// with a message (may be empty).  Ends `done`.
+  set-presence: func(option-id: u32, message: string) -> request-id;
+
+  /// The parking lots and the calls parked in them.  Ends `parking-lots`.
+  parking-lots: func() -> request-id;
+
+  /// Starts recording a call of the phone into the voicemail box of the
+  /// call's account (its folder `Recordings`).  Ends `done`.
+  start-recording: func(call: call-id) -> request-id;
+  /// Stops recording a call.  Ends `done`.
+  stop-recording: func(call: call-id) -> request-id;
+
+  /// The call queues of the phone's queue applications.  Ends `queues`.
+  queues: func() -> request-id;
+  /// Today's figures of a queue (`call-queue.id`).  Ends `queue-status`.
+  queue-status: func(queue: string) -> request-id;
+  /// Logs the user in to a queue, or, with `none`, to every queue.  Ends
+  /// `done`.
+  queue-login: func(queue: option<string>) -> request-id;
+  /// Logs the user out, as `queue-login` logs in.  Ends `done`.
+  queue-logout: func(queue: option<string>) -> request-id;
+  /// Pauses the user in a queue, or in every queue, with a reason (may
+  /// be empty).  Ends `done`.
+  queue-pause: func(queue: option<string>, reason: string) -> request-id;
+  /// Ends a pause, as `queue-pause` begins one.  Ends `done`.
+  queue-resume: func(queue: option<string>) -> request-id;
+
+  /// Adds a contact to a contact list of the phone (`phonebook`: the
+  /// list's id), and provisions the phone again.  Ends `done`.
+  add-contact: func(phonebook: string, extension: string, name: string) -> request-id;
+
+  /// One page of a folder's messages, `per-page` messages to a page (at
+  /// least 1), the first page 1.  Ends `voicemail`.
+  voicemail-messages: func(folder: string, sort: voicemail-sort, descending: bool, per-page: u32, page: u32) -> request-id;
+  /// The voicemail folders.  Ends `voicemail-folders`.
+  voicemail-folders: func() -> request-id;
+  /// Moves messages to another folder.  Ends `done`.
+  voicemail-move: func(folder: string, target: string, messages: list<string>) -> request-id;
+  /// Deletes messages.  Ends `done`.
+  voicemail-remove: func(folder: string, messages: list<string>) -> request-id;
+  /// Copies messages to the inbox of another account's voicemail box
+  /// (the account's `id`).  Ends `done`.
+  voicemail-forward: func(folder: string, account: string, messages: list<string>) -> request-id;
+  /// Marks messages heard.  Ends `done`.
+  voicemail-mark-read: func(folder: string, messages: list<string>) -> request-id;
+  /// Marks messages new.  Ends `done`.
+  voicemail-mark-unread: func(folder: string, messages: list<string>) -> request-id;
+  /// Has the PBX call the phone and play a message: the call arrives as
+  /// `event.push` `digium.incomingCall.voicemail`.  Ends `done`.
+  voicemail-play: func(folder: string, message: string) -> request-id;
+
+  /// Forget a request: its result is not delivered.
   cancel: func(id: request-id);
 }
 

@@ -29,6 +29,7 @@ pub mod engine;
 mod host;
 pub mod install;
 mod localstore;
+mod pbxapi;
 pub mod manager;
 pub mod manifest;
 mod prepare;

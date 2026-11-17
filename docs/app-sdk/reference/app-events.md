@@ -12,7 +12,7 @@ pub enum Event {
     Softkey(u32),
     Widget((Widget, WidgetEvent)),
     Timer(u32),
-    Pbx((u32, PbxOutcome)),
+    Pbx((u32, Result<PbxResult, PbxError>)),
     Http((u32, Result<HttpResponse, String>)),
     Call(CallInfo),
     Push(Push),
@@ -113,10 +113,10 @@ A timer from [`timers::set`](timers.md#set) fired.
 ## `Pbx`
 
 ```rust
-Event::Pbx((id, outcome))
+Event::Pbx((id, result))
 ```
 
-The result of a [`pbx::request`](pbx.md#request): exactly one for each request that the app didn't cancel.
+The result of a [`pbx`](pbx.md) request: exactly one for each request that the app didn't cancel.
 
 ## `Http`
 

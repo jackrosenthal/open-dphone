@@ -39,16 +39,17 @@ pub mod bindings {
     });
 }
 
-pub mod json;
 pub mod manifest;
 pub mod nav;
 pub mod xml;
 
 pub use bindings::dphone::app::types::{
-    AccountInfo, Align, CallInfo, CallState, Error, Event, Font, Header, HttpResponse, InputMode,
-    ListItem, Metrics, Mwi, PbxOutcome, PbxUser, Presence, Push, Rect, Size, Skin, Softkey,
-    StorageChange, StorageEntry, StorageLocation, StorageOutcome, StorageReply, WidgetEvent,
-    WidgetKind,
+    AccountInfo, Align, CallInfo, CallQueue, CallState, Error, Event, Font, Header, HttpResponse,
+    InputMode, ListItem, Metrics, Mwi, ParkedCall, ParkingLot, PbxError, PbxPresence,
+    PbxPresenceOption, PbxPresenceState, PbxResult, PbxServerError, PbxUser, Presence, Push,
+    QueueCaller, QueueMember, QueueMembership, QueueStatus, Rect, Size, Skin, Softkey,
+    StorageChange, StorageEntry, StorageLocation, StorageOutcome, StorageReply, VoicemailFolder,
+    VoicemailMessage, VoicemailPage, VoicemailSort, WidgetEvent, WidgetKind,
 };
 pub use bindings::dphone::app::l10n::TimeStyle;
 pub use bindings::dphone::app::{
@@ -178,14 +179,13 @@ pub fn read_string(key: &str) -> Option<String> {
 }
 
 pub mod prelude {
-    pub use crate::json::Json;
     pub use crate::manifest::AppKind;
     pub use crate::nav::{Form, Message};
     pub use crate::{
-        App, Event, ListItem, PbxOutcome, ROOT, Rect, Skin, Softkey, StorageEntry, StorageLocation,
-        StorageOutcome, StorageReply, TimeStyle, Widget, WidgetEvent, WidgetKind, audio, calls,
-        config, content_rect, events, http, l10n, pbx, presence, row_height, runtime, screen,
-        storage, timers, ui,
+        App, Event, ListItem, PbxError, PbxResult, ROOT, Rect, Skin, Softkey, StorageEntry,
+        StorageLocation, StorageOutcome, StorageReply, TimeStyle, Widget, WidgetEvent, WidgetKind,
+        audio, calls, config, content_rect, events, http, l10n, pbx, presence, row_height, runtime,
+        screen, storage, timers, ui,
     };
 }
 
@@ -258,38 +258,13 @@ macro_rules! export_app {
     };
 }
 
-/// Sends a PBX request with `parameters` (an object), adding the app
-/// account's `account_id` when the provisioned configuration has one and
-/// the parameters do not.  The reply arrives as [`Event::Pbx`].
-pub fn pbx_request(method: &str, parameters: json::Json) -> u32 {
-    let mut members = match parameters {
-        json::Json::Obj(m) => m,
-        _ => Vec::new(),
-    };
-    if !members.iter().any(|(k, _)| k == "account_id")
-        && let Some(id) = config::app_setting("account_id")
-        && !id.is_empty()
-    {
-        members.push(("account_id".to_string(), json::Json::Str(id)));
-    }
-    pbx::request(method, &json::Json::Obj(members).to_string())
-}
-
-/// Text for a failed PBX request, for an error screen.
-pub fn pbx_error_text(outcome: &PbxOutcome) -> String {
-    match outcome {
-        PbxOutcome::Ok(_) => String::new(),
-        PbxOutcome::Errors(e) => {
-            let v = json::Json::parse(e).unwrap_or(json::Json::Null);
-            let first = v.get("error");
-            let first = first.items().first().copied().cloned().unwrap_or(v.clone());
-            let msg = first.get("message").text();
-            if msg.is_empty() {
-                "The server reported an error.".to_string()
-            } else {
-                msg
-            }
+/// Text for a failed PBX request, for an error screen: the server's
+/// message, or that the server could not be reached and why.
+impl core::fmt::Display for PbxError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            PbxError::Server(e) => f.write_str(&e.message),
+            PbxError::Transport(why) => write!(f, "Could not reach the server.\n{why}"),
         }
-        PbxOutcome::Transport(t) => format!("Could not reach the server.\n{t}"),
     }
 }

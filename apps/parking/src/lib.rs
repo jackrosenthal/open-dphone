@@ -2,7 +2,6 @@
 //! retrieves one by dialing its space.
 
 use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{pbx_error_text, pbx_request};
 
 const SK_RETRIEVE: u32 = 1;
 const SK_REFRESH: u32 = 2;
@@ -15,7 +14,7 @@ struct Parked {
     space: String,
     name: String,
     number: String,
-    seconds: i64,
+    seconds: u32,
 }
 
 #[derive(Default)]
@@ -27,16 +26,13 @@ struct Parking {
     shown: bool,
 }
 
-fn duration(secs: i64) -> String {
+fn duration(secs: u32) -> String {
     format!("{}:{:02}", secs / 60, secs % 60)
 }
 
 impl Parking {
     fn refresh(&mut self) {
-        self.request = Some(pbx_request(
-            "switchvox.users.parkingLots.getList",
-            Json::obj([]),
-        ));
+        self.request = Some(pbx::parking_lots());
     }
 
     fn draw(&mut self) {
@@ -95,29 +91,29 @@ impl Parking {
         }
     }
 
-    fn on_reply(&mut self, outcome: PbxOutcome) {
+    fn on_reply(&mut self, outcome: Result<PbxResult, PbxError>) {
         match outcome {
-            PbxOutcome::Ok(text) => {
-                let v = Json::parse(&text).unwrap_or(Json::Null);
+            Ok(result) => {
                 self.calls.clear();
-                for lot in v.path(&["parking_lots", "parking_lot"]).items() {
-                    for c in lot.path(&["parked_calls", "parked_call"]).items() {
-                        self.calls.push(Parked {
-                            space: c.get("lotnum").text(),
-                            name: c.get("from_caller_id_name").text(),
-                            number: c.get("from_caller_id_number").text(),
-                            seconds: c.get("duration").int().unwrap_or(0),
-                        });
-                    }
+                let PbxResult::ParkingLots(lots) = result else {
+                    return self.draw();
+                };
+                for c in lots.into_iter().flat_map(|lot| lot.calls) {
+                    self.calls.push(Parked {
+                        space: c.space,
+                        name: c.caller_name,
+                        number: c.caller_number,
+                        seconds: c.duration,
+                    });
                 }
                 self.calls.sort_by(|a, b| a.space.cmp(&b.space));
                 self.draw();
             }
-            other => {
+            Err(e) => {
                 self.list = None;
                 Message::show(
                     "Parked Calls",
-                    &pbx_error_text(&other),
+                    &e.to_string(),
                     &[
                         Softkey::new(SK_REFRESH, "Retry"),
                         Softkey::new(SK_EXIT, "Exit"),

@@ -1,13 +1,13 @@
 //! Visual voicemail: folders, the message list, playback, and message
-//! actions, over the PBX's `switchvox.users.voicemail.*` methods.
+//! actions, over the PBX's voicemail methods (`pbx::voicemail_*`).
 //!
-//! Playback is a call: `voicemail.play` makes the PBX ring this phone with
+//! Playback is a call: `pbx::voicemail_play` makes the PBX ring this phone with
 //! the event `digium.incomingCall.voicemail`; the app answers it while it
 //! is on screen (and rejects it otherwise), and sends `*`, `#`, and `0` as
 //! DTMF for rewind, skip, and pause.
 
 use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{pbx_error_text, pbx_request};
+use dphone_app_sdk::{VoicemailMessage, VoicemailSort};
 
 const SK_PLAY: u32 = 1;
 const SK_DELETE: u32 = 2;
@@ -24,7 +24,7 @@ const SK_MOVE: u32 = 12;
 const SK_REFRESH: u32 = 13;
 
 const PLAYBACK_EVENT: &str = "digium.incomingCall.voicemail";
-const PAGE: i64 = 30;
+const PAGE: u32 = 30;
 
 #[derive(Clone, Default)]
 struct Msg {
@@ -32,8 +32,21 @@ struct Msg {
     name: String,
     number: String,
     date: u64,
-    duration: i64,
+    duration: u32,
     read: bool,
+}
+
+impl From<VoicemailMessage> for Msg {
+    fn from(m: VoicemailMessage) -> Msg {
+        Msg {
+            id: m.id,
+            name: m.caller_name,
+            number: m.caller_number,
+            date: m.date,
+            duration: m.duration,
+            read: m.read,
+        }
+    }
 }
 
 impl Msg {
@@ -49,7 +62,7 @@ impl Msg {
 #[derive(Clone, Default)]
 struct Folder {
     name: String,
-    count: String,
+    count: u32,
 }
 
 #[derive(Default, PartialEq)]
@@ -62,6 +75,15 @@ enum Screen {
     ConfirmDelete,
     Playing,
     Error,
+}
+
+/// What a request changes in the message selected or acted on.
+enum Change {
+    Remove,
+    /// Marks it read (`true`) or unread.
+    Mark(bool),
+    /// Moves it to the folder.
+    Move(String),
 }
 
 /// What a pending request is for.
@@ -111,8 +133,7 @@ fn folder_title(name: &str) -> String {
 }
 
 impl Voicemail {
-    fn ask(&mut self, want: Want, method: &str, params: Json) {
-        let id = pbx_request(method, params);
+    fn ask(&mut self, want: Want, id: u32) {
         self.pending.push((id, want));
     }
 
@@ -122,24 +143,12 @@ impl Voicemail {
     }
 
     fn load_list(&mut self) {
-        self.ask(
-            Want::List,
-            "switchvox.users.voicemail.getList",
-            Json::obj([
-                ("folder", Json::str(self.folder.clone())),
-                ("sort_field", Json::str("date")),
-                ("sort_order", Json::str("DESC")),
-                ("items_per_page", Json::num(PAGE)),
-            ]),
-        );
+        let id = pbx::voicemail_messages(&self.folder, VoicemailSort::Date, true, PAGE, 1);
+        self.ask(Want::List, id);
     }
 
     fn load_folders(&mut self) {
-        self.ask(
-            Want::Folders,
-            "switchvox.users.voicemail.getFolderList",
-            Json::obj([]),
-        );
+        self.ask(Want::Folders, pbx::voicemail_folders());
     }
 
     fn selected(&self) -> Option<Msg> {
@@ -212,7 +221,7 @@ impl Voicemail {
         let items: Vec<ListItem> = self
             .folders
             .iter()
-            .map(|f| ListItem::with_detail(folder_title(&f.name), f.count.clone()))
+            .map(|f| ListItem::with_detail(folder_title(&f.name), f.count.to_string()))
             .collect();
         ui::set_items(list, &items);
         ui::set_softkeys(
@@ -231,20 +240,9 @@ impl Voicemail {
         };
     }
 
-    fn ids(m: &Msg) -> Json {
-        Json::Arr(vec![Json::str(m.id.clone())])
-    }
-
     fn play(&mut self) {
         let Some(m) = self.selected() else { return };
-        self.ask(
-            Want::Play,
-            "switchvox.users.voicemail.play",
-            Json::obj([
-                ("folder", Json::str(self.folder.clone())),
-                ("message_id", Json::str(m.id.clone())),
-            ]),
-        );
+        self.ask(Want::Play, pbx::voicemail_play(&self.folder, &m.id));
         let text = format!(
             "{}\n{}\n{}:{:02}\n\nConnecting...",
             m.who(),
@@ -274,42 +272,32 @@ impl Voicemail {
         match self.current.take() {
             Some(m) if !m.read => {
                 self.loading();
-                self.ask(
-                    Want::Change,
-                    "switchvox.users.voicemail.markRead",
-                    Json::obj([
-                        ("folder", Json::str(self.folder.clone())),
-                        ("message_ids", Self::ids(&m)),
-                    ]),
-                );
+                let id = pbx::voicemail_mark_read(&self.folder, &[m.id]);
+                self.ask(Want::Change, id);
             }
             _ => self.draw_list(),
         }
     }
 
-    fn change(&mut self, method: &str, extra: Vec<(&str, Json)>) {
+    fn change(&mut self, change: Change) {
         let Some(m) = self.current.take().or_else(|| self.selected()) else {
             return;
         };
-        let mut params = vec![("message_ids", Self::ids(&m))];
-        params.extend(extra);
+        let ids = [m.id];
         self.loading();
-        self.ask(
-            Want::Change,
-            method,
-            Json::Obj(
-                params
-                    .into_iter()
-                    .map(|(k, v)| (k.to_string(), v))
-                    .collect(),
-            ),
-        );
+        let id = match change {
+            Change::Remove => pbx::voicemail_remove(&self.folder, &ids),
+            Change::Mark(true) => pbx::voicemail_mark_read(&self.folder, &ids),
+            Change::Mark(false) => pbx::voicemail_mark_unread(&self.folder, &ids),
+            Change::Move(to) => pbx::voicemail_move(&self.folder, &to, &ids),
+        };
+        self.ask(Want::Change, id);
     }
 
-    fn error(&mut self, outcome: &PbxOutcome) {
+    fn error(&mut self, e: &PbxError) {
         Message::show(
             "Voicemail",
-            &pbx_error_text(outcome),
+            &e.to_string(),
             &[
                 Softkey::new(SK_REFRESH, "Retry"),
                 Softkey::new(SK_EXIT, "Exit"),
@@ -318,61 +306,48 @@ impl Voicemail {
         self.screen = Screen::Error;
     }
 
-    fn on_pbx(&mut self, id: u32, outcome: PbxOutcome) {
+    fn on_pbx(&mut self, id: u32, outcome: Result<PbxResult, PbxError>) {
         let Some(pos) = self.pending.iter().position(|(i, _)| *i == id) else {
             return;
         };
         let (_, want) = self.pending.remove(pos);
-        let ok = match &outcome {
-            PbxOutcome::Ok(text) => Json::parse(text).unwrap_or(Json::Null),
-            other => {
+        let result = match outcome {
+            Ok(result) => result,
+            Err(e) => {
                 if want == Want::Play {
                     self.current = None;
                 }
                 if self.shown {
-                    self.error(other);
+                    self.error(&e);
                 }
                 return;
             }
         };
-        match want {
-            Want::List => {
-                self.messages = ok
-                    .path(&["messages", "message"])
-                    .items()
-                    .into_iter()
-                    .map(|m| Msg {
-                        id: m.get("id").text(),
-                        name: m.get("caller_id_name").text(),
-                        number: m.get("caller_id_number").text(),
-                        date: m.get("date").int().unwrap_or(0).max(0) as u64,
-                        duration: m.get("duration").int().unwrap_or(0),
-                        read: m.get("read").truthy(),
-                    })
-                    .collect();
+        match (want, result) {
+            (Want::List, PbxResult::Voicemail(page)) => {
+                self.messages = page.messages.into_iter().map(Msg::from).collect();
                 if self.shown
                     && matches!(self.screen, Screen::Loading | Screen::List | Screen::Error)
                 {
                     self.draw_list();
                 }
             }
-            Want::Folders => {
-                self.folders = ok
-                    .path(&["folders", "folder"])
-                    .items()
+            (Want::Folders, PbxResult::VoicemailFolders(folders)) => {
+                self.folders = folders
                     .into_iter()
                     .map(|f| Folder {
-                        name: f.get("name").text(),
-                        count: f.get("count").text(),
+                        name: f.name,
+                        count: f.count,
                     })
                     .collect();
             }
             // The call arrives as a push; nothing to do with the reply.
-            Want::Play => {}
-            Want::Change => {
+            (Want::Play, _) => {}
+            (Want::Change, _) => {
                 self.load_list();
                 self.load_folders();
             }
+            _ => {}
         }
     }
 }
@@ -457,14 +432,7 @@ impl App for Voicemail {
                 }
                 Screen::MoveTo => {
                     if let Some(f) = self.folders.get(i as usize).cloned() {
-                        let from = self.folder.clone();
-                        self.change(
-                            "switchvox.users.voicemail.move",
-                            vec![
-                                ("folder_from", Json::str(from)),
-                                ("folder_to", Json::str(f.name)),
-                            ],
-                        );
+                        self.change(Change::Move(f.name));
                     }
                 }
                 _ => {}
@@ -482,26 +450,14 @@ impl App for Voicemail {
                     self.screen = Screen::ConfirmDelete;
                 }
             }
-            Event::Softkey(SK_YES) => {
-                let folder = self.folder.clone();
-                self.change(
-                    "switchvox.users.voicemail.remove",
-                    vec![("folder", Json::str(folder))],
-                );
-            }
+            Event::Softkey(SK_YES) => self.change(Change::Remove),
             Event::Softkey(SK_NO | SK_BACK) => {
                 self.current = None;
                 self.draw_list();
             }
             Event::Softkey(SK_MARK) => {
                 if let Some(m) = self.selected() {
-                    let method = if m.read {
-                        "switchvox.users.voicemail.markUnread"
-                    } else {
-                        "switchvox.users.voicemail.markRead"
-                    };
-                    let folder = self.folder.clone();
-                    self.change(method, vec![("folder", Json::str(folder))]);
+                    self.change(Change::Mark(!m.read));
                 }
             }
             Event::Softkey(SK_MOVE) => {

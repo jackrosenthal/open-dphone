@@ -6,7 +6,7 @@ Helpers call the interfaces on the other pages, and give the app the capabilitie
 
 `use dphone_app_sdk::prelude::*;` imports:
 
-- The trait `App`, the constant `ROOT`, and the types `Event`, `Widget`, `Rect`, `ListItem`, `Softkey`, `WidgetKind`, `WidgetEvent`, `Skin`, `PbxOutcome`, `StorageLocation`, `StorageEntry`, `StorageOutcome`, `StorageReply`, `TimeStyle`, `AppKind`, `Json`, `Form`, and `Message`.
+- The trait `App`, the constant `ROOT`, and the types `Event`, `Widget`, `Rect`, `ListItem`, `Softkey`, `WidgetKind`, `WidgetEvent`, `Skin`, `PbxResult`, `PbxError`, `StorageLocation`, `StorageEntry`, `StorageOutcome`, `StorageReply`, `TimeStyle`, `AppKind`, `Form`, and `Message`.
 - The functions `screen`, `content_rect`, and `row_height`.
 - The modules `audio`, `calls`, `config`, `events`, `http`, `l10n`, `pbx`, `presence`, `runtime`, `storage`, `timers`, and `ui`.
 
@@ -81,58 +81,6 @@ pub fn read_string(key: &str) -> Option<String>
 The log functions call [`runtime::log`](runtime.md#log) with levels 0 to 3.
 
 `read_string` returns the value of a `StorageLocation::Local` key from [`storage::get`](storage.md#get) as a `String`, or `None` for a key that isn't set or a value that isn't valid UTF-8.
-
-## PBX requests
-
-### `pbx_request`
-
-```rust
-pub fn pbx_request(method: &str, parameters: Json) -> u32
-```
-
-Calls [`pbx::request`](pbx.md#request) with `parameters` as JSON.  Adds an `account_id` member from [`config::app_setting("account_id")`](config.md#app_setting) if `parameters` has none and the setting isn't empty.  Sends an empty object if `parameters` isn't an object.
-
-### `pbx_error_text`
-
-```rust
-pub fn pbx_error_text(outcome: &PbxOutcome) -> String
-```
-
-Returns text for an error screen:
-
-- For `Errors`, the `message` of the first error in the server's reply, or `The server reported an error.` if the reply has none.
-- For `Transport`, `Could not reach the server.`, with the transport's error text on a second line.
-- For `Ok`, `""`.
-
-## `Json`
-
-```rust
-pub enum Json {
-    Null,
-    Bool(bool),
-    Num(String),
-    Str(String),
-    Arr(Vec<Json>),
-    Obj(Vec<(String, Json)>),
-}
-```
-
-A JSON value with a parser and a serializer, in the `json` module.  Numbers are stored as text.
-
-| Function | Result |
-| --- | --- |
-| `Json::parse(text: &str) -> Option<Json>` | The value, or `None` unless `text` is exactly one JSON value. |
-| `get(&self, key: &str) -> &Json` | An object's member; `Null` if missing or not an object. |
-| `path(&self, keys: &[&str]) -> &Json` | `get` applied for each key in turn. |
-| `text(&self) -> String` | The text of a string, number, or boolean; otherwise `""`. |
-| `as_str(&self) -> Option<&str>` | The text of a string or number. |
-| `int(&self) -> Option<i64>` | A number or numeric string as an integer, fraction truncated; 0 or 1 for a boolean. |
-| `truthy(&self) -> bool` | `true` for `true` and the strings `1`, `true`, `yes`, and `on`, in any case. |
-| `is_null(&self) -> bool` | Whether the value is `Null`. |
-| `items(&self) -> Vec<&Json>` | An array's elements; none for `Null`; any other value as a list of one, because the PBX collapses some one-element lists. |
-| `Json::obj([(key, value), ...]) -> Json` | An object. |
-| `Json::str(s) -> Json`, `Json::num(n: i64) -> Json` | A string; a number. |
-| `write(&self, out: &mut String)`, `to_string()` | The value as JSON text. |
 
 ## `xml`
 

@@ -497,7 +497,7 @@ fn install_run_upgrade_and_remove() {
     assert!(installed.join(".code.cwasm").is_file());
     let record = Manifest::from_record(&std::fs::read(installed.join("app.pb")).unwrap()).unwrap();
     let uses: Vec<&str> = record.capabilities.iter().map(|c| c.name()).collect();
-    assert_eq!(uses, ["ui", "config", "pbx", "presence"]);
+    assert_eq!(uses, ["ui", "pbx", "presence"]);
     assert!(
         !r.nvdata.join("jsapps").exists(),
         "the stock app directory is left alone"

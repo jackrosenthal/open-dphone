@@ -68,7 +68,7 @@ pub(crate) enum Inbound {
         app: String,
         generation: u64,
         id: u32,
-        outcome: PbxOutcome,
+        outcome: Result<PbxResult, PbxError>,
     },
     Http {
         app: String,
@@ -297,25 +297,26 @@ pub(crate) fn entry_matches(e: &dphone_state::BlfEntry, target: &str) -> bool {
     e.number == target || e.id == target || e.uri == target
 }
 
-/// The reply document of a PBX request, reduced to what the app gets.
-pub(crate) fn pbx_outcome(reply: Result<Vec<u8>, String>) -> PbxOutcome {
-    let bytes = match reply {
-        Ok(b) => b,
-        Err(e) => return PbxOutcome::Transport(e),
-    };
+/// The reply document of a PBX request, read as `read` reads the
+/// method's result.
+pub(crate) fn pbx_outcome(
+    reply: Result<Vec<u8>, String>,
+    read: crate::pbxapi::Reader,
+) -> Result<PbxResult, PbxError> {
+    let bytes = reply.map_err(PbxError::Transport)?;
     let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
-        return PbxOutcome::Transport("the server's reply was not JSON".into());
+        return Err(PbxError::Transport("the server's reply was not JSON".into()));
     };
     let Some(r) = v.get("response") else {
-        return PbxOutcome::Transport("the server's reply had no response".into());
+        return Err(PbxError::Transport("the server's reply had no response".into()));
     };
     if let Some(e) = r.get("errors") {
-        return PbxOutcome::Errors(e.to_string());
+        return Err(PbxError::Server(crate::pbxapi::server_error(e)));
     }
-    match r.get("result") {
-        Some(res) => PbxOutcome::Ok(res.to_string()),
-        None => PbxOutcome::Transport("the server's reply had no result".into()),
-    }
+    let Some(result) = r.get("result") else {
+        return Err(PbxError::Transport("the server's reply had no result".into()));
+    };
+    read(result).ok_or_else(|| PbxError::Transport("the server's reply was not the method's".into()))
 }
 
 /// Days-from-civil inverse: (year, month, day) for days since 1970-01-01.
@@ -725,32 +726,38 @@ impl AppCtx {
     }
 }
 
-impl api::pbx::Host for AppCtx {
-    fn request(&mut self, method: String, parameters: String) -> u32 {
+impl AppCtx {
+    /// Sends a request to the PBX's application server, with the app
+    /// account's `account_id` (and, for `voicemail.forward`, as
+    /// `account_from`); the result comes to the app as `event.pbx`.
+    fn pbx_call(&mut self, call: crate::pbxapi::Call) -> u32 {
         let id = self.next_request();
         let inbox = self.inbox.clone();
         let (app, generation) = (self.name.clone(), self.generation);
+        let read = call.read;
         let fail = |inbox: &Arc<crate::host::Inbox>, why: &str| {
             inbox.push(Inbound::Pbx {
                 app: app.clone(),
                 generation,
                 id,
-                outcome: PbxOutcome::Transport(why.to_string()),
+                outcome: Err(PbxError::Transport(why.to_string())),
             });
         };
         let Some(account) = self.services.config.app_account(&self.name) else {
             fail(&inbox, "this app has no application account configured");
             return id;
         };
-        let params: serde_json::Value = match serde_json::from_str(&parameters) {
-            Ok(v @ serde_json::Value::Object(_)) => v,
-            _ => {
-                fail(&inbox, "parameters must be a JSON object");
-                return id;
-            }
-        };
-        let body =
-            serde_json::json!({"request": {"method": method, "parameters": params}}).to_string();
+        let mut params = call.parameters;
+        if !account.account_id.is_empty() {
+            let key = if call.method == "switchvox.users.voicemail.forward" {
+                "account_from"
+            } else {
+                "account_id"
+            };
+            params.insert(key.into(), account.account_id.clone().into());
+        }
+        let body = serde_json::json!({"request": {"method": call.method, "parameters": params}})
+            .to_string();
         if account.appserver.starts_with("dasp://") {
             let done = {
                 let app = app.clone();
@@ -759,7 +766,7 @@ impl api::pbx::Host for AppCtx {
                         app,
                         generation,
                         id,
-                        outcome: pbx_outcome(reply),
+                        outcome: pbx_outcome(reply, read),
                     })
                 })
             };
@@ -780,9 +787,9 @@ impl api::pbx::Host for AppCtx {
                 let app = app.clone();
                 Completion::new(move |reply: Result<crate::HttpReply, String>| {
                     let outcome = match reply {
-                        Ok(r) if (200..300).contains(&r.status) => pbx_outcome(Ok(r.body)),
-                        Ok(r) => PbxOutcome::Transport(format!("HTTP status {}", r.status)),
-                        Err(e) => PbxOutcome::Transport(e),
+                        Ok(r) if (200..300).contains(&r.status) => pbx_outcome(Ok(r.body), read),
+                        Ok(r) => Err(PbxError::Transport(format!("HTTP status {}", r.status))),
+                        Err(e) => Err(PbxError::Transport(e)),
                     };
                     inbox.push(Inbound::Pbx {
                         app,
@@ -806,6 +813,108 @@ impl api::pbx::Host for AppCtx {
             fail(&inbox, "the application server address is not usable");
         }
         id
+    }
+
+    /// A request about a call of the phone: the call's account (its
+    /// `id`) and SIP Call-ID; an error for a call the phone does not have.
+    fn recording(&mut self, start: bool, call: u32) -> u32 {
+        let calls = self.store.get::<dphone_state::Calls>();
+        let accounts = self.store.get::<dphone_state::Accounts>();
+        let found = calls.calls.iter().find(|c| c.id.0 == call).map(|c| {
+            let line = accounts
+                .accounts
+                .iter()
+                .find(|a| a.id == c.account)
+                .map(|a| a.config_id.clone())
+                .unwrap_or_default();
+            (line, c.sip_call_id.clone())
+        });
+        match found {
+            Some((line, call_id)) => self.pbx_call(crate::pbxapi::recording(start, line, call_id)),
+            None => {
+                let id = self.next_request();
+                self.inbox.push(Inbound::Pbx {
+                    app: self.name.clone(),
+                    generation: self.generation,
+                    id,
+                    outcome: Err(PbxError::Transport("the phone has no such call".into())),
+                });
+                id
+            }
+        }
+    }
+}
+
+impl api::pbx::Host for AppCtx {
+    fn presence_info(&mut self) -> u32 {
+        self.pbx_call(crate::pbxapi::presence_info())
+    }
+    fn presence_options(&mut self) -> u32 {
+        self.pbx_call(crate::pbxapi::presence_options())
+    }
+    fn set_presence(&mut self, option_id: u32, message: String) -> u32 {
+        self.pbx_call(crate::pbxapi::set_presence(option_id, message))
+    }
+    fn parking_lots(&mut self) -> u32 {
+        self.pbx_call(crate::pbxapi::parking_lots())
+    }
+    fn start_recording(&mut self, call: u32) -> u32 {
+        self.recording(true, call)
+    }
+    fn stop_recording(&mut self, call: u32) -> u32 {
+        self.recording(false, call)
+    }
+    fn queues(&mut self) -> u32 {
+        self.pbx_call(crate::pbxapi::queues())
+    }
+    fn queue_status(&mut self, queue: String) -> u32 {
+        self.pbx_call(crate::pbxapi::queue_status(queue))
+    }
+    fn queue_login(&mut self, queue: Option<String>) -> u32 {
+        self.pbx_call(crate::pbxapi::queue_login(queue))
+    }
+    fn queue_logout(&mut self, queue: Option<String>) -> u32 {
+        self.pbx_call(crate::pbxapi::queue_logout(queue))
+    }
+    fn queue_pause(&mut self, queue: Option<String>, reason: String) -> u32 {
+        self.pbx_call(crate::pbxapi::queue_pause(queue, reason))
+    }
+    fn queue_resume(&mut self, queue: Option<String>) -> u32 {
+        self.pbx_call(crate::pbxapi::queue_resume(queue))
+    }
+    fn add_contact(&mut self, phonebook: String, extension: String, name: String) -> u32 {
+        self.pbx_call(crate::pbxapi::add_contact(phonebook, extension, name))
+    }
+    fn voicemail_messages(
+        &mut self,
+        folder: String,
+        sort: VoicemailSort,
+        descending: bool,
+        per_page: u32,
+        page: u32,
+    ) -> u32 {
+        self.pbx_call(crate::pbxapi::voicemail_messages(folder, sort, descending, per_page, page))
+    }
+    fn voicemail_folders(&mut self) -> u32 {
+        self.pbx_call(crate::pbxapi::voicemail_folders())
+    }
+    fn voicemail_move(&mut self, folder: String, target: String, messages: Vec<String>) -> u32 {
+        self.pbx_call(crate::pbxapi::voicemail_move(folder, target, messages))
+    }
+    fn voicemail_remove(&mut self, folder: String, messages: Vec<String>) -> u32 {
+        self.pbx_call(crate::pbxapi::voicemail_remove(folder, messages))
+    }
+    fn voicemail_forward(&mut self, folder: String, account: String, messages: Vec<String>) -> u32 {
+        self.pbx_call(crate::pbxapi::voicemail_forward(account, folder, messages))
+    }
+    fn voicemail_mark_read(&mut self, folder: String, messages: Vec<String>) -> u32 {
+        self.pbx_call(crate::pbxapi::voicemail_mark(true, folder, messages))
+    }
+    fn voicemail_mark_unread(&mut self, folder: String, messages: Vec<String>) -> u32 {
+        self.pbx_call(crate::pbxapi::voicemail_mark(false, folder, messages))
+    }
+    fn voicemail_play(&mut self, folder: String, message: String) -> u32 {
+        self.pbx_call(crate::pbxapi::voicemail_play(folder, message))
     }
     fn cancel(&mut self, id: u32) {
         self.pending.remove(&id);
@@ -1473,23 +1582,24 @@ mod tests {
 
     #[test]
     fn pbx_reply_reduction() {
+        let read = |r: &[u8]| pbx_outcome(Ok(r.to_vec()), |_| Some(PbxResult::Done));
         assert!(matches!(
-            pbx_outcome(Ok(br#"{"response":{"method":"m","result":{"a":1}}}"#.to_vec())),
-            PbxOutcome::Ok(s) if s == r#"{"a":1}"#
+            read(br#"{"response":{"method":"m","result":{"success":{}}}}"#),
+            Ok(PbxResult::Done)
         ));
         assert!(matches!(
-            pbx_outcome(Ok(
-                br#"{"response":{"errors":{"error":{"code":"1"}}}}"#.to_vec()
-            )),
-            PbxOutcome::Errors(_)
+            read(br#"{"response":{"errors":{"error":{"code":10005,"message":"Method not found: m "}}}}"#),
+            Err(PbxError::Server(e)) if e.code == 10005 && e.message == "Method not found: m"
         ));
+        assert!(matches!(read(b"<html>"), Err(PbxError::Transport(_))));
         assert!(matches!(
-            pbx_outcome(Ok(b"<html>".to_vec())),
-            PbxOutcome::Transport(_)
+            pbx_outcome(Err("x".into()), |_| None),
+            Err(PbxError::Transport(_))
         ));
+        // An answer that is not the method's.
         assert!(matches!(
-            pbx_outcome(Err("x".into())),
-            PbxOutcome::Transport(_)
+            pbx_outcome(Ok(br#"{"response":{"result":{}}}"#.to_vec()), |_| None),
+            Err(PbxError::Transport(_))
         ));
     }
 

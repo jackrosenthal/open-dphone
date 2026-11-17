@@ -11,7 +11,7 @@ pub const ROOT: Widget = 0;
 
 `ROOT` is the app's [window](ui.md#window).  Handles of widgets in the [idle window](ui.md#idle-window) have the high bit set.  Handles aren't reused within an instance.
 
-Timer and request IDs are never 0.  `pbx::request`, `http::request`, and the `storage` requests to the PBX share one ID counter, so pending requests have distinct IDs.
+Timer and request IDs are never 0.  The `pbx` requests, `http::request`, and the `storage` requests to the PBX share one ID counter, so pending requests have distinct IDs.
 
 ## Geometry
 
@@ -110,13 +110,125 @@ pub struct Header { pub name: String, pub value: String }
 pub struct HttpResponse { pub status: u16, pub headers: Vec<Header>, pub body: Vec<u8> }
 ```
 
-## PBX requests
+## PBX
 
 ```rust
-pub enum PbxOutcome { Ok(String), Errors(String), Transport(String) }
+pub enum PbxResult {
+    Done,
+    Presence(PbxPresence),
+    PresenceOptions(Vec<PbxPresenceOption>),
+    ParkingLots(Vec<ParkingLot>),
+    Queues(Vec<CallQueue>),
+    QueueStatus(QueueStatus),
+    Voicemail(VoicemailPage),
+    VoicemailFolders(Vec<VoicemailFolder>),
+}
+
+pub enum PbxError { Server(PbxServerError), Transport(String) }
+pub struct PbxServerError { pub code: u32, pub message: String }
+
+pub enum PbxPresenceState { NotSet, Unavailable, Available, Away, Xa, Chat, Dnd }
+
+pub struct PbxPresence {
+    pub option_id: u32,
+    pub state: PbxPresenceState,
+    pub sub_state: String,
+    pub message: String,
+}
+
+pub struct PbxPresenceOption {
+    pub id: u32,
+    pub state: PbxPresenceState,
+    pub sub_state: String,
+    pub by_user: bool,
+    pub active: bool,
+}
+
+pub struct ParkingLot {
+    pub name: String,
+    pub first_space: String,
+    pub last_space: String,
+    pub timeout: u32,
+    pub calls: Vec<ParkedCall>,
+}
+
+pub struct ParkedCall {
+    pub space: String,
+    pub caller_name: String,
+    pub caller_number: String,
+    pub duration: u32,
+}
+
+pub enum QueueMembership { LoggedIn, Permanent, LoggedOut, Manager }
+
+pub struct CallQueue {
+    pub id: String,
+    pub name: String,
+    pub membership: QueueMembership,
+    pub paused: bool,
+    pub members: Option<u32>,
+    pub members_logged_in: Option<u32>,
+    pub callers_waiting: Option<u32>,
+}
+
+pub struct QueueStatus {
+    pub id: String,
+    pub name: String,
+    pub members: u32,
+    pub members_logged_in: u32,
+    pub members_on_call: u32,
+    pub callers_waiting: u32,
+    pub calls: u32,
+    pub completed_calls: u32,
+    pub abandoned_calls: u32,
+    pub member_list: Vec<QueueMember>,
+    pub caller_list: Vec<QueueCaller>,
+}
+
+pub struct QueueMember { pub name: String, pub membership: QueueMembership, pub on_call: Option<u32> }
+pub struct QueueCaller { pub name: String, pub number: String, pub position: u32, pub waiting: u32 }
+
+pub enum VoicemailSort { Date, Id }
+
+pub struct VoicemailPage {
+    pub folder: String,
+    pub page: u32,
+    pub pages: u32,
+    pub total: u32,
+    pub messages: Vec<VoicemailMessage>,
+}
+
+pub struct VoicemailMessage {
+    pub id: String,
+    pub caller_name: String,
+    pub caller_number: String,
+    pub date: u64,
+    pub duration: u32,
+    pub read: bool,
+}
+
+pub struct VoicemailFolder { pub name: String, pub count: u32 }
 ```
 
-See [`pbx::request`](pbx.md#request).
+| Field | Contents |
+| --- | --- |
+| `PbxPresence::option_id` | The `PbxPresenceOption::id` of the option that is set. |
+| `sub_state`, `message` | May be empty. |
+| `PbxPresenceOption::by_user` | The user made the option; otherwise the PBX has it. |
+| `ParkingLot::first_space`, `last_space` | The lot's first and last parking spaces. |
+| `ParkingLot::timeout`, `ParkedCall::duration` | Seconds before a parked call rings back; seconds since the call was parked. |
+| `ParkedCall::space` | The number that takes the call. |
+| `CallQueue::members`, `members_logged_in`, `callers_waiting` | The counts the PBX lets the phone see, if any. |
+| `QueueStatus::members_logged_in` | The members logged in and not paused. |
+| `QueueStatus::calls` | Calls today: completed and abandoned. |
+| `QueueStatus::member_list`, `caller_list` | Empty unless the PBX lets the phone see them. |
+| `QueueMember::on_call` | Seconds on the member's call, if any. |
+| `QueueCaller::position`, `waiting` | 1 for the next caller to be answered; seconds waited. |
+| `VoicemailPage::page`, `pages`, `total` | The page (from 1), the number of pages, and the messages in the folder. |
+| `VoicemailMessage::date` | When the message was left, in seconds since the Unix epoch; 0 when the PBX's date isn't a time the phone can read (a number, or app_voicemail's text in UTC). |
+| `VoicemailMessage::duration` | Seconds. |
+
+See [`pbx`](pbx.md).
 
 ## Storage
 

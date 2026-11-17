@@ -2,7 +2,7 @@
 //! pause and resume, and view a queue's numbers for today.
 
 use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{InputMode, pbx_error_text, pbx_request};
+use dphone_app_sdk::{InputMode, QueueMembership, QueueStatus};
 
 const SK_LOGIN: u32 = 1;
 const SK_LOGOUT: u32 = 2;
@@ -15,27 +15,35 @@ const SK_OK: u32 = 8;
 const SK_REFRESH: u32 = 9;
 const REFRESH_MS: u32 = 15_000;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct Queue {
     id: String,
     name: String,
-    /// `logged_in`, `logged_out`, `permanent`, `manager`.
-    status: String,
+    status: QueueMembership,
     paused: bool,
+}
+
+/// What to ask of the PBX about the selected queue.
+enum Action {
+    Login,
+    Logout,
+    Pause(String),
+    Resume,
 }
 
 impl Queue {
     fn state_text(&self) -> &str {
-        match (self.status.as_str(), self.paused) {
-            ("logged_in" | "permanent", true) => "Paused",
-            ("logged_in", false) => "In",
-            ("permanent", false) => "Always",
-            ("manager", _) => "Manager",
-            _ => "Out",
+        use QueueMembership::*;
+        match (self.status, self.paused) {
+            (LoggedIn | Permanent, true) => "Paused",
+            (LoggedIn, false) => "In",
+            (Permanent, false) => "Always",
+            (Manager, _) => "Manager",
+            (LoggedOut, _) => "Out",
         }
     }
     fn member(&self) -> bool {
-        matches!(self.status.as_str(), "logged_in" | "permanent")
+        matches!(self.status, QueueMembership::LoggedIn | QueueMembership::Permanent)
     }
 }
 
@@ -63,10 +71,7 @@ struct Queues {
 
 impl Queues {
     fn refresh(&mut self) {
-        self.list_req = Some(pbx_request(
-            "switchvox.users.callQueues.getList",
-            Json::obj([]),
-        ));
+        self.list_req = Some(pbx::queues());
     }
 
     fn current(&self) -> Option<&Queue> {
@@ -76,9 +81,9 @@ impl Queues {
     fn softkeys(&self) -> Vec<Softkey> {
         let mut keys = Vec::new();
         if let Some(q) = self.current() {
-            match q.status.as_str() {
-                "logged_in" => keys.push(Softkey::new(SK_LOGOUT, "Log Out")),
-                "logged_out" => keys.push(Softkey::new(SK_LOGIN, "Log In")),
+            match q.status {
+                QueueMembership::LoggedIn => keys.push(Softkey::new(SK_LOGOUT, "Log Out")),
+                QueueMembership::LoggedOut => keys.push(Softkey::new(SK_LOGIN, "Log In")),
                 _ => {}
             }
             if q.member() {
@@ -122,19 +127,15 @@ impl Queues {
         self.screen = Screen::List;
     }
 
-    fn action(&mut self, method: &str, reason: Option<String>) {
+    fn action(&mut self, action: Action) {
         let Some(q) = self.current() else { return };
-        let mut params = vec![("call_queue_account_id", Json::str(q.id.clone()))];
-        if let Some(r) = reason {
-            params.push(("reason", Json::str(r)));
-        }
-        let params = Json::Obj(
-            params
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v))
-                .collect(),
-        );
-        self.action_req = Some(pbx_request(method, params));
+        let queue = Some(q.id.as_str());
+        self.action_req = Some(match action {
+            Action::Login => pbx::queue_login(queue),
+            Action::Logout => pbx::queue_logout(queue),
+            Action::Pause(reason) => pbx::queue_pause(queue, &reason),
+            Action::Resume => pbx::queue_resume(queue),
+        });
     }
 
     fn show_details(&mut self) {
@@ -143,38 +144,22 @@ impl Queues {
         };
         Message::show(&q.name, "Loading...", &[Softkey::new(SK_BACK, "Back")]);
         self.screen = Screen::Details;
-        self.stats_req = Some(pbx_request(
-            "switchvox.users.callQueues.getTodaysStatus",
-            Json::obj([("call_queue_account_id", Json::str(q.id))]),
-        ));
+        self.stats_req = Some(pbx::queue_status(&q.id));
     }
 
-    fn draw_details(&mut self, v: &Json) {
+    fn draw_details(&mut self, s: &QueueStatus) {
         let Some(q) = self.current().cloned() else {
             return;
         };
-        let o = v.path(&["callQueue", "overview"]);
-        let field = |k: &str| {
-            let t = o.get(k).text();
-            if t.is_empty() { "-".to_string() } else { t }
-        };
-        let waiting = v
-            .path(&["callQueue", "waiting_callers", "waiting_caller"])
-            .items()
-            .len();
         let text = format!(
             "Members: {} ({} logged in)\nOn calls: {}\nWaiting: {}\nCalls today: {}\nCompleted: {}\nAbandoned: {}",
-            field("total_members"),
-            field("logged_in_count"),
-            field("members_on_call"),
-            if o.get("callers_waiting").is_null() {
-                waiting.to_string()
-            } else {
-                field("callers_waiting")
-            },
-            field("total_calls"),
-            field("completed_calls_today"),
-            field("abandoned_calls"),
+            s.members,
+            s.members_logged_in,
+            s.members_on_call,
+            s.callers_waiting,
+            s.calls,
+            s.completed_calls,
+            s.abandoned_calls,
         );
         Message::show(
             &q.name,
@@ -187,30 +172,31 @@ impl Queues {
         self.screen = Screen::Details;
     }
 
-    fn error(&mut self, outcome: &PbxOutcome) {
+    fn error(&mut self, e: &PbxError) {
         Message::show(
             "Queues",
-            &pbx_error_text(outcome),
+            &e.to_string(),
             &[Softkey::new(SK_BACK, "Back")],
         );
         self.screen = Screen::Error;
     }
 
-    fn on_pbx(&mut self, id: u32, outcome: PbxOutcome) {
+    fn on_pbx(&mut self, id: u32, outcome: Result<PbxResult, PbxError>) {
         if self.list_req == Some(id) {
             self.list_req = None;
-            match &outcome {
-                PbxOutcome::Ok(text) => {
-                    let v = Json::parse(text).unwrap_or(Json::Null);
-                    self.queues = v
-                        .path(&["callQueues", "callQueue"])
-                        .items()
+            match outcome {
+                Ok(result) => {
+                    let queues = match result {
+                        PbxResult::Queues(queues) => queues,
+                        _ => Vec::new(),
+                    };
+                    self.queues = queues
                         .into_iter()
                         .map(|q| Queue {
-                            id: q.get("account_id").text(),
-                            name: q.get("name").text(),
-                            status: q.get("loggedin_status").text(),
-                            paused: !q.get("paused_time").is_null(),
+                            id: q.id,
+                            name: q.name,
+                            status: q.membership,
+                            paused: q.paused,
                         })
                         .collect();
                     // Do not pull the user out of a detail or input screen.
@@ -218,26 +204,25 @@ impl Queues {
                         self.draw_list();
                     }
                 }
-                other if matches!(self.screen, Screen::Loading) => self.error(other),
-                _ => {}
+                Err(e) if matches!(self.screen, Screen::Loading) => self.error(&e),
+                Err(_) => {}
             }
         } else if self.action_req == Some(id) {
             self.action_req = None;
-            match &outcome {
-                PbxOutcome::Ok(_) => {
+            match outcome {
+                Ok(_) => {
                     self.screen = Screen::Loading;
                     self.refresh();
                 }
-                other => self.error(other),
+                Err(e) => self.error(&e),
             }
         } else if self.stats_req == Some(id) {
             self.stats_req = None;
             if matches!(self.screen, Screen::Details) {
-                match &outcome {
-                    PbxOutcome::Ok(text) => {
-                        self.draw_details(&Json::parse(text).unwrap_or(Json::Null))
-                    }
-                    other => self.error(other),
+                match outcome {
+                    Ok(PbxResult::QueueStatus(s)) => self.draw_details(&s),
+                    Ok(_) => self.error(&PbxError::Transport("the server's reply was not the method's".into())),
+                    Err(e) => self.error(&e),
                 }
             }
         }
@@ -283,9 +268,9 @@ impl App for Queues {
                 self.selected = i as usize;
                 self.show_details();
             }
-            Event::Softkey(SK_LOGIN) => self.action("switchvox.users.callQueues.login", None),
-            Event::Softkey(SK_LOGOUT) => self.action("switchvox.users.callQueues.logout", None),
-            Event::Softkey(SK_RESUME) => self.action("switchvox.users.callQueues.resume", None),
+            Event::Softkey(SK_LOGIN) => self.action(Action::Login),
+            Event::Softkey(SK_LOGOUT) => self.action(Action::Logout),
+            Event::Softkey(SK_RESUME) => self.action(Action::Resume),
             Event::Softkey(SK_PAUSE) => {
                 let form = Form::show(
                     "Pause",
@@ -297,7 +282,7 @@ impl App for Queues {
             Event::Softkey(SK_OK) | Event::Widget((_, WidgetEvent::Submitted(_))) => {
                 if let Screen::Reason(form) = &self.screen {
                     let reason = form.value(0);
-                    self.action("switchvox.users.callQueues.pause", Some(reason));
+                    self.action(Action::Pause(reason));
                 }
             }
             Event::Softkey(SK_DETAILS | SK_REFRESH) => self.show_details(),
