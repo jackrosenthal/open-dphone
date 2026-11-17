@@ -66,7 +66,13 @@
 };
 
 &pinmux {
-	/* Vendor pin group "BTUART": pads 12 and 13, function 4, no RTS/CTS */
+	/*
+	 * Vendor pin group "BTUART": pads 12 (CTS) and 13 (RTS), function
+	 * 4.  TX and RX are pads 14 and 15 (uart1_pins).  On a D65 the GPIO
+	 * data register reads pad 12 low once the controller is out of
+	 * reset and pad 13 high with RTS deasserted, and a break on UART B
+	 * pulls pad 14 low.
+	 */
 	btuart_pins: btuart-pins {
 		pinctrl-single,bits = <0x04 0x00440000 0x00ff0000>;
 	};
@@ -79,11 +85,13 @@
 };
 
 /*
- * UART B.  H4 at 115200 baud, the only rate the vendor stack uses; there
- * are no flow-control lines, so the rate is not raised.
+ * UART B, with RTS and CTS.  H4 at 115200 baud, the only rate the vendor
+ * stack uses.  The controller answers only HCI_Reset if it comes out of
+ * reset with its CTS asserted; hci_bcm holds RTS deasserted while it powers
+ * the part on.
  */
 &uart1 {
-	pinctrl-0 = <&btuart_pins>;
+	pinctrl-0 = <&uart1_pins>, <&btuart_pins>;
 	status = "okay";
 
 	bluetooth {

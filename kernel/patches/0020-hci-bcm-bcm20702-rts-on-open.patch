@@ -1,0 +1,40 @@
+Bluetooth: hci_bcm: hold RTS deasserted while a BCM20702 powers on
+
+A BCM20702 samples BT_UART_CTS_N when its reset is released.  Released
+with the line asserted, it answers HCI_Reset and no other command, not even
+Read_Local_Version_Information, so setup fails with "BCM: Reading local
+version info failed (-110)".  hci_uart_register_device() opens the serdev
+port, which asserts RTS, before bcm_open() powers the part on.  The
+drive_rts_on_open handling of the BCM43438 is what this part needs too:
+RTS deasserted across the power-on, then flow control as before.  Measured
+on a Digium D65, whose UART B has RTS and CTS wired to the BCM20702.
+
+--- a/drivers/bluetooth/hci_bcm.c
++++ b/drivers/bluetooth/hci_bcm.c
+@@ -1565,6 +1565,17 @@
+ }
+ 
+ #ifdef CONFIG_OF
++/*
++ * A BCM20702 samples BT_UART_CTS_N when its reset is released.  Released
++ * with the line asserted, it answers HCI_Reset and no other command, not
++ * even Read_Local_Version_Information.  The serdev port is open, with RTS
++ * asserted, before bcm_open() powers the part on, so hold RTS deasserted
++ * until it is up.
++ */
++static struct bcm_device_data bcm20702a1_device_data = {
++	.drive_rts_on_open = true,
++};
++
+ static struct bcm_device_data bcm4354_device_data = {
+ 	.no_early_set_baudrate = true,
+ };
+@@ -1582,7 +1593,7 @@
+ };
+ 
+ static const struct of_device_id bcm_bluetooth_of_match[] = {
+-	{ .compatible = "brcm,bcm20702a1" },
++	{ .compatible = "brcm,bcm20702a1", .data = &bcm20702a1_device_data },
+ 	{ .compatible = "brcm,bcm4329-bt" },
+ 	{ .compatible = "brcm,bcm4330-bt" },
+ 	{ .compatible = "brcm,bcm4334-bt" },
