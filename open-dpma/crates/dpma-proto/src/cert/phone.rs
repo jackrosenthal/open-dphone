@@ -286,6 +286,7 @@ mod tests {
         .expect("a minted phone identity verifies");
         assert!(client.legacy);
         assert_eq!(client.intermediate_serial, 0);
+        assert!(client.handshake_version().is_none());
     }
 
     #[test]

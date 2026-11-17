@@ -42,9 +42,10 @@ fn ca_pem() -> String {
     ca
 }
 
-/// A minted identity's certificate alone (the legacy form) and in the
-/// chain form (a legacy certificate, the CA's, and the identity's).
+/// A minted identity's certificate, the CA's, and the chain form (the
+/// legacy certificate, the CA's, and the identity's).
 struct Minted {
+    der: Vec<u8>,
     legacy: String,
     chain: String,
 }
@@ -53,9 +54,10 @@ fn minted() -> Minted {
     let ca = ca_pem();
     let legacy = PhoneIdentity::generate().unwrap();
     let phone = PhoneIdentity::generate().unwrap();
-    let phone_pem = String::from_utf8(phone.certificate_pem).unwrap();
+    let phone_pem = String::from_utf8(phone.certificate_pem.clone()).unwrap();
     let legacy_pem = String::from_utf8(legacy.certificate_pem).unwrap();
     Minted {
+        der: phone.certificate_der().unwrap(),
         chain: format!("{legacy_pem}{ca}{phone_pem}"),
         legacy: phone_pem,
     }
@@ -108,6 +110,53 @@ fn pem_newlines_restored() {
         let fixed = restore_pem_newlines(&broken);
         assert_eq!(fixed, body.trim_end_matches('\n').as_bytes());
         assert!(verify(&store, &fixed).is_ok());
+    }
+}
+
+#[test]
+fn damaged_certificates_are_refused() {
+    // The verifier sees what any device sends: damaged certificates must
+    // be refused, never crash the module.  Every octet of the phone's
+    // certificate changed several ways, and every truncation, as a legacy
+    // certificate and as the last of a chain.
+    let m = minted();
+    let store = CaStore::builtin();
+    let der = &m.der;
+    let mut bodies: Vec<Vec<u8>> = (0..der.len()).map(|n| der[..n].to_vec()).collect();
+    for i in 0..der.len() {
+        for v in [
+            0x00,
+            0x01,
+            0x1f,
+            0x30,
+            0x7f,
+            0x80,
+            0x81,
+            0x84,
+            0xff,
+            der[i] ^ 0x80,
+        ] {
+            // (A replacement by the same octet damages nothing.)
+            if v == der[i] {
+                continue;
+            }
+            let mut d = der.clone();
+            d[i] = v;
+            bodies.push(d);
+        }
+    }
+    let ca = ca_pem();
+    let first = m
+        .chain
+        .split_inclusive("-----END CERTIFICATE-----\n")
+        .next();
+    for d in bodies {
+        let one = pem_of(&d);
+        assert!(verify(&store, &one).is_err(), "{one}");
+        assert!(
+            verify(&store, format!("{}{ca}{one}", first.unwrap())).is_err(),
+            "{one}"
+        );
     }
 }
 

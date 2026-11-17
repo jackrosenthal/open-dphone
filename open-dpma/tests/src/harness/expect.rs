@@ -135,6 +135,12 @@ impl<'a> ExchangeCheck<'a> {
         self.record("reply=yes", ok, || "no reply".into())
     }
 
+    /// No reply arrived.
+    pub fn no_reply(self) -> Self {
+        let ok = self.reply.is_none();
+        self.record("reply=none", ok, || "a reply arrived".into())
+    }
+
     /// The type (response type, else request type, event, or `Error`).
     pub fn ty(self, t: &str) -> Self {
         let have = self.reply.and_then(Reply::type_name);
@@ -146,6 +152,20 @@ impl<'a> ExchangeCheck<'a> {
         let have = self.reply.and_then(|r| r.event.clone());
         let n = name.as_ref();
         self.eq(&format!("event={}", n.as_bstr()), have, n)
+    }
+
+    /// No `X-Event-Name`.
+    pub fn no_event(self) -> Self {
+        let have = self.reply.and_then(|r| r.event.clone());
+        let got_reply = self.reply.is_some();
+        let ok = got_reply && have.is_none();
+        self.record("event!", ok, || {
+            if got_reply {
+                show(have.as_deref().map(|v| v.as_slice()))
+            } else {
+                "no reply".into()
+            }
+        })
     }
 
     /// `X-Digium-AppServer-Error-ID` is `code`.
@@ -206,6 +226,15 @@ impl<'a> ExchangeCheck<'a> {
     pub fn header_present(self, name: &str) -> Self {
         let ok = self.reply.is_some_and(|r| r.header(name).is_some());
         self.record(&format!("header:{name}?"), ok, || "absent".into())
+    }
+
+    /// A header of the first chunk is absent.
+    pub fn header_absent(self, name: &str) -> Self {
+        let have = self.reply.and_then(|r| r.header(name).cloned());
+        let ok = self.reply.is_some() && have.is_none();
+        self.record(&format!("header:{name}!"), ok, || {
+            show(have.as_deref().map(|v| v.as_slice()))
+        })
     }
 
     /// A decrypted header field is `value`.
@@ -375,6 +404,8 @@ mod tests {
             .body("empty body")
             .body_matches("^empty")
             .header("Session", "42")
+            .header_absent("ID")
+            .no_event()
             .chunks(1)
             .no_problems();
         assert!(c.passed(), "{}", c.summary());
@@ -386,7 +417,7 @@ mod tests {
             .chunks(2);
         assert_eq!(c.failures().len(), 5, "{}", c.summary());
         let mut c = Checker::quiet();
-        c.reply("none", None).ty("PingResponse");
+        c.reply("none", None).no_reply().ty("PingResponse");
         assert_eq!(c.failures(), ["none: type=PingResponse"]);
     }
 

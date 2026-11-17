@@ -302,7 +302,10 @@ pub fn queues(t: &mut T) -> Result<()> {
         &m,
         &json!({"account_id": "1002", "call_queue_account_id": "teststatic"}),
     )?;
-    t.expect("logout of a static member", got, 0, &ok(&m, success()));
+    t.expect("logout: static member stays", got, 0, &ok(&m, success()));
+    let show = t.cli("queue show teststatic");
+    t.c()
+        .contains("logout: static member still there", &show, &["Static Bob"]);
     let got = t.call(
         "testphone",
         &m,
@@ -485,6 +488,25 @@ pub fn parking(t: &mut T) -> Result<()> {
         && log.contains(r#"body: {"lotnumber":"701"}"#);
     t.c()
         .check("parked call event sent to the parker's phone", good, &log);
+    // The module sends in order, so the event of the last message (a
+    // parked call of 1001's again) comes after any of the others.
+    for args in [
+        "PJSIP/1001 705 1",
+        "SIP/1001 706",
+        "PJSIP/1002 707",
+        "PJSIP/1001 708",
+    ] {
+        t.cli(&format!("dpmadev calls parked {args}"));
+    }
+    until(5.0, || {
+        phone.text().contains(r#"body: {"lotnumber":"708"}"#)
+    });
+    let log = phone.text();
+    t.c().check(
+        "parked call event: only PARKED_CALL, only PJSIP",
+        log.matches("digium.parkingLot.parked").count() == 2,
+        &log,
+    );
     t.cli("channel request hangup all");
     phone.stop();
     Ok(())

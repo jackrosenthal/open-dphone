@@ -66,6 +66,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn unusable_keys_are_refused() {
+        // Keys decoded from a certificate can have any values, and
+        // encrypting to one must fail without panicking.
+        for (n, e) in [
+            (&[0x0b][..], &[0x11][..]),
+            (&[0xc0; 64], &[1, 0, 1]),
+            (&[][..], &[3][..]),
+            (&[1][..], &[3][..]),
+            (&[0xc1; 50], &[][..]),
+        ] {
+            let k = RsaKey::from_be_bytes(n, e);
+            assert!(k.encrypt_pkcs1(b"x").is_err(), "{n:02x?} {e:02x?}");
+        }
+    }
+
+    #[test]
     fn key_parts() {
         let k = RsaKey::from_be_bytes(&[0, 0, 1, 0], &[3]);
         assert_eq!((k.n(), k.e(), k.size()), (vec![1, 0], vec![3], 2));

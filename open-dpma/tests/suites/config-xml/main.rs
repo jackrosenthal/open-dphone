@@ -104,17 +104,19 @@ fn config(ctx: &mut Ctx) -> Result<()> {
             err.is_ok(),
             err.err().unwrap_or_default(),
         );
-        // The locale setting of the phone with an active_locale.
-        if phone == "fullphone" {
-            ctx.c.check(
-                format!("{phone}: the locale setting"),
-                doc.find_iter("<setting id=\"locale\"").count() == 1
-                    && doc.contains_str(
-                        "<setting id=\"locale\" value=\"de_DE\" conflict=\"freeze\"/>\n",
-                    ),
-                "",
-            );
-        }
+        // The locale setting only for a phone with an active_locale (the
+        // stock firmware's boot configuration fails on an empty one).
+        let locale: &[u8] = if phone == "fullphone" {
+            b"<setting id=\"locale\" value=\"de_DE\" conflict=\"freeze\"/>\n"
+        } else {
+            b""
+        };
+        ctx.c.check(
+            format!("{phone}: the locale setting"),
+            doc.find_iter("<setting id=\"locale\"").count() == usize::from(!locale.is_empty())
+                && doc.contains_str(locale),
+            "",
+        );
         // The phones with display rules.  fullphone has texts that the
         // official DPMA writes unescaped, so that libxml2 cannot read the
         // document and the rules are not merged.
@@ -184,7 +186,8 @@ fn find_all(doc: &[u8], prefix: &str) -> Vec<String> {
         .collect()
 }
 
-/// The Open DPhone options as configured for `fullphone`.
+/// The Open DPhone options: present as configured for `fullphone`, and
+/// absent from the document of a phone that does not set them.
 fn dphone_options(ctx: &mut Ctx) -> Result<()> {
     let doc = plain(document(ctx, "dpmadev config fullphone D65")?);
     ctx.c.check(
@@ -194,7 +197,7 @@ fn dphone_options(ctx: &mut Ctx) -> Result<()> {
     );
     ctx.c.check(
         "fullphone: Open DPhone SSH keys",
-        doc.contains_str(plain(DPHONE_KEYS)),
+        doc.contains_str(plain(DPHONE_KEYS)) && !doc.contains_str("PRIVATE KEY"),
         "",
     );
     // The palette file is offered as the wallpaper is: here, not in the
@@ -245,6 +248,14 @@ fn dphone_options(ctx: &mut Ctx) -> Result<()> {
             .collect::<Vec<_>>()
             .join(" | "),
     );
+    for phone in ["minphone", "altphone", "nolinephone"] {
+        let doc = document(ctx, &format!("dpmadev config {phone} D65"))?;
+        ctx.c.check(
+            format!("{phone}: no Open DPhone options"),
+            !doc.contains_str("dphone_"),
+            "",
+        );
+    }
     Ok(())
 }
 
@@ -333,6 +344,11 @@ fn ports(ctx: &mut Ctx) -> Result<()> {
                 urls.join(" | "),
             );
         }
+        ctx.c.check(
+            format!("{phone}: no empty port"),
+            !doc.contains_str("port=\"\"") && !doc.contains_str(":\" network_id="),
+            "",
+        );
     }
     Ok(())
 }

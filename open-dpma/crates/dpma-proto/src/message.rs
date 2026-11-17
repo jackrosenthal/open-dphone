@@ -870,6 +870,14 @@ mod tests {
             messages[0].header(crate::headers::MD5),
             Some(&md5_hex(doc)[..])
         );
+        // Without a digest there is no header.
+        let out = Outgoing {
+            id: b"4".to_vec(),
+            response_type: b"VerifyResponse".to_vec(),
+            ..Default::default()
+        };
+        let messages = out.encode(&ctx(b"0123456789abcdef", b"9999")).unwrap();
+        assert_eq!(messages[0].header(crate::headers::MD5), None);
     }
 
     /// "Session Timeout" as a server sends it for a request that failed

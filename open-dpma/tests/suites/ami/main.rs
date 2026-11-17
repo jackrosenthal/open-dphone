@@ -152,6 +152,21 @@ fn drain(phone: &Phone) {
     while phone.next_event(secs(0.2), None).is_some() {}
 }
 
+/// The next unsolicited message of those the module sent `phone` before
+/// now.  The module sends to a phone in order, so they have arrived once
+/// a ping is answered.
+fn event_by_now(phone: &Phone) -> Result<Option<Reply>> {
+    phone.ping().send()?;
+    Ok(phone.next_event(Duration::ZERO, None))
+}
+
+/// The reply to `ex`, if the module sent one before now (as
+/// [`event_by_now`]).
+fn reply_by_now(phone: &Phone, ex: &mut Exchange) -> Result<Option<Reply>> {
+    phone.ping().send()?;
+    Ok(reply_of(phone, ex, 0.0))
+}
+
 /// The parameters of a method call: a JSON value or an XML fragment.
 enum Params<'a> {
     Json(Value),
@@ -814,7 +829,12 @@ fn forwarding(ctx: &mut Ctx, st: &State) -> Result<()> {
     // The phone gives up waiting; the answer still arrives later.
     let mut f = forward(a, hello, Params::Json(json!({"late": true})), auth)?;
     dpma_message(&mut ctx.c, ami, &f, hello, "JSON", "late answer");
-    reply_of(a, &mut f.ex, 1.5);
+    let r = reply_of(a, &mut f.ex, 1.5);
+    ctx.c.check(
+        "late answer: phone times out first",
+        r.is_none(),
+        describe(r.as_ref()),
+    );
     drain(a);
     let k = f.key.clone();
     same_raw(
@@ -1103,6 +1123,12 @@ fn reload(ctx: &mut Ctx, st: &State) -> Result<()> {
         let tail = &text[text.len().saturating_sub(2000)..];
         ctx.c
             .check("reload, lines changed: logs", ok, tail.to_str_lossy());
+        let r = event_by_now(b)?;
+        ctx.c.check(
+            "reload, lines changed: other phones untouched",
+            r.is_none(),
+            describe(r.as_ref()),
+        );
 
         std::fs::write(
             &path,
@@ -1113,6 +1139,12 @@ fn reload(ctx: &mut Ctx, st: &State) -> Result<()> {
         )?;
         ctx.cli_text("module reload res_open_dpma.so");
         expect_reconfigure(&mut ctx.c, b, "reload, phone removed", PLAIN_BODY);
+        let r = event_by_now(a)?;
+        ctx.c.check(
+            "reload, phone removed: other phones untouched",
+            r.is_none(),
+            describe(r.as_ref()),
+        );
         Ok(())
     })();
     std::fs::write(&path, CONF_TEXT)?;
@@ -1126,7 +1158,7 @@ fn session_gone(ctx: &mut Ctx, st: &State) -> Result<()> {
     let (ami, b) = (&st.ami, &st.b);
     let (ok, detail) = authenticate(b, "testphone2")?;
     ctx.c.check("testphone2 located again", ok, detail);
-    let f = forward(
+    let mut f = forward(
         b,
         "com.test.hello",
         Params::Json(json!({"gone": 1})),
@@ -1159,6 +1191,12 @@ fn session_gone(ctx: &mut Ctx, st: &State) -> Result<()> {
     );
     let q = queued(ctx);
     ctx.c.same("session gone: no longer queued", q, vec![]);
+    let r = reply_by_now(b, &mut f.ex)?;
+    ctx.c.check(
+        "session gone: nothing sent",
+        r.is_none(),
+        describe(r.as_ref()),
+    );
     let log = ctx.log();
     let pos = log.mark();
     same_raw(
@@ -1198,7 +1236,7 @@ fn expiry_checks(ctx: &mut Ctx, st: &State) -> Result<()> {
     let (ami, a) = (&st.ami, &st.a);
     let log = ctx.log();
     let pos = log.mark();
-    let f = forward(
+    let mut f = forward(
         a,
         "com.test.hello",
         Params::Json(json!({"expire": 1})),
@@ -1209,6 +1247,12 @@ fn expiry_checks(ctx: &mut Ctx, st: &State) -> Result<()> {
     // One second in, so that the two seconds the log is watched cover the
     // expiry.
     std::thread::sleep(secs(1.0).saturating_sub(t0.elapsed()));
+    let keys = queued_keys(ctx);
+    ctx.c.check(
+        "expiry: still queued after 1 s",
+        keys == [f.key.clone()],
+        format!("{:?}", queued(ctx)),
+    );
     let line = format!("No response to request ({}), expired.", f.key);
     let (ok, text) = logged(&log, pos, &[&line]);
     let elapsed = t0.elapsed().as_secs_f64();
@@ -1235,6 +1279,9 @@ fn expiry_checks(ctx: &mut Ctx, st: &State) -> Result<()> {
         ),
         &resp("Failure", None),
     );
+    let r = reply_by_now(a, &mut f.ex)?;
+    ctx.c
+        .check("expiry: nothing sent", r.is_none(), describe(r.as_ref()));
     Ok(())
 }
 

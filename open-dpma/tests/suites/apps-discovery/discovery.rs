@@ -301,8 +301,26 @@ fn checks(ctx: &mut Ctx, orig: &[u8]) -> Result<()> {
         vec!["serviceType=asterisk".to_string(), want],
     );
 
-    // A name of 63 bytes, the longest that Avahi takes.
+    // Names Avahi refuses are not announced; 63 bytes is the limit.  (A
+    // reload withdraws the old name first, then announces the new one
+    // or nothing.)
+    let n64 = "N".repeat(64);
     let n63 = "N".repeat(63);
+    let mark = lst.mark();
+    set_general(
+        ctx,
+        orig,
+        &[
+            ("service_discovery_enabled", b"yes"),
+            ("service_name", n64.as_bytes()),
+        ],
+    )?;
+    heard(&lst, mark, true, &["Test Long"], 3.0);
+    ctx.c.same(
+        "mDNS: 64-byte name not announced",
+        browse(0.7),
+        Found::new(),
+    );
     set_general(
         ctx,
         orig,
@@ -317,9 +335,8 @@ fn checks(ctx: &mut Ctx, orig: &[u8]) -> Result<()> {
         names(&found),
         vec![n63.clone()],
     );
-    // A name that is not valid UTF-8 (Latin-1 "Café"): an error is logged
-    // (`mdns-sd` takes UTF-8 names only).  (A reload withdraws the old
-    // name first.)
+    // A name that is not valid UTF-8 (Latin-1 "Café") is not announced;
+    // an error is logged instead (`mdns-sd` takes UTF-8 names only).
     let mark = log.mark();
     let lmark = lst.mark();
     set_general(
@@ -331,6 +348,11 @@ fn checks(ctx: &mut Ctx, orig: &[u8]) -> Result<()> {
         ],
     )?;
     heard(&lst, lmark, true, &[&n63], 3.0);
+    ctx.c.same(
+        "mDNS: non-UTF-8 name not announced",
+        browse(0.7),
+        Found::new(),
+    );
     let re = Regex::new(r"(?-u)ERROR\[[^\n]*Service name 'Test Caf\xE9' is not valid UTF-8")
         .expect("valid");
     let text = log.since(mark);

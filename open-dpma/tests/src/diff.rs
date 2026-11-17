@@ -135,6 +135,11 @@ mod tests {
     use super::*;
 
     #[test]
+    fn equal_texts_have_no_diff() {
+        assert_eq!(unified("a\nb\n", "a\nb", "x", "y", 3), "");
+    }
+
+    #[test]
     fn hunks_and_ranges() {
         let old: String = (1..=20).map(|i| format!("{i}\n")).collect();
         let new: String = (1..=21)

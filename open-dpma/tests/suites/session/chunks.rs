@@ -43,7 +43,8 @@ pub fn run(ctx: &mut Ctx, t: Transport, event_chunks: usize) -> Result<()> {
         .payload_matches("</config>$")
         .no_problems()
         .header_present("Message-Salt")
-        .header("Session", &session);
+        .header("Session", &session)
+        .header_absent("ID");
 
     if udp {
         // digium.assignment.update goes out as the official DPMA sends it:
@@ -59,13 +60,14 @@ pub fn run(ctx: &mut Ctx, t: Transport, event_chunks: usize) -> Result<()> {
         c.reply("digium.assignment.update", ev.as_ref())
             .error("-398")
             .header("ID", "bootcReset")
+            .no_event()
             .encrypted(true)
             .payload_matches("^hello<error");
     }
 
     // Server to phone, plaintext: the HandshakeResponse (AppServer
     // certificate, 700 bytes).  Over UDP it takes 2 chunks with sequence
-    // numbers; over TCP it fits in one.
+    // numbers; over TCP it fits in one, which has none.
     let ex = phone.handshake().send()?;
     let r = ctx
         .c
@@ -75,7 +77,7 @@ pub fn run(ctx: &mut Ctx, t: Transport, event_chunks: usize) -> Result<()> {
     if udp {
         r.chunks(2).header("Message-Sequence", "0");
     } else {
-        r.chunks(1);
+        r.chunks(1).header_absent("Message-Sequence");
     }
     Ok(())
 }

@@ -562,6 +562,8 @@ pub fn mark(vm: &mut Vm) -> Result<()> {
     let want = "Attempted to mark read/unread on Friends folder";
     let log = vm.log_since(mark, want);
     vm.c().contains("markRead on Friends logs", &log, &[want]);
+    let ok = in_folder(vm, b, "Friends", &friends);
+    vm.c().same("Friends message not moved", ok, true);
 
     let m = "markRead";
     vm.expect_error(
@@ -1276,6 +1278,8 @@ pub fn tracker_lifecycle(vm: &mut Vm) -> Result<()> {
         vm.cli("module reload res_open_dpma.so")?;
         let tr = vm.trackers("vmphone3")?;
         vm.c().same("tracker removed with its phone", tr, None);
+        let tr = vm.trackers("vmphone")?;
+        vm.c().same("other trackers kept", tr.is_some(), true);
         Ok(())
     })();
     backup.restore()?;

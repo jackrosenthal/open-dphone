@@ -116,6 +116,17 @@ fn expect_event(ctx: &mut Ctx, name: &str, p: &Phone, body: &[u8], event: &str) 
     Some(r)
 }
 
+/// Checks that no unsolicited message has come.  The module sends to a
+/// phone in order, so whatever it sent before now has arrived once a
+/// ping is answered.
+fn no_event(ctx: &mut Ctx, name: &str, p: &Phone) -> Result<()> {
+    p.ping().send()?;
+    let r = p.next_event(Duration::ZERO, None);
+    let detail = r.as_ref().map(|r| r.describe(0)).unwrap_or_default();
+    ctx.c.check(name, r.is_none(), detail);
+    Ok(())
+}
+
 /// Writes the test phones with `extra` appended and reloads.
 fn edit_phones_conf(ctx: &mut Ctx, extra: &str) -> Result<()> {
     std::fs::write(
@@ -138,6 +149,9 @@ fn reload_checks(ctx: &mut Ctx) -> Result<()> {
     let p = phone(ctx, MAC_A)?;
     token_for(ctx, &p, "phonea")?;
     let mark = log_mark(ctx);
+    edit_phones_conf(ctx, "\n[phonea-line2]\ntype=line\n")?;
+    // Adding a line section alone changes nothing for phonea.
+    no_event(ctx, "unrelated change: no reconfigure", &p)?;
     edit_phones_conf(
         ctx,
         "\n[phonea-line2]\ntype=line\n[phonea](+)\nline=phonea-line2\n",
@@ -185,6 +199,7 @@ fn reload_checks(ctx: &mut Ctx) -> Result<()> {
     let got = flags(ctx, &sid(&t))?;
     ctx.c
         .same("deleted phone: session inactive", got, fl("Yes", "Yes"));
+    no_event(ctx, "deleted phone: others not reconfigured", &p)?;
     Ok(())
 }
 
@@ -387,6 +402,7 @@ fn mismatch_checks(ctx: &mut Ctx) -> Result<()> {
         PLAIN,
         UPDATE,
     );
+    no_event(ctx, "MAC mismatch: the new location is not", &b)?;
     let got = last_info(ctx, "phonea")?.0;
     ctx.c
         .same("phonea at B", got, at(MAC_BAD, &uri_of(&b), &sid(&b)));
@@ -525,6 +541,7 @@ pub fn uri(ctx: &mut Ctx) -> Result<()> {
         PLAIN,
         UPDATE,
     );
+    no_event(ctx, "not to the old one", &p)?;
     Ok(())
 }
 
@@ -590,6 +607,11 @@ pub fn restore(ctx: &mut Ctx) -> Result<()> {
         token_for(ctx, &p, "phonea")?;
         (sid(&p), p.common_password(), p.token())
     };
+    // Another session that never authenticates is not saved.
+    let xsid = {
+        let x = phone(ctx, "000fd30012bb")?;
+        sid(&x)
+    };
     restart(ctx)?;
     let got = flags(ctx, &rsid)?;
     ctx.c.same(
@@ -597,6 +619,9 @@ pub fn restore(ctx: &mut Ctx) -> Result<()> {
         got,
         fl("Yes", "No"),
     );
+    let line = session_line(ctx, &xsid)?;
+    ctx.c
+        .same("unauthenticated session not restored", line.as_str(), "");
     let got = last_info(ctx, "phonea")?.0;
     ctx.c.same(
         "last info restored",
@@ -644,6 +669,12 @@ pub fn restore(ctx: &mut Ctx) -> Result<()> {
         "PingResponse",
         None,
         Body::Is(b"empty body"),
+    );
+    let got = flags(ctx, &rsid)?;
+    ctx.c.same(
+        "restored session survives the idle pruning",
+        got,
+        fl("Yes", "No"),
     );
     Ok(())
 }

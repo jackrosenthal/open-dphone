@@ -88,16 +88,25 @@ fn expected_token_incident(flags: u32, pin: &str, cfgpass: &str) -> Option<&'sta
     (flags & PIN != 0 && pin != "4321").then_some("invalid pin")
 }
 
-/// Checks the token of a TokenResponse for phonea and `mac`: a keyed
-/// token (the official DPMA's shape, other numbers), the same one each
-/// time.
+/// Checks the token of a TokenResponse for phonea and `mac`: with
+/// `issued`, a keyed token (the official DPMA's shape, other numbers), the
+/// same one each time; otherwise none.
 fn check_token(
     ctx: &mut Ctx,
     name: &str,
     got: Option<BString>,
+    issued: bool,
     mac: &str,
     seen: &mut std::collections::HashMap<String, BString>,
 ) {
+    if !issued {
+        ctx.c.check(
+            format!("{name} (no token)"),
+            got.is_none(),
+            format!("got {got:?}"),
+        );
+        return;
+    }
     let Some(t) = got else {
         ctx.c
             .check(format!("{name} (token)"), false, "a token is missing");
@@ -143,17 +152,18 @@ pub fn token(ctx: &mut Ctx) -> Result<()> {
                     .pin(pin)
                     .config_password(cfgpass)
                     .send()?;
-                if let Some(want) = expected_token_incident(flags, pin, cfgpass) {
-                    let inc = local_incident(ctx)?;
-                    let f = |k: &str| inc.as_ref().and_then(|i| field(i, k));
-                    ctx.c.check(
-                        format!("{name} (incident)"),
-                        f("Reason").as_deref() == Some(want)
-                            && f("IncidentCount").as_deref() == Some("1")
-                            && f("MAC").as_deref() == Some(p.mac()),
-                        format!("{inc:?}"),
-                    );
-                }
+                let inc = local_incident(ctx)?;
+                let reason = inc.as_ref().and_then(|i| field(i, "Reason"));
+                let count = inc.as_ref().and_then(|i| field(i, "IncidentCount"));
+                let want = expected_token_incident(flags, pin, cfgpass);
+                ctx.c.check(
+                    format!("{name} (incident)"),
+                    reason.as_deref() == want
+                        && count.as_deref() == want.map(|_| "1")
+                        && inc.as_ref().and_then(|i| field(i, "MAC")).as_deref()
+                            == want.map(|_| p.mac()),
+                    format!("{inc:?}"),
+                );
                 let body = if err.is_none() {
                     Body::Is(b"empty body")
                 } else {
@@ -162,10 +172,8 @@ pub fn token(ctx: &mut Ctx) -> Result<()> {
                 let Some(r) = expect(ctx, &name, &ex, "TokenResponse", err, body) else {
                     continue;
                 };
-                if err.is_none() {
-                    let got = r.field("Config-Token").cloned();
-                    check_token(ctx, &name, got, p.mac(), &mut seen);
-                }
+                let got = r.field("Config-Token").cloned();
+                check_token(ctx, &name, got, err.is_none(), p.mac(), &mut seen);
             }
         }
     }
@@ -191,7 +199,7 @@ pub fn token(ctx: &mut Ctx) -> Result<()> {
             let name = format!("token for user {user:?}");
             if let Some(r) = expect(ctx, &name, &ex, "TokenResponse", None, Body::Default) {
                 let got = r.field("Config-Token").cloned();
-                check_token(ctx, &name, got, MAC_A, &mut seen);
+                check_token(ctx, &name, got, true, MAC_A, &mut seen);
             }
         }
         let got = configured(ctx, &sid)?;
@@ -303,6 +311,14 @@ pub fn config(ctx: &mut Ctx) -> Result<()> {
             Some(-192),
             Body::Default,
         );
+        ctx.c
+            .same_bytes("config with a bad token: no MD5", digest(&ex), "");
+        let got = configured(ctx, &sid)?;
+        ctx.c.same(
+            "failed config leaves the session unconfigured",
+            got.as_deref(),
+            Some("No"),
+        );
         let mark = log_mark(ctx);
         let ex = p.request("VerifyRequest").send()?;
         expect(
@@ -334,6 +350,8 @@ pub fn config(ctx: &mut Ctx) -> Result<()> {
             Some(-192),
             Body::Default,
         );
+        ctx.c
+            .same_bytes("verify with a bad token: no MD5", digest(&ex), "");
         let got = configured(ctx, &sid)?;
         ctx.c.same(
             "verify with a bad token marks the session configured",
@@ -1249,7 +1267,7 @@ fn ami_checks(ctx: &mut Ctx) -> Result<()> {
     }
     // Parameters that are not an object or array: queued without an event
     // (the handler raises the event before it queues the request).
-    let ex = p
+    let mut ex = p
         .asterisk(method_request("test.ami.method", json!("scalar")))
         .auth("phonea:4321")
         .no_wait()
@@ -1261,6 +1279,17 @@ fn ami_checks(ctx: &mut Ctx) -> Result<()> {
         });
     ctx.c
         .check("JSON scalar parameters: queued", queued, "not in the queue");
+    let ev = ctx
+        .ami()?
+        .wait_event(Some("DPMAMessage"), &[], Duration::from_millis(200));
+    ctx.c.check(
+        "JSON scalar parameters: no DPMAMessage",
+        ev.is_none(),
+        format!("{ev:?}"),
+    );
+    p.wait_reply(&mut ex, Some(Duration::from_millis(200)));
+    ctx.c
+        .check("JSON scalar parameters: no reply", ex.reply.is_none(), "");
     // A built-in method shadows an AMI registration of the same name.
     cli(ctx, "dpmadev method register ami test.dpma.api.echo")?;
     let ex = call(
@@ -1287,19 +1316,10 @@ fn ami_checks(ctx: &mut Ctx) -> Result<()> {
 // Handshake without a user agent
 
 pub fn handshake(ctx: &mut Ctx) -> Result<()> {
-    let mut o = ctx.sim_options().mac(MAC_A);
-    o.user_agent = BString::default();
-    let p = Phone::start(o)?;
-    let mark = log_mark(ctx);
-    let _ex = p.handshake().no_wait().send()?;
-    for text in [
-        "User Agent allocation failed",
-        "Session could not be created due to invalid credentials",
-        "Failed to create auth problem record",
-    ] {
-        logged(ctx, &format!("log: {text}"), mark, text);
-    }
-    Ok(())
+    clear_incidents(ctx)?;
+    let res = handshake_checks(ctx);
+    clear_incidents(ctx)?;
+    res
 }
 
 /// Sends a handshake that fails and waits until the module logged `last`
@@ -1310,6 +1330,29 @@ fn failed_handshake(ctx: &mut Ctx, p: &Phone, last: &str) -> Result<Exchange> {
     logged(ctx, &format!("log: {last}"), mark, last);
     p.wait_reply(&mut ex, Some(Duration::from_millis(200)));
     Ok(ex)
+}
+
+fn handshake_checks(ctx: &mut Ctx) -> Result<()> {
+    let mut o = ctx.sim_options().mac(MAC_A);
+    o.user_agent = BString::default();
+    let p = Phone::start(o)?;
+    let mark = log_mark(ctx);
+    let last = "Failed to create auth problem record";
+    let ex = failed_handshake(ctx, &p, last)?;
+    ctx.c.check("no reply", ex.reply.is_none(), ex.describe(0));
+    for text in [
+        "User Agent allocation failed",
+        "Session could not be created due to invalid credentials",
+    ] {
+        logged(ctx, &format!("log: {text}"), mark, text);
+    }
+    let inc = local_incident(ctx)?;
+    ctx.c.check(
+        "no incident without a user agent",
+        inc.is_none(),
+        format!("{inc:?}"),
+    );
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1339,6 +1382,18 @@ fn conf_line(ctx: &Ctx, text: &str) -> Result<usize> {
         .position(|l| l == text)
         .map(|i| i + 1)
         .with_context(|| format!("no line {text:?}"))
+}
+
+/// Checks that no auth incident was recorded (a refusal for an invalid
+/// value is not the phone's fault).
+fn no_incident(ctx: &mut Ctx, name: &str) -> Result<()> {
+    let inc = local_incident(ctx)?;
+    ctx.c.check(
+        format!("{name}: no incident"),
+        inc.is_none(),
+        format!("{inc:?}"),
+    );
+    Ok(())
 }
 
 pub fn invalid_auth(ctx: &mut Ctx) -> Result<()> {
@@ -1408,6 +1463,7 @@ fn invalid_auth_checks(ctx: &mut Ctx) -> Result<()> {
         let ex = p.get_token().user(user).config_password(GLOBALPIN).send()?;
         let name = format!("token refused ({who})");
         expect(ctx, &name, &ex, "TokenResponse", Some(-195), Body::Default);
+        no_incident(ctx, &name)?;
         let ex = p.userlist().config_password(GLOBALPIN).send()?;
         let name = format!("userlist refused ({who})");
         expect(
@@ -1418,6 +1474,7 @@ fn invalid_auth_checks(ctx: &mut Ctx) -> Result<()> {
             Some(-198),
             Body::Default,
         );
+        no_incident(ctx, &name)?;
     }
     // A token from before still gets the phone's configuration, as with
     // every valid value.
@@ -1487,6 +1544,7 @@ fn invalid_auth_checks(ctx: &mut Ctx) -> Result<()> {
         None,
         Body::Default,
     );
+    no_incident(ctx, "one value invalid")?;
 
     // Corrected: the session created while the values were invalid is
     // checked as the corrected values say, not with the defaults that
@@ -1571,6 +1629,13 @@ fn invalid_auth_checks(ctx: &mut Ctx) -> Result<()> {
 // Unreadable certificate files
 
 pub fn unreadable_certificates(ctx: &mut Ctx) -> Result<()> {
+    clear_incidents(ctx)?;
+    let res = unreadable_certificates_checks(ctx);
+    clear_incidents(ctx)?;
+    res
+}
+
+fn unreadable_certificates_checks(ctx: &mut Ctx) -> Result<()> {
     ctx.c
         .say("-- A reload that cannot read a certificate file refuses handshakes");
     // The built-in certificates as files, a file without a certificate,
@@ -1615,6 +1680,7 @@ pub fn unreadable_certificates(ctx: &mut Ctx) -> Result<()> {
             ex.reply.is_none(),
             ex.describe(0),
         );
+        no_incident(ctx, &name)?;
         let ex = early.ping().send()?;
         expect(
             ctx,

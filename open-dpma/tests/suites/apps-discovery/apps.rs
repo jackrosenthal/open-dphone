@@ -280,6 +280,11 @@ pub fn controlplayback(ctx: &mut Ctx) -> Result<()> {
         text.contains_str("Forward key = 1, Rewind key = 2"),
         true,
     );
+    ctx.c.same(
+        "no panics",
+        text.contains_str("Internal error (panic)"),
+        false,
+    );
     Ok(())
 }
 
@@ -376,6 +381,11 @@ pub fn vm_playback(ctx: &mut Ctx) -> Result<()> {
         text.find_iter("DigiumVoicemailPlayback requires arguments (mailbox|folder|message)")
             .count(),
         3,
+    );
+    ctx.c.same(
+        "no panics",
+        text.contains_str("Internal error (panic)"),
+        false,
     );
     Ok(())
 }
