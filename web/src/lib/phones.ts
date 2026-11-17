@@ -255,6 +255,9 @@ const KEY = "#17181b";
 const HOUSING_KEY = "#eceef0";
 const TEAL = "#5f9db8";
 const OLD_SILVER = "#d5d8db";
+/// The D50's label card: rows alternately white and solid light gray.
+const PAPER_WHITE = "#fbfbfc";
+const PAPER_GRAY = "#c4c8cd";
 
 type Old = {
   lineKeys: number;
@@ -272,58 +275,99 @@ const words: Record<string, string> = { msgs: "Msgs", xfer: "Transfer", redial: 
 /// Where the parts of each body are, from the front photographs.  The
 /// housing's left edge is at 300 on every model.
 type OldLayout = {
-  /// The housing's right edge.
-  hr: number;
-  /// How much higher the housing's top edge is than the D40's.
-  lift: number;
-  /// The body's top edge and left edge, and (without a rapid-dial
-  /// section) the right edge.
-  bodyTop: number;
-  xl: number;
-  xr: number;
-  /// How far the headset, speaker, and mute keys, and the dial pad and
-  /// volume bar, are moved right from the D40's places.
-  dxSide: number;
-  dxPad: number;
+  /// The handset (x, y, width, length) and the cradle's top and bottom
+  /// edges.
+  handset: [number, number, number, number];
+  cradle: [number, number];
+  /// The body: left edge, top edge, right edge, the bottom corners' height, and how far the bottom edge
+  /// bows down between them.  `wingRise`: how much higher the rapid-dial
+  /// section's bottom-right corner is; `wingDrop`: how much lower the
+  /// section's top-right corner is.
+  body: { xl: number; top: number; xr: number; yb: number; bow: number; wingRise?: number; wingDrop?: number };
+  /// The housing: right edge; how much higher the top corners are than
+  /// the D40's; how much the top edge arches; and the bottom edge, at the
+  /// ends of the corners and (the curve's control point) in the middle.
+  housing: { hr: number; lift: number; arch: number; y1: number; yc: number };
   display: { x: number; y: number; w: number; h: number };
   bezel: [number, number, number, number];
-  softY: number;
-  /// The two columns of line keys, the first key's height, and the step.
+  /// Soft keys: height and size.
+  soft: [number, number, number];
+  /// The two columns of line keys, and the first key's height and the step.
   lineX: [number, number];
   lineY?: [number, number];
-  /// The columns of feature keys, the navigation pad's middle, and the
-  /// feature keys' size.
+  /// Headset, speaker, and mute: x, first y, step, size.
+  side: [number, number, number, number, number];
+  /// Dial pad: first key's middle, pitch across and down, key size.
+  dial: [number, number, number, number, number, number];
+  /// Volume bar: middle and width.
+  volume: [number, number, number];
+  /// Columns of the keys right of the pad.
   fx: number[];
-  navX: number;
-  feature: [number, number];
+  /// Top row (D70): height and key size.
+  top?: [number, number, number];
+  /// Navigation pad: middle, step from the middle to the arrows (across,
+  /// down), the
+  /// cancel key's offset from the middle, key size, and ring radius.
+  nav: { x: number; y: number; step: [number, number]; cancel: [number, number]; size: number; ring: number };
+  /// The key beside the pad (D70): middle.
+  beside?: [number, number];
+  /// Feature keys: first row's height, step, key size.
+  feature: [number, number, number, number];
+  /// The rapid-dial section (D70): the second display's x offset from the
+  /// housing, top, and width; the keys' x offset and size; the page keys'
+  /// distance below the display and size.
+  wing?: { dx: number; y: number; w: number; keyX: number; key: [number, number]; pageY: number; page: [number, number]; pageX: [number, number] };
 };
 
 const D40_DISPLAY = { x: 340, y: 200, w: 196, h: 98 };
 
 const layouts: Record<"D40" | "D50" | "D70", OldLayout> = {
   // The body's sides are close to the housing's.
-  D40: { hr: 664, lift: 0, bodyTop: 212, xl: 284, xr: 680, dxSide: 0, dxPad: 0, display: D40_DISPLAY, bezel: [326, 188, 224, 122], softY: 338, lineX: [577, 610], fx: [568, 636], navX: 590, feature: [48, 24] },
+  D40: {
+    handset: [106, 96, 152, 512], cradle: [232, 598],
+    body: { xl: 284, top: 212, xr: 680, yb: 598, bow: 16 },
+    housing: { hr: 664, lift: 0, arch: 6, y1: 348, yc: 378 },
+    display: D40_DISPLAY, bezel: [326, 188, 224, 122], soft: [338, 36, 15], lineX: [577, 610],
+    side: [334, 402, 50, 37, 28], dial: [394, 402, 47, 40, 37, 29], volume: [442, 566, 112],
+    fx: [568, 636], nav: { x: 590, y: 430, step: [32, 30], cancel: [34, -32], size: 23, ring: 40 }, feature: [503, 40, 48, 24],
+  },
   // The D40's housing.  The keys sit further left under the housing than
   // on the D40, to make room for three columns of smaller feature keys,
   // the middle column under the navigation pad.
-  D50: { hr: 664, lift: 0, bodyTop: 212, xl: 279, xr: 0, dxSide: -21, dxPad: -21, display: D40_DISPLAY, bezel: [326, 188, 224, 122], softY: 338, lineX: [577, 610], fx: [528, 589, 650], navX: 589, feature: [44, 20] },
-  // A 4.5-inch display (the D40's: 3.5 inches) in a larger housing that
-  // rises higher; the navigation pad's middle is halfway between the first
-  // and second columns of feature keys.
+  D50: {
+    handset: [106, 96, 152, 512], cradle: [232, 598],
+    body: { xl: 279, top: 212, xr: 853, yb: 598, bow: 16, wingRise: 14 },
+    housing: { hr: 664, lift: 0, arch: 6, y1: 348, yc: 378 },
+    display: D40_DISPLAY, bezel: [326, 188, 224, 122], soft: [338, 36, 15], lineX: [577, 610],
+    side: [313, 402, 50, 37, 28], dial: [373, 402, 47, 40, 37, 29], volume: [421, 566, 112],
+    fx: [528, 589, 650], nav: { x: 589, y: 430, step: [32, 30], cancel: [34, -32], size: 23, ring: 40 }, feature: [503, 40, 44, 20],
+  },
+  // From a front photograph of a D70 (one photograph pixel is 1.083
+  // units): a 4.5-inch display (the D40's: 3.5 inches) in a larger housing
+  // that rises higher, with a stronger arch; square dial keys; the
+  // navigation pad's middle halfway between the first and second columns
+  // of keys right of it; a second display and small rapid-dial keys in a
+  // section whose top falls toward the right.
   D70: {
-    hr: 799, lift: 81, bodyTop: 135, xl: 279, xr: 0, dxSide: 15, dxPad: 29,
-    display: { x: 354, y: 157, w: 288, h: 144 }, bezel: [338, 141, 320, 172], softY: 334,
-    lineX: [686, 720], lineY: [168, 20.4], fx: [592, 657, 722], navX: 624.5, feature: [48, 24],
+    handset: [124.5, 28, 145, 576], cradle: [127, 526.5],
+    body: { xl: 284, top: 107, xr: 995.4, yb: 584, bow: 46, wingRise: 0, wingDrop: 17 },
+    housing: { hr: 799.4, lift: 86.3, arch: 18.4, y1: 326, yc: 387 },
+    display: { x: 359.5, y: 139, w: 282, h: 141 }, bezel: [337, 115, 321, 179], soft: [312.6, 38, 17],
+    lineX: [685.6, 720.3], lineY: [144, 20.4],
+    side: [351.4, 404, 56, 36, 26], dial: [425, 402.5, 47.5, 45, 35, 33], volume: [470.5, 586, 103],
+    fx: [594, 658, 723], top: [384.6, 42, 22], nav: { x: 626, y: 460.5, step: [35, 35], cancel: [36.8, -35.7], size: 20, ring: 44.7 },
+    beside: [723, 491.3], feature: [531, 40, 42, 23],
+    wing: { dx: 16.2, y: 210.7, w: 103, keyX: 150.6, key: [25, 13], pageY: 28.5, page: [36, 16], pageX: [0.24, 0.74] },
   },
 };
 
 function oldFamily(v: Old, L: OldLayout): Panel {
   const keys: PanelKey[] = [];
   const white = "#f2f3f4";
-  const tall = v.top ? 26 : 0;
-  const bottom = 622 + tall;
-  const { hr, lift, display: d } = L;
+  const { display: d } = L;
+  const { hr, lift } = L.housing;
   const [bx, by, bw, bh] = L.bezel;
+  const [hsx, hsy, hsw, hsh] = L.handset;
 
   // Line keys on the housing, right of the display, staggered; a printed
   // line runs from each to the display bezel.
@@ -338,56 +382,58 @@ function oldFamily(v: Old, L: OldLayout): Panel {
 
   // Soft keys: teal, under the display's quarters, each with a line up to
   // the bezel.
+  const [softY, softW, softH] = L.soft;
   const softX = [0, 1, 2, 3].map((i) => d.x + (d.w * (i + 0.5)) / 4);
   softX.forEach((cx, i) => {
-    keys.push({ id: `sk${i + 1}`, cx, cy: L.softY, w: 36, h: 15, r: 5, fill: TEAL });
-    lines.push([cx, by + bh - 2, cx, L.softY - 7.5]);
+    keys.push({ id: `sk${i + 1}`, cx, cy: softY, w: softW, h: softH, r: 5, fill: TEAL });
+    lines.push([cx, by + bh - 2, cx, softY - softH / 2]);
   });
 
   // Headset, speaker, mute: silver keys, shaped like the dial keys, with
   // dark icons.
+  const [sx, sy0, sstep, sw, sh] = L.side;
   [
-    ["hdst", "headset-turned", 402],
-    ["spkr", "speaker-turned", 452],
-    ["mute", "mute-turned", 502],
-  ].forEach(([id, icon, cy]) =>
-    keys.push({ id: id as string, cx: 334 + L.dxSide, cy: cy as number, w: 37, h: 28, r: 3.5, arch: 1.3, fill: OLD_SILVER, ink: "#555b63", legend: { icon: icon as string }, size: 20, lamp: id as string }),
+    ["hdst", "headset-turned"],
+    ["spkr", "speaker-turned"],
+    ["mute", "mute-turned"],
+  ].forEach(([id, icon], i) =>
+    keys.push({ id, cx: sx, cy: sy0 + i * sstep, w: sw, h: sh, r: 3.5, arch: 1.3, fill: OLD_SILVER, ink: "#555b63", legend: { icon }, size: 20, lamp: id }),
   );
 
   // Dial pad.
-  digits.forEach((d, i) =>
-    keys.push({ id: d, cx: 394 + L.dxPad + (i % 3) * 47, cy: 402 + Math.floor(i / 3) * 40, w: 37, h: 29, r: 3, arch: 1.4, fill: KEY, ink: white, legend: dialLegend(d), size: 12.9 }),
+  const [dx0, dy0, ddx, ddy, dw, dh] = L.dial;
+  digits.forEach((dg, i) =>
+    keys.push({ id: dg, cx: dx0 + (i % 3) * ddx, cy: dy0 + Math.floor(i / 3) * ddy, w: dw, h: dh, r: 3, arch: 1.4, fill: KEY, ink: white, legend: dialLegend(dg), size: 12.9 }),
   );
   // Volume: one bar.
-  keys.push({ id: "vdn", cx: 414 + L.dxPad, cy: 566, w: 56, h: 16, r: 3, fill: KEY, ink: white, legend: { icon: "minus" }, size: 11, bare: true });
-  keys.push({ id: "vup", cx: 470 + L.dxPad, cy: 566, w: 56, h: 16, r: 3, fill: KEY, ink: white, legend: { icon: "plus" }, size: 11, bare: true });
+  const [vx, vy, vw] = L.volume;
+  keys.push({ id: "vdn", cx: vx - vw / 4, cy: vy, w: vw / 2, h: 16, r: 3, fill: KEY, ink: white, legend: { icon: "minus" }, size: 11, bare: true });
+  keys.push({ id: "vup", cx: vx + vw / 4, cy: vy, w: vw / 2, h: 16, r: 3, fill: KEY, ink: white, legend: { icon: "plus" }, size: 11, bare: true });
 
   // Right of the dial pad.
-  const { fx, navX } = L;
-  let y = 400;
-  if (v.top) {
-    v.top.forEach((id, i) => keys.push({ id, cx: fx[i], cy: y, w: 44, h: 22, r: 4, fill: KEY, ink: white, legend: { icon: id }, size: 16 }));
-    y += 44;
+  const { fx, nav: n } = L;
+  if (v.top && L.top) {
+    const [ty, tw, th] = L.top;
+    v.top.forEach((id, i) => keys.push({ id, cx: fx[i], cy: ty, w: tw, h: th, r: 4, fill: KEY, ink: white, legend: { icon: id }, size: 16 }));
   }
   // Navigation: five round keys, check in the center; X above and right.
   const nav: [string, string, number, number][] = [
-    ["up", "up", navX, y],
-    ["cancel", "x", navX + 34, y - 2],
-    ["left", "left", navX - 32, y + 30],
-    ["select", "check", navX, y + 30],
-    ["right", "right", navX + 32, y + 30],
-    ["down", "down", navX, y + 60],
+    ["up", "up", n.x, n.y - n.step[1]],
+    ["cancel", "x", n.x + n.cancel[0], n.y + n.cancel[1]],
+    ["left", "left", n.x - n.step[0], n.y],
+    ["select", "check", n.x, n.y],
+    ["right", "right", n.x + n.step[0], n.y],
+    ["down", "down", n.x, n.y + n.step[1]],
   ];
-  nav.forEach(([id, icon, cx, cy]) => keys.push({ id, cx, cy, w: 23, h: 23, r: 11.5, fill: KEY, ink: white, legend: { icon }, size: 11 }));
-  if (v.beside) keys.push({ id: v.beside, cx: fx[2], cy: y + 66, w: 44, h: 22, r: 4, fill: KEY, ink: white, legend: { icon: v.beside }, size: 16 });
-  const fy = y + 103;
-  const [fw, fh] = L.feature;
+  nav.forEach(([id, icon, cx, cy]) => keys.push({ id, cx, cy, w: n.size, h: n.size, r: n.size / 2, fill: KEY, ink: white, legend: { icon }, size: (11 * n.size) / 23 }));
+  if (v.beside && L.beside && L.top) keys.push({ id: v.beside, cx: L.beside[0], cy: L.beside[1], w: L.top[1], h: L.top[2], r: 4, fill: KEY, ink: white, legend: { icon: v.beside }, size: 16 });
+  const [fy, fstep, fw, fh] = L.feature;
   v.features.forEach((row, r) =>
     row.forEach((id, i) =>
       keys.push({
         id,
         cx: fx[i],
-        cy: fy + r * 40,
+        cy: fy + r * fstep,
         w: fw,
         h: fh,
         r: 4,
@@ -401,14 +447,12 @@ function oldFamily(v: Old, L: OldLayout): Panel {
 
   const hl = 300; // housing left edge
   // The rapid-dial section (D50, D70) starts at the housing's right edge.
-  const wingW = v.wing ? 189 : 0;
   // Outline of body and rapid-dial section together.  The sides are
   // vertical; the bottom edge bows downward.
-  const xl = L.xl;
-  const xr = v.wing ? hr + wingW : L.xr;
-  const bt = L.bodyTop;
-  const bow = 16;
-  const yb = bottom - 24;
+  const { xl, top: bt, yb, bow } = L.body;
+  const xr = L.body.xr;
+  const rise = L.body.wingRise ?? 14;
+  const drop = L.body.wingDrop ?? 0;
   // Bottom edge: one quadratic from (xl, yb) to (xr, yb), bowed by `bow`.
   // The curve runs between the rounded bottom corners.
   const cl = xl + 20;
@@ -422,22 +466,23 @@ function oldFamily(v: Old, L: OldLayout): Panel {
     const cy = yb + 2 * bow * t;
     return `Q${(cl + xa) / 2} ${cy} ${cl} ${yb}Q${xl} ${yb} ${xl} ${yb - 20}`;
   };
-  const dp = L.dxPad;
+  const [ct, cb] = L.cradle;
+  const cx0 = hsx - 8;
   const shapes: Shape[] = [
     // Cradle wing under the handset.
-    { d: rect(98, 232, 200, yb - 232, 24), fill: "#2b2e32" },
+    { d: rect(cx0, ct, 200, cb - ct, 24), fill: "#2b2e32" },
     // Upper cup the earpiece rests in, with the hook switch.
-    { d: rect(116, 244, 136, 72, 24), fill: "#1f2124" },
-    { d: rect(174, 296, 20, 9, 2), fill: "#0e0f10" },
+    { d: rect(cx0 + 18, ct + 12, 136, 72, 24), fill: "#1f2124" },
+    { d: rect(cx0 + 76, ct + 64, 20, 9, 2), fill: "#0e0f10" },
     // Lower cup the mouthpiece rests in.
-    { d: rect(116, yb - 100, 136, 88, 28), fill: "#1f2124" },
+    { d: rect(cx0 + 18, cb - 100, 136, 88, 28), fill: "#1f2124" },
     // Body.
     {
       d: v.wing
         ? // Body and rapid-dial section as one outline: the section's
-          // bottom edge is straight, rising to the right from the end of
-          // the body's curve to a rounded bottom-right corner.
-          `M${xl + 24} ${bt}H${xr - 24}Q${xr} ${bt} ${xr} ${bt + 24}V${yb - 38}Q${xr} ${yb - 16} ${xr - 22} ${yb - 14}L${hr} ${yb}${bottomTo(hr)}V${bt + 24}Q${xl} ${bt} ${xl + 24} ${bt}Z`
+          // bottom edge is straight, from the end of the body's curve to a
+          // rounded bottom-right corner.
+          `M${xl + 24} ${bt}H${hr}L${xr - 24} ${bt + drop}Q${xr} ${bt + drop} ${xr} ${bt + drop + 24}V${yb - rise - 24}Q${xr} ${yb - rise - 2} ${xr - 22} ${yb - rise}L${hr} ${yb}${bottomTo(hr)}V${bt + 24}Q${xl} ${bt} ${xl + 24} ${bt}Z`
         : `M${xl + 24} ${bt}H${xr - 24}Q${xr} ${bt} ${xr} ${bt + 24}V${yb - 20}Q${xr} ${yb} ${cr} ${yb}${bottomTo(cr)}V${bt + 24}Q${xl} ${bt} ${xl + 24} ${bt}Z`,
       fill: CHARCOAL,
     },
@@ -450,32 +495,33 @@ function oldFamily(v: Old, L: OldLayout): Panel {
   if (v.wing) {
     const wx = hr;
     if (v.wing === "paper") {
-      // D50: ten label rows behind a narrow window, a small key beside
-      // each row.
+      // D50: ten label rows behind a narrow window, alternately white and
+      // solid light gray, a small key beside each row.
       const rowH = 24.3;
       const wy = 268;
       shapes.push({ d: rect(wx + 20, wy - 3, 90, 10 * rowH + 6, 2), fill: "#08090a" });
       for (let i = 0; i < 10; i++) {
-        shapes.push({ d: rect(wx + 23, wy + i * rowH, 84, rowH, 0), fill: i % 2 ? "#c7cbd1" : "#f3f4f6" });
+        shapes.push({ d: rect(wx + 23, wy + i * rowH, 84, rowH, 0), fill: i % 2 ? PAPER_GRAY : PAPER_WHITE });
         keys.push({ id: `blf${i + 1}`, cx: wx + 139, cy: wy + (i + 0.5) * rowH, w: 27, h: 14, r: 5.5, fill: HOUSING_KEY, lamp: `blf${i + 1}` });
       }
-    } else {
+    } else if (L.wing) {
       // D70: second display (ten entries and a page row), a key beside
       // each entry, two teal page keys under the display.
-      const sw = 92;
+      const g = L.wing;
+      const sw = g.w;
       const sh = sw * (357 / 113);
-      const sy = 256;
-      side = { x: wx + 24, y: sy, w: sw, h: sh };
-      shapes.push({ d: rect(wx + 20, sy - 4, sw + 8, sh + 8, 2), fill: "#08090a" });
+      const sy = g.y;
+      side = { x: wx + g.dx, y: sy, w: sw, h: sh };
+      shapes.push({ d: rect(wx + g.dx - 4, sy - 4, sw + 8, sh + 8, 2), fill: "#08090a" });
       for (let i = 0; i < 10; i++) {
-        keys.push({ id: `blf${i + 1}`, cx: wx + 160, cy: sy + (i + 0.5) * (sh / 11), w: 38, h: 15, r: 6, fill: HOUSING_KEY, lamp: `blf${i + 1}` });
+        keys.push({ id: `blf${i + 1}`, cx: wx + g.keyX, cy: sy + (i + 0.5) * (sh / 11), w: g.key[0], h: g.key[1], r: g.key[1] / 2, fill: HOUSING_KEY, lamp: `blf${i + 1}` });
       }
       [
-        ["blfleft", wx + 24 + sw * 0.27],
-        ["blfright", wx + 24 + sw * 0.73],
+        ["blfleft", wx + g.dx + sw * g.pageX[0]],
+        ["blfright", wx + g.dx + sw * g.pageX[1]],
       ].forEach(([id, cx]) => {
-        keys.push({ id: id as string, cx: cx as number, cy: sy + sh + 24, w: 32, h: 13, r: 5, fill: TEAL });
-        lines.push([cx as number, sy + sh + 5, cx as number, sy + sh + 17]);
+        keys.push({ id: id as string, cx: cx as number, cy: sy + sh + g.pageY, w: g.page[0], h: g.page[1], r: 5, fill: TEAL });
+        lines.push([cx as number, sy + sh + 5, cx as number, sy + sh + g.pageY - g.page[1] / 2]);
       });
     }
     vbRight = xr + 24;
@@ -486,15 +532,16 @@ function oldFamily(v: Old, L: OldLayout): Panel {
   // quadratic whose control point is where the side meets the bottom
   // edge's tangent, so that the corner joins both smoothly.
   const rb = 20;
-  const y1 = 348;
-  const yc = 378;
+  const { y1, yc, arch } = L.housing;
   const yk = y1 - (rb * (yc - y1)) / (hr - rb - mid);
   const T = (y: number) => y - lift;
+  const nv = L.nav;
+  const [vbx, vby] = L.volume;
   shapes.push(
     // Silver display housing, rising above the body's top edge: arched
     // top edge, rounded corners, bowed bottom edge.
     {
-      d: `M${hl} ${T(182)}Q${hl} ${T(162)} ${hl + 22} ${T(160)}Q${mid} ${T(148)} ${hr - 22} ${T(160)}Q${hr} ${T(162)} ${hr} ${T(182)}V${yk - rb}Q${hr} ${yk} ${hr - rb} ${y1}Q${mid} ${yc} ${hl + rb} ${y1}Q${hl} ${yk} ${hl} ${yk - rb}Z`,
+      d: `M${hl} ${T(182)}Q${hl} ${T(162)} ${hl + 22} ${T(160)}Q${mid} ${T(160 - 2 * arch)} ${hr - 22} ${T(160)}Q${hr} ${T(162)} ${hr} ${T(182)}V${yk - rb}Q${hr} ${yk} ${hr - rb} ${y1}Q${mid} ${yc} ${hl + rb} ${y1}Q${hl} ${yk} ${hl} ${yk - rb}Z`,
       fill: "#c9ccd0",
       gloss: true,
       stroke: "#9da1a6",
@@ -502,14 +549,15 @@ function oldFamily(v: Old, L: OldLayout): Panel {
     // Display bezel.
     { d: rect(bx, by, bw, bh, 10), fill: "#2b2d2f" },
     // The volume bar and the ring around the pad.
-    { d: rect(386 + dp, 558, 112, 16, 7), fill: KEY, stroke: "#0b0c0d" },
-    { d: `M${442 + dp} 560V572`, fill: "none", stroke: "#3a3c40" },
-    { d: `M${navX} ${y - 10}a40 40 0 1 0 .01 0Z`, fill: "none", stroke: "#26282c" },
+    { d: rect(vbx - vw / 2, vby - 8, vw, 16, 7), fill: KEY, stroke: "#0b0c0d" },
+    { d: `M${vbx} ${vby - 6}V${vby + 6}`, fill: "none", stroke: "#3a3c40" },
+    { d: `M${nv.x} ${nv.y - nv.ring}a${nv.ring} ${nv.ring} 0 1 0 .01 0Z`, fill: "none", stroke: "#26282c" },
   );
 
-  const vbTop = Math.min(76, 134 - lift);
+  const vbTop = Math.min(76, hsy - 20, T(160 - 2 * arch) - 14);
+  const vbBottom = hsy + hsh + 84;
   return {
-    viewBox: [-98, vbTop, vbRight + 98, bottom + 70 - vbTop],
+    viewBox: [-98, vbTop, vbRight + 98, vbBottom - vbTop],
     unit: (v.wing === "display" ? 320 : 240) / d.w,
     shapes,
     lines,
@@ -519,9 +567,9 @@ function oldFamily(v: Old, L: OldLayout): Panel {
     // The lamp is the housing's top-right corner itself: a smoked lens
     // that follows the corner along the top and down the right edge.
     mwi: { d: `M${hr - 38} ${T(159)}L${hr - 22} ${T(160)}Q${hr} ${T(162)} ${hr} ${T(182)}V${T(188)}H${hr - 38}Z`, off: "#8e94a2" },
-    handset: { x: 106, y: 96, w: 152, h: bottom - 96 - 14, fill: "#303338", print: "HDVoice" },
+    handset: { x: hsx, y: hsy, w: hsw, h: hsh, fill: "#303338", print: "HDVoice" },
     // Vertical slots beside the housing, as in the quick reference drawing.
-    grille: { cx: 184, cy: 400, rx: 40, ry: 58 },
+    grille: { cx: cx0 + 86, cy: ct + 168, rx: 40, ry: 58 },
     keys,
   };
 }
