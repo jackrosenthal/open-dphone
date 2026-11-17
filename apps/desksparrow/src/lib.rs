@@ -7,14 +7,15 @@
 //! The game has the whole display: there are no softkeys.  Cancel, which
 //! the app leaves to the phone, closes it, as does line key 1.
 //!
-//! The leaderboard is the best scores of the PBX's users, the same on
-//! every phone: Down or Up shows it between games, and takes it away
-//! again.  It is one shared key of the app's store on the PBX (see
-//! [`board`]), which the game reads when it starts and whenever another
-//! phone changes it.  A score that belongs on it is first written to the
-//! phone's storage, and stays there until the PBX has it: a phone whose
-//! PBX keeps no such store, or cannot be reached, plays as any other, and
-//! shows the leaderboard as it last read it with its scores added.
+//! The leaderboard is the best scores of the PBX's users, each with the
+//! date and time it was set, the same on every phone: Down or Up shows it
+//! between games, and takes it away again.  It is one shared key of the
+//! app's store on the PBX (see [`board`]), which the game reads when it
+//! starts and whenever another phone changes it.  A score that belongs on
+//! it is first written to the phone's storage, and stays there until the
+//! PBX has it: a phone whose PBX keeps no such store, or cannot be
+//! reached, plays as any other, and shows the leaderboard as it last read
+//! it with its scores added.
 //!
 //! The game is drawn on a canvas, once for every tick of a repeating timer
 //! and in one call, so the phone repaints once a tick.  Between games
@@ -363,6 +364,8 @@ enum State {
 /// A row of the leaderboard as it is shown.
 struct Shown {
     name: String,
+    /// The date and time the score was set (empty if the row has none).
+    when: String,
     score: String,
     /// A row of this phone's user.
     mine: bool,
@@ -384,8 +387,8 @@ struct BoardView {
     title: Widget,
     /// Said in place of the rows when there are none.
     note: Widget,
-    /// The name and the score of each row.
-    rows: Vec<(Widget, Widget)>,
+    /// The name, the date and time, and the score of each row.
+    rows: Vec<[Widget; 3]>,
 }
 
 /// The window: a canvas under three lines of text on a plate, or under
@@ -421,9 +424,9 @@ impl Screen {
             (m.line_height, 4)
         };
         let w = if m.color { 300 } else { m.width * 3 / 4 };
-        // A plate of the height `h`, in the middle of the field with the
-        // sparrow that sits on it.
-        let plate_of = |h: u16| {
+        // A plate `w` wide and `h` high, in the middle of the field with
+        // the sparrow that sits on it.
+        let plate_of = |w: u16, h: u16| {
             Rect::new(
                 ((m.width - w) / 2) as i16,
                 ((look.rules.height as u16 - h) / 2 + look.rules.bird_h as u16 / 2) as i16,
@@ -440,18 +443,34 @@ impl Screen {
         };
         let title_font = if m.color { Font::Title } else { Font::Bold };
         let line_h = m.line_height;
-        let plate = plate_of(title_h + 2 * line_h + 2 * pad);
+        let plate = plate_of(w, title_h + 2 * line_h + 2 * pad);
         let centered = |p: Rect, y: u16, h: u16, font: Font| {
-            text(Rect::new(p.x, p.y + y as i16, w, h), font, Align::Center)
+            text(
+                Rect::new(p.x, p.y + y as i16, p.width, h),
+                font,
+                Align::Center,
+            )
         };
         let title = centered(plate, pad, title_h, title_font);
         let line = centered(plate, pad + title_h, line_h, Font::Normal);
         let hint = centered(plate, pad + title_h + line_h, line_h, Font::Normal);
 
         // The leaderboard: a title, and a line for each row, the name at
-        // the left and the score at the right.
-        let b = plate_of(title_h + board::SIZE as u16 * line_h + 2 * pad);
-        let score_w = w / 5;
+        // the left, then the date and time the score was set, and the
+        // score at the right.  The date and the score are right-aligned in
+        // columns as wide as the widest of them in the skin's font with a
+        // gap before it: a date and time such as "May 10, 2026 12:00 AM"
+        // (146 pixels on the color screens, 138 on the large gray one, and
+        // 114 on the small one) and a score of four digits.  The plate is
+        // wider than the other to hold them, as wide as the screen on the
+        // gray ones.
+        let (board_w, when_w, score_w) = match m.skin {
+            Skin::Color => (440, 158, 44),
+            Skin::LargeGray => (m.width, 145, 35),
+            Skin::SmallGray => (m.width, 120, 30),
+        };
+        let b = plate_of(board_w, title_h + board::SIZE as u16 * line_h + 2 * pad);
+        let name_w = board_w - 2 * pad - when_w - score_w;
         let board = BoardView {
             plate: b,
             title: centered(b, pad, title_h, title_font),
@@ -460,15 +479,14 @@ impl Screen {
                 .map(|i| {
                     let y = b.y + (pad + title_h + i * line_h) as i16;
                     let x = b.x + pad as i16;
-                    let name_w = w - 2 * pad - score_w;
-                    (
-                        text(Rect::new(x, y, name_w, line_h), Font::Normal, Align::Left),
-                        text(
-                            Rect::new(x + name_w as i16, y, score_w, line_h),
-                            Font::Normal,
-                            Align::Right,
-                        ),
-                    )
+                    let cell = |x: i16, w: u16, align: Align| {
+                        text(Rect::new(x, y, w, line_h), Font::Normal, align)
+                    };
+                    [
+                        cell(x, name_w, Align::Left),
+                        cell(x + name_w as i16, when_w, Align::Right),
+                        cell(x + (name_w + when_w) as i16, score_w, Align::Right),
+                    ]
                 })
                 .collect(),
         };
@@ -515,14 +533,12 @@ impl Screen {
         }
         ui::set_visible(b.title, title.is_some());
         ui::set_visible(b.note, title.is_some() && rows.is_empty());
-        for (i, (name, score)) in b.rows.iter().enumerate() {
+        for (i, cells) in b.rows.iter().enumerate() {
             let row = rows.get(i);
-            for (w, text) in [
-                (*name, row.map(|r| &r.name)),
-                (*score, row.map(|r| &r.score)),
-            ] {
-                if let Some(text) = text {
-                    ui::set_text(w, text);
+            let texts = row.map(|r| [&r.name, &r.when, &r.score]);
+            for (j, &w) in cells.iter().enumerate() {
+                if let Some(texts) = texts {
+                    ui::set_text(w, texts[j]);
                 }
                 ui::set_highlight(w, row.is_some_and(|r| r.mine));
                 ui::set_visible(w, row.is_some());
@@ -696,6 +712,10 @@ impl Sparrow {
                 };
                 Shown {
                     name: format!("{}. {name}", i + 1),
+                    when: row
+                        .time
+                        .map(|t| l10n::format_time(t, TimeStyle::DateAndTime))
+                        .unwrap_or_default(),
                     score: row.score.to_string(),
                     mine: row.id.is_empty() || me.as_ref() == Some(&row.id),
                 }
@@ -719,13 +739,13 @@ impl Sparrow {
     }
 
     /// The game's score, if it belongs on the leaderboard as far as the
-    /// phone knows it, waits to be written there.  Says whether it does.
+    /// phone knows it, waits to be written there with the date and time
+    /// of now.  Says whether it does.
     fn note_score(&mut self) -> bool {
         let (id, name) = storage::user()
             .map(|u| (u.id, u.name))
             .unwrap_or_default();
-        let tag = format!("{:016x}", runtime::random());
-        let row = Row::new(self.game.score, &id, &name, &tag);
+        let row = Row::new(self.game.score, &id, &name, Some(timers::wall_time()));
         let waiting = board::unsettled(&self.board, &board::merge(&self.waiting, &[row]));
         let changed = waiting != self.waiting;
         self.keep_waiting(waiting);

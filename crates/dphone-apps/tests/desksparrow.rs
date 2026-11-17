@@ -480,7 +480,7 @@ fn it_plays_on_the_gray_screens_in_gray() {
 fn it_needs_the_canvas_capability_and_can_be_switched_off() {
     assert_eq!(
         common::capabilities(APP),
-        ["ui", "timers", "storage", "canvas"],
+        ["ui", "timers", "storage", "l10n", "canvas"],
         "no sound, no calls, no network but the PBX's store"
     );
     // An app is linked with the interfaces the phone's record of it lists
@@ -524,11 +524,21 @@ fn it_needs_the_canvas_capability_and_can_be_switched_off() {
 
 // --------------------------------------------------- with the phone UI
 
-/// The canvas as the app last drew it, and how many times it has drawn.
+/// The canvas as the app last drew it, how many times it has drawn, and
+/// its text widgets.
 #[derive(Default)]
 struct Seen {
     draws: u32,
     ops: Vec<DrawOp>,
+    labels: std::collections::BTreeMap<u32, Label>,
+}
+
+/// A text widget: its width, its font, its text, and whether it is shown.
+struct Label {
+    width: u16,
+    font: dphone_apps::Font,
+    text: String,
+    visible: bool,
 }
 
 /// The phone UI's shell, with a look at what the app draws.
@@ -573,30 +583,53 @@ impl AppWindow for WatchedWindow {
         self.inner.metrics()
     }
     fn create(&mut self, kind: dphone_apps::WidgetKind, parent: Option<u32>, bounds: Rect) -> u32 {
-        self.inner.create(kind, parent, bounds)
+        let w = self.inner.create(kind, parent, bounds);
+        if kind == dphone_apps::WidgetKind::Text {
+            let label = Label {
+                width: bounds.width,
+                font: dphone_apps::Font::Normal,
+                text: String::new(),
+                visible: true,
+            };
+            self.seen.lock().unwrap().labels.insert(w, label);
+        }
+        w
     }
     fn destroy(&mut self, w: u32) {
+        self.seen.lock().unwrap().labels.remove(&w);
         self.inner.destroy(w)
     }
     fn clear(&mut self, w: Option<u32>) {
+        // The game clears only its window, of which every widget is a
+        // child.
+        self.seen.lock().unwrap().labels.clear();
         self.inner.clear(w)
     }
     fn set_bounds(&mut self, w: u32, bounds: Rect) {
         self.inner.set_bounds(w, bounds)
     }
     fn set_visible(&mut self, w: u32, visible: bool) {
+        if let Some(l) = self.seen.lock().unwrap().labels.get_mut(&w) {
+            l.visible = visible;
+        }
         self.inner.set_visible(w, visible)
     }
     fn set_focus(&mut self, w: Option<u32>) {
         self.inner.set_focus(w)
     }
     fn set_text(&mut self, w: u32, text: &str) {
+        if let Some(l) = self.seen.lock().unwrap().labels.get_mut(&w) {
+            l.text = text.to_string();
+        }
         self.inner.set_text(w, text)
     }
     fn set_align(&mut self, w: u32, align: dphone_apps::Align) {
         self.inner.set_align(w, align)
     }
     fn set_font(&mut self, w: u32, font: dphone_apps::Font) {
+        if let Some(l) = self.seen.lock().unwrap().labels.get_mut(&w) {
+            l.font = font;
+        }
         self.inner.set_font(w, font)
     }
     fn set_wrap(&mut self, w: u32, wrap: bool) {
@@ -801,6 +834,29 @@ impl Phone {
         self.pixels().iter().filter(|p| **p == color).count()
     }
 
+    /// The texts on screen that the phone cuts short, as they are wider
+    /// in their fonts than their widgets.
+    fn cut(&self) -> Vec<String> {
+        use dphone_apps::Font as App;
+        use dphone_ui::appview::Font as Ui;
+        let theme = dphone_ui::skin::Theme::for_model(self.model);
+        let font = |f: App| match f {
+            App::Small => Ui::Small,
+            App::Normal => Ui::Normal,
+            App::Large => Ui::Large,
+            App::Bold => Ui::Bold,
+            App::Title => Ui::Title,
+        };
+        self.seen
+            .lock()
+            .unwrap()
+            .labels
+            .values()
+            .filter(|l| l.visible && theme.text_width(font(l.font), &l.text) > l.width)
+            .map(|l| l.text.clone())
+            .collect()
+    }
+
     /// Writes the frame as a PNG (the gray ones doubled in size).
     fn shot(&self, name: &str) {
         let dir = match std::env::var_os("DESK_SPARROW_PREVIEWS") {
@@ -982,16 +1038,50 @@ fn drawn_in_gray(model: Model) {
 
 // ------------------------------------------------------ the leaderboard
 
+/// Times at which the tests' games end, in seconds since the Unix epoch,
+/// and as the phone writes them (on UTC, with AM and PM).
+const T0: (u64, &str) = (1_794_865_440, "Nov 16, 2026 9:44 PM");
+const T1: (u64, &str) = (1_794_865_500, "Nov 16, 2026 9:45 PM");
+const T2: (u64, &str) = (1_794_865_920, "Nov 16, 2026 9:52 PM");
+const T3: (u64, &str) = (1_794_866_580, "Nov 16, 2026 10:03 PM");
+
+/// A phone's wall clock, which a test sets.
+type Clock = Arc<std::sync::atomic::AtomicU64>;
+
+fn clock(unix: u64) -> Clock {
+    Arc::new(unix.into())
+}
+
+fn set_clock(clock: &Clock, unix: u64) {
+    clock.store(unix, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// A phone's configuration with `clock` for its wall clock.
+fn on_clock(clock: &Clock) -> FakeConfig {
+    FakeConfig {
+        wall_time: Some(clock.clone()),
+        ..FakeConfig::default()
+    }
+}
+
+/// A phone whose PBX store of app data is `app_data`, as `Rig::on_pbx`
+/// makes one, with `clock` for its wall clock.
+fn on_pbx_with(app_data: FakeStore, clock: &Clock) -> Rig {
+    let budget = Duration::from_millis(300);
+    Rig::with_app_data(staged(), on_clock(clock), Model::D60, budget, app_data)
+}
+
 /// The leaderboard's value on the PBX, as text.
-fn tagged_on_pbx(store: &FakeStore) -> Option<String> {
+fn timed_on_pbx(store: &FakeStore) -> Option<String> {
     store
         .value(APP, StoreScope::Shared, "leaderboard")
         .map(|v| String::from_utf8(v).unwrap())
 }
 
-/// The rows of a leaderboard's value without the tags that tell them
-/// apart: a line for each, of the score, the user's id, and the name.
-fn untagged(value: &str) -> String {
+/// The rows of a leaderboard's value without the dates and times that
+/// tell them apart: a line for each, of the score, the user's id, and the
+/// name.
+fn untimed(value: &str) -> String {
     value
         .lines()
         .map(|line| {
@@ -1001,9 +1091,10 @@ fn untagged(value: &str) -> String {
         .collect()
 }
 
-/// The leaderboard's value on the PBX, as text, without the tags.
+/// The leaderboard's value on the PBX, as text, without the dates and
+/// times.
 fn on_pbx(store: &FakeStore) -> Option<String> {
-    tagged_on_pbx(store).map(|v| untagged(&v))
+    timed_on_pbx(store).map(|v| untimed(&v))
 }
 
 /// Writes the leaderboard as the phone of `store` would.
@@ -1023,9 +1114,9 @@ fn file(r: &Rig, name: &str) -> Option<String> {
 }
 
 /// The scores that wait on the phone to be written to the PBX, without
-/// their tags.
+/// their dates and times.
 fn waiting(r: &Rig) -> Option<String> {
-    file(r, "waiting").map(|v| untagged(&v))
+    file(r, "waiting").map(|v| untimed(&v))
 }
 
 /// Plays a game from the start screen, the leaderboard, or the end of a
@@ -1134,8 +1225,9 @@ fn down_shows_the_leaderboard_between_games() {
 #[test]
 fn a_score_is_on_every_phones_leaderboard_with_who_set_it() {
     let pbx = FakeStore::default();
-    let mut alice = Rig::on_pbx(pbx.phone("101", "Alice"));
-    let mut bob = Rig::on_pbx(pbx.phone("102", "Bob"));
+    let now = clock(T1.0);
+    let mut alice = on_pbx_with(pbx.phone("101", "Alice"), &now);
+    let mut bob = on_pbx_with(pbx.phone("102", "Bob"), &now);
     // Bob looks at the leaderboard while Alice plays.
     bob.launch(APP);
     bob.key(APP, Key::Down);
@@ -1144,16 +1236,18 @@ fn a_score_is_on_every_phones_leaderboard_with_who_set_it() {
     assert_eq!(play(&mut alice, 1), 1);
     assert_eq!(on_pbx(&pbx).as_deref(), Some("1\t101\tAlice\n"));
     assert_eq!(waiting(&alice).as_deref(), Some(""), "nothing waits");
-    // Bob's phone is told, and shows it; the row is not his.
+    // Bob's phone is told, and shows it with the date and time of her
+    // game; the row is not his.
     bob.settle();
-    assert_eq!(bob.ui.texts(APP), ["Leaderboard", "1. Alice", "1"]);
+    assert_eq!(bob.ui.texts(APP), ["Leaderboard", "1. Alice", T1.1, "1"]);
     assert!(bob.ui.highlighted(APP).is_empty());
     // Alice's shows the same, with her row marked.
     alice.key(APP, Key::Down);
-    assert_eq!(alice.ui.texts(APP), ["Leaderboard", "1. Alice", "1"]);
-    assert_eq!(alice.ui.highlighted(APP), ["1. Alice", "1"]);
+    assert_eq!(alice.ui.texts(APP), ["Leaderboard", "1. Alice", T1.1, "1"]);
+    assert_eq!(alice.ui.highlighted(APP), ["1. Alice", T1.1, "1"]);
 
-    // Bob does as well: he is below her, who was there first.
+    // Bob does as well, later: he is below her, who was there first.
+    set_clock(&now, T2.0);
     assert_eq!(play(&mut bob, 1), 1);
     assert_eq!(
         on_pbx(&pbx).as_deref(),
@@ -1162,39 +1256,48 @@ fn a_score_is_on_every_phones_leaderboard_with_who_set_it() {
     alice.settle();
     assert_eq!(
         alice.ui.texts(APP),
-        ["Leaderboard", "1. Alice", "1", "2. Bob", "1"]
+        ["Leaderboard", "1. Alice", T1.1, "1", "2. Bob", T2.1, "1"]
     );
 
     // Then he does better: every score is a row of its own, so the better
     // one is above her and his first stays, on both phones.
+    set_clock(&now, T3.0);
     assert_eq!(play(&mut bob, 2), 2);
     assert_eq!(
         on_pbx(&pbx).as_deref(),
         Some("2\t102\tBob\n1\t101\tAlice\n1\t102\tBob\n")
     );
     alice.settle();
-    let all = ["Leaderboard", "1. Bob", "2", "2. Alice", "1", "3. Bob", "1"];
+    let all = [
+        "Leaderboard",
+        "1. Bob",
+        T3.1,
+        "2",
+        "2. Alice",
+        T1.1,
+        "1",
+        "3. Bob",
+        T2.1,
+        "1",
+    ];
     assert_eq!(alice.ui.texts(APP), all);
-    assert_eq!(alice.ui.highlighted(APP), ["2. Alice", "1"]);
+    assert_eq!(alice.ui.highlighted(APP), ["2. Alice", T1.1, "1"]);
     bob.key(APP, Key::Up);
     assert_eq!(bob.ui.texts(APP), all);
-    assert_eq!(bob.ui.highlighted(APP), ["1. Bob", "2", "3. Bob", "1"]);
-
-    // Each row has a tag of its own, sixteen hexadecimal digits, and
-    // each of Bob's games was written once.
-    let mut tags: Vec<String> = tagged_on_pbx(&pbx)
-        .unwrap()
-        .lines()
-        .map(|line| line.split('\t').nth(3).expect("a tag").to_string())
-        .collect();
-    assert!(
-        tags.iter()
-            .all(|t| t.len() == 16 && t.chars().all(|c| c.is_ascii_hexdigit())),
-        "{tags:?}"
+    assert_eq!(
+        bob.ui.highlighted(APP),
+        ["1. Bob", T3.1, "2", "3. Bob", T2.1, "1"]
     );
-    tags.sort();
-    tags.dedup();
-    assert_eq!(tags.len(), 3);
+
+    // Each row has the date and time of its game, in seconds since the
+    // Unix epoch, and each of Bob's games was written once.
+    assert_eq!(
+        timed_on_pbx(&pbx),
+        Some(format!(
+            "2\t102\tBob\t{}\n1\t101\tAlice\t{}\n1\t102\tBob\t{}\n",
+            T3.0, T1.0, T2.0
+        ))
+    );
     let writes = bob
         .app_data
         .ops()
@@ -1227,7 +1330,8 @@ fn two_who_finish_at_once_are_both_on_the_leaderboard() {
             let first_write = matches!(op, StoreOp::Set { .. })
                 && !self.raced.swap(true, std::sync::atomic::Ordering::SeqCst);
             if first_write {
-                let r = write_board(&self.other, "3\t102\tBob\n", Some(0));
+                let bob = format!("3\t102\tBob\t{}\n", T0.0);
+                let r = write_board(&self.other, &bob, Some(0));
                 assert!(matches!(r, StoreReply::Stored(_)));
             }
             self.inner.request(op, done);
@@ -1252,6 +1356,7 @@ fn two_who_finish_at_once_are_both_on_the_leaderboard() {
     };
     let mut alice = Rig::with_services(|mut services| {
         services.store = Arc::new(racing);
+        services.config = Arc::new(on_clock(&clock(T1.0)));
         services
     });
     alice.launch(APP);
@@ -1280,7 +1385,7 @@ fn two_who_finish_at_once_are_both_on_the_leaderboard() {
     alice.key(APP, Key::Down);
     assert_eq!(
         alice.ui.texts(APP),
-        ["Leaderboard", "1. Bob", "3", "2. Alice", "1"]
+        ["Leaderboard", "1. Bob", T0.1, "3", "2. Alice", T1.1, "1"]
     );
     assert_eq!(waiting(&alice).as_deref(), Some(""));
 }
@@ -1288,8 +1393,11 @@ fn two_who_finish_at_once_are_both_on_the_leaderboard() {
 #[test]
 fn a_score_set_out_of_the_pbxs_reach_is_written_when_it_is_in_reach() {
     let pbx = FakeStore::default();
+    // Bob's row was written before rows had a date and time: it is shown
+    // without one.
     write_board(&pbx.phone("102", "Bob"), "3\t102\tBob\n", None);
-    let mut alice = Rig::on_pbx(pbx.phone("101", "Alice"));
+    let now = clock(T1.0);
+    let mut alice = on_pbx_with(pbx.phone("101", "Alice"), &now);
     // She has seen the leaderboard; then the PBX is gone.
     alice.launch(APP);
     alice.app_data.set_online(false);
@@ -1298,13 +1406,13 @@ fn a_score_set_out_of_the_pbxs_reach_is_written_when_it_is_in_reach() {
     // The score waits on the phone, and her leaderboard has it.
     assert_eq!(waiting(&alice).as_deref(), Some("1\t101\tAlice\n"));
     alice.key(APP, Key::Down);
-    let both = ["1. Bob", "3", "2. Alice", "1"];
+    let both = ["1. Bob", "", "3", "2. Alice", T1.1, "1"];
     assert_eq!(alice.ui.texts(APP)[0], "Leaderboard (offline)");
     assert_eq!(alice.ui.texts(APP)[1..], both);
     // Meanwhile Carol's phone, which can reach the PBX, writes.
     write_board(
         &pbx.phone("103", "Carol"),
-        "3\t102\tBob\n2\t103\tCarol\n",
+        &format!("3\t102\tBob\n2\t103\tCarol\t{}\n", T2.0),
         None,
     );
     // The PBX is back while the game is on screen: the score is written
@@ -1320,10 +1428,13 @@ fn a_score_set_out_of_the_pbxs_reach_is_written_when_it_is_in_reach() {
         [
             "Leaderboard",
             "1. Bob",
+            "",
             "3",
             "2. Carol",
+            T2.1,
             "2",
             "3. Alice",
+            T1.1,
             "1"
         ]
     );
@@ -1331,8 +1442,9 @@ fn a_score_set_out_of_the_pbxs_reach_is_written_when_it_is_in_reach() {
 
     // Dan's phone has never reached the PBX since it started, and he
     // leaves the game before it can: the score is written the next time
-    // the game starts.
-    let mut dan = Rig::on_pbx(pbx.phone("104", "Dan"));
+    // the game starts, with the date and time of the game.
+    set_clock(&now, T3.0);
+    let mut dan = on_pbx_with(pbx.phone("104", "Dan"), &now);
     dan.app_data.set_online(false);
     dan.launch(APP);
     dan.key(APP, Key::Down);
@@ -1346,18 +1458,24 @@ fn a_score_set_out_of_the_pbxs_reach_is_written_when_it_is_in_reach() {
     dan.app_data.set_online(true);
     dan.settle();
     assert_eq!(waiting(&dan).as_deref(), Some("2\t104\tDan\n"));
+    set_clock(&now, T3.0 + 3600);
     dan.launch(APP);
     assert_eq!(
-        on_pbx(&pbx).as_deref(),
-        Some("3\t102\tBob\n2\t103\tCarol\n2\t104\tDan\n1\t101\tAlice\n")
+        timed_on_pbx(&pbx),
+        Some(format!(
+            "3\t102\tBob\t\n2\t103\tCarol\t{}\n2\t104\tDan\t{}\n1\t101\tAlice\t{}\n",
+            T2.0, T3.0, T1.0
+        ))
     );
     assert_eq!(waiting(&dan).as_deref(), Some(""));
 }
 
 #[test]
 fn a_phone_without_a_pbx_store_plays_and_keeps_its_scores() {
+    let now = clock(T1.0);
     let mut r = Rig::with_services(|mut services| {
         services.store = Arc::new(dphone_apps::NoStore);
+        services.config = Arc::new(on_clock(&now));
         services
     });
     r.launch(APP);
@@ -1373,44 +1491,127 @@ fn a_phone_without_a_pbx_store_plays_and_keeps_its_scores() {
     r.key(APP, Key::Down);
     assert_eq!(
         r.ui.texts(APP),
-        ["Leaderboard (offline)", "1. This phone", "1"]
+        ["Leaderboard (offline)", "1. This phone", T1.1, "1"]
     );
-    assert_eq!(r.ui.highlighted(APP), ["1. This phone", "1"]);
+    assert_eq!(r.ui.highlighted(APP), ["1. This phone", T1.1, "1"]);
     // The next game is as playable, its score is a row of its own, and a
     // new run of the game still has both.
+    set_clock(&now, T2.0);
     assert_eq!(play(&mut r, 1), 1);
     assert_eq!(waiting(&r).as_deref(), Some("1\t\t\n1\t\t\n"));
     r.key(APP, Key::Cancel);
     r.launch(APP);
     r.key(APP, Key::Down);
-    let both = ["1. This phone", "1", "2. This phone", "1"];
+    let both = ["1. This phone", T1.1, "1", "2. This phone", T2.1, "1"];
     assert_eq!(r.ui.texts(APP)[0], "Leaderboard (offline)");
     assert_eq!(r.ui.texts(APP)[1..], both);
     assert_eq!(r.ui.highlighted(APP), both);
 
     // A phone with such scores that then has a PBX with a store: the
-    // scores are its user's.  (The first waits as it was written before
-    // rows had tags.)
+    // scores are its user's, with their dates and times.  (The first waits
+    // as it was written before rows had them.)
     let pbx = FakeStore::default();
     let mut alice = Rig::on_pbx(pbx.phone("101", "Alice"));
     let dir = alice.nvdata.join("appdata").join(APP);
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("waiting"), "4\t\t\n2\t\t\t0123456789abcdef\n").unwrap();
+    let waits = format!("4\t\t\n2\t\t\t{}\n", T1.0);
+    std::fs::write(dir.join("waiting"), waits).unwrap();
     alice.launch(APP);
     assert_eq!(
-        on_pbx(&pbx).as_deref(),
-        Some("4\t101\tAlice\n2\t101\tAlice\n")
+        timed_on_pbx(&pbx),
+        Some(format!("4\t101\tAlice\t\n2\t101\tAlice\t{}\n", T1.0))
     );
     assert_eq!(waiting(&alice).as_deref(), Some(""));
+}
+
+#[test]
+fn a_score_written_once_is_not_written_again() {
+    // The PBX does the phone's first write, but its answer is lost: the
+    // phone is told that the PBX was out of reach.  A store that does
+    // that:
+    struct Lossy {
+        inner: FakeStore,
+        lost: std::sync::atomic::AtomicBool,
+    }
+    impl dphone_apps::PbxStore for Lossy {
+        fn request(&self, op: StoreOp, done: dphone_apps::Completion<StoreReply>) {
+            let first_write = matches!(op, StoreOp::Set { .. })
+                && !self.lost.swap(true, std::sync::atomic::Ordering::SeqCst);
+            if first_write {
+                self.inner.run(op);
+                done.complete(StoreReply::Unreachable("no answer".into()));
+            } else {
+                self.inner.request(op, done);
+            }
+        }
+        fn user(&self) -> Option<dphone_apps::StoreUser> {
+            self.inner.user()
+        }
+        fn online(&self) -> bool {
+            self.inner.online()
+        }
+        fn watch(&self, apps: &[String]) {
+            self.inner.watch(apps)
+        }
+        fn subscribe(&self, f: Box<dyn Fn(dphone_apps::StoreSignal) + Send + Sync>) {
+            self.inner.subscribe(f)
+        }
+    }
+    let pbx = FakeStore::default();
+    let alice_side = pbx.phone("101", "Alice");
+    let lossy = Lossy {
+        inner: alice_side.clone(),
+        lost: false.into(),
+    };
+    let now = clock(T1.0);
+    let mut alice = Rig::with_services(|mut services| {
+        services.store = Arc::new(lossy);
+        services.config = Arc::new(on_clock(&now));
+        services
+    });
+    alice.launch(APP);
+    assert_eq!(play(&mut alice, 1), 1);
+    let once = format!("1\t101\tAlice\t{}\n", T1.0);
+    assert_eq!(timed_on_pbx(&pbx).as_ref(), Some(&once));
+    // The phone keeps the score to write, with its date and time.
+    assert_eq!(file(&alice, "waiting").as_ref(), Some(&once));
+    // The next time the game starts, later, the phone reads the
+    // leaderboard, finds the score there, and does not write it again.
+    alice.key(APP, Key::Cancel);
+    set_clock(&now, T2.0);
+    alice.launch(APP);
+    assert_eq!(timed_on_pbx(&pbx).as_ref(), Some(&once));
+    assert_eq!(waiting(&alice).as_deref(), Some(""));
+    let writes = |store: &FakeStore| {
+        store
+            .ops()
+            .iter()
+            .filter(|op| matches!(op, StoreOp::Set { .. }))
+            .count()
+    };
+    assert_eq!(writes(&alice_side), 1);
+    // Another game of the same score is a row of its own.
+    assert_eq!(play(&mut alice, 1), 1);
+    assert_eq!(
+        timed_on_pbx(&pbx),
+        Some(format!("{once}1\t101\tAlice\t{}\n", T2.0))
+    );
+    assert_eq!(writes(&alice_side), 2);
 }
 
 /// The leaderboard on the simulated phone, with a picture of it.
 fn leaderboard_on(model: Model) -> Phone {
     let pbx = FakeStore::default();
+    // Among the dates and times, the widest there are in the font of the
+    // small gray screen (Nov 10, 2026 12:40 PM) and in those of the large
+    // gray and the color ones (May 20, 2026 10:48 AM).
     write_board(
         &pbx,
-        "23\t105\tPriya Raman\n17\t102\tBob Castellanos-Whitfield\n9\t101\tAlice Moreau\n\
-         4\t108\tSam Okafor\n2\t110\tWei Chen\n",
+        "23\t105\tPriya Raman\t1794314400\n\
+         17\t102\tBob Castellanos-Whitfield\t1779274080\n\
+         9\t101\tAlice Moreau\t1794863520\n\
+         4\t108\tSam Okafor\t1793181900\n\
+         2\t110\tWei Chen\t1788424200\n",
         None,
     );
     let mut p = Phone::on_pbx(model, &pbx.phone("101", "Alice Moreau"));
@@ -1422,6 +1623,14 @@ fn leaderboard_on(model: Model) -> Phone {
     assert_eq!(p.ui.screen_name(), "app:desksparrow");
     assert_ne!(p.pixels(), start);
     p.shot("4-leaderboard");
+    // Every date and time and every score fits its column; a long name is
+    // cut short on the gray screens.
+    let cut: &[&str] = if model.is_color() {
+        &[]
+    } else {
+        &["2. Bob Castellanos-Whitfield"]
+    };
+    assert_eq!(p.cut(), cut);
     // The whole display still: the floor is where the softkeys would be.
     let size = model.main_screen();
     let (w, h) = (size.width as usize, size.height as usize);
