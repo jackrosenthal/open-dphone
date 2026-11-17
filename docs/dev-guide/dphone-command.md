@@ -2,9 +2,7 @@
 
 The firmware's single program, `dphone`, is also the command-line tool on the phone.  Run `dphone` commands in a shell on the phone: over [SSH or the serial console](ssh-and-serial-console.md), or on the **Shell** page of the web interface.
 
-`dphone --help` lists the commands, and `dphone <command> --help` shows the arguments and options for one command.  The help text is built into the binary and always matches the running firmware.
-
-Every command exits with status 0 on success.  A command-line error prints the usage and exits with status 2.
+`dphone --help` lists the commands, and `dphone <command> --help` shows the arguments and options for one command.
 
 ## Local and remote commands
 
@@ -12,8 +10,6 @@ Each command is either local or remote, and the difference matters when somethin
 
 - **Local commands** run in the calling process and do not need the main role.  Local commands work on a phone whose main role is down or in safe mode.  The firmware update commands, `dphone ramboot`, and the system commands are local.
 - **Remote commands** are sent over a local socket to the running main role, which does the work and returns the output.  When the main role is not running, a remote command fails with a message that the main role cannot be reached.
-
-The end of the `dphone --help` output lists the local commands.
 
 ## Firmware
 
@@ -75,7 +71,7 @@ These commands are remote.
 
 ## Phone control
 
-These commands are remote.  They stand in for a person at the phone, so that tests can be scripted over SSH.
+These commands are remote.
 
 | Command | Description |
 | --- | --- |

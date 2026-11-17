@@ -9,19 +9,15 @@ A phone's flash holds two complete firmware installations:
 | A | `k0` | `root0` |
 | B | `k1` | `root1` |
 
-A record in the `ctrl` partition selects the bank that the boot loader starts.  An installation always writes to the inactive bank and then selects that bank, so the running firmware stays intact in the other bank.  Both banks share nvdata.
-
-The boot loader starts whichever bank the record selects and never falls back.  Rolling back after a failed update is the firmware's job; see [Trial boot](#trial-boot).
+A record in the `ctrl` partition selects the bank that the boot loader starts.  An installation always writes to the inactive bank and then selects that bank, so the running firmware stays intact in the other bank.  The boot loader starts whichever bank the record selects and never falls back.
 
 ## Installation from stock firmware
 
-A phone running stock firmware installs an Open DPhone image like any other firmware update, either through the stock web interface or through DPMA provisioning.  See [Installation](../index.md#installation) for the steps.  Stock firmware writes the image to the inactive bank, and stock firmware remains in the other bank.
+To install Open DPhone on a phone running stock firmware, follow [Installation](../index.md#installation).  Stock firmware writes the image to the inactive bank and remains in the other bank.
 
 !!! warning "The first boot from stock firmware has no trial"
 
     Stock firmware does not record a trial boot, so nothing returns the phone to stock firmware if the installed image fails to start.  Install only released images from stock firmware.  Test development builds from a working Open DPhone installation with [`dphone ramboot`](test-builds.md#ram-boot).
-
-nvdata is shared with stock firmware, so the phone keeps the network settings and the web interface password.  The SSH keys in `/nvdata/root/.ssh/authorized_keys` are accepted once [SSH is turned on](ssh-and-serial-console.md#ssh).
 
 ## Provisioned firmware
 
@@ -149,7 +145,7 @@ dphone update abandon
 
 `abandon` cancels a trial: the command selects the bank that the phone would roll back to and removes the trial record, so that another image can be installed.  If the phone is already running the abandoned image, reboot afterward.
 
-Use `abandon` when you find a mistake in an image that you just installed, either before or after the reboot.  You can then install a corrected image right away without waiting for the trial to end.
+Use `abandon` when you find a mistake in an image that you just installed, either before or after the reboot.
 
 ## Return to stock firmware
 

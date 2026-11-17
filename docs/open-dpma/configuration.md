@@ -1,34 +1,19 @@
 # Configuration reference
 
-Open DPMA is configured in `res_digium_phone.conf` in the Asterisk configuration directory, the same file that the original `res_digium_phone` reads.  This page covers every section and option that Open DPMA accepts, except for the `dphone_*` options, which are covered in [Open DPhone options](open-dphone-options.md).
+Open DPMA is configured in `res_digium_phone.conf` in the Asterisk configuration directory.
 
 ## File format
 
 The file has a `[general]` section and any number of other sections.  Every other section has a `type` option, and the section's name identifies the phone, line, network, or other object that the section describes.
 
-| `type` | Describes | Referenced by |
-| --- | --- | --- |
-| [`phone`](#phone) | One phone, or one user who can log in to a phone. | — |
-| [`line`](#line) | A line on this Asterisk server.  The section's name is the name of a PJSIP endpoint. | A phone's `line` |
-| [`external_line`](#line) | A line on another SIP server. | A phone's `external_line` |
-| [`network`](#network) | A network that a phone can be on, and the server addresses to use there. | A phone's `network` |
-| [`firmware`](#firmware) | A firmware image for one phone model. | A phone's `firmware` |
-| [`application`](#application) | Settings for a phone app: queues, status, parking, voicemail, or a custom app. | A phone's `application` |
-| [`ringtone`](#ringtone) | A ringtone file. | A phone's `ringtone`, an alert's `ringtone` |
-| [`alert`](#alert) | How the phone rings for calls with a given `Alert-Info` header. | A phone's `alert` |
-| [`multicastpage`](#multicastpage) | A multicast paging address that a phone listens on. | A phone's `multicastpage` |
-| [`translation`](#translation) | Display names for voicemail folders. | A voicemail application's `translation` |
-
 The following rules apply throughout the file:
 
-- **Case.**  Option names and `type` values are case-insensitive.
-- **Templates.**  Asterisk templates work, e.g., `[sales](!)` and `[phone101](sales)`.
 - **On/off options.**  An on/off option accepts any value that Asterisk reads as true (`yes`, `true`, `on`, `1`) or false.
 - **Errors.**  An unknown option or an unreadable value is logged at the `DPMA` level and skipped, and the rest of the section still applies.  A section with a missing or unknown `type` is logged and skipped.
 - **Special characters.**  Text values end up in the phone's configuration, which is an XML document.  The module escapes `"`, `<`, and `&`, so you can write any text exactly as the phone should display the text.  An `&` that begins a reference, e.g., `&amp;` or `&#38;`, is left alone.  Values written with references for the original module, which escapes nothing, therefore display the same way.
 - **Comments.**  A `;` begins a comment unless written as `\;`.
 
-The module reads the file when Asterisk starts and on `module reload res_open_dpma.so`.  A reload does not send the new configuration to running phones, except for phones whose lines changed.  See [Configuration changes](administration.md#configuration-changes).
+A reload (`module reload res_open_dpma.so`) does not send the new configuration to running phones, except for phones whose lines changed.  See [Configuration changes](administration.md#configuration-changes).
 
 ## Minimal example
 
@@ -44,7 +29,7 @@ mac=000fd3000001
 line=101
 ```
 
-The phone section's line, `101`, refers to the PJSIP endpoint `101` in `pjsip.conf`, and the module takes the line's SIP credentials from that endpoint.  `registration_address` is the address where phones reach the server, and setting the option gives every phone a network.  A phone without a network gets a configuration with no SIP accounts.
+`registration_address` gives every phone a network.  A phone without a network gets a configuration with no SIP accounts.
 
 ## `[general]` { #general }
 
@@ -161,8 +146,6 @@ A phone section also accepts the `dphone_*` options, described in [Open DPhone o
 | `allow_insecure_ssl` | On/off | `no` | Makes the phone accept TLS certificates that the phone cannot verify. |
 | `handshake_timeout` | Seconds | `946080000` (30 years) | The lifetime of the phone's handshake with the server. |
 
-On stock firmware, `show_call_log`, `can_forward_calls`, and `show_call_parking` also control whether the idle screen has a softkey for the feature.  On Open DPhone, use [`dphone_idle_softkeys`](open-dphone-options.md#dphone_idle_softkeys) to set the idle softkeys.
-
 ### Display and sound
 
 | Option | Value | Default | Description |
@@ -222,7 +205,7 @@ A line that a phone references with `line` is a PJSIP endpoint on this server.  
 
 As with the original module, a `users.conf` user with `hasvoicemail` also gives a mailbox to the line with the same name as the user.
 
-A `type=line` section named after the endpoint is optional, and sets what PJSIP does not provide.  Options in the section override the PJSIP values, even when the endpoint changes later.  For example, a `callerid` in the section stays in effect when the endpoint's `callerid` changes.
+A `type=line` section named after the endpoint is optional, and sets what PJSIP does not provide.  Options in the section override the PJSIP values, even when the endpoint changes later.
 
 A `type=external_line` section is required for each external line, and holds all of the line's settings.
 
@@ -414,18 +397,3 @@ INBOX=Eingang
 Work=Arbeit
 ```
 
-## Verification commands
-
-After a change and a reload, use the CLI to confirm what the module loaded:
-
-| Command | Output |
-| --- | --- |
-| `digium_phones show settings` | The `[general]` settings. |
-| `digium_phones show phones`, `digium_phones show phone <name>` | The phone sections, and every option for one phone, including the `dphone_*` options. |
-| `digium_phones show lines`, `digium_phones show line <name>` | The lines, with the values taken from PJSIP. |
-| `digium_phones show networks`, `digium_phones show network <name>` | The networks, including each phone's default network. |
-| `digium_phones show firmwares`, `digium_phones show firmware <name>` | The firmware package and the firmware sections. |
-| `digium_phones show applications`, `digium_phones show application <name>` | The application sections. |
-| `digium_phones show alerts`, `digium_phones show alert <name>` | The alert sections. |
-| `digium_phones show multicastpages`, `digium_phones show multicastpage <name>` | The multicast page sections. |
-| `digium_phones show translations`, `digium_phones show translation <name>` | The translation sections. |

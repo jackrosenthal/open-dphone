@@ -2,14 +2,11 @@
 
 Open DPhone provides a root shell over SSH and on a serial console on the EHS port.  Both are off by default.
 
-- **SSH** is the everyday tool for pushing builds, installing images, and reading logs.
-- **The serial console** shows kernel messages and keeps working when the network or the main role is down.  Use the console for kernel work and for phones that fail to come up.
-
 The shell is [brush](https://github.com/reubeno/brush), a Bash-compatible shell.  The uutils versions of the common utilities, `sed`, and the [`dphone` command](dphone-command.md) are available.
 
 ## SSH
 
-The SSH server accepts public keys only, and the login name is `root`.  Before you can log in, the SSH setting must be on, and the phone must have at least one public key.  You can configure both from the phone's web interface, from the PBX, or from a shell.
+The SSH server accepts public keys only, and the login name is `root`.  Before you can log in, the SSH setting must be on, and the phone must have at least one public key.
 
 ### Web interface
 
@@ -17,11 +14,9 @@ On the **System** page, the **SSH** card has the **Enabled** switch and the list
 
 Keys added in the web interface are stored in `/nvdata/root/.ssh/authorized_keys`, the same file that the stock firmware's SSH server reads.
 
-A phone provisioned by a DPMA server serves the web interface only when the phone's section of `res_digium_phone.conf` has `web_ui_enabled=yes`.
-
 ### PBX configuration
 
-With [Open DPMA](../open-dpma/index.md) on the PBX, the phone's section of `res_digium_phone.conf` can turn SSH on and supply keys.  This approach works well for development phones that are reset often.
+With [Open DPMA](../open-dpma/index.md) on the PBX, the phone's section of `res_digium_phone.conf` can turn SSH on and supply keys:
 
 ```ini
 [phone101]
@@ -30,11 +25,7 @@ dphone_ssh_enabled=yes
 dphone_ssh_authorized_key=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa alice@laptop
 ```
 
-Repeat `dphone_ssh_authorized_key` to add more keys.  The original `res_digium_phone` does not support these options.  See [Open DPhone options](../open-dpma/open-dphone-options.md#dphone_ssh_enabled) for details.
-
-Provisioned keys are accepted in addition to the keys added on the phone, and are removed from the phone when the PBX stops supplying them.
-
-The PBX's `dphone_ssh_enabled` overrides the SSH setting on the phone.  The switch in the web interface is then disabled and labeled as configured via DPMA.
+See [Open DPhone options](../open-dpma/open-dphone-options.md#dphone_ssh_enabled) for details.
 
 ### Settings file
 
@@ -55,7 +46,7 @@ If the file already has the line, change the value on that line instead of addin
 ssh root@192.0.2.20
 ```
 
-Replace `192.0.2.20` with the phone's address.  The server also runs single commands and serves SFTP, so `scp` and `sftp` work:
+The server also runs single commands and serves SFTP, so `scp` and `sftp` work:
 
 ```sh
 ssh root@192.0.2.20 dphone version
@@ -109,11 +100,11 @@ Use a USB serial cable with 3.3 V logic levels.  The wire colors in the table ar
 
 !!! danger "Do not connect the cable's power wire"
 
-    Pin 4 carries the phone's 3.3 V supply.  Leave the cable's power wire (red, 5 V from the USB port) unconnected.  Three wires are enough: ground, the phone's TX, and the phone's RX.
+    Pin 4 carries the phone's 3.3 V supply.  Leave the cable's power wire (red, 5 V from the USB port) unconnected.
 
 ### Terminal settings
 
-The port runs at 115200 bits per second with 8 data bits, no parity, and 1 stop bit (8N1), and no flow control.  Any terminal program works.  For example, with the cable at `/dev/ttyUSB0`:
+The port runs at 115200 bits per second with 8 data bits, no parity, and 1 stop bit (8N1), and no flow control.  For example, with the cable at `/dev/ttyUSB0`:
 
 ```sh
 picocom -b 115200 /dev/ttyUSB0

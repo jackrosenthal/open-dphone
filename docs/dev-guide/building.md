@@ -4,7 +4,7 @@
 
 - **An x86-64 Linux machine.**  The Nix flake defines builds for `x86_64-linux` only.
 - **[Nix](https://nixos.org/download/)**, with the `nix-command` and `flakes` features enabled.  Nix provides every other tool, including the Rust toolchain, the ARM C compiler for the kernel, and Node.js for the web interface.
-- **A network connection for the first build.**  Nix downloads the Linux 7.3 source and two stock firmware images from the vendor's server.  The voice DSP firmware is proprietary and is not in the repository, so the image build extracts the DSP firmware from the stock images.  Later builds reuse the downloads from the Nix store.
+- **A network connection for the first build.**  Nix downloads the Linux source and two stock firmware images from the vendor's server.  The voice DSP firmware is proprietary and is not in the repository, so the image build extracts the DSP firmware from the stock images.
 
 Clone the repository:
 
@@ -12,25 +12,6 @@ Clone the repository:
 git clone https://github.com/jackrosenthal/open-dphone.git
 cd open-dphone
 ```
-
-## Repository layout
-
-| Path | Contents |
-| --- | --- |
-| `crates/dphone` | The firmware's single program: the init role, the main role, the SSH server, and the [`dphone` command](dphone-command.md). |
-| `crates/dphone-early` | The early-boot stage built into the kernel image. |
-| `crates/dphone-update`, `crates/dphone-ctrl` | The firmware updater, the trial boot, and `dphone ramboot`. |
-| `crates/dphone-hal` | The hardware abstraction layer, with one backend for the phone and one for the simulator. |
-| `crates/dphone-ui`, `crates/dphone-sip`, `crates/dphone-media`, `crates/dphone-vpm`, `crates/dphone-net`, `crates/dphone-bt`, `crates/dphone-dpma`, `crates/dphone-config`, `crates/dphone-state` | The main role's subsystems: the screens, SIP, audio and the voice DSP, the network, Bluetooth, the DPMA client, the configuration, and the state store that connects the subsystems. |
-| `crates/dphone-apps`, `crates/dphone-app-sdk`, `apps/` | The app runtime, the SDK for app developers, and the built-in apps.  `apps/` is a separate Cargo workspace that targets WebAssembly. |
-| `crates/dphone-web`, `web/`, `proto/` | The web server, the web frontend (TypeScript and React), and the service definitions that both are generated from. |
-| `crates/dphone-image`, `crates/eff`, `crates/jffs2-image` | The host tool that builds and inspects firmware images, and the libraries for the image formats. |
-| `kernel/` | The port of Linux 7.3 to the phones, as patches and added files.  `kernel/README.md` describes the kernel's constraints and how to work on the port. |
-| `nix/`, `flake.nix` | The build recipes. |
-| `open-dpma/` | Open DPMA, the Asterisk module, which has a separate README. |
-| `xtask/` | The [`cargo xtask` commands](#xtask-commands). |
-| `assets/` | The fonts, icons, and artwork used by the user interface. |
-| `docs/`, `zensical.toml` | This documentation site. |
 
 ## Firmware images
 
@@ -42,23 +23,17 @@ nix build .#eff-d60
 
 The build leaves a `result` link in the current directory that points to the image file in the Nix store.  The file is named `<version>_<model>_firmware.eff`, e.g., `3_0_0_D60_firmware.eff`, and the version comes from the workspace version in the root `Cargo.toml`.
 
-To print the path without creating a link:
-
-```sh
-nix build .#eff-d60 --no-link --print-out-paths
-```
-
 To build the images for all seven models into one directory, run `nix build .#all`.
 
 !!! note "Nix builds only what git tracks"
 
     A flake in a git repository sees only the files that git tracks, including uncommitted changes to those files.  A new file is invisible to the build until you run `git add`.
 
-The kernel, the root file system, and the `dphone` binary are identical for every model.  The images differ only in the device tree attached to the kernel and in the model name in the image header.  A phone rejects an image built for another model.
+The kernel, the root file system, and the `dphone` binary are identical for every model.  The images differ only in the device tree attached to the kernel and in the model name in the image header.
 
 ### Image components
 
-Each component of an image is a separate flake output.  Building one component is faster than building a whole image.
+Each component of an image is a separate flake output.
 
 | Output | Result |
 | --- | --- |
@@ -66,7 +41,7 @@ Each component of an image is a separate flake output.  Building one component i
 | `dphone-early` | The early-boot stage. |
 | `kernel` | The kernel (`zImage`), a device tree for each model, and the loadable modules. |
 | `kernel-<model>` | `kernel.bin`, the kernel and the model's device tree as written to a kernel partition. |
-| `kernel-source` | The Linux 7.3 tree with the port applied and nothing built, for editing. |
+| `kernel-source` | The Linux tree with the port applied and nothing built, for editing. |
 | `apps` | The built-in apps, compiled for the phone. |
 | `web` | The web frontend bundle that `dphone` embeds. |
 | `brush`, `coreutils`, `sed` | The shell and utilities for the root file system. |
@@ -83,7 +58,7 @@ nix run .#dphone-image -- eff info result
 
 ## Cargo workspace
 
-Nix builds the images, but Cargo is faster for the edit, build, and test cycle on the workstation.  `nix develop` opens a shell with the same Rust toolchain as the Nix build, including the targets for the phone and for WebAssembly, along with the other tools that the build scripts and the web frontend need:
+`nix develop` opens a shell with the same Rust toolchain as the Nix build, including the targets for the phone and for WebAssembly, along with the other tools that the build scripts and the web frontend need:
 
 ```sh
 nix develop
@@ -95,15 +70,13 @@ The root `Cargo.toml` lists the firmware's crates, `xtask`, and the Open DPMA cr
 cargo build --workspace --exclude dpma-sys --exclude dpma-ast --exclude res_open_dpma
 ```
 
-Building a single crate needs no exclusions.  `cargo build -p dphone` builds the firmware binary for the workstation, which is the binary that the [simulator](simulator.md) runs.
+`cargo build -p dphone` builds the firmware binary for the workstation, which is the binary that the [simulator](simulator.md) runs.
 
 The phone's binary is built for the `arm-unknown-linux-musleabi` target.  `.cargo/config.toml` sets the linker and the processor flags, so the command needs only the target:
 
 ```sh
 cargo build --release -p dphone --target arm-unknown-linux-musleabi
 ```
-
-[`cargo xtask deploy`](test-builds.md#binary-deploy) runs the same build and pushes the result to a phone.  The release profile optimizes the whole program as one unit, so a release build is much slower than a debug build.
 
 ### Web frontend
 
@@ -150,5 +123,5 @@ The Open DPMA tests run in a container against each supported Asterisk version. 
 | Command | Description |
 | --- | --- |
 | `cargo xtask deploy <phone>` | Builds `dphone` for the phone, pushes the binary, and restarts the main role.  See [Binary deploy](test-builds.md#binary-deploy). |
-| `cargo xtask kernel-sync <linux tree>` | Regenerates `kernel/patches`, `kernel/files`, and `kernel/configs` from a Linux 7.3 checkout that contains the port.  See `kernel/README.md` for the procedure. |
+| `cargo xtask kernel-sync <linux tree>` | Regenerates `kernel/patches`, `kernel/files`, and `kernel/configs` from a Linux checkout that contains the port.  See `kernel/README.md` for the procedure. |
 | `cargo xtask tz-table` | Regenerates the phone's table of time zone rules from the workstation's zone database. |

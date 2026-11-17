@@ -1,23 +1,10 @@
 # Open DPMA
 
-Open DPMA is an open-source Asterisk module, `res_open_dpma.so`, that provisions Digium D-series phones and serves requests from the phones' apps.  The module is a Rust implementation of DPMA, the protocol of the Digium Phone Module for Asterisk, and replaces the original `res_digium_phone` along with the two PJSIP helper modules that ship with the original.
-
-Open DPMA reads the same configuration file, `res_digium_phone.conf`, and registers the same CLI commands and AMI actions as the original module.  Sessions that the original module saved in the Asterisk database are restored, so phones stay connected when you switch modules.
-
-## Supported phones
+Open DPMA is an open-source Asterisk module, `res_open_dpma.so`, that replaces the original `res_digium_phone` along with the two PJSIP helper modules that ship with the original.  Open DPMA reads the same configuration file, `res_digium_phone.conf`, and registers the same CLI commands and AMI actions as the original module.  Sessions that the original module saved in the Asterisk database are restored, so phones stay connected when you switch modules.
 
 Open DPMA works with every D-series phone, regardless of firmware.
 
-| Phone firmware | Features |
-| --- | --- |
-| Stock firmware | Everything the original module provides.  Stock firmware ignores the `dphone_*` options and does not support app data. |
-| Open DPhone | Everything above, plus the [Open DPhone options](open-dphone-options.md) and [app data](administration.md#app-data) stored on the server. |
-
-Phones running Open DPhone also work with the original module, but without the `dphone_*` options or app data.
-
 ## Differences from the original module
-
-Review these differences before migrating a server from the original module.
 
 ### Unsupported features
 
@@ -26,9 +13,8 @@ Review these differences before migrating a server from the original module.
 
 ### Changed behavior
 
-Naming and configuration:
+Configuration:
 
-- The module is named `res_open_dpma`, e.g., in `module reload res_open_dpma.so` and in `modules.conf`.
 - A misspelled `config_auth` or `userlist_auth` value produces a warning.  The original module silently ignores the value.
 - `enable_check_sync` turns off again when the line is removed from the configuration file.  With the original module, the option stays on until the file says `enable_check_sync=no`.
 - `network_vlan_qos` works in a network section.
@@ -42,7 +28,6 @@ Security:
 - A phone file request with a `..` component in the file name is refused.  The original module opens such paths, which exposes every file that the Asterisk process can read.
 - Configuration tokens contain values that only the server can compute, and a phone section that has been issued such a token accepts no other kind.  The original module accepts any token that begins with the section's name and the MAC address last seen for the section, regardless of `config_auth`.  Phones holding a token from the original module keep working.  See [Configuration authentication](administration.md#configuration-authentication).
 - A configuration token request with a wrong PIN is recorded as an [authentication incident](administration.md#authentication-incidents).  The original module records only wrong PINs in user list requests.
-- A session record in the Asterisk database that cannot be decrypted is deleted, and the phone starts a new session.
 
 Provisioning:
 
@@ -58,6 +43,5 @@ Reliability:
 
 ### Additions
 
-- The [Open DPhone options](open-dphone-options.md).
-- [App data](administration.md#app-data) for apps on Open DPhone phones.
+- The [Open DPhone options](open-dphone-options.md) and [app data](administration.md#app-data), for phones running Open DPhone.
 - The `[general]` options [`appserver_certificate` and `phone_ca_file`](configuration.md#general).

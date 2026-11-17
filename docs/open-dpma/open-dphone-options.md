@@ -4,7 +4,7 @@ Open DPMA adds options to phone sections (`type=phone`) of `res_digium_phone.con
 
 Phones running stock firmware ignore these options, so one phone section works for a phone both before and after a firmware change.  The original module does not recognize the options and reports each one as invalid.
 
-Use a template to set options for many phones at once:
+For example, a template for phones running Open DPhone:
 
 ```ini title="res_digium_phone.conf"
 [open-dphone](!)
@@ -23,31 +23,11 @@ To see the values that the module holds for a phone section, run `digium_phones 
 
 ## Precedence
 
-**Server values override phone settings.**  The module sends the on/off options, the softkeys, the disabled apps, the theme, the palette file, and the static address as frozen settings (`conflict="freeze"`).  The phone uses the server's value regardless of what was set on the phone, and the phone's web interface shows the setting as a disabled control labeled "Configured via DPMA".  Users with access to the phone's settings cannot change the value, e.g., cannot turn SSH on when the server says `dphone_ssh_enabled=no`.  Removing the option from the configuration file restores the value that was set on the phone.
+**Server values override phone settings.**  The module sends the on/off options, the softkeys, the disabled apps, the theme, the palette file, and the static address as frozen settings.  The phone uses the server's value regardless of what was set on the phone, and the phone's web interface shows the setting as a disabled control labeled "Configured via DPMA".  Removing the option from the configuration file restores the value that was set on the phone.
 
 **Omitted options send nothing.**  The phone uses the value set on the phone, or else the firmware default listed for each option below.
 
 **Invalid values are skipped.**  The module logs `Invalid option '<name>' at line <n> is not supported by phone module.` at the `DPMA` level and sends the phone nothing for that option.
-
-## Summary
-
-An on/off option accepts the same values as the other [on/off options](configuration.md#file-format) in the file, e.g., `yes` or `no`.
-
-| Option | Value | Default |
-| --- | --- | --- |
-| [`dphone_ssh_enabled`](#dphone_ssh_enabled) | On/off | SSH server off |
-| [`dphone_ssh_authorized_key`](#dphone_ssh_authorized_key) | An SSH public key; repeatable | No keys from the server |
-| [`dphone_serial_console`](#dphone_serial_console) | On/off | Serial console off |
-| [`dphone_metrics_enabled`](#dphone_metrics_enabled) | On/off | `/metrics` served |
-| [`dphone_static_address`](#dphone_static_address) | `<address>/<prefix length>` | DHCP |
-| [`dphone_static_gateway`](#dphone_static_gateway) | IPv4 address | No gateway |
-| [`dphone_static_dns`](#dphone_static_dns) | IPv4 addresses, comma-separated; repeatable | No DNS servers |
-| [`dphone_idle_softkeys`](#dphone_idle_softkeys) | Softkeys, comma-separated; repeatable | `call_log,contacts,status,menu,apps,dnd,forward`, plus `theme` on color models |
-| [`dphone_disabled_apps`](#dphone_disabled_apps) | App names, comma-separated; repeatable | All built-in apps available |
-| [`dphone_theme`](#dphone_theme) | Name of a built-in theme | The theme chosen on the phone |
-| [`dphone_palette_file`](#dphone_palette_file) | File name or URL | The phone's palette |
-| [`dphone_ignore_provisioned_firmware`](#dphone_ignore_provisioned_firmware) | On/off | Firmware entries followed |
-| [`dphone_app_data_tenant`](#dphone_app_data_tenant) | A tenant key | The store shared by phones without a key |
 
 ## Remote access
 
@@ -68,7 +48,7 @@ Authorizes an SSH public key to log in to the phone.
 - **Repeatable:** each occurrence adds a key.  Duplicate keys are sent once.
 - **Default:** the server sends no keys.
 
-The phone accepts the server's keys in addition to keys added on the phone.  When you remove a key from the phone section, the phone drops the key at the next configuration fetch.  Keys have no effect while the SSH server is off.
+The phone accepts the server's keys in addition to keys added on the phone.  When you remove a key from the phone section, the phone drops the key at the next configuration fetch.
 
 ### `dphone_serial_console` { #dphone_serial_console }
 
@@ -77,7 +57,7 @@ Turns the phone's serial port, on the EHS connector, into a console.
 - **Value:** on/off.
 - **Default:** no serial console.
 
-The console and an electronic hook switch (EHS) headset adapter share one serial port.  With the console on, the phone cannot use an EHS adapter, and the `ehs` option has no effect.  Turn the console on for phones on the bench, not for phones whose users have EHS headsets.
+The console and an electronic hook switch (EHS) headset adapter share one serial port.  With the console on, the phone cannot use an EHS adapter, and the `ehs` option has no effect.
 
 ### `dphone_metrics_enabled` { #dphone_metrics_enabled }
 
@@ -90,7 +70,7 @@ The endpoint requires no login and is independent of `web_ui_enabled`.  Set `dph
 
 ## Network address
 
-These three options assign a static IPv4 address in place of DHCP.  The module sends the gateway and the DNS servers only when `dphone_static_address` is also set.
+The module sends `dphone_static_gateway` and `dphone_static_dns` only when `dphone_static_address` is also set.
 
 !!! warning "Check the address before reconfiguring the phone"
 
@@ -138,7 +118,7 @@ The idle screen softkeys, in order from the left.
 | `dnd` | Toggles Do Not Disturb. |
 | `forward` | The call forwarding menu. |
 | `redial` | Redial. |
-| `theme` | The theme selector.  Only the color models (D60, D62, and D65) have themes; other models omit the softkey. |
+| `theme` | The theme selector, on the color models only. |
 
 For example:
 
@@ -163,8 +143,8 @@ The built-in apps are `alarms`, `boxpusher`, `calendar`, `contacts`, `desksparro
 The phone's built-in theme.  A theme is a wallpaper paired with the color palette for every screen.
 
 - **Value:** a theme name, e.g., `dusk`: 1 to 32 letters, digits, `_`, and `-`.  The phone's theme selector and web interface list the themes.  If the firmware has no theme by that name, the phone shows the default theme.
-- **Default:** the theme that the user chose on the phone, or else the firmware's default theme, Tides.  The server stores the user's choice with the [app data](administration.md#app-data), so the choice follows the user to other phones and survives a factory reset.
-- **Models:** the color models (D60, D62, and D65).  Other models have no themes.
+- **Default:** the theme that the user chose on the phone, or else the firmware's default theme, Tides.
+- **Models:** the color models (D60, D62, and D65).
 
 If the phone section also sets `wallpaper_file`, the phone shows that picture instead of the theme.
 
@@ -174,11 +154,9 @@ The palette file for the `wallpaper_file` picture.  The palette sets the colors 
 
 - **Value:** a file name or a URL, e.g., `lobby.txtpb`.  The file is located the same way as `wallpaper_file`: a file in `file_directory` is fetched from the module, any other name is fetched from the network's `file_url_prefix`, and a full URL is used as written.
 - **Default:** the phone draws the picture with the phone's current palette.
-- **Models:** the color models (D60, D62, and D65).  Other models have no wallpaper.
+- **Models:** the color models (D60, D62, and D65).
 
 The phone fetches the palette file only when the section also sets `wallpaper_file`.  The file is a `dphone.palette.v1` message in protobuf text format, at most 16 KiB in size.  The format is defined in `proto/dphone/palette/v1/palette.proto` in the repository.
-
-Like the other options on this page, a provisioned wallpaper and palette override the theme that the user chose on the phone.
 
 ## Firmware
 
@@ -189,7 +167,7 @@ Makes the phone ignore the firmware entries in the configuration.
 - **Value:** on/off.
 - **Default:** the phone follows the firmware entries, and installs the image from the matching entry when that image differs from the running firmware.
 
-With the option on, the phone keeps the running firmware no matter which `firmware` sections or firmware package the server has.  Use the option for a phone that must stay on a particular build, e.g., a development phone on a server that offers a release to every other phone.  See [Firmware](administration.md#firmware).
+Use the option for a phone that must stay on a particular build, e.g., a development phone on a server that offers a release to every other phone.  See [Firmware](administration.md#firmware).
 
 ## App data
 
@@ -200,7 +178,7 @@ The tenant whose app data the phone reads and writes.
 - **Value:** a key of 1 to 32 characters: lowercase letters, digits, `.`, and `-`.  An uppercase letter or a `_` makes the value invalid.
 - **Default:** the phone uses the store shared by all phones without a key.
 
-Phones with the same key share one app data store, and no phone can read or write the store of another key.  The module never sends the key to a phone, and a phone's request cannot name a key.  The key comes from the phone section alone.
+Phones with the same key share one app data store, and no phone can read or write the store of another key.  The module never sends the key to a phone, and a phone's request cannot name a key.
 
 An invalid value is not treated as "no key."  The module logs the option as invalid and refuses all of the phone's app data requests until the value is fixed, so a typo never puts a tenant's phone into the shared store.
 

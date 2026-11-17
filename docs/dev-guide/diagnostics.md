@@ -15,19 +15,17 @@ dphone log            # the last 200 entries
 dphone log -n 50 -f   # the last 50, then follow
 ```
 
-Each entry has the time, the level, the module that logged the entry, and the message.  The **Logs** page of the web interface shows the same ring buffer live, with filters for level and text.
+The **Logs** page of the web interface shows the same ring buffer live, with filters for level and text.
 
 On a phone, the main role logs at the info level and above.  The simulator logs at the debug level when started with `--verbose`.
 
-The ring buffer is lost when the main role restarts.  To keep a log across a failure, follow the log from the workstation and save the output to a file:
+To keep the log across a restart of the main role, follow the log from the workstation and save the output to a file:
 
 ```sh
 ssh root@192.0.2.20 dphone log -f | tee phone.log
 ```
 
 The phone can also send every entry to a syslog server.  On the **System** page, the **Logging** card has the **Remote syslog** switch, the server, the port, and the minimum level to send.
-
-While the [serial console](ssh-and-serial-console.md#serial-console) has the EHS port, the main role's log is also copied to the console.
 
 ## Kernel log
 
@@ -66,33 +64,20 @@ dphone state
 dphone state audio
 ```
 
-Every subsystem publishes state to a single typed store, and the user interface, the web interface, and the commands all read from that store.  `dphone state` dumps the store, and an argument limits the dump to the top-level fields whose names contain the word.  When the screen or the web interface disagrees with what the phone is doing, the dump shows whether the state or the display is wrong.
-
-The [subsystem commands](dphone-command.md#hardware-and-subsystems), such as `dphone net`, `dphone audio`, `dphone dsp`, `dphone ehs`, and `dphone hal`, show more detail about one subsystem.
-
-### Configuration
-
-```sh
-dphone config list sip
-dphone config get log_level
-```
-
-`dphone config` reads the merged configuration, i.e., the combined result of all of the phone's configuration sources.  Secrets are masked in the list.
+Every subsystem publishes state to a single typed store, and the user interface, the web interface, and the commands all read from that store.  When the screen or the web interface disagrees with what the phone is doing, the dump shows whether the state or the display is wrong.
 
 ## Web interface
 
-The web interface is available at the phone's address over HTTP and HTTPS.  Four pages are especially useful for development:
+Two pages of the web interface help with development:
 
 | Page | Description |
 | --- | --- |
-| **Logs** | The main role's log, live, with filters. |
-| **Screen** | A live mirror of the phone's display, with clickable phone keys.  Use the page to operate a phone that is across the room or out of sight. |
+| **Screen** | A live mirror of the phone's display, with clickable phone keys. |
 | **Shell** | A root shell in the browser, with the same shell and commands as an SSH session.  The page works without an SSH key and with the SSH setting off. |
-| **System** | The [firmware card](firmware-updates.md#web-interface), and the [SSH and EHS port settings](ssh-and-serial-console.md). |
 
 ## Metrics
 
-`GET /metrics` on the phone returns metrics in the Prometheus text format, with no login required.  The metrics cover the build, the uptime, the health of each subsystem, the network link, the registration state of each account, the calls, the RTP totals, provisioning, the firmware bank and the trial state, flash error counters, memory, and load.  Scraping a phone under test for several hours reveals trends that a log does not, e.g., memory growth.
+`GET /metrics` on the phone returns metrics in the Prometheus text format, with no login required.
 
 ```sh
 curl http://192.0.2.20/metrics

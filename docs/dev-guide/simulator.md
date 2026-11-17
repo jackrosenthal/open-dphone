@@ -1,10 +1,5 @@
 # Simulator
 
-Two simulators run on a workstation, with no phone required:
-
-- The [phone simulator](#phone-simulator) runs the main role on simulated hardware, for work on anything above the hardware layer.
-- The [web interface simulator](#web-interface-simulator) runs the web interface with mock data, for work on the web frontend.
-
 Run the commands on this page from the root of the repository, in a [`nix develop` shell](building.md#cargo-workspace).
 
 ## Phone simulator
@@ -21,7 +16,7 @@ cargo run -p dphone -- main --sim --model d60 --nvdata /tmp/dphone-sim
 
 While the simulator is running:
 
-- **Web interface.**  The web interface is at `http://127.0.0.1:8080/`; use `--web-port` to choose another port.  A new nvdata directory has the phones' default login: user `admin`, password `789`.  The **Screen** page mirrors the simulated display and lets you press keys.  The frontend is available only after `pnpm build` in `web/` has produced `web/dist`.  Otherwise, `dphone` serves a placeholder page.
+- **Web interface.**  The web interface is at `http://127.0.0.1:8080/`; use `--web-port` to choose another port.  A new nvdata directory has the phones' default login: user `admin`, password `789`.  The **Screen** page mirrors the simulated display and lets you press keys.
 - **SIP.**  The SIP stack binds port 5060 on the workstation.  Like a phone with an empty nvdata, the simulated phone starts at the menu that asks for a server.  Provision the simulated phone from a DPMA server, or add SIP accounts in the web interface.
 - **SSH.**  The SSH server is available only when you pass `--ssh-listen` with an address, e.g., `--ssh-listen 127.0.0.1:2222`.  The server starts listening once the [SSH setting](ssh-and-serial-console.md#ssh) is on.
 - **Apps.**  The built-in apps are missing unless the environment variable `DPHONE_APPS_ROOT` names a directory of staged apps.  See `crates/dphone-apps/README.md` for how to stage the apps.
@@ -64,10 +59,4 @@ pnpm dev
 
 To develop the frontend against a real phone instead, set the environment variable `DPHONE` to the phone's URL, e.g., `DPHONE=http://192.0.2.20 pnpm dev`.
 
-### Frontend commands
-
-| Command | Description |
-| --- | --- |
-| `pnpm build` | Type-checks the sources, then writes the bundle to `web/dist`. |
-| `pnpm lint` | Runs ESLint on the sources. |
-| `pnpm gen` | Regenerates `web/src/gen` from the service definitions in `proto/`.  The generated code is committed, so run this command only after changing `proto/`. |
+After changing the service definitions in `proto/`, run `pnpm gen` in `web/` to regenerate `web/src/gen`, which is committed.

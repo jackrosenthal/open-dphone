@@ -9,8 +9,6 @@ Open DPhone has two ways to run new code on a phone without writing to flash.  B
 | Keeps | The kernel, the init role, and the root file system | nvdata |
 | Undo | Reboot | Reboot, power cycle, or wait for the time limit |
 
-Flashing an image is the slowest way to test a change and, for a kernel change, the riskiest.  The boot loader has no watchdog and no fallback, so a kernel in flash that hangs before the firmware starts leaves a phone that only a JTAG adapter can recover.
-
 ## Binary deploy
 
 For a change to the main role, i.e., anything in the `dphone` binary other than the init role, one command builds the binary for the phone, copies the binary over SSH, and restarts the main role:

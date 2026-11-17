@@ -4,18 +4,16 @@
 
 | Requirement | Details |
 | --- | --- |
-| Asterisk | Version 22, 23, or 24.  Each prebuilt module targets one major version. |
+| Asterisk | Version 22, 23, or 24. |
 | Platform | Linux on x86_64 or aarch64, with glibc 2.34 or later (e.g., Debian 12, Ubuntu 22.04, or RHEL 9).  For other platforms, [build from source](#building-from-source). |
 | Asterisk modules | `res_pjsip`, `res_pjsip_session`, and `res_pjsip_pubsub`.  Asterisk refuses to load Open DPMA without all three. |
-| SIP channel driver | PJSIP.  Open DPMA does not support `chan_sip`. |
-| `pjsip.conf` | The endpoint named by `default_outbound_endpoint` in the `[global]` section must exist.  The module creates the internal endpoint that receives phone requests under the same name. |
-| `res_digium_phone.conf` | The file must exist in the Asterisk configuration directory.  See the [configuration reference](configuration.md). |
+| `pjsip.conf` | The endpoint named by `default_outbound_endpoint` in the `[global]` section must exist. |
 
 The phones' Status, Voicemail, Parking, and Queues apps rely on `func_presencestate`, `app_voicemail`, `res_parking`, and `app_queue`.  These modules are optional, and Open DPMA uses whichever ones Asterisk has loaded.
 
 !!! warning "A missing default outbound endpoint prevents Asterisk from starting"
 
-    If `pjsip.conf` does not define the endpoint that `default_outbound_endpoint` names, Open DPMA fails to load.  Asterisk treats that failure as fatal and exits.  The original module behaves the same way.  Define the endpoint before installing the module:
+    The original module has the same requirement.  Define the endpoint before installing the module:
 
     ```ini title="pjsip.conf"
     [global]
@@ -31,13 +29,7 @@ The phones' Status, Voicemail, Parking, and Queues apps rely on `func_presencest
 
 ## Download
 
-Each release on the [releases page](https://github.com/jackrosenthal/open-dphone/releases) includes one module for each supported Asterisk version and architecture, along with a `SHA256SUMS` file.  Open DPMA shares a version number with the Open DPhone firmware, and the firmware images are part of the same release.
-
-| | x86_64 | aarch64 |
-| --- | --- | --- |
-| Asterisk 22 | `res_open_dpma-asterisk22-x86_64.so` | `res_open_dpma-asterisk22-aarch64.so` |
-| Asterisk 23 | `res_open_dpma-asterisk23-x86_64.so` | `res_open_dpma-asterisk23-aarch64.so` |
-| Asterisk 24 | `res_open_dpma-asterisk24-x86_64.so` | `res_open_dpma-asterisk24-aarch64.so` |
+Each release on the [releases page](https://github.com/jackrosenthal/open-dphone/releases) includes a module named `res_open_dpma-asterisk<version>-<architecture>.so` for each supported Asterisk major version and architecture (`x86_64` or `aarch64`), along with a `SHA256SUMS` file.
 
 Run `asterisk -V` to find the Asterisk version and `uname -m` to find the architecture.  Then download the matching module and the checksum file, and verify the download.  For Asterisk 22 on x86_64:
 
@@ -47,23 +39,21 @@ curl -fLO https://github.com/jackrosenthal/open-dphone/releases/latest/download/
 sha256sum --ignore-missing -c SHA256SUMS
 ```
 
-`sha256sum` must print `OK` for the module.
-
 ## Setup
 
-1. Copy the module into the Asterisk module directory as `res_open_dpma.so`.  The module directory is `astmoddir` in `asterisk.conf`, e.g., `/usr/lib/asterisk/modules`.
+1. Copy the module into the Asterisk module directory as `res_open_dpma.so`.
 
     ```sh
     install -m 0755 res_open_dpma-asterisk22-x86_64.so /usr/lib/asterisk/modules/res_open_dpma.so
     ```
 
 2. If the server has the original module, [disable the original module](#migration-from-the-original-module).
-3. Make sure that `res_digium_phone.conf` exists.  A server that ran the original module already has the file.  On a new server, start with the [minimal example](configuration.md#minimal-example).
+3. Make sure that `res_digium_phone.conf` exists.  On a new server, start with the [minimal example](configuration.md#minimal-example).
 4. Restart Asterisk.
 
 ## Migration from the original module
 
-Open DPMA and the original module cannot be loaded at the same time.  Both register the same CLI commands, AMI actions, and message technology, and both read `res_digium_phone.conf`.  Open DPMA replaces all three of the original modules, so none of the three may be loaded.
+Open DPMA and the original module cannot be loaded at the same time.  Open DPMA replaces all three of the original modules, so none of the three may be loaded.
 
 Add the following lines to `modules.conf`, or delete the three files from the module directory:
 
@@ -84,7 +74,7 @@ To switch back to the original module, delete `res_open_dpma.so` from the module
 
 ## Verification
 
-Run the following commands in the Asterisk console (`asterisk -r`).
+Run the following commands in the Asterisk CLI.
 
 1. Check that the module is loaded and reports a version:
 
@@ -119,8 +109,6 @@ Run the following commands in the Asterisk console (`asterisk -r`).
     *CLI> pjsip show contacts
     ```
 
-With service discovery enabled, phones on the same network segment as the server find the server through the module's mDNS announcement.  See [`service_discovery_enabled`](configuration.md#general).
-
 ## Logging
 
 The module logs most messages at the `DPMA` log level, which the module adds to Asterisk.  Asterisk writes those messages only to log channels that list `dpma`:
@@ -135,7 +123,7 @@ Messages at that level explain why a phone was refused a configuration, e.g., `A
 
 ## Building from source
 
-Build from source to run the module on a platform that the releases do not cover, or to test a change.  You need Rust 1.99 or later, libclang, and the configured headers for the target Asterisk version, i.e., the Asterisk source tree after `./configure` has run.  Set the environment variable `ASTERISK_SOURCE_DIR` to that source tree.
+You need Rust 1.99 or later, libclang, and the configured headers for the target Asterisk version, i.e., the Asterisk source tree after `./configure` has run.  Set the environment variable `ASTERISK_SOURCE_DIR` to that source tree.
 
 ```sh
 git clone https://github.com/jackrosenthal/open-dphone.git

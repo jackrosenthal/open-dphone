@@ -15,7 +15,7 @@ The init role supervises the main role and recovers from most failures without i
 | nvdata cannot be mounted. | Nothing is erased.  A file system in RAM takes the place of nvdata, the phone runs with default settings, and the web interface shows a **Recovery** page. |
 | A newly installed image does not come up healthy. | The [trial boot](firmware-updates.md#trial-boot) returns the phone to the previous bank. |
 
-Safe mode is not used during a trial boot.  The image on trial must show that the full main role works, and five failures return the phone to the previous bank.
+Safe mode is not used during a trial boot.
 
 ## Main role keeps failing
 
@@ -30,23 +30,13 @@ If the phone is still reachable, log in over SSH or on the serial console.  [Loc
 
 3. Recover with `dphone update abandon` for an image on trial, `dphone update switch-bank` to boot the image in the other bank, or `dphone update install` to install a corrected image.  See [Firmware updates](firmware-updates.md) for each command.
 
-## Pushed binary fails
-
-The init role ignores a binary pushed with `cargo xtask deploy` after three quick failures in a row, and runs the installed binary.  A reboot always removes the pushed binary, because `/tmp` is in RAM.
-
 ## Phone unreachable over the network
 
 Connect a cable to the EHS port; see [Wiring](ssh-and-serial-console.md#wiring).  The console has the port when the setting says so, and also after any failure of the main role.  From the console's shell, `dphone net` shows the state of the network, and `dphone net plain` applies the simplest network configuration: DHCP, no VLAN, and the PC port down.
 
-## RAM-booted image fails
-
-Reboot or power-cycle the phone.  Nothing was written to the firmware banks, so the installed firmware starts.  If you do nothing, the `dphone ramboot` time limit returns the phone to the installed firmware after 900 seconds, and the watchdog resets a kernel that hangs.
-
 ## Installed image fails
 
-No action is needed.  The trial boot gives the new image three boots, and each failed boot ends with a restart: by the watchdog, by the kernel after a panic, or by the init role when the main role is not healthy within 300 seconds.  After the third boot, the early-boot stage selects the previous bank.  Power-cycling the phone also ends a boot, and the boot still counts.
-
-Once the previous firmware is running again, the **Firmware** card in the web interface reports why the update was rolled back.
+No action is needed: the [trial boot](firmware-updates.md#trial-boot) returns the phone to the previous bank after three failed boots.  Power-cycling the phone also ends a boot, and the boot still counts.
 
 ## nvdata fails to mount
 
@@ -58,4 +48,4 @@ The **Recovery** page of the web interface also offers **Erase nvdata**, which d
 
 The boot loader starts the selected bank's kernel with the watchdog off, and has no fallback.  If a kernel in flash stops before the early-boot stage runs, the boot loader starts the same kernel at every power-on, and no command can reach the phone.  The trial boot cannot help, because the stage that counts the boots is part of the failing kernel image.
 
-The only fix is to rewrite the flash through a JTAG adapter, which this guide does not cover.  To avoid the problem, [boot every image with a changed kernel from RAM](test-builds.md#ram-boot) and confirm that the image comes up before installing the image.
+The only fix is to rewrite the flash through a JTAG adapter.
