@@ -2,7 +2,38 @@
 
 import type { ReactNode } from "react";
 
-const RECEIVER = "M6.2 2.6C4 3 2.9 5 3.4 7.3 5 14 10.4 19.6 17 21c2.2.5 4.2-.7 4.5-2.8l.2-1.7-4.9-1.9-1.7 2.3c-3.1-1.3-6.1-4.4-7.3-7.6l2.3-1.7L8 2.6z";
+/// A handset as the phones print it: a C-shaped handle opening to the
+/// right, with the earpiece and the mouthpiece as two caps at its ends,
+/// each set apart from the handle by a narrow gap.  20 high and 10 wide,
+/// centered on the origin; place it with a transform.
+function Handset({ color, transform }: { color: string; transform: string }) {
+  return (
+    <g transform={transform}>
+      <path d="M1.7-8.05C-4.63-8.05-4.63 8.05 1.7 8.05" fill="none" stroke={color} strokeWidth={4.5} />
+      <rect x={2.5} y={-10} width={2.7} height={5.4} rx={1.1} fill={color} />
+      <rect x={2.5} y={4.6} width={2.7} height={5.4} rx={1.1} fill={color} />
+    </g>
+  );
+}
+
+/// The handset leaning back, earpiece up and to the left, as on the hold
+/// and redial keys.
+const LEANING = "translate(9.6 14.2) rotate(-45) scale(.9)";
+
+/// `children` crossed by the line `slash`, with a narrow gap cut out of
+/// them on each side of the line.
+function Slashed({ id, slash, color, children }: { id: string; slash: string; color: string; children: ReactNode }) {
+  return (
+    <>
+      <mask id={id} maskUnits="userSpaceOnUse" x={-2} y={-2} width={28} height={28}>
+        <rect x={-2} y={-2} width={28} height={28} fill="#fff" />
+        <path d={slash} stroke="#000" strokeWidth={4.6} strokeLinecap="round" />
+      </mask>
+      <g mask={`url(#${id})`}>{children}</g>
+      <path d={slash} stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </>
+  );
+}
 
 export function PhoneIcon({ name, color }: { name: string; color: string }): ReactNode {
   const stroke = { fill: "none", stroke: color, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -23,6 +54,9 @@ export function PhoneIcon({ name, color }: { name: string; color: string }): Rea
       return <path d="M4 12h16" {...stroke} strokeWidth={4} />;
     case "plus":
       return <path d="M4 12h16M12 4v16" {...stroke} strokeWidth={4} />;
+    case "asterisk":
+      // The dial pad's star: six square-ended arms.
+      return <path d="M12 2v20M3.34 7l17.32 10M3.34 17l17.32-10" fill="none" stroke={color} strokeWidth={3.4} />;
     case "msgs":
       // Envelope.
       return (
@@ -35,30 +69,38 @@ export function PhoneIcon({ name, color }: { name: string; color: string }): Rea
       // Handset, arrow, handset.
       return (
         <>
-          <path d="M5.5 4Q0 12 5.5 20M23 4Q17.5 12 23 20" {...stroke} strokeWidth={3.6} />
-          <path d="M8 12h7.5M13 8.5l3.5 3.5-3.5 3.5" {...stroke} strokeWidth={2.4} />
+          <Handset color={color} transform="translate(3 12) scale(.9)" />
+          <path d="M9.6 12h5.6M13 8.8l3.2 3.2-3.2 3.2" {...stroke} strokeWidth={2.2} />
+          <Handset color={color} transform="translate(21 12) scale(.9)" />
         </>
       );
     case "redial":
-      // Handset with a returning arrow.
+      // The leaning handset, and a circular arrow turning counterclockwise
+      // with the arrowhead at the top.
       return (
         <>
-          <path d={RECEIVER} fill={color} transform="translate(-1 3) scale(.86)" />
-          <path d="M15 3.5a4.5 4.5 0 1 1-1 6" {...stroke} strokeWidth={2.2} />
-          <path d="M12.5 8l1.3 2.3 2.5-.8" {...stroke} strokeWidth={2} />
+          <Handset color={color} transform={LEANING} />
+          <path d="M14.4 6.06A4.2 4.2 0 1 0 19.8 3.56" {...stroke} strokeWidth={2} strokeLinecap="butt" />
+          <path d="M16.15 3.3L19.8.9v4.8z" fill={color} />
         </>
       );
     case "hold":
-      // Handset with pause bars.
+      // The leaning handset with pause bars.
       return (
         <>
-          <path d={RECEIVER} fill={color} transform="translate(-1 3) scale(.86)" />
-          <path d="M15.5 2.5v6M20 2.5v6" {...stroke} strokeWidth={2.6} strokeLinecap="butt" />
+          <Handset color={color} transform={LEANING} />
+          <path d="M16.3 2.8v6.4M20.1 2.8v6.4" fill="none" stroke={color} strokeWidth={2.2} />
         </>
       );
     case "conf":
       // Three handsets.
-      return <path d="M5.5 4Q0 12 5.5 20M13.5 4Q8 12 13.5 20M21.5 4Q16 12 21.5 20" {...stroke} strokeWidth={3.6} />;
+      return (
+        <>
+          <Handset color={color} transform="translate(3.8 12) scale(.8)" />
+          <Handset color={color} transform="translate(12 12) scale(.8)" />
+          <Handset color={color} transform="translate(20.2 12) scale(.8)" />
+        </>
+      );
     case "info":
       return (
         <>
@@ -101,30 +143,58 @@ export function PhoneIcon({ name, color }: { name: string; color: string }): Rea
           <path d="M7 12h10" {...stroke} strokeWidth={3} />
         </>
       );
+    // New family (D60, D62, D65): drawn face on.
     case "headset":
       return (
         <>
-          <path d="M5 14a7 7.5 0 0 1 14 0" {...stroke} strokeWidth={2.2} />
-          <rect x={2.5} y={12} width={4.4} height={7.5} rx={2} fill={color} />
-          <rect x={17.1} y={12} width={4.4} height={7.5} rx={2} fill={color} />
-          <path d="M19.5 19.5q0 3-5.5 3" {...stroke} strokeWidth={1.8} />
-          <circle cx={13} cy={22.5} r={1.6} fill={color} />
+          <path d="M5.4 11.5v-1a6.6 7.4 0 0 1 13.2 0v1" {...stroke} strokeWidth={1.5} />
+          <rect x={3.6} y={9.4} width={3.6} height={7.8} rx={1.3} fill={color} />
+          <rect x={16.8} y={9.4} width={3.6} height={7.8} rx={1.3} fill={color} />
+          <path d="M3.1 11.5L1 13.3l2.1 1.8zM20.9 11.5l2.1 1.8-2.1 1.8z" fill={color} />
+          <path d="M18.6 17.2q0 2.9-3.3 3.5" {...stroke} strokeWidth={1.4} />
+          <circle cx={14.2} cy={20.8} r={1.25} fill="none" stroke={color} strokeWidth={1.1} />
         </>
       );
     case "speaker":
       return (
         <>
-          <path d="M2 9.5h3.5l4.5-4.5v14l-4.5-4.5H2z" fill={color} />
-          <path d="M13 8.5q2.5 3.5 0 7M16.5 6q4.5 6 0 12M20 4q6 8 0 16" {...stroke} strokeWidth={1.9} />
+          <path d="M2.2 10.7l1.5-1.9h2.4v6.4H3.7l-1.5-1.9z" fill={color} />
+          <path d="M6.1 10.1Q7.2 4.8 9.6 4.8a4.4 7.2 0 0 1 0 14.4Q7.2 19.2 6.1 13.9z" {...stroke} strokeWidth={1.5} />
+          <path d="M15.6 6.6a8.6 8.6 0 0 1 0 10.8M19 4a12 12 0 0 1 0 16" {...stroke} strokeWidth={1.8} />
         </>
       );
     case "mute":
       return (
+        <Slashed id="mute-cut" slash="M3.6 14.6L20.6 4.4" color={color}>
+          <path d="M8.7 11.2V5.2q0-3.2 3.3-3.2t3.3 3.2v6z" fill={color} />
+          <rect x={8.7} y={12.1} width={6.6} height={2.5} fill={color} />
+          <path d="M6.9 13.2q0 4.6 5.1 4.6t5.1-4.6M8.3 21.1q3.7 1.9 7.4 0" {...stroke} strokeWidth={1.6} />
+        </Slashed>
+      );
+    // Old family (D40, D45, D50, D70): drawn turned, as on those phones.
+    case "headset-turned":
+      return (
         <>
-          <rect x={8.5} y={2.5} width={7} height={12} rx={3.5} fill={color} />
-          <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5" {...stroke} strokeWidth={2} />
-          <path d="M3.5 19.5l17-15" {...stroke} strokeWidth={2.2} />
+          <path d="M5.3 14.6C4.1 7.3 10.1 2.4 15.6 5.4" {...stroke} strokeWidth={1.5} />
+          <circle cx={7.6} cy={16} r={3.5} fill={color} />
+          <circle cx={16.4} cy={8.9} r={3} fill={color} />
+          <path d="M8.1 19.9q4.3 2.4 9.2-.6" {...stroke} strokeWidth={1.5} />
         </>
+      );
+    case "speaker-turned":
+      return (
+        <>
+          <ellipse cx={9.6} cy={14.6} rx={4.4} ry={5.2} transform="rotate(-35 9.6 14.6)" {...stroke} strokeWidth={1.5} />
+          <circle cx={6.7} cy={17.3} r={2.1} {...stroke} strokeWidth={1.5} />
+          <path d="M9.1 5.6a9 9 0 0 1 9.4 9.4M10.2 1.9a12.6 12.6 0 0 1 11.9 12" {...stroke} strokeWidth={1.6} />
+        </>
+      );
+    case "mute-turned":
+      return (
+        <Slashed id="mute-turned-cut" slash="M4.4 14.8L19.8 5.4" color={color}>
+          <rect x={9.3} y={2.4} width={5.4} height={10.8} rx={2.7} fill={color} />
+          <path d="M7.3 10.6q0 5.9 4.7 5.9t4.7-5.9M12 16.5v2.6M8.7 20.6q3.3 1.8 6.6 0" {...stroke} strokeWidth={1.6} />
+        </Slashed>
       );
     default:
       return null;

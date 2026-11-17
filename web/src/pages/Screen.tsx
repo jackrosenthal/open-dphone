@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Card, PageHeader, Spinner } from "../components/ui";
 import { KeyAction, ScreenId, ScreenService, type Lamp } from "../gen/dphone/v1/screen_pb";
 import { PhoneIcon } from "../lib/phoneIcons";
-import { panels, type Panel, type PanelKey } from "../lib/phones";
+import { archedRect, panels, type Panel, type PanelKey } from "../lib/phones";
 import { useStream, type StreamStatus } from "../lib/stream";
 import { client, errorMessage } from "../lib/transport";
 
@@ -93,7 +93,7 @@ function Legend({ k }: { k: PanelKey }) {
           {l.letters}
         </text>
       )}
-      <text x={k.cx} y={k.cy + (l.letters ? k.h * 0.16 : 0)} fill={ink} fontSize={k.h * (l.digit === "*" ? 0.8 : 0.52)} fontWeight={700} textAnchor="middle" dominantBaseline="central">
+      <text x={k.cx} y={k.cy + (l.letters !== undefined ? k.h * 0.16 : 0)} fill={ink} fontSize={k.h * 0.52} fontWeight={700} textAnchor="middle" dominantBaseline="central">
         {l.digit}
       </text>
     </>
@@ -216,7 +216,7 @@ function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: string; 
                 key={k.id}
                 role="button"
                 aria-label={keyName(k.id)}
-                className="cursor-pointer outline-none [&:active>rect:first-of-type]:brightness-150"
+                className="cursor-pointer outline-none [&:active>.key-face]:brightness-150"
                 onPointerDown={(e) => {
                   e.currentTarget.setPointerCapture(e.pointerId);
                   held.current = k.id;
@@ -226,8 +226,17 @@ function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: string; 
                 onPointerCancel={release}
               >
                 <title>{keyName(k.id)}</title>
-                <rect {...box} fill={k.bare ? "transparent" : k.fill} stroke={k.bare ? "none" : "#00000066"} strokeWidth={0.8} />
-                {l && <rect {...box} fill={lampFill[l.color]} className={l.blink !== "solid" ? `lamp-${l.blink}` : undefined} />}
+                {k.arch ? (
+                  <path className="key-face" d={archedRect(box.x, box.y, box.width, box.height, k.r, k.arch)} fill={k.fill} stroke="#00000066" strokeWidth={0.8} />
+                ) : (
+                  <rect className="key-face" {...box} fill={k.bare ? "transparent" : k.fill} stroke={k.bare ? "none" : "#00000066"} strokeWidth={0.8} />
+                )}
+                {l &&
+                  (k.arch ? (
+                    <path d={archedRect(box.x, box.y, box.width, box.height, k.r, k.arch)} fill={lampFill[l.color]} className={l.blink !== "solid" ? `lamp-${l.blink}` : undefined} />
+                  ) : (
+                    <rect {...box} fill={lampFill[l.color]} className={l.blink !== "solid" ? `lamp-${l.blink}` : undefined} />
+                  ))}
                 <Legend k={k} />
               </g>
             );
@@ -255,9 +264,8 @@ function Phone({ panel, model, keys, sideSize }: { panel: Panel; model: string; 
           />
           <rect x={hs.x} y={hs.y} width={hs.w} height={hs.h} rx={hs.w * 0.36} fill={hs.fill} stroke="#00000055" />
           <rect x={hs.x} y={hs.y} width={hs.w} height={hs.h} rx={hs.w * 0.36} fill="url(#handset)" />
-          {/* Raised ends and the flat between them. */}
+          {/* The bevel along the edges; the handset is even along its length. */}
           <rect x={hs.x + hs.w * 0.08} y={hs.y + hs.w * 0.08} width={hs.w * 0.84} height={hs.h - hs.w * 0.16} rx={hs.w * 0.3} fill="none" stroke="#ffffff" strokeOpacity={0.07} strokeWidth={1.2} />
-          <path d={`M${hs.x + hs.w * 0.14} ${hs.y + hs.h * 0.24}H${hs.x + hs.w * 0.86}M${hs.x + hs.w * 0.14} ${hs.y + hs.h * 0.76}H${hs.x + hs.w * 0.86}`} stroke="#000000" strokeOpacity={0.22} strokeWidth={1.2} />
           {hs.print && (
             <text x={hs.x + hs.w * 0.5} y={hs.y + hs.h * 0.86} fill="#aeb4bc" fontSize={hs.w * 0.1} fontWeight={600} textAnchor="middle">
               {hs.print}
