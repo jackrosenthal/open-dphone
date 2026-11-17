@@ -983,10 +983,27 @@ fn drawn_in_gray(model: Model) {
 // ------------------------------------------------------ the leaderboard
 
 /// The leaderboard's value on the PBX, as text.
-fn on_pbx(store: &FakeStore) -> Option<String> {
+fn tagged_on_pbx(store: &FakeStore) -> Option<String> {
     store
         .value(APP, StoreScope::Shared, "leaderboard")
         .map(|v| String::from_utf8(v).unwrap())
+}
+
+/// The rows of a leaderboard's value without the tags that tell them
+/// apart: a line for each, of the score, the user's id, and the name.
+fn untagged(value: &str) -> String {
+    value
+        .lines()
+        .map(|line| {
+            let fields: Vec<&str> = line.splitn(4, '\t').take(3).collect();
+            format!("{}\n", fields.join("\t"))
+        })
+        .collect()
+}
+
+/// The leaderboard's value on the PBX, as text, without the tags.
+fn on_pbx(store: &FakeStore) -> Option<String> {
+    tagged_on_pbx(store).map(|v| untagged(&v))
 }
 
 /// Writes the leaderboard as the phone of `store` would.
@@ -1003,6 +1020,12 @@ fn write_board(store: &FakeStore, value: &str, expect: Option<u64>) -> StoreRepl
 /// A file of the game's storage on the phone.
 fn file(r: &Rig, name: &str) -> Option<String> {
     std::fs::read_to_string(r.nvdata.join("appdata").join(APP).join(name)).ok()
+}
+
+/// The scores that wait on the phone to be written to the PBX, without
+/// their tags.
+fn waiting(r: &Rig) -> Option<String> {
+    file(r, "waiting").map(|v| untagged(&v))
 }
 
 /// Plays a game from the start screen, the leaderboard, or the end of a
@@ -1120,11 +1143,7 @@ fn a_score_is_on_every_phones_leaderboard_with_who_set_it() {
     alice.launch(APP);
     assert_eq!(play(&mut alice, 1), 1);
     assert_eq!(on_pbx(&pbx).as_deref(), Some("1\t101\tAlice\n"));
-    assert_eq!(
-        file(&alice, "waiting").as_deref(),
-        Some(""),
-        "nothing waits"
-    );
+    assert_eq!(waiting(&alice).as_deref(), Some(""), "nothing waits");
     // Bob's phone is told, and shows it; the row is not his.
     bob.settle();
     assert_eq!(bob.ui.texts(APP), ["Leaderboard", "1. Alice", "1"]);
@@ -1134,42 +1153,61 @@ fn a_score_is_on_every_phones_leaderboard_with_who_set_it() {
     assert_eq!(alice.ui.texts(APP), ["Leaderboard", "1. Alice", "1"]);
     assert_eq!(alice.ui.highlighted(APP), ["1. Alice", "1"]);
 
-    // Bob does better: he is above her, on both phones.
+    // Bob does as well: he is below her, who was there first.
+    assert_eq!(play(&mut bob, 1), 1);
+    assert_eq!(
+        on_pbx(&pbx).as_deref(),
+        Some("1\t101\tAlice\n1\t102\tBob\n")
+    );
+    alice.settle();
+    assert_eq!(
+        alice.ui.texts(APP),
+        ["Leaderboard", "1. Alice", "1", "2. Bob", "1"]
+    );
+
+    // Then he does better: every score is a row of its own, so the better
+    // one is above her and his first stays, on both phones.
     assert_eq!(play(&mut bob, 2), 2);
     assert_eq!(
         on_pbx(&pbx).as_deref(),
-        Some("2\t102\tBob\n1\t101\tAlice\n")
+        Some("2\t102\tBob\n1\t101\tAlice\n1\t102\tBob\n")
     );
     alice.settle();
-    let both = ["Leaderboard", "1. Bob", "2", "2. Alice", "1"];
-    assert_eq!(alice.ui.texts(APP), both);
+    let all = ["Leaderboard", "1. Bob", "2", "2. Alice", "1", "3. Bob", "1"];
+    assert_eq!(alice.ui.texts(APP), all);
     assert_eq!(alice.ui.highlighted(APP), ["2. Alice", "1"]);
     bob.key(APP, Key::Up);
-    assert_eq!(bob.ui.texts(APP), both);
-    assert_eq!(bob.ui.highlighted(APP), ["1. Bob", "2"]);
+    assert_eq!(bob.ui.texts(APP), all);
+    assert_eq!(bob.ui.highlighted(APP), ["1. Bob", "2", "3. Bob", "1"]);
 
-    // A worse game of his changes nothing, and nothing is written: a
-    // user is there once, with their best score.
-    let writes = |store: &FakeStore| {
-        store
-            .ops()
-            .iter()
-            .filter(|op| matches!(op, StoreOp::Set { .. }))
-            .count()
-    };
-    assert_eq!(writes(&bob.app_data), 1);
-    assert_eq!(play(&mut bob, 1), 1);
-    assert_eq!(writes(&bob.app_data), 1);
-    assert_eq!(
-        on_pbx(&pbx).as_deref(),
-        Some("2\t102\tBob\n1\t101\tAlice\n")
+    // Each row has a tag of its own, sixteen hexadecimal digits, and
+    // each of Bob's games was written once.
+    let mut tags: Vec<String> = tagged_on_pbx(&pbx)
+        .unwrap()
+        .lines()
+        .map(|line| line.split('\t').nth(3).expect("a tag").to_string())
+        .collect();
+    assert!(
+        tags.iter()
+            .all(|t| t.len() == 16 && t.chars().all(|c| c.is_ascii_hexdigit())),
+        "{tags:?}"
     );
+    tags.sort();
+    tags.dedup();
+    assert_eq!(tags.len(), 3);
+    let writes = bob
+        .app_data
+        .ops()
+        .iter()
+        .filter(|op| matches!(op, StoreOp::Set { .. }))
+        .count();
+    assert_eq!(writes, 2);
 
     // A phone that starts the game later reads it.
     let mut carol = Rig::on_pbx(pbx.phone("103", "Carol"));
     carol.launch(APP);
     carol.key(APP, Key::Down);
-    assert_eq!(carol.ui.texts(APP), both);
+    assert_eq!(carol.ui.texts(APP), all);
     assert!(carol.ui.highlighted(APP).is_empty());
 }
 
@@ -1244,7 +1282,7 @@ fn two_who_finish_at_once_are_both_on_the_leaderboard() {
         alice.ui.texts(APP),
         ["Leaderboard", "1. Bob", "3", "2. Alice", "1"]
     );
-    assert_eq!(file(&alice, "waiting").as_deref(), Some(""));
+    assert_eq!(waiting(&alice).as_deref(), Some(""));
 }
 
 #[test]
@@ -1258,7 +1296,7 @@ fn a_score_set_out_of_the_pbxs_reach_is_written_when_it_is_in_reach() {
     assert_eq!(play(&mut alice, 1), 1);
     assert_eq!(on_pbx(&pbx).as_deref(), Some("3\t102\tBob\n"));
     // The score waits on the phone, and her leaderboard has it.
-    assert_eq!(file(&alice, "waiting").as_deref(), Some("1\t101\tAlice\n"));
+    assert_eq!(waiting(&alice).as_deref(), Some("1\t101\tAlice\n"));
     alice.key(APP, Key::Down);
     let both = ["1. Bob", "3", "2. Alice", "1"];
     assert_eq!(alice.ui.texts(APP)[0], "Leaderboard (offline)");
@@ -1289,7 +1327,7 @@ fn a_score_set_out_of_the_pbxs_reach_is_written_when_it_is_in_reach() {
             "1"
         ]
     );
-    assert_eq!(file(&alice, "waiting").as_deref(), Some(""));
+    assert_eq!(waiting(&alice).as_deref(), Some(""));
 
     // Dan's phone has never reached the PBX since it started, and he
     // leaves the game before it can: the score is written the next time
@@ -1307,13 +1345,13 @@ fn a_score_set_out_of_the_pbxs_reach_is_written_when_it_is_in_reach() {
     assert!(!dan.mgr.is_running(APP));
     dan.app_data.set_online(true);
     dan.settle();
-    assert_eq!(file(&dan, "waiting").as_deref(), Some("2\t104\tDan\n"));
+    assert_eq!(waiting(&dan).as_deref(), Some("2\t104\tDan\n"));
     dan.launch(APP);
     assert_eq!(
         on_pbx(&pbx).as_deref(),
         Some("3\t102\tBob\n2\t103\tCarol\n2\t104\tDan\n1\t101\tAlice\n")
     );
-    assert_eq!(file(&dan, "waiting").as_deref(), Some(""));
+    assert_eq!(waiting(&dan).as_deref(), Some(""));
 }
 
 #[test]
@@ -1331,34 +1369,39 @@ fn a_phone_without_a_pbx_store_plays_and_keeps_its_scores() {
     );
     assert_eq!(file(&r, "best").as_deref(), Some("1"));
     // The phone does not know its user: the score waits without one.
-    assert_eq!(file(&r, "waiting").as_deref(), Some("1\t\t\n"));
+    assert_eq!(waiting(&r).as_deref(), Some("1\t\t\n"));
     r.key(APP, Key::Down);
     assert_eq!(
         r.ui.texts(APP),
         ["Leaderboard (offline)", "1. This phone", "1"]
     );
     assert_eq!(r.ui.highlighted(APP), ["1. This phone", "1"]);
-    // The next game is as playable, and a new run of the game still has
-    // the score.
+    // The next game is as playable, its score is a row of its own, and a
+    // new run of the game still has both.
     assert_eq!(play(&mut r, 1), 1);
+    assert_eq!(waiting(&r).as_deref(), Some("1\t\t\n1\t\t\n"));
     r.key(APP, Key::Cancel);
     r.launch(APP);
     r.key(APP, Key::Down);
-    assert_eq!(
-        r.ui.texts(APP),
-        ["Leaderboard (offline)", "1. This phone", "1"]
-    );
+    let both = ["1. This phone", "1", "2. This phone", "1"];
+    assert_eq!(r.ui.texts(APP)[0], "Leaderboard (offline)");
+    assert_eq!(r.ui.texts(APP)[1..], both);
+    assert_eq!(r.ui.highlighted(APP), both);
 
-    // A phone with such a score that then has a PBX with a store: the
-    // score is its user's.
+    // A phone with such scores that then has a PBX with a store: the
+    // scores are its user's.  (The first waits as it was written before
+    // rows had tags.)
     let pbx = FakeStore::default();
     let mut alice = Rig::on_pbx(pbx.phone("101", "Alice"));
     let dir = alice.nvdata.join("appdata").join(APP);
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("waiting"), "4\t\t\n").unwrap();
+    std::fs::write(dir.join("waiting"), "4\t\t\n2\t\t\t0123456789abcdef\n").unwrap();
     alice.launch(APP);
-    assert_eq!(on_pbx(&pbx).as_deref(), Some("4\t101\tAlice\n"));
-    assert_eq!(file(&alice, "waiting").as_deref(), Some(""));
+    assert_eq!(
+        on_pbx(&pbx).as_deref(),
+        Some("4\t101\tAlice\n2\t101\tAlice\n")
+    );
+    assert_eq!(waiting(&alice).as_deref(), Some(""));
 }
 
 /// The leaderboard on the simulated phone, with a picture of it.

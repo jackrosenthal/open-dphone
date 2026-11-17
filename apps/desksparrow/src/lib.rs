@@ -369,7 +369,7 @@ enum State {
 struct Shown {
     name: String,
     score: String,
-    /// The row of this phone's user.
+    /// A row of this phone's user.
     mine: bool,
 }
 
@@ -724,7 +724,8 @@ impl Sparrow {
         let (id, name) = pbx_storage::user()
             .map(|u| (u.id, u.name))
             .unwrap_or_default();
-        let row = Row::new(self.game.score, &id, &name);
+        let tag = format!("{:016x}", runtime::random());
+        let row = Row::new(self.game.score, &id, &name, &tag);
         let waiting = board::unsettled(&self.board, &board::merge(&self.waiting, &[row]));
         let changed = waiting != self.waiting;
         self.keep_waiting(waiting);
