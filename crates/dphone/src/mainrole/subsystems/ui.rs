@@ -5,7 +5,7 @@
 //! as well as in the simulator.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::Duration;
 
 use dphone_config::Config;
@@ -20,20 +20,65 @@ use super::hal::SharedHal;
 use super::system::ConfigHub;
 use crate::mainrole::Context;
 
-/// The last flushed picture of each screen.
+/// The picture on each screen, for whoever looks at it from another
+/// thread (the web interface's mirror, `dphone screenshot`).
+///
+/// A copy of a screen is taken when somebody asks for the picture, not
+/// when the picture changes: a wallpaper in motion changes it many times
+/// a second, and a copy of the color panel's frame is half a megabyte
+/// (4 ms on a D60).  The UI's thread takes the copy, since the frame
+/// buffer is the UI's to read.  Until the UI runs, every picture is
+/// copied as it is shown: the start-up screens are few.
 #[derive(Default)]
 pub struct ScreenTap {
+    /// Counts the pictures shown.
     generation: AtomicU64,
-    frames: Mutex<Vec<(Screen, Frame)>>,
+    /// The copies: for each screen, the frame and the count it is of.
+    frames: Mutex<Vec<(Screen, Frame, u64)>>,
+    /// A copy was taken.
+    taken: Condvar,
+    /// Asks the UI's thread for new copies; set once the UI runs.
+    ask: OnceLock<Box<dyn Fn() + Send + Sync>>,
 }
 
 impl ScreenTap {
+    /// How long a caller waits for the UI's thread to take a copy before
+    /// it settles for the last one (the UI may be busy, or stuck: its last
+    /// picture is then what there is to see).
+    const WAIT: Duration = Duration::from_millis(500);
+
     pub fn generation(&self) -> u64 {
         self.generation.load(Ordering::Relaxed)
     }
 
+    /// The picture on `screen`.  May wait for the UI's thread, up to
+    /// [`ScreenTap::WAIT`]: not for a thread that must not block.
     pub fn capture(&self, screen: Screen) -> Option<Frame> {
-        self.frames.lock().ok()?.iter().find(|(s, _)| *s == screen).map(|(_, f)| f.clone())
+        let generation = self.generation();
+        let stale = |frames: &mut Vec<(Screen, Frame, u64)>| frames.iter().find(|(s, ..)| *s == screen).is_some_and(|(.., of)| *of < generation);
+        let mut frames = self.frames.lock().ok()?;
+        if let Some(ask) = self.ask.get()
+            && stale(&mut frames)
+        {
+            ask();
+            frames = self.taken.wait_timeout_while(frames, Self::WAIT, stale).ok()?.0;
+        }
+        frames.iter().find(|(s, ..)| *s == screen).map(|(_, f, _)| f.clone())
+    }
+
+    /// Keeps `frame`, the picture on `screen` when `generation` pictures
+    /// had been shown.
+    fn keep(&self, screen: Screen, info: FrameInfo, pixels: &[u8], generation: u64) {
+        let Ok(mut frames) = self.frames.lock() else { return };
+        match frames.iter_mut().find(|(s, ..)| *s == screen) {
+            Some((_, f, of)) if f.pixels.len() == pixels.len() => {
+                f.pixels.copy_from_slice(pixels);
+                (f.info, *of) = (info, generation);
+            }
+            Some((_, f, of)) => (*f, *of) = (Frame { info, pixels: pixels.to_vec() }, generation),
+            None => frames.push((screen, Frame { info, pixels: pixels.to_vec() }, generation)),
+        }
+        self.taken.notify_all();
     }
 }
 
@@ -54,20 +99,22 @@ impl Display for TapDisplay {
     }
     fn flush(&mut self, screen: Screen, damage: &[Rect]) -> dphone_hal::Result<()> {
         let result = self.inner.flush(screen, damage);
-        if let (Some(info), Ok(pixels)) = (self.inner.info(screen), self.inner.frame(screen))
-            && let Ok(mut frames) = self.tap.frames.lock()
+        let generation = self.tap.generation.fetch_add(1, Ordering::Relaxed) + 1;
+        // Before the UI runs, nobody can ask it for a copy.
+        if self.tap.ask.get().is_none()
+            && let (Some(info), Ok(pixels)) = (self.inner.info(screen), self.inner.frame(screen))
         {
-            match frames.iter_mut().find(|(s, _)| *s == screen) {
-                Some((_, f)) if f.pixels.len() == pixels.len() => f.pixels.copy_from_slice(pixels),
-                Some((_, f)) => *f = Frame { info, pixels: pixels.to_vec() },
-                None => frames.push((screen, Frame { info, pixels: pixels.to_vec() })),
-            }
-            self.tap.generation.fetch_add(1, Ordering::Relaxed);
+            self.tap.keep(screen, info, pixels, generation);
         }
         result
     }
+    /// On the UI's thread ([`UiHandle::capture_screens`]): the copy for
+    /// the others is taken here.
     fn capture(&self, screen: Screen) -> dphone_hal::Result<Frame> {
-        self.inner.capture(screen)
+        let generation = self.tap.generation();
+        let frame = self.inner.capture(screen)?;
+        self.tap.keep(screen, frame.info, &frame.pixels, generation);
+        Ok(frame)
     }
     fn set_power(&mut self, screen: Screen, on: bool) -> dphone_hal::Result<()> {
         self.inner.set_power(screen, on)
@@ -202,11 +249,15 @@ pub async fn start(
             let mut ui = {
                 let Ok(mut hal) = hal.lock() else { return };
                 let inner = std::mem::replace(&mut hal.display, Box::new(dphone_hal::Null("display")));
-                hal.display = Box::new(TapDisplay { inner, tap: thread_tap });
+                hal.display = Box::new(TapDisplay { inner, tap: thread_tap.clone() });
                 Ui::from_hal(&mut hal, ui_store, cfg)
             };
             // The first frame: the panels come on showing it.
             ui.pump();
+            // From here on a copy of a screen is taken when it is asked
+            // for, by this thread.
+            let handle = ui.handle();
+            let _ = thread_tap.ask.set(Box::new(move || handle.capture_screens()));
             let _ = handle_tx.send(ui.handle());
             ui.run()
         }));
@@ -274,4 +325,66 @@ pub async fn start(
         });
     }
     Some(UiParts { handle, tap })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    /// Draws a frame whose every byte is `value` on the main screen.
+    fn show(display: &mut TapDisplay, value: u8) {
+        display.frame(Screen::Main).unwrap().fill(value);
+        display.flush(Screen::Main, &[]).unwrap();
+    }
+
+    /// Until the UI runs, the tap has a copy of every picture shown.  From
+    /// then on no copy is taken when a picture is shown: whoever asks for
+    /// the picture gets a copy the UI's thread takes then, and, if the UI
+    /// does not answer, the last copy there is.
+    #[test]
+    fn the_tap_copies_a_screen_when_it_is_asked_for() {
+        let tap = Arc::new(ScreenTap::default());
+        let mut display = TapDisplay { inner: dphone_hal::Hal::sim(dphone_state::Model::D60).display, tap: tap.clone() };
+        assert!(tap.capture(Screen::Main).is_none(), "nothing was shown");
+        show(&mut display, 1);
+        let first = tap.capture(Screen::Main).expect("the first picture");
+        assert!(first.pixels.iter().all(|b| *b == 1));
+        assert_eq!(tap.generation(), 1);
+
+        // The UI runs: a request goes to its thread, which reads the
+        // screen back through the display.
+        let (asked, requests) = mpsc::channel();
+        assert!(tap.ask.set(Box::new(move || asked.send(()).unwrap())).is_ok());
+        show(&mut display, 2);
+        show(&mut display, 3);
+        assert_eq!(tap.generation(), 3);
+        assert!(requests.try_recv().is_err(), "nobody has asked for the picture");
+        let ui = std::thread::spawn(move || {
+            requests.recv().unwrap();
+            display.capture(Screen::Main).unwrap();
+            // The next request is not answered.
+            show(&mut display, 4);
+            requests.recv().unwrap();
+            display
+        });
+        let now = tap.capture(Screen::Main).expect("the picture as it is");
+        assert!(now.pixels.iter().all(|b| *b == 3));
+        // The copy is of the picture on the screen: no request while
+        // nothing new is shown.  (The thread shows the next picture
+        // before it waits for the second request.)
+        let started = std::time::Instant::now();
+        while tap.generation() < 4 {
+            assert!(started.elapsed() < Duration::from_secs(10));
+            std::thread::yield_now();
+        }
+        let stale = tap.capture(Screen::Main).expect("the last copy");
+        assert!(started.elapsed() >= ScreenTap::WAIT);
+        assert!(stale.pixels.iter().all(|b| *b == 3), "the UI did not answer: the copy it took last");
+        drop(ui.join().unwrap());
+        // A screen this model does not have: nothing, at once.
+        let started = std::time::Instant::now();
+        assert!(tap.capture(Screen::Side).is_none());
+        assert!(started.elapsed() < ScreenTap::WAIT);
+    }
 }

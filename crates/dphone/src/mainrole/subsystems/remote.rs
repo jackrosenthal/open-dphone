@@ -238,7 +238,10 @@ pub fn register(ctx: &Context, tap: Option<Arc<ScreenTap>>) {
                 ScreenArg::Main => Screen::Main,
                 ScreenArg::Side => Screen::Side,
             };
-            let Some(frame) = tap.as_ref().and_then(|t| t.capture(screen)) else {
+            // (The copy is taken by the UI's thread, which may take a
+            // moment.)
+            let frame = tokio::task::spawn_blocking(move || tap.as_ref().and_then(|t| t.capture(screen))).await.ok().flatten();
+            let Some(frame) = frame else {
                 out.err("dphone screenshot: nothing has been drawn on that screen\n").await;
                 return 1;
             };
