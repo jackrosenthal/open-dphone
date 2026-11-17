@@ -1,5 +1,6 @@
 //! The Bluetooth application (D65): the pairing question, the connected and
-//! paired headsets, and discovery.  Bluetooth is on whenever the phone has a
+//! paired headsets, and the devices in range, which the application looks
+//! for as soon as it opens.  Bluetooth is on whenever the phone has a
 //! controller.
 //!
 //! Everything shown comes from the `Bluetooth` state topic, and everything
@@ -14,9 +15,10 @@ fn label(d: &BluetoothDevice) -> String {
     if d.name.is_empty() { d.addr.clone() } else { d.name.clone() }
 }
 
-/// The application's main screen.
+/// The application's one screen; opening it starts a search, unless a
+/// pairing is under way.
 pub(crate) fn menu() -> Box<dyn Screen> {
-    Menu::boxed("bluetooth", tr::BLUETOOTH, |cx| {
+    let menu = Menu::new("bluetooth", tr::BLUETOOTH, |cx| {
         let bt = &cx.st.bluetooth;
         let mut items = Vec::new();
         if !bt.present {
@@ -57,15 +59,38 @@ pub(crate) fn menu() -> Box<dyn Screen> {
                     .value(if connected { tr::BT_CONNECTED } else { tr::BT_PAIRED }),
             );
         }
-        items.push(Item::new(tr::BT_ADD_DEVICE, |cx| {
-            cx.post(Command::BluetoothDiscovery { on: true });
-            Nav::Push(discovery())
-        }));
+        // Devices in range; selecting one pairs with it.
+        for d in bt.found.iter().filter(|d| !bt.paired.iter().any(|p| p.addr == d.addr)) {
+            let addr = d.addr.clone();
+            let pairing = bt.pairing_with == d.addr;
+            items.push(
+                Item::new(label(d), move |cx| {
+                    cx.post(Command::BluetoothDiscovery { on: false });
+                    cx.post(Command::BluetoothPair { addr: addr.clone() });
+                    Nav::Stay
+                })
+                .value(if pairing { tr::BT_PAIRING } else { "" }),
+            );
+        }
+        if bt.discovering {
+            items.push(Item::new(tr::BT_SEARCHING, |_| Nav::Stay));
+        } else {
+            items.push(Item::new(tr::BT_SEARCH_AGAIN, |cx| {
+                cx.post(Command::BluetoothDiscovery { on: true });
+                Nav::Stay
+            }));
+        }
         if !bt.error.is_empty() {
             items.push(Item::new(bt.error.clone(), |_| Nav::Stay));
         }
         items
-    })
+    });
+    Box::new(menu.on_open(|cx| {
+        let bt = &cx.st.bluetooth;
+        if bt.present && !bt.discovering && bt.pairing.is_none() && bt.pairing_with.is_empty() {
+            cx.post(Command::BluetoothDiscovery { on: true });
+        }
+    }))
 }
 
 /// What can be done with one paired device.
@@ -95,39 +120,6 @@ fn paired(device: BluetoothDevice) -> Box<dyn Screen> {
                 Nav::Home
             }))
         }));
-        items
-    })
-}
-
-/// Devices in range; selecting one pairs with it.
-fn discovery() -> Box<dyn Screen> {
-    Menu::boxed("bluetooth-discovery", tr::BT_ADD_DEVICE, |cx| {
-        let bt = &cx.st.bluetooth;
-        let mut items: Vec<Item> = bt
-            .found
-            .iter()
-            .filter(|d| !bt.paired.iter().any(|p| p.addr == d.addr))
-            .map(|d| {
-                let addr = d.addr.clone();
-                let pairing = bt.pairing_with == d.addr;
-                Item::new(label(d), move |cx| {
-                    cx.post(Command::BluetoothDiscovery { on: false });
-                    cx.post(Command::BluetoothPair { addr: addr.clone() });
-                    // Back to the main screen, where the pairing question
-                    // and the result appear.
-                    Nav::Pop
-                })
-                .value(if pairing { tr::BT_PAIRING } else { "" })
-            })
-            .collect();
-        if bt.discovering {
-            items.push(Item::new(tr::BT_SEARCHING, |_| Nav::Stay));
-        } else {
-            items.push(Item::new(tr::BT_SEARCH_AGAIN, |cx| {
-                cx.post(Command::BluetoothDiscovery { on: true });
-                Nav::Stay
-            }));
-        }
         items
     })
 }

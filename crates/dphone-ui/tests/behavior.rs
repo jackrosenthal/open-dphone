@@ -788,17 +788,15 @@ fn bluetooth_application_asks_before_pairing() {
         r.ui.pump();
         assert_eq!(shown.wait(), Ok(Reply::Done));
     };
-    r.store.update::<Bluetooth, _>(|b| b.present = true);
-    show(&mut r);
-    assert_eq!(r.screen(), "bluetooth");
-
     // A headset asks to pair: the question is the first row, with the six
     // digits to compare; selecting it accepts, the next row refuses.
     let addr = "00:1B:DC:0F:A1:02".to_string();
     r.store.update::<Bluetooth, _>(|b| {
+        b.present = true;
         b.pairing = Some(BluetoothPairing { addr: addr.clone(), name: "Headset".into(), passkey: Some(42), pin_needed: false });
     });
-    r.ui.pump();
+    show(&mut r);
+    assert_eq!(r.screen(), "bluetooth");
     r.tap(Key::Select);
     assert_eq!(Rig::drain(&bt), [Command::BluetoothAnswerPairing { addr: addr.clone(), accept: true, pin: None }]);
     r.tap(Key::Down);
@@ -817,6 +815,17 @@ fn bluetooth_application_asks_before_pairing() {
     r.tap(Key::Select);
     assert_eq!(Rig::drain(&bt), [Command::BluetoothAnswerPairing { addr, accept: true, pin: Some("1234".into()) }]);
     assert_eq!(r.screen(), "bluetooth");
+}
+
+#[test]
+fn bluetooth_application_searches_when_opened() {
+    let mut r = Rig::new(Model::D65);
+    let bt = r.store.handle(Domain::Bluetooth);
+    r.store.update::<Bluetooth, _>(|b| b.present = true);
+    let shown = r.store.send(Command::ShowScreen { name: "bluetooth".into() });
+    r.ui.pump();
+    assert_eq!(shown.wait(), Ok(Reply::Done));
+    assert_eq!(Rig::drain(&bt), [Command::BluetoothDiscovery { on: true }]);
 }
 
 /// A view with one text widget, for the idle screen.

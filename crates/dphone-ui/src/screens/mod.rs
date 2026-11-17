@@ -201,14 +201,31 @@ pub(crate) struct Menu {
     build: Box<dyn Fn(&Cx) -> Vec<Item> + Send>,
     st: ListState,
     numbered: bool,
+    /// Run when the menu first becomes the top screen.
+    on_open: Option<Box<dyn Fn(&Cx) + Send>>,
+    opened: bool,
 }
 
 impl Menu {
     pub fn new(name: &'static str, title: impl Into<String>, build: impl Fn(&Cx) -> Vec<Item> + Send + 'static) -> Menu {
-        Menu { name, title: title.into(), build: Box::new(build), st: ListState::default(), numbered: true }
+        Menu {
+            name,
+            title: title.into(),
+            build: Box::new(build),
+            st: ListState::default(),
+            numbered: true,
+            on_open: None,
+            opened: false,
+        }
     }
     pub fn boxed(name: &'static str, title: impl Into<String>, build: impl Fn(&Cx) -> Vec<Item> + Send + 'static) -> Box<dyn Screen> {
         Box::new(Self::new(name, title, build))
+    }
+    /// Runs `f` when the menu opens, i.e., the first time it is the top
+    /// screen, and not again when a screen it opened closes.
+    pub fn on_open(mut self, f: impl Fn(&Cx) + Send + 'static) -> Menu {
+        self.on_open = Some(Box::new(f));
+        self
     }
     fn activate(&mut self, cx: &Cx, idx: usize) -> Nav {
         let items = (self.build)(cx);
@@ -225,6 +242,14 @@ impl Menu {
 impl Screen for Menu {
     fn name(&self) -> String {
         self.name.into()
+    }
+    fn enter(&mut self, cx: &Cx) {
+        if !self.opened {
+            self.opened = true;
+            if let Some(f) = &self.on_open {
+                f(cx);
+            }
+        }
     }
     fn softkeys(&self, _cx: &Cx) -> Vec<Soft> {
         vec![soft(1, tr::SELECT), soft(0, ""), soft(0, ""), soft(4, tr::BACK)]

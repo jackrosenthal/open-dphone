@@ -241,7 +241,6 @@ pub const BT_REFUSE: &str = "Do not pair";
 pub const BT_CONNECTED: &str = "Connected";
 pub const BT_PAIRED: &str = "Paired";
 pub const BT_PAIRING: &str = "Pairing";
-pub const BT_ADD_DEVICE: &str = "Add a headset";
 pub const BT_CONNECT: &str = "Connect";
 pub const BT_DISCONNECT: &str = "Disconnect";
 pub const BT_FORGET: &str = "Forget";
