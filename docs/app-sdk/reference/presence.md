@@ -1,7 +1,5 @@
 # `presence`
 
-The presence of contacts and of the phone's user.
-
 ## Watched contacts
 
 The phone watches contacts for the rapid-dial (BLF) keys, and the functions on this page read what the phone learns from doing so.  No function makes the phone watch an additional contact.  The phone watches a contact when both of these are true:

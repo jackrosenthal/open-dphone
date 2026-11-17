@@ -1,6 +1,6 @@
 # SDK helpers
 
-The `dphone-app-sdk` crate adds a few functions and types on top of the phone's interface.  Helpers run inside the app and only call functions documented on the other pages, so using a helper gives the app the capability of whichever interface the helper calls.
+Helpers run inside the app and call the functions on the other pages, so using a helper gives the app the capability of each interface that the helper calls.
 
 ## Prelude
 
@@ -9,8 +9,6 @@ The `dphone-app-sdk` crate adds a few functions and types on top of the phone's 
 - The trait `App`, the constant `ROOT`, and the types `Event`, `Widget`, `Rect`, `ListItem`, `Softkey`, `WidgetKind`, `WidgetEvent`, `Skin`, `PbxOutcome`, `PbxScope`, `PbxEntry`, `PbxStorageOutcome`, `TimeStyle`, `AppKind`, `Json`, `Form`, and `Message`.
 - The functions `screen`, `content_rect`, and `row_height`.
 - The modules `audio`, `calls`, `config`, `events`, `http`, `l10n`, `pbx`, `pbx_storage`, `presence`, `runtime`, `storage`, `timers`, and `ui`.
-
-Import everything else by name, such as `dphone_app_sdk::canvas` or `dphone_app_sdk::InputMode`.
 
 ## Screens
 
@@ -50,7 +48,7 @@ impl Message {
 }
 ```
 
-A screen with a title and one block of wrapped text, for a loading notice, an error, or a confirmation.  `show` calls `screen`, creates the text widget, sets `keys` as the window's softkeys, and focuses the text.  The `text` field is the text widget, so that the app can call `ui::set_text` later.
+A screen with a title and one block of wrapped text.  `show` calls `screen`, creates the text widget, sets `keys` as the window's softkeys, and focuses the text.
 
 ### `Form`
 
@@ -92,14 +90,7 @@ The four log functions call [`runtime::log`](runtime.md#log) with levels 0 throu
 pub fn pbx_request(method: &str, parameters: Json) -> u32
 ```
 
-Calls [`pbx::request`](pbx.md#request) with `parameters` serialized as JSON.  If the parameters have no `account_id` member and [`config::app_setting("account_id")`](config.md#app_setting) is not empty, the helper adds that member.  If `parameters` is not an object, the helper sends an empty object.  `pbx_request` uses the `pbx` and `config` capabilities.
-
-```rust
-let id = pbx_request(
-    "switchvox.users.callQueues.getTodaysStatus",
-    Json::obj([("call_queue_account_id", Json::str("201"))]),
-);
-```
+Calls [`pbx::request`](pbx.md#request) with `parameters` serialized as JSON.  If the parameters have no `account_id` member and [`config::app_setting("account_id")`](config.md#app_setting) is not empty, the helper adds that member.  If `parameters` is not an object, the helper sends an empty object.
 
 ### `pbx_error_text`
 
@@ -126,7 +117,7 @@ pub enum Json {
 }
 ```
 
-A small JSON value type with a parser and a serializer, in the `json` module.  Numbers are stored as text.
+A JSON value type with a parser and a serializer, in the `json` module.  Numbers are stored as text.
 
 | Function | Result |
 | --- | --- |

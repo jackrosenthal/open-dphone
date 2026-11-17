@@ -1,7 +1,5 @@
 # `timers`
 
-Timers and clocks.
-
 ## `set`
 
 ```rust
@@ -14,12 +12,6 @@ Starts a timer and returns the timer's ID, which is never 0.  The app receives [
 - A repeating timer with a delay under 50 milliseconds runs at 50 milliseconds.
 - Timers run whether or not the app is on screen, and end with the instance.
 - Timer events don't queue up.  If the phone is busy for several periods of a repeating timer, a single event arrives, and the next is due one full period later.
-
-```rust
-self.tick = timers::set(1000, true).ok();   // an Option<u32>
-// in handle:
-// Event::Timer(id) if Some(id) == self.tick => self.redraw_clock(),
-```
 
 ## `cancel`
 
@@ -35,7 +27,7 @@ Stops a timer.  No further events arrive for that timer.  An ID that doesn't bel
 pub fn now_ms() -> u64
 ```
 
-Returns the time in milliseconds on a monotonic clock, for measuring intervals.  Changes to the wall clock don't affect the value.  The clock starts at zero when the phone's main process starts, not when the app starts.
+Returns the time in milliseconds on a monotonic clock, for measuring intervals.  The clock starts at zero when the phone's main process starts, not when the app starts.
 
 ## `wall_time`
 

@@ -1,25 +1,6 @@
 # `canvas`
 
-Free-form drawing, for anything that widgets can't show, such as a game board or a chart.
-
-A canvas is a widget that displays a list of drawing operations.  [`draw`](#draw) replaces the entire list in one call, so the phone never paints a half-finished picture, and the phone repaints from the list whenever the screen needs repainting.  The [`ui`](ui.md) functions move, hide, and destroy a canvas like any other widget.  To animate, call `draw` from a repeating [timer](timers.md), which can fire up to 20 times per second.
-
-```rust
-use dphone_app_sdk::canvas::{self, Color, Op, Role, Text};
-use dphone_app_sdk::{Font, Rect, ROOT};
-
-let board = canvas::create(ROOT, Rect::new(0, 0, 120, 120));
-let ink = canvas::theme_color(Role::Foreground);
-canvas::draw(board, &[
-    Op::Fill((Rect::new(10, 10, 100, 100), Color { r: 0, g: 96, b: 160 })),
-    Op::Text(Text {
-        box_: Rect::new(10, 10, 100, 100),
-        font: Font::Large,
-        color: ink,
-        text: "7".into(),
-    }),
-])?;
-```
+A canvas is a widget that displays a list of drawing operations, which [`draw`](#draw) replaces in one call.  The phone repaints from the list whenever the screen needs repainting.  The [`ui`](ui.md) functions move, hide, and destroy a canvas like any other widget.  To animate, call `draw` from a repeating [timer](timers.md), which can fire up to 20 times per second.
 
 ## Types
 
@@ -55,7 +36,7 @@ pub enum Op {
 }
 ```
 
-`Color` is an RGB color.  The grayscale skins map each color to the nearest of four shades (black, dark gray, light gray, and white) by brightness.
+The grayscale skins map each color to the nearest of four shades (black, dark gray, light gray, and white) by brightness.
 
 Operations are painted in list order, with later operations on top of earlier ones.  Coordinates are relative to the top-left corner of the canvas, and drawing is clipped to the canvas.
 
@@ -63,7 +44,7 @@ Operations are painted in list order, with later operations on top of earlier on
 | --- | --- |
 | `Op::Fill((rect, color))` | A filled rectangle. |
 | `Op::Bitmap(bitmap)` | A one-color image.  `bits` holds one bit per pixel, in rows from the top.  Each row is padded to a whole number of bytes, with the leftmost pixel in the high bit, so `bits.len()` must equal `width.div_ceil(8) * height`.  Each set bit is painted in `color` as a square `scale` pixels on a side (1 to 8), and clear bits are transparent.  `x` and `y` position the top-left corner, and `width` and `height` (1 to 256 each) are the image's dimensions before scaling. |
-| `Op::Text(text)` | A single line of text, at most 64 bytes, in one color and in one of the skin's fonts (the same fonts as [`ui::set_font`](ui.md#set_font)).  The text is positioned so that the pixels that the glyphs actually paint are centered in `box_`, both horizontally and vertically, which puts a digit in the middle of a square.  Drawing is clipped to `box_`.  The field is named `box` in `app.wit`. |
+| `Op::Text(text)` | A single line of text, at most 64 bytes, in one color and in one of the skin's fonts (the same fonts as [`ui::set_font`](ui.md#set_font)).  The text is positioned so that the pixels that the glyphs actually paint are centered in `box_`, both horizontally and vertically, which puts a digit in the middle of a square.  Drawing is clipped to `box_`. |
 
 ## `theme_color`
 
@@ -71,7 +52,7 @@ Operations are painted in list order, with later operations on top of earlier on
 pub fn theme_color(role: Role) -> Color
 ```
 
-Returns one of the current skin's colors, so that a drawing can match the widgets around the canvas.
+Returns one of the current skin's colors.
 
 | `Role` | Color |
 | --- | --- |
@@ -81,7 +62,7 @@ Returns one of the current skin's colors, so that a drawing can match the widget
 | `Secondary` | Secondary text. |
 | `Border` | Separators and borders. |
 
-On a color model, these are the colors of the user's chosen theme, and they change while the app is running if the user switches themes.  The app on screen then receives [`Event::Foreground`](app-events.md#foreground) again.  To stay in sync, read the colors and redraw on every `Foreground`.
+On a color model, these are the colors of the user's chosen theme, and they change while the app is running if the user switches themes.  The app on screen then receives [`Event::Foreground`](app-events.md#foreground) again.
 
 ## `text_size`
 
@@ -89,7 +70,7 @@ On a color model, these are the colors of the user's chosen theme, and they chan
 pub fn text_size(font: Font, text: &str) -> Size
 ```
 
-Returns the width and height of the pixels that the glyphs of `text` paint in one of the skin's fonts, without any line spacing.  `Op::Text` centers text by the same measurement.  Use the result to pick a font that fits a box.  Only the first 64 bytes of `text` are measured.
+Returns the width and height of the pixels that the glyphs of `text` paint in one of the skin's fonts, without any line spacing.  `Op::Text` centers text by the same measurement.  Only the first 64 bytes of `text` are measured.
 
 ## `create`
 
@@ -97,7 +78,7 @@ Returns the width and height of the pixels that the glyphs of `text` paint in on
 pub fn create(parent: Widget, bounds: Rect) -> Widget
 ```
 
-Creates a canvas widget and returns the handle.  The canvas is empty until the first `draw`.  `parent` and `bounds` work the same way as in [`ui::create`](ui.md#create), including the result of 0 for a parent in an idle window that the app doesn't have.
+The canvas is empty until the first `draw`.  `parent` and `bounds` work the same way as in [`ui::create`](ui.md#create), including the result of 0 for a parent in an idle window that the app doesn't have.
 
 ## `draw`
 

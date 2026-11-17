@@ -1,7 +1,5 @@
 # `runtime`
 
-App lifecycle control, logging, and random numbers.  Every app has `runtime`, which is not a capability.
-
 `background`, `exit`, `restart`, and `show_app` only queue a request.  The phone carries out queued requests, in order, after the current `start` or `handle` returns.
 
 ## `background`
@@ -26,7 +24,7 @@ Stops the app.  After the current handler returns, the app receives `Event::Exit
 pub fn restart()
 ```
 
-Stops the app the same way as `exit`, and then starts a fresh instance.  Memory, widgets, timers, pending requests, and defined images are all gone, and `start` runs again.  If the app was on screen, the phone shows the new instance.
+Stops the app the same way as `exit`, and then starts a fresh instance.  If the app was on screen, the phone shows the new instance.
 
 ## `set_exit_after_background`
 
@@ -64,9 +62,7 @@ pub fn log(level: u8, message: &str)
 
 Writes a line to the phone's log, prefixed with the app's name.  `level` is 0 for an error, 1 for a warning, 2 for information, and 3 or higher for debugging.  A message longer than 512 bytes is truncated at the last whole character that fits.
 
-The SDK has a [helper for each level](helpers.md#logging-and-storage): `log_error`, `log_warn`, `log_info`, and `log_debug`.
-
-Panics are logged automatically.  [`export_app!`](manifest.md#export_app) installs a panic hook that writes `panicked at <file>:<line>: <message>` at level 0 before the phone stops the app.
+The SDK has a [helper for each level](helpers.md#logging-and-storage).
 
 ## `in_foreground`
 
@@ -82,4 +78,4 @@ Returns whether the app's window is the top screen: `true` from `Event::Foregrou
 pub fn random() -> u64
 ```
 
-Returns 64 random bits from the kernel's random source.  Use the result to seed a game's random number generator, for example.
+Returns 64 random bits from the kernel's random source.

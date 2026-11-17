@@ -44,7 +44,6 @@ nav = [
       "app-sdk/reference/manifest.md",
       "app-sdk/reference/app-events.md",
       "app-sdk/reference/types.md",
-      "app-sdk/reference/limits.md",
       "app-sdk/reference/helpers.md",
       { "Interfaces" = [
         "app-sdk/reference/runtime.md",

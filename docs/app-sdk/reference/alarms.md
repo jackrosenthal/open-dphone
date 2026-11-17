@@ -1,8 +1,6 @@
 # `alarms`
 
-The phone's alarm clock.
-
-The phone stores the alarms and rings them whether or not any app is running.  When an alarm is due, the phone plays the alarm's tone and shows the alarm, with Snooze and Dismiss, on top of whatever is on screen.  This interface lets an app display and change the alarms.  The web interface edits the same alarms.  Every running app that uses `alarms` receives [`Event::AlarmsChanged`](app-events.md#alarmschanged) after each change.
+The phone stores the alarms and rings them whether or not any app is running.  The web interface edits the same alarms.  Every running app that uses `alarms` receives [`Event::AlarmsChanged`](app-events.md#alarmschanged) after each change.
 
 ```rust
 pub struct Alarm {
@@ -17,11 +15,10 @@ pub struct Alarm {
 
 | Field | Contents |
 | --- | --- |
-| `id` | The alarm's ID.  Never 0 for an existing alarm. |
+| `id` | Never 0 for an existing alarm. |
 | `hour`, `minute` | The time of day in the phone's time zone: 0 to 23, and 0 to 59. |
 | `days` | The days of the week on which the alarm rings, as a bit mask: bit 0 is Sunday, and bit 6 is Saturday.  0 makes a one-time alarm, which rings the next time the clock reaches the alarm's time and is then disabled. |
 | `tone` | The alarm tone, one of the names that `tones()` returns. |
-| `enabled` | Whether the alarm is on.  A disabled alarm doesn't ring. |
 
 The functions that return `Result` wait up to 1.5 seconds for the alarm clock, which writes the alarms to flash before answering.  A bad argument returns `Error::Invalid(text)`.  A failure, including no answer in time, returns `Error::Failed(text)`.  When no answer comes in time, the alarm clock may still carry out the request.
 
@@ -40,18 +37,6 @@ pub fn set(a: &Alarm) -> Result<u32, Error>
 ```
 
 Adds an alarm if `a.id` is 0, or updates the alarm with that `id`.  Returns the alarm's `id`.
-
-```rust
-// Every Monday at 8:00, with the phone's first alarm tone.
-let id = alarms::set(&Alarm {
-    id: 0,
-    hour: 8,
-    minute: 0,
-    days: 1 << 1,
-    tone: String::new(),
-    enabled: true,
-})?;
-```
 
 - An empty `tone` selects the phone's first alarm tone.  Tone names are matched without regard to case.
 - An updated alarm starts over from the current time: if the new time has already passed today, the alarm isn't due until tomorrow.  If the alarm was ringing or snoozed, that ends.
@@ -87,7 +72,7 @@ Returns the names of the alarm tones.  The alarm clock has a separate set of ton
 pub fn preview(tone: Option<&str>)
 ```
 
-Plays or stops a preview of an alarm tone, for use while the user picks a tone.
+Plays or stops a preview of an alarm tone.
 
 `Some(name)` plays the alarm tone for up to four seconds, replacing any sound that is playing.  A name that isn't an alarm tone plays the default tone.
 

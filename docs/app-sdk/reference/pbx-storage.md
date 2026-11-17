@@ -1,8 +1,6 @@
-# `pbx-storage`
+# `pbx_storage`
 
-The app's key-value store on the PBX.  The Rust module is `pbx_storage`.
-
-[`storage`](storage.md) keeps data on a single phone.  `pbx_storage` keeps data on the PBX, so the data is the same on every phone and outlives any one phone: a game's high-score table, for example, or a user's progress.  The store requires a PBX running Open DPMA, and needs no configuration in the app or on the phone.
+The app's key-value store on the PBX.  Unlike [`storage`](storage.md), the store is the same on every phone and outlives any one phone.  The store requires a PBX running Open DPMA, and needs no configuration in the app or on the phone.
 
 An app has two sets of keys, and no other app can access either:
 
@@ -96,7 +94,7 @@ pub fn watch(on: bool)
 
 Turns change notifications on or off.  While notifications are on, the app receives [`Event::PbxStorageChanged`](app-events.md#pbxstoragechanged) whenever another phone sets or removes one of the app's shared keys, for as long as the instance runs.
 
-The event carries the scope and the key but not the value, so the app needs to read the key again.  A phone isn't notified of writes made from that same phone, or of changes to a user's keys.  An app that isn't running receives nothing, and should read whatever data the app displays at the next start.
+The event carries the scope and the key but not the value, so the app needs to read the key again.  A phone isn't notified of writes made from that same phone, or of changes to a user's keys.
 
 ## `online`
 
@@ -150,6 +148,6 @@ fn handle(&mut self, event: Event) {
 
 A request ends in `Unreachable(text)` when the phone has no session with the PBX (the phone isn't provisioned, or the network or the PBX is down) or when the PBX doesn't answer.  A PBX without Open DPMA never answers.  After the PBX fails to answer a storage request, the phone answers further requests with `Unreachable` immediately for the next 60 seconds, without contacting the PBX.
 
-The phone doesn't queue requests to send later.  An app that can't afford to lose a write should keep the value (in [`storage`](storage.md), if the value must outlive the instance) and write again on [`Event::PbxStorageOnline`](app-events.md#pbxstorageonline).  Every running app that uses `pbx_storage` receives that event each time the store becomes reachable.  The event also means that entries read earlier may have changed.
+The phone doesn't queue requests to send later.  An app that can't afford to lose a write should keep the value (in [`storage`](storage.md), if the value must outlive the instance) and write again on [`Event::PbxStorageOnline`](app-events.md#pbxstorageonline).
 
 A `set` or `remove` that ends in `Unreachable` because no answer came may still have reached the PBX.  If the write carried `expect`, retrying then ends in `Conflict`, with the entry that the first attempt wrote.

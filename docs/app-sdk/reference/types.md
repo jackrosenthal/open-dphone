@@ -1,8 +1,6 @@
 # Shared types
 
-These types come from the `types` interface in `app.wit` and are used by more than one interface or by [events](app-events.md).  The crate re-exports each of them at the root (`dphone_app_sdk::Rect`), and the most common ones are also in the prelude (`dphone_app_sdk::prelude::*`).  Types used by a single interface (`canvas::Op`, `lamps::Color`, `alarms::Alarm`) are documented with that interface.
-
-In Rust, enum variants are the `app.wit` names in camel case (`small-gray` becomes `Skin::SmallGray`), and record fields are in snake case (`line-height` becomes `line_height`).
+The crate exports each of these types at the root, e.g., `dphone_app_sdk::Rect`.
 
 ## Handles and identifiers
 
@@ -11,11 +9,9 @@ pub type Widget = u32;
 pub const ROOT: Widget = 0;
 ```
 
-A `Widget` is a handle to a widget within one app.  `ROOT` (0) is the app's window, which is the parent of top-level widgets and holds the window's softkeys and key claims.  Handles for widgets in the [idle window](ui.md#idle-window) have the high bit set, and the idle window's root is `0x8000_0000`.
+`ROOT` is the app's [window](ui.md#window).  Handles of widgets in the [idle window](ui.md#idle-window) have the high bit set.  The phone never reuses a handle within one instance of an app.
 
-The phone never reuses a handle within one instance of an app.  Functions ignore a handle to a widget that no longer exists; given such a handle, `ui::selected` returns `None` and `ui::value` returns `""`.
-
-Timer IDs, request IDs, and call IDs are `u32` values (`timer-id`, `request-id`, and `call-id` in `app.wit`).  Timer and request IDs are never 0.  `pbx::request`, `http::request`, and the `pbx_storage` requests draw IDs from a single counter, so no two pending requests in an app share an ID.
+Timer and request IDs are never 0.  `pbx::request`, `http::request`, and the `pbx_storage` requests draw IDs from a single counter, so no two pending requests in an app share an ID.
 
 ## Geometry
 
@@ -28,7 +24,7 @@ impl Rect {
 }
 ```
 
-Coordinates are in pixels.  A widget's `Rect` is relative to the top-left corner of the parent widget, or of the window for a top-level widget.
+Coordinates are in pixels.
 
 ## `Metrics` and `Skin`
 
@@ -48,7 +44,7 @@ pub struct Metrics {
 }
 ```
 
-[`ui::get_metrics`](ui.md#get_metrics) returns the dimensions that an app needs for layout.  The values depend on the skin:
+The values that [`ui::get_metrics`](ui.md#get_metrics) returns depend on the skin:
 
 | Field | `SmallGray` (D40, D45, D50) | `LargeGray` (D70) | `Color` (D60, D62, D65) |
 | --- | --- | --- | --- |
@@ -62,7 +58,7 @@ pub struct Metrics {
 | `scroll_bar_width` | 4 | 4 | 8 |
 | `color` | `false` | `false` | `true` |
 
-`width` and `height` are the dimensions of the app's window.  `row_height` is the height of one row in a list.  The grayscale skins have four shades: black, dark gray, light gray, and white.
+`width` and `height` are the dimensions of the app's window, and `row_height` is the height of one row in a list.
 
 ## Widgets
 
@@ -91,7 +87,7 @@ impl Softkey {
 }
 ```
 
-See [`ui`](ui.md) for the widget kinds, fonts, input modes, list items, and softkeys.  `ListItem::new` leaves `detail` and `icon` empty, and `ListItem::with_detail` leaves `icon` empty.
+See [`ui`](ui.md) for the widget kinds, fonts, input modes, list items, and softkeys.
 
 ## `Error`
 
@@ -108,14 +104,8 @@ pub enum Error {
 | --- | --- |
 | `NotFound` | The named item doesn't exist. |
 | `Invalid(text)` | An argument is invalid.  The text says which one and why. |
-| `NoSpace` | The flash is full.  The phone always keeps 2 MiB free. |
+| `NoSpace` | The flash is full. |
 | `Failed(text)` | The phone tried and failed, or refused.  The text gives the reason. |
-
-Functions in [`calls`](calls.md), [`presence`](presence.md), [`hotdesk`](hotdesk.md), and [`alarms`](alarms.md) hand a request to another part of the phone and wait for an answer, for up to 0.5 seconds (1.5 seconds for `alarms`):
-
-- A request that can't be carried out as asked (a bad argument, no such call, a call in the wrong state) returns `Invalid(text)`.
-- A request that was attempted and failed, or that the phone won't carry out for the app, returns `Failed(text)`.
-- A request that gets no answer in time returns `Failed("the phone did not answer in time; what was asked may still happen")`.  The request was handed off, and may still be carried out.
 
 ## HTTP
 
@@ -123,8 +113,6 @@ Functions in [`calls`](calls.md), [`presence`](presence.md), [`hotdesk`](hotdesk
 pub struct Header { pub name: String, pub value: String }
 pub struct HttpResponse { pub status: u16, pub headers: Vec<Header>, pub body: Vec<u8> }
 ```
-
-[`calls::dial`](calls.md#dial) also uses `Header` for extra SIP headers.
 
 ## PBX requests
 
@@ -163,7 +151,7 @@ pub enum PbxStorageOutcome {
 pub struct PbxStorageChange { pub scope: PbxScope, pub key: String }
 ```
 
-See [`pbx-storage`](pbx-storage.md).
+See [`pbx_storage`](pbx-storage.md).
 
 ## Calls
 
@@ -197,11 +185,9 @@ pub struct Mwi { pub account: u8, pub new_messages: u32, pub old_messages: u32 }
 | Field | Contents |
 | --- | --- |
 | `CallInfo::account`, `Mwi::account`, `AccountInfo::slot` | The account's slot, starting at 0. |
-| `CallInfo::incoming` | `true` for a call that the phone received. |
 | `CallInfo::state` | `Dialing`, `Proceeding`, and `Ringback` describe an outgoing call that hasn't been answered.  `Ringing` is an incoming call that hasn't been answered.  `Held` is a call on hold, by either side.  `Ended` is a call that is over but still listed for a few seconds. |
 | `CallInfo::duration` | Seconds since the call was answered, computed when the `CallInfo` is created.  0 before the call is answered. |
 | `AccountInfo::id` | The account's `id` attribute in the phone's configuration. |
-| `AccountInfo::registered` | Whether the account is currently registered. |
 
 ## Presence
 

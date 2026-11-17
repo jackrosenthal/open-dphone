@@ -1,14 +1,10 @@
 # `lamps`
 
-Control of the phone's lamps.
-
 A color that an app sets shows only while the app's window is the top screen.  During a call, under another screen, and after the app has left the screen, exited, or faulted, every lamp shows the phone's normal indication.  The app's settings are remembered while the window is covered, and take effect again when the window returns.
 
 ```rust
 pub enum Color { Off, Red, Green, Amber }
 ```
-
-`lamps::Color` is a different type from `canvas::Color`.
 
 ## `names`
 

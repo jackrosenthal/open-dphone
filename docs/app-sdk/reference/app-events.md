@@ -1,7 +1,5 @@
 # Events
 
-The phone reports everything that happens by calling `App::handle` with an `Event`: a key press, a softkey, a timer, the result of a request, a change in a call.  In `app.wit`, the type is the `event` variant in the `types` interface.
-
 ```rust
 pub enum Event {
     Foreground,
@@ -32,43 +30,9 @@ pub enum Event {
 }
 ```
 
-The payload types are described in [Shared types](types.md).
-
-## Summary
-
-| Event | Sent when | Delivered to |
-| --- | --- | --- |
-| [`Foreground`](#foreground) | The app's window became the top screen. | The app. |
-| [`Background`](#background) | The app's window stopped being the top screen. | The app. |
-| [`Exit`](#exit) | The phone is about to discard the instance. | The app. |
-| [`IdleScreenShow`](#idlescreenshow-and-idlescreenhide) | The app's idle window appeared on screen. | Apps with `has_idle`. |
-| [`IdleScreenHide`](#idlescreenshow-and-idlescreenhide) | The app's idle window left the screen. | Apps with `has_idle`. |
-| [`Key`](#key) | A claimed key was pressed, or any key during `input::capture`. | The app on screen. |
-| [`Hook`](#hook) | The handset was lifted or replaced during `input::capture`. | The app on screen. |
-| [`Softkey`](#softkey) | One of the app's softkeys was pressed. | The app on screen. |
-| [`Widget`](#widget) | The user moved a list selection, activated a row, edited an input, or submitted an input. | The app on screen. |
-| [`Timer`](#timer) | One of the app's timers fired. | The app that set the timer. |
-| [`Pbx`](#pbx) | A `pbx::request` finished. | The app that made the request. |
-| [`Http`](#http) | An `http::request` finished. | The app that made the request. |
-| [`Call`](#call) | A call changed. | Apps that called `calls::observe(true)`. |
-| [`Push`](#push) | The PBX pushed an event to the phone. | Apps that called `events::observe` with the event's name. |
-| [`Mwi`](#mwi) | An account's message-waiting counts changed. | Every running app that uses `calls`. |
-| [`Presence`](#presence) | A watched contact's presence changed. | Apps that called `presence::observe` with a matching target. |
-| [`NewConfig`](#newconfig) | The phone applied a new configuration. | Every running app that uses `config`. |
-| [`ServerChange`](#serverchange) | An account registered with the alternate host, or returned to the primary. | Every running app that uses `events`. |
-| [`PlaybackStopped`](#playbackstopped) | The app's sound stopped playing. | The app that called `audio::play`. |
-| [`Message`](#message) | An app called `events::send`. | The app named in the call. |
-| [`PbxStorage`](#pbxstorage) | A `pbx_storage` request finished. | The app that made the request. |
-| [`PbxStorageChanged`](#pbxstoragechanged) | Another phone set or removed one of the app's shared keys. | Apps that called `pbx_storage::watch(true)`. |
-| [`PbxStorageOnline`](#pbxstorageonline) | The PBX store became reachable. | Every running app that uses `pbx_storage`. |
-| [`AlarmsChanged`](#alarmschanged) | The alarm clock changed. | Every running app that uses `alarms`. |
-| [`HotdeskDone`](#hotdeskdone) | A login or logout finished. | The app that called `hotdesk::login` or `hotdesk::logout`. |
-
-Only running apps receive events.  The phone doesn't queue events for an app that isn't running, and discards an event addressed to an instance that no longer exists, such as the result of a request made before a restart.
-
 ## `Foreground`
 
-The app's window became the top screen: either the app was opened, or a screen that covered the window (a call, a menu, another app) went away.  `runtime::in_foreground` returns `true` from this event until `Background`.
+The app's window became the top screen: either the app was opened, or a screen that covered the window (a call, a menu, another app) went away.
 
 On a color model, the phone also sends `Foreground` to the app on screen when the user switches themes, so that an app that draws with [`canvas::theme_color`](canvas.md#theme_color) can redraw with the new colors.  Treat `Foreground` as "draw the screen," not as "the app was just opened."
 
@@ -76,15 +40,13 @@ On a color model, the phone also sends `Foreground` to the app on screen when th
 
 The app's window stopped being the top screen: another screen covers the window, the user pressed line key 1 or an unclaimed `cancel`, or the app called `runtime::background`.
 
-After `handle` returns, the phone stops a `Foreground` app that has no idle window, unless the app called `runtime::set_exit_after_background(false)`.  The app then receives `Exit`.  An app that keeps running keeps all widgets, timers, and pending requests, and any changes made to the window while off screen appear when the window returns.
-
-When the app on screen leaves the screen, the phone also ends every call that belongs to apps (see [`Push`](#push)).
+After `handle` returns, the phone stops a `Foreground` app that has no idle window, unless the app called `runtime::set_exit_after_background(false)`.  The app then receives `Exit`.
 
 ## `Exit`
 
 The last event that an instance receives.  The phone sends `Exit` before discarding the instance for any of these reasons: `runtime::exit`, `runtime::restart`, the stop that follows `Background`, removal or replacement of the app, a configuration that disables a built-in app, or shutdown.  The handler gets the usual 2 seconds and can call any function, but a result that would arrive later is never delivered.
 
-An app stopped by a fault (a trap, the time limit, or the memory limit) receives no `Exit`.
+An app stopped by a [fault](index.md#faults-and-restarts) receives no `Exit`.
 
 ## `IdleScreenShow` and `IdleScreenHide`
 
@@ -131,15 +93,13 @@ The handset was lifted (`true`) or replaced (`false`) while the app's window was
 Event::Softkey(id)
 ```
 
-The user pressed a softkey.  `id` is the `id` of the `Softkey` passed to [`ui::set_softkeys`](ui.md#set_softkeys).  The "More" key that pages through more than four softkeys and the "Delete" key of an input don't produce `Softkey` events.
+`id` is the `id` of the `Softkey` passed to [`ui::set_softkeys`](ui.md#set_softkeys).  The "More" key that pages through more than four softkeys and the "Delete" key of an input don't produce `Softkey` events.
 
 ## `Widget`
 
 ```rust
 Event::Widget((widget, widget_event))
 ```
-
-The user interacted with a list or an input.  `widget` is the handle that `ui::create` returned.
 
 | `WidgetEvent` | Sent when |
 | --- | --- |
@@ -154,7 +114,7 @@ The user interacted with a list or an input.  `widget` is the handle that `ui::c
 Event::Timer(id)
 ```
 
-A timer set with [`timers::set`](timers.md#set) fired.  Timers run whether or not the app is on screen.
+A timer set with [`timers::set`](timers.md#set) fired.
 
 ## `Pbx`
 
@@ -162,7 +122,7 @@ A timer set with [`timers::set`](timers.md#set) fired.  Timers run whether or no
 Event::Pbx((id, outcome))
 ```
 
-The result of a [`pbx::request`](pbx.md#request).  `id` is the ID that the call returned.  Every request ends with exactly one `Pbx` event, unless the app canceled the request.
+The result of a [`pbx::request`](pbx.md#request).  Every request ends with exactly one `Pbx` event, unless the app canceled the request.
 
 ## `Http`
 
@@ -170,7 +130,7 @@ The result of a [`pbx::request`](pbx.md#request).  `id` is the ID that the call 
 Event::Http((id, result))
 ```
 
-The result of an [`http::request`](http.md#request).  `Ok(response)` can carry any HTTP status, including 404 or 500.  `Err(text)` explains why no response was received.
+The result of an [`http::request`](http.md#request).
 
 ## `Call`
 
@@ -216,15 +176,15 @@ An account's counts of new and old messages changed.  Every running app that use
 Event::Presence(presence)
 ```
 
-A contact that the phone watches changed, and the app observes a matching target with [`presence::observe`](presence.md#observe).  `presence.target` is the target string that the app passed to `observe`.
+A contact that the phone watches changed, and the app observes a matching target with [`presence::observe`](presence.md#observe).
 
 ## `NewConfig`
 
-The phone applied a new merged configuration.  Values read earlier from [`config`](config.md) may have changed.
+The phone applied a new merged configuration.  Values read earlier from [`config`](config.md) may have changed.  Every running app that uses `config` receives the event.
 
 ## `ServerChange`
 
-An account registered with a different host: the phone either failed over to the alternate host or returned to the primary.  The event has no payload; [`config::accounts`](config.md#accounts) shows the current registrations.  The push named `digium.phone.server_change` never arrives as `Event::Push`.
+An account registered with a different host: the phone either failed over to the alternate host or returned to the primary.  The event has no payload; [`config::accounts`](config.md#accounts) shows the current registrations.  Every running app that uses `events` receives the event.  The push named `digium.phone.server_change` never arrives as `Event::Push`.
 
 ## `PlaybackStopped`
 
@@ -260,11 +220,11 @@ Another phone set or removed the app's shared key `change.key`.  The app receive
 
 ## `PbxStorageOnline`
 
-The app's store on the PBX became reachable.  Requests that ended in `Unreachable` are worth retrying, and anything the app read earlier may have changed.
+The app's store on the PBX became reachable, for the first time or again.  Requests that ended in `Unreachable` are worth retrying, and anything the app read earlier may have changed.  Every running app that uses `pbx_storage` receives the event.
 
 ## `AlarmsChanged`
 
-The phone's alarm clock changed: an alarm was added, changed, or removed (by any app or by the web interface), an alarm rang, or an alarm was snoozed or dismissed.  Read the new state with [`alarms`](alarms.md).
+The phone's alarm clock changed: an alarm was added, changed, or removed (by any app or by the web interface), an alarm rang, or an alarm was snoozed or dismissed.  Every running app that uses [`alarms`](alarms.md) receives the event.
 
 ## `HotdeskDone`
 
@@ -272,9 +232,4 @@ The phone's alarm clock changed: an alarm was added, changed, or removed (by any
 Event::HotdeskDone(result)
 ```
 
-A [`hotdesk::login`](hotdesk.md#login) or [`hotdesk::logout`](hotdesk.md#logout) that this app started has finished.
-
-- `Ok(())`: the phone has the requested configuration.
-- `Err(text)`: the PBX or the phone refused.  `text` gives the reason (for example, a wrong PIN, with the PBX's error code), and the phone's assignment is unchanged.
-
-The event arrives once for each call that returned `Ok`, and only at the app that made the call.
+The outcome of a [`hotdesk::login`](hotdesk.md#login) or [`hotdesk::logout`](hotdesk.md#logout) that this app made and that returned `Ok`, once for each such call.

@@ -1,12 +1,10 @@
 # `calls`
 
-Call control, call events, and message-waiting counts.
-
-A call that an app places or answers is an ordinary call on the phone: the phone shows the call screen, selects the audio path, and writes the call log.  An app can see every call on the phone, not only the calls that the app started.
+A call that an app places or answers is an ordinary call on the phone: the phone shows the call screen, selects the audio path, and writes the call log.
 
 The functions that return `Result` hand the request to the phone's call control and wait up to 0.5 seconds for an answer:
 
-- `Error::Invalid(text)` means that call control rejected the request as impossible: no such call, a call in the wrong state, or a bad argument.  The tables below quote the texts.
+- `Error::Invalid(text)` means that call control rejected the request as impossible: no such call, a call in the wrong state, or a bad argument.
 - `Error::Failed(text)` means that call control tried to carry out the request and couldn't.
 - `Failed("the phone did not answer in time; what was asked may still happen")` means that call control didn't answer within 0.5 seconds.  The request may still be carried out afterward.  Check [`list`](#list) or [`Event::Call`](app-events.md#call) to find out what happened.
 
@@ -16,11 +14,7 @@ The functions that return `Result` hand the request to the phone's call control 
 pub fn dial(number: &str, account: Option<u8>, headers: &[Header]) -> Result<u32, Error>
 ```
 
-Places a call and returns the call ID.  The phone puts any other calls on hold.
-
-```rust
-let call = calls::dial("*97", None, &[])?;
-```
+The phone puts any other calls on hold.
 
 - `number` is a dial string or a SIP URI, 1 to 256 bytes long.
 - `account` is the account's slot, starting at 0.  With `None`, the phone uses the first registered account, or the first account if none is registered.
@@ -33,7 +27,7 @@ let call = calls::dial("*97", None, &[])?;
 | `Invalid("no account is configured")` | The phone has no accounts. |
 | `Invalid("too many calls")` | The phone already has the maximum number of calls (four unless configured otherwise). |
 | `Invalid("too many headers")`, `Invalid("the header ... cannot be set")` | `headers` breaks one of the rules above. |
-| `Failed(text)` | The phone couldn't open the audio or start the call, or call control didn't answer within 0.5 seconds (in which case the call may still start). |
+| `Failed(text)` | The phone couldn't open the audio or start the call. |
 
 ## `answer`
 

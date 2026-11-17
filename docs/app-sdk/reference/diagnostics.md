@@ -1,22 +1,12 @@
 # `diagnostics`
 
-Subsystem health and the phone's log.
-
 ## `health`
 
 ```rust
 pub fn health() -> Vec<(String, String)>
 ```
 
-Returns every subsystem of the phone with that subsystem's state, in a fixed order.  The subsystems are `Core`, `Configuration`, `Network`, `SIP`, `Media`, `DPMA`, `UI`, `Apps`, `Web`, `SSH`, and `Update`.  The state is one of:
-
-| State | Meaning |
-| --- | --- |
-| `ok` | Working. |
-| `starting` | Starting. |
-| `stopped` | Not started, or not part of this phone. |
-| `degraded: <why>` | Working, with a fault. |
-| `failed: <why>` | Not working. |
+Returns every subsystem of the phone with that subsystem's state, in a fixed order.  The subsystems are `Core`, `Configuration`, `Network`, `SIP`, `Media`, `DPMA`, `UI`, `Apps`, `Web`, `SSH`, and `Update`.  The state is `ok`, `starting`, `stopped` (not started, or not part of this phone), `degraded: <why>` (working, with a fault), or `failed: <why>`.
 
 ## `log_tail`
 

@@ -1,20 +1,9 @@
 # `http`
 
-HTTP and HTTPS requests.
-
 ## `request`
 
 ```rust
 pub fn request(method: &str, url: &str, headers: &[Header], body: &[u8]) -> u32
-```
-
-Sends a request and returns the request ID.
-
-```rust
-let headers = [Header { name: "Accept".into(), value: "application/json".into() }];
-self.asked = http::request("GET", "https://example.org/weather.json", &headers, &[]);
-// in handle:
-// Event::Http((id, Ok(response))) if id == self.asked && response.status == 200 => { ... }
 ```
 
 The result arrives as [`Event::Http((id, result))`](app-events.md#http).  `Ok(HttpResponse)` holds the status, headers, and body of the final response, whatever the status.  `Err(text)` means that no response was received.  `request` never fails directly: a request that can't be sent still returns an ID, and ends in `Err`.

@@ -1,29 +1,12 @@
 # `ui`
 
-Widgets, softkeys, key handling, images, and the app's window.
-
-An app builds each screen as a tree of widgets inside the app's window.  The phone draws the widgets and handles the keys that widgets understand, such as moving a list's selection or typing into an input.  The phone reports what the user did through [`Event::Widget`](app-events.md#widget), [`Event::Softkey`](app-events.md#softkey), and [`Event::Key`](app-events.md#key).
-
-```rust
-use dphone_app_sdk::prelude::*;
-
-fn show_menu() -> Widget {
-    let area = screen("Menu");                       // clears the window, draws a title
-    let list = ui::create(WidgetKind::TextList, ROOT, area);
-    ui::set_items(list, &[ListItem::new("First"), ListItem::with_detail("Second", "2")]);
-    ui::set_focus(list);
-    ui::set_softkeys(ROOT, &[Softkey::new(1, "Select"), Softkey::new(2, "Exit")]);
-    list
-}
-```
-
 ## Window
 
-Handle 0 (`ROOT`) is the app's window, which covers the display above the softkey bar.  ([`Metrics`](types.md#metrics-and-skin) lists the dimensions.)  The phone fills the window with the skin's background color and then paints the widgets: parents before children, and siblings in creation order.  Each widget is clipped to the widget's bounds and to the bounds of every ancestor.
+Handle 0 (`ROOT`) is the app's window, which covers the display above the softkey bar.  The phone fills the window with the skin's background color and then paints the widgets: parents before children, and siblings in creation order.  Each widget is clipped to the widget's bounds and to the bounds of every ancestor.
 
-While `start` or `handle` runs, the phone holds back the app's changes to a window and shows them when the function returns.  The changes from one handler therefore normally appear together, in a single repaint.  The window isn't locked in the meantime, though.  If the phone repaints the window for another reason during a handler (the window comes on screen, or the user switches themes), that repaint shows the widgets in whatever state the handler has left them so far.  Changes made while the window is off screen are kept, and appear when the window returns.
+While `start` or `handle` runs, the phone holds back the app's changes to a window and shows them when the function returns.  If the phone repaints the window for another reason during a handler (the window comes on screen, or the user switches themes), that repaint shows the widgets in whatever state the handler has left them so far.  Changes made while the window is off screen are kept, and appear when the window returns.
 
-Functions that take a widget do nothing when given a handle that doesn't exist, or when given `ROOT` where an actual widget is required.  Calling a function on a kind of widget that doesn't use the value stores the value with no visible effect.  Each function below says which kinds apply.
+Functions that take a widget do nothing when given a handle that doesn't exist, or when given `ROOT` where an actual widget is required.  Calling a function on a kind of widget that doesn't use the value stores the value with no visible effect.
 
 ## Widget kinds
 
@@ -36,7 +19,7 @@ Functions that take a widget do nothing when given a handle that doesn't exist, 
 | `Input` | A one-line text field with a cursor. | Digits, `*`, and `#` type.  `left` and `right` move the cursor.  `select` submits.  `up` and `down` move the focus to the previous or next visible `Input` or `TextList` in the window. |
 | `Image` | An image, centered in the bounds at the image's natural size. | None. |
 
-The [`canvas`](canvas.md) interface adds a seventh kind, created with `canvas::create`.
+The [`canvas`](canvas.md) interface adds another kind, created with `canvas::create`.
 
 ## Focus and keys
 
@@ -62,7 +45,7 @@ While an `Input` has the focus and the third position is empty, the phone shows 
 
 ## Idle window
 
-An app whose manifest sets `has_idle` has a second window, on the idle screen.  [`idle_root`](#idle_root) returns the root handle of that window, and any widget created with that handle (or a descendant) as the parent belongs to the idle window.  The `ui` and `canvas` functions work on these widgets the same way as on any others.
+An app whose manifest sets `has_idle` has a second window, on the idle screen.  [`idle_root`](#idle_root) returns the root handle of that window, and any widget created with that handle (or a descendant) as the parent belongs to the idle window.
 
 The idle window differs from the app's main window in several ways:
 
@@ -80,7 +63,7 @@ The idle window differs from the app's main window in several ways:
 pub fn get_metrics() -> Metrics
 ```
 
-Returns the skin, the dimensions of the app's window, and the skin's text sizes.  See [`Metrics`](types.md#metrics-and-skin) for the fields.  `height` reflects [`set_full_screen`](#set_full_screen).
+See [`Metrics`](types.md#metrics-and-skin) for the fields and values.  `height` reflects [`set_full_screen`](#set_full_screen).
 
 ### `idle_size`
 
@@ -104,7 +87,7 @@ Returns the root handle of the app's idle window, `Some(0x8000_0000)`, or `None`
 pub fn create(kind: WidgetKind, parent: Widget, bounds: Rect) -> Widget
 ```
 
-Creates a widget and returns the handle.  `parent` is `ROOT`, the idle window's root, or another widget, and `bounds` is relative to the parent.  A new widget is visible, has no text, and uses `Font::Normal` and `Align::Left`.
+`parent` is `ROOT`, the idle window's root, or another widget, and `bounds` is relative to the parent.  A new widget is visible, has no text, and uses `Font::Normal` and `Align::Left`.
 
 Any kind of widget can be a parent, but only `Group` and `Scroll` draw child widgets.  If `parent` doesn't exist, the new widget becomes a top-level widget of the window that the handle would belong to.  If `parent` is in the idle window and the app has no idle window, `create` creates nothing and returns 0.
 
@@ -146,7 +129,7 @@ Shows or hides the widget and all descendants.  A hidden `TextList` or `Input` i
 pub fn set_focus(w: Widget)
 ```
 
-Gives the widget the focus.  Any kind of widget can have the focus.  Even a kind that handles no keys determines which softkeys are shown and where the search for key claims starts.  Passing `ROOT`, or a handle that doesn't exist, leaves no widget focused.  Changing the focus resets the softkey bar to the first page.
+Any kind of widget can have the focus.  Even a kind that handles no keys determines which softkeys are shown and where the search for key claims starts.  Passing `ROOT`, or a handle that doesn't exist, leaves no widget focused.  Changing the focus resets the softkey bar to the first page.
 
 ### `set_text`
 
@@ -164,7 +147,7 @@ Without wrapping, a `Text` draws a single line, centered vertically in the bound
 pub fn set_align(w: Widget, align: Align)
 ```
 
-Sets the horizontal alignment of a `Text`: `Left` (the default), `Center`, or `Right`.
+Sets the horizontal alignment of a `Text`.  `Left` is the default.
 
 ### `set_font`
 
@@ -172,7 +155,7 @@ Sets the horizontal alignment of a `Text`: `Left` (the default), `Center`, or `R
 pub fn set_font(w: Widget, font: Font)
 ```
 
-Sets the font of a `Text` or an `Input`.  `Font::Normal` is the default.  Use `Small` for secondary text, `Bold` for emphasis, `Title` for a screen title, and `Large` for large digits and names.  The skin determines the typefaces and sizes.  Lists always draw rows in `Font::Normal`.
+Sets the font of a `Text` or an `Input`.  `Font::Normal` is the default.  Lists always draw rows in `Font::Normal`.
 
 ### `set_wrap`
 
@@ -188,7 +171,7 @@ Turns word wrapping on or off for a `Text`.  With wrapping on, the text breaks b
 pub fn set_highlight(w: Widget, on: bool)
 ```
 
-Draws the widget in the skin's selection colors, the way a list draws the selected row: the bounds are filled with the selection background, and text takes the selection text color.  Pass `false` to restore the default colors.  `set_highlight` applies to `Text`, `Group`, `Scroll`, and `Image` (to highlight one cell in a grid of texts, for example).  An `Input` ignores the colors.
+Draws the widget in the skin's selection colors, the way a list draws the selected row: the bounds are filled with the selection background, and text takes the selection text color.  Pass `false` to restore the default colors.  `set_highlight` applies to `Text`, `Group`, `Scroll`, and `Image`.  An `Input` ignores the colors.
 
 ### `set_items`
 
@@ -267,13 +250,7 @@ Sets the maximum number of characters that the user can type into an `Input`.  T
 pub fn define_image(name: &str, png: &[u8]) -> Result<(), Error>
 ```
 
-Defines a named image for use with `set_image` and as the `icon` of list items.  `png` is the contents of a PNG file, which an app usually embeds with `include_bytes!`.
-
-```rust
-ui::define_image("logo", include_bytes!("logo.png"))?;
-let w = ui::create(WidgetKind::Image, ROOT, Rect::new(0, 0, 64, 64));
-ui::set_image(w, "logo");
-```
+Defines a named image for use with `set_image` and as the `icon` of list items.  `png` is the contents of a PNG file.
 
 Defining a name again replaces the image for later calls.  A widget or list that already shows the old image keeps showing the old image until the next call to `set_image` or `set_items`.  Definitions last for the life of the instance.
 
@@ -304,13 +281,7 @@ pub fn claim_keys(w: Widget, keys: &[String])
 
 Sets the keys that the widget, or the window for `ROOT`, receives as [`Event::Key`](app-events.md#key) instead of the built-in behavior.  The list replaces the widget's earlier claims, and an empty list removes them.  The names are the [key names](app-events.md#key) used by `Event::Key`.  Names that the phone doesn't recognize are dropped from the list.
 
-A widget's claim applies while that widget, or a descendant, has the focus.  The window's claims always apply.  Claiming `cancel` keeps that key from taking the app off the screen, so the app can decide between going back and leaving:
-
-```rust
-ui::claim_keys(ROOT, &["cancel".to_string()]);
-// later, in handle:
-// Event::Key(k) if k == "cancel" => runtime::background(),
-```
+A widget's claim applies while that widget, or a descendant, has the focus.  The window's claims always apply.  Claiming `cancel` keeps that key from taking the app off the screen.
 
 Line key 1, the volume keys, `mute`, `spkr`, and `hdst` can't be claimed (see [`input::capture`](input.md)), and the four keys below the display can be claimed only in a full-screen window.
 
@@ -332,7 +303,7 @@ Expands the app's window to the whole display (`true`), or restores the usual ar
 pub fn set_softkeys(w: Widget, keys: &[Softkey])
 ```
 
-Sets the softkeys of a widget, or of the window for `ROOT`.  Each `Softkey` has a `label` and an `id` that the app chooses, and [`Event::Softkey`](app-events.md#softkey) reports the `id`.  An empty list removes a widget's softkeys, so that the bar shows those of an ancestor or of the window.  Every call resets the bar to the first page.  [Softkeys](#softkeys) explains which set the bar shows.
+Sets the softkeys of a widget, or of the window for `ROOT`.  [`Event::Softkey`](app-events.md#softkey) reports the `id` of a softkey that the user presses.  An empty list removes a widget's softkeys, so that the bar shows those of an ancestor or of the window.  Every call resets the bar to the first page.  [Softkeys](#softkeys) explains which set the bar shows.
 
 ## Built-in icons
 

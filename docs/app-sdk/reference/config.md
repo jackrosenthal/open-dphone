@@ -27,7 +27,7 @@ pub fn app_config() -> String
 
 Returns the app's `<application>` element as XML text, or `""` if the configuration has no element for the app.  The SDK's [`xml::parse`](helpers.md#xml) can read the text.
 
-The text includes every attribute and child element except credentials: the `password` and `secret` attributes of `<application>` and of each `<account>`, and any child `<setting>` whose `id` is `password` or `secret`.  (`app_setting` withholds the same values.)  For the example above, the `<account>` in the text has `id`, `username`, and `appserver`.
+The text includes every attribute and child element except credentials: the `password` and `secret` attributes of `<application>` and of each `<account>`, and any child `<setting>` whose `id` is `password` or `secret`.
 
 ## `app_setting`
 
@@ -72,7 +72,7 @@ Values are returned exactly as written in the configuration.
 pub fn accounts() -> Vec<AccountInfo>
 ```
 
-Returns the phone's SIP accounts, including whether each is currently registered.  See [`AccountInfo`](types.md#calls) for the fields.
+Returns the phone's SIP accounts.  See [`AccountInfo`](types.md#calls) for the fields.
 
 ## `model`
 

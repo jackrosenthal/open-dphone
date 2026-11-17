@@ -15,12 +15,10 @@ The app supplies a method name and parameters.  The phone adds the envelope and 
 pub fn request(method: &str, parameters: &str) -> u32
 ```
 
-Sends a request and returns the request ID.  `parameters` is a JSON object as text.  The phone sends the document `{"request": {"method": <method>, "parameters": <parameters>}}`.
+`parameters` is a JSON object as text.  The phone sends the document `{"request": {"method": <method>, "parameters": <parameters>}}`.
 
 ```rust
 self.asked = pbx::request("switchvox.users.presence.getInfo", r#"{"account_id": "101"}"#);
-// in handle:
-// Event::Pbx((id, PbxOutcome::Ok(json))) if id == self.asked => { ... }
 ```
 
 The result arrives as [`Event::Pbx((id, outcome))`](app-events.md#pbx):
@@ -44,7 +42,7 @@ The result arrives as [`Event::Pbx((id, outcome))`](app-events.md#pbx):
 | `the server's reply was not JSON`, `the server's reply had no response`, `the server's reply had no result` | The reply isn't the expected document. |
 | Anything else | An error from the transport: the network, TLS, or a timeout. |
 
-Two SDK helpers build on `request`.  [`pbx_request`](helpers.md#pbx_request) builds `parameters` from a `Json` value and adds the account's `account_id`, and [`pbx_error_text`](helpers.md#pbx_error_text) turns a failed outcome into a message to display.
+The SDK helpers [`pbx_request`](helpers.md#pbx_request) and [`pbx_error_text`](helpers.md#pbx_error_text) build on `request`.
 
 ## `cancel`
 

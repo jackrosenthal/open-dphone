@@ -1,7 +1,5 @@
 # Manifest
 
-The manifest describes an app to the phone before the app ever runs: the name, the text shown on screen, the icon, when the app runs, and how much memory the app may use.  An app declares the manifest in `export_app!`, which also registers the type that implements `App`.
-
 ## `export_app!`
 
 ```rust
@@ -17,45 +15,25 @@ dphone_app_sdk::export_app! {
 }
 ```
 
-`app` must come first, and names a type that implements `App` and `Default`.  The manifest fields follow in any order.  `name` and `display_name` are required, and every other field has a default.  Call `export_app!` exactly once per crate.
+`app` must come first, and names the type that implements `App`.  The manifest fields follow in any order.  The macro registers the type with the phone and embeds the manifest in the app file.
 
-The macro does two things:
-
-- Exports the component's `guest` interface.  The exported `start` creates the app with `Default::default()` and calls `App::start`, and the exported `handle` calls `App::handle` on that instance.  Before creating the app, `start` installs a panic hook that logs the panic message, file, and line at the error level (through [`runtime::log`](runtime.md#log)).  The phone then stops the app.
-- Encodes the manifest at compile time as the protobuf message `dphone.app.v1.Manifest` (`proto/manifest.proto` in the crate) and stores the bytes in the `dphone-app` custom section of the WebAssembly module, where the phone can read them without running the app.
-
-The manifest is validated at compile time.  A failed check is a compile error that starts with `export_app!:` and describes the problem.  The form `export_app!(Type)`, with no fields, does not compile.
+`export_app!` also installs a panic hook, which writes `panicked at <file>:<line>: <message>` to the log at the error level before the phone stops the app.
 
 ## Fields
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `name` | `&str` | Required | The app's name on the phone.  The same name identifies the app's [storage](storage.md) and the app's configuration (`<application id="name">`).  1 to 64 characters: the first must be an ASCII letter or digit, and the rest may be ASCII letters, digits, `_`, `.`, or `,`.  At install time, the phone rejects the name of a built-in app and the name `dphone`. |
+| `name` | `&str` | Required | Identifies the app on the phone, and also the app's [storage](storage.md) and configuration (`<application id="name">`).  1 to 64 characters: the first must be an ASCII letter or digit, and the rest may be ASCII letters, digits, `_`, `.`, or `,`.  At install time, the phone rejects the name of a built-in app and the name `dphone`. |
 | `id` | `&str` | `""` | An identifier for the app, such as a reverse domain name (`"org.example.weather"`).  The phone stores and reports the identifier, and otherwise ignores the value. |
 | `display_name` | `&str` | Required | The name that the phone shows for the app, exactly as written.  The manifest has no translations. |
-| `description` | `&str` | `""` | A one-line description of the app. |
-| `kind` | `AppKind` | `AppKind::Foreground` | When the app runs.  See [App kinds](#app-kinds). |
+| `description` | `&str` | `""` | A one-line description, shown next to the name in the web interface. |
+| `kind` | `AppKind` | `AppKind::Foreground` | When the app runs.  See [App lifecycle](index.md#app-lifecycle). |
 | `has_idle` | `bool` | `false` | Gives the app a second window on the idle screen.  The app then starts when the phone starts and keeps running when the main window leaves the screen, whatever the `kind`.  See [Idle window](ui.md#idle-window). |
 | `hidden` | `bool` | `false` | Hides the app from the Applications menu.  Another app can still open the app with `runtime::show_app`, and `kind` and `has_idle` still start the app. |
 | `icon` | `&[u8]` | `&[]` | The app's icon, as the contents of a PNG file: `include_bytes!("weather.png")`.  At most 256 KiB, and the data must begin with the PNG signature. |
 | `icon_for` | `&[(&str, &[u8])]` | `&[]` | Icons for specific models, each subject to the same rules as `icon`: `&[("D60", include_bytes!("color.png"))]`.  The models are `D40`, `D45`, `D50`, `D60`, `D62`, `D65`, and `D70`, and each may appear only once. |
-| `phone_icon` | `&str` | `""` | The name of one of the phone's app icons, used when the app has no PNG icon for the model. |
-| `memory_kib` | `u32` | `0` | The app's linear memory limit, in KiB.  `0` selects the default of 4096 (4 MiB).  Values above 16384 (16 MiB) do not compile. |
-
-## App kinds
-
-```rust
-pub enum AppKind { Foreground, Background }
-```
-
-| Kind | Behavior |
-| --- | --- |
-| `Foreground` | The app starts when opened and stops when the window leaves the screen.  Calling `runtime::set_exit_after_background(false)` keeps the app running after that. |
-| `Background` | The app starts when the phone starts, with no window on screen, and keeps running when the window leaves the screen. |
-
-An app that draws on the idle screen sets `has_idle`, with either kind.
-
-See [App lifecycle](index.md#app-lifecycle) for the full rules on starting and stopping.
+| `phone_icon` | `&str` | `""` | The name of one of the phone's [app icons](ui.md#built-in-icons), without the `app-` prefix, used when the app has no PNG icon for the model. |
+| `memory_kib` | `u32` | `0` | The app's linear memory limit, in KiB.  `0` selects the default of 4096 (4 MiB).  Values above 16384 (16 MiB) do not compile.  Data that the app embeds with `include_bytes!` or `include_str!` counts toward the limit. |
 
 ## Icon selection
 
@@ -67,11 +45,11 @@ The Applications menu shows the first of these that exists:
 4. The phone's app icon with the same name as the app's `name`.
 5. The phone's generic app icon.
 
-A PNG icon is scaled down to the size of the phone's app icons (48 by 48 pixels on the color models) and is never scaled up.  The phone's app icons are named `alarms`, `app`, `boxpusher`, `calendar`, `calllog`, `contacts`, `desksparrow`, `diagnostics`, `forward`, `hotdesking`, `info`, `lightup`, `network`, `paging`, `parking`, `queues`, `settings`, `status`, `update`, and `voicemail`.
+A PNG icon is scaled down to the size of the phone's app icons (48 by 48 pixels on the color models) and is never scaled up.
 
 ## Installation checks
 
-The phone installs an app from a single file, the WebAssembly component.  The phone runs these checks in order and gives the listed reason when one fails:
+The phone runs these checks in order when installing an app, and reports the first that fails:
 
 | Check | Message on failure |
 | --- | --- |
@@ -89,4 +67,4 @@ The phone installs an app from a single file, the WebAssembly component.  The ph
 
 Installing an app with the `name` of an installed app replaces that app and keeps the app's storage.  If the replaced app was running, the phone sends `Event::Exit`, discards the instance, and starts the new version.  Removing an app deletes the app's storage on the phone, but the app's keys on the PBX remain.
 
-The phone compiles the component at install time, on a thread with the lowest priority.  On a D60, compilation takes about 2 seconds plus 0.12 seconds per KiB of code.  After a firmware update that changes the WebAssembly engine, the phone recompiles every installed app at startup.  Until an app's code is ready, opening the app fails with `the app is being compiled for this firmware; try again in a moment`.
+After a firmware update that changes the WebAssembly engine, the phone recompiles every installed app at startup.  Until an app's code is ready, opening the app fails with `the app is being compiled for this firmware; try again in a moment`.

@@ -1,7 +1,5 @@
 # `input`
 
-Raw access to every key and to the hookswitch.
-
 ## `capture`
 
 ```rust

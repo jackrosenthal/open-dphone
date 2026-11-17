@@ -1,7 +1,5 @@
 # `audio`
 
-Sound playback.
-
 The phone plays one sound at a time across all apps, through the same path as a ringtone.
 
 ## `play`
@@ -12,11 +10,7 @@ pub fn play(sound: &[u8], start: u32) -> Result<(), Error>
 
 Plays a sound once, starting `start` seconds in.
 
-```rust
-audio::play(include_bytes!("chime.wav"), 0)?;
-```
-
-`sound` is the contents of a sound file, which an app usually embeds with `include_bytes!`:
+`sound` is the contents of a sound file:
 
 - A WAVE file (data that starts with `RIFF`) can contain 8-bit or 16-bit PCM, mu-law, or A-law, at any sample rate.  For a file with several channels, the phone plays the first.
 - Anything else is treated as headerless 16 kHz mono signed 16-bit little-endian samples (the `.sln16` format).
