@@ -49,6 +49,9 @@ log = { version = "0.4", features = ["std"] }
 # 80-column console.  Not `color`: everything is printed through `out` as
 # plain text, and the main role's answers must not carry escape codes.
 clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions", "wrap_help"] }
+# `dphone completion`: the shell's tab completion of the tree above, Bash
+# generator only.  Measured on the ARM binary: 43 KB (0.2%).
+clap_complete = { version = "4", default-features = false }
 tokio = { version = "1", default-features = false, features = ["rt", "net", "io-util", "time", "sync", "process", "signal", "macros", "fs"] }
 # Pinned: the last russh release whose cryptography is RustCrypto only.  Later
 # releases require `ring` or `aws-lc-rs` (C and assembly) for their AEAD ciphers.

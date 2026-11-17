@@ -80,6 +80,12 @@ enum Command {
     },
     /// Start an image from RAM without installing it
     Ramboot(crate::ramboot_cli::Ramboot),
+    /// Print the shell's tab completion of `dphone`
+    ///
+    /// A Bash script, which brush reads, made from this command tree.  The
+    /// phone's `/etc/bash.bashrc` loads it the first time a `dphone`
+    /// command line is completed.
+    Completion,
     #[command(flatten)]
     System(SystemCommand),
     #[command(flatten)]
@@ -175,6 +181,16 @@ pub fn command() -> clap::Command {
     Invocation::command()
 }
 
+/// `dphone completion`: the Bash completion of `dphone` and every command
+/// under it, by clap_complete.  The root of the tree is the multicall
+/// root, which nobody runs, so the script is made from `dphone`'s part.
+fn completion_script() -> Vec<u8> {
+    let mut dphone = command().find_subcommand("dphone").expect("'dphone' is a name of the tree").clone();
+    let mut script = Vec::new();
+    clap_complete::generate(clap_complete::shells::Bash, &mut dphone, "dphone", &mut script);
+    script
+}
+
 pub fn run(args: Vec<OsString>) -> i32 {
     // PID 1 is always the init role, whatever the name or arguments.
     if crate::sys::getpid() == 1 {
@@ -200,6 +216,10 @@ pub fn run(args: Vec<OsString>) -> i32 {
             }),
             Command::Update { command } => crate::update_cli::run(command),
             Command::Ramboot(ramboot) => crate::ramboot_cli::run(&ramboot),
+            Command::Completion => {
+                crate::out::stdout_bytes(&completion_script());
+                0
+            }
             Command::System(command) => crate::cmds::run(command),
             // Checked here; parsed again, into the handler's type, there.
             Command::Remote(_) => {
@@ -364,7 +384,7 @@ mod tests {
         let words = help.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(
             words.contains(
-                "with or without a main role: main supervise update ramboot mount umount insmod rmmod lsmod modprobe \
+                "with or without a main role: main supervise update ramboot completion mount umount insmod rmmod lsmod modprobe \
                  reboot poweroff halt dmesg ps The other commands"
             ),
             "{help}"

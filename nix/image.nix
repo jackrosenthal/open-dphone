@@ -123,6 +123,9 @@ let
     printf 'root:x:0:0:root:/nvdata/root:/bin/brush\n' > $out/etc/passwd
     printf 'root:x:0:\ntty:x:5:\n' > $out/etc/group
     printf '/bin/brush\n/bin/sh\n' > $out/etc/shells
+    # The interactive shells' defaults: the prompt, aliases, and the tab
+    # completion of `dphone`.
+    install -m 0644 ${./rootfs/etc/bash.bashrc} $out/etc/bash.bashrc
     printf 'Open DPhone ${wireVersion}\n' > $out/etc/dphone-release
 
     # What the kernel starts must be there and must be a program for the

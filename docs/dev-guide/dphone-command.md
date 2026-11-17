@@ -4,7 +4,7 @@ The firmware's program, `dphone`, is also the phone's command-line tool.  Run th
 
 ## Local and remote commands
 
-- **Local commands** run in the calling process and work while the main role is down or in safe mode: the firmware update commands, `dphone ramboot`, and the system commands.
+- **Local commands** run in the calling process and work while the main role is down or in safe mode: the firmware update commands, `dphone ramboot`, `dphone completion`, and the system commands.
 - **Remote commands** go over a local socket to the main role, which does the work and returns the output.  Without a running main role, a remote command fails with a message that the main role cannot be reached.
 
 ## Firmware
@@ -39,6 +39,14 @@ Local.  The root file system has no separate programs for these commands: each n
 | --- | --- |
 | `dphone main` | Runs the main role.  On a phone, the init role starts the main role; run the command directly only for the [simulator](simulator.md).  `--safe` starts only SSH, the network, and the diagnostics; `--verbose` logs at the debug level. |
 | `dphone supervise` | Runs the init role's supervisor outside process 1, for the tests. |
+
+## Shell
+
+Local.
+
+| Command | Description |
+| --- | --- |
+| `dphone completion` | Prints the Bash completion of `dphone`'s commands and options.  The phone's shell loads it the first time ++tab++ completes a `dphone` command line. |
 
 ## Status and logs
 
