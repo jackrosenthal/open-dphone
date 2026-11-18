@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package opendeskphone.v1;
+
+import "opendeskphone/v1/model.proto";
+
+// Web login.  Login, Logout, and GetSession are the only RPCs that work
+// without a session.  While web configuration is disabled (`web_ui_enabled`
+// is 0), GetSession is the only RPC of any service that is answered.
+service AuthService {
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+}
+
+message Session {
+  bool authenticated = 1;
+  // Sent back in the X-Csrf-Token header on every authenticated request.
+  string csrf_token = 2;
+  string user = 3;
+  // Shown on the login page.
+  Model model = 4;
+  string version = 5;
+  string hostname = 6;
+  // The phone is still using the default password.
+  bool default_password = 7;
+  // Web configuration is disabled on this phone: there is no login, and
+  // every other field is empty.
+  bool web_disabled = 8;
+}
+
+message LoginRequest {
+  string user = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  Session session = 1;
+}
+
+message LogoutRequest {}
+
+message LogoutResponse {}
+
+message GetSessionRequest {}
+
+message GetSessionResponse {
+  Session session = 1;
+}
+
+message ChangePasswordRequest {
+  string current_password = 1;
+  string new_password = 2;
+}
+
+message ChangePasswordResponse {}

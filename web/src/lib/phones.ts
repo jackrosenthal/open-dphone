@@ -51,8 +51,8 @@
 // Units are those of the reference photograph each family was measured
 // from; the page scales the drawing.
 
-import { Model } from "../gen/dphone/v1/model_pb";
-import { Key_Kind as K, type Key } from "../gen/dphone/v1/screen_pb";
+import { Model } from "../gen/opendeskphone/v1/model_pb";
+import { Key_Kind as K, type Key } from "../gen/opendeskphone/v1/screen_pb";
 
 /// A key as the ScreenService names it: its kind, and its index where the
 /// kind has several keys.

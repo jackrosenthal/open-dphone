@@ -1,6 +1,6 @@
-# Asterisk with `res_open_dpma` (Open DPMA, open-dpma/ in this
-# repository), for the integration test that provisions and registers the
-# firmware's main role against a real server (crates/dphone/tests/asterisk.rs).
+# Asterisk with `res_open_dpma` (Open DPMA, open-dpma/ in this repository), for
+# the integration test that provisions and registers the firmware's main role
+# against a real server (crates/opendeskphone/tests/asterisk.rs).
 #
 # `res_open_dpma` generates its bindings from the configured headers of the
 # Asterisk it is loaded into, including the bundled pjproject's, which an

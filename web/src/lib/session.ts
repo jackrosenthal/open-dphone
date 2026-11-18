@@ -2,7 +2,7 @@
 // CSRF token is fetched again (GetSession) after a page reload.
 
 import { useSyncExternalStore } from "react";
-import type { Session } from "../gen/dphone/v1/auth_pb";
+import type { Session } from "../gen/opendeskphone/v1/auth_pb";
 
 export type SessionState =
   | { status: "loading" }

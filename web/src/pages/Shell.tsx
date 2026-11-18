@@ -3,7 +3,7 @@ import { Terminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 import { Button, PageHeader } from "../components/ui";
-import { ShellEndReason, ShellService, type ShellExited } from "../gen/dphone/v1/shell_pb";
+import { ShellEndReason, ShellService, type ShellExited } from "../gen/opendeskphone/v1/shell_pb";
 import { csrfToken } from "../lib/session";
 import { client, errorMessage } from "../lib/transport";
 
@@ -149,7 +149,7 @@ export default function Shell() {
     // request is sent regardless.
     function leaving() {
       if (!id || done) return;
-      fetch("/dphone.v1.ShellService/CloseShell", {
+      fetch("/opendeskphone.v1.ShellService/CloseShell", {
         method: "POST",
         keepalive: true,
         headers: { "Content-Type": "application/json", "X-Csrf-Token": csrfToken() ?? "" },

@@ -64,8 +64,8 @@ fn start(&mut self) {
 `Font` and `Align` aren't in the prelude.  Change the imports to:
 
 ```rust
-use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{Align, Font, log_info};
+use opendeskphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::{Align, Font, log_info};
 ```
 
 ## Softkeys
@@ -148,8 +148,8 @@ fn handle(&mut self, event: Event) {
 ??? example "Complete `src/lib.rs` for this chapter"
 
     ```rust
-    use dphone_app_sdk::prelude::*;
-    use dphone_app_sdk::{Align, Font, log_info};
+    use opendeskphone_app_sdk::prelude::*;
+    use opendeskphone_app_sdk::{Align, Font, log_info};
 
     const SK_BREWED: u32 = 1;
     const SK_EMPTY: u32 = 2;
@@ -245,7 +245,7 @@ fn handle(&mut self, event: Event) {
         }
     }
 
-    dphone_app_sdk::export_app! {
+    opendeskphone_app_sdk::export_app! {
         app: FreshPot,
         name: "freshpot",
         display_name: "Fresh Pot",

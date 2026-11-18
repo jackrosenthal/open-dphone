@@ -21,7 +21,7 @@ let
   };
 in
 stdenv.mkDerivation (finalAttrs: {
-  pname = "dphone-web-frontend";
+  pname = "opendeskphone-web-frontend";
   version = "3.0.0";
   inherit src;
   sourceRoot = "source/web";

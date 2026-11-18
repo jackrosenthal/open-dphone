@@ -1,12 +1,12 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Badge, Card, Dot, Empty, KeyValue, PageHeader, Spinner } from "../components/ui";
-import { CallDirection, Codec } from "../gen/dphone/v1/calls_pb";
-import { Bank } from "../gen/dphone/v1/firmware_pb";
-import { Ipv4Source, NetPhase, VlanSource } from "../gen/dphone/v1/network_pb";
-import { DiscoverySource, ProvisionPhase } from "../gen/dphone/v1/provisioning_pb";
-import { HealthState, Subsystem, SystemPhase, type StatusSnapshot } from "../gen/dphone/v1/status_pb";
-import { RegistrationState } from "../gen/dphone/v1/accounts_pb";
+import { CallDirection, Codec } from "../gen/opendeskphone/v1/calls_pb";
+import { Bank } from "../gen/opendeskphone/v1/firmware_pb";
+import { Ipv4Source, NetPhase, VlanSource } from "../gen/opendeskphone/v1/network_pb";
+import { DiscoverySource, ProvisionPhase } from "../gen/opendeskphone/v1/provisioning_pb";
+import { HealthState, Subsystem, SystemPhase, type StatusSnapshot } from "../gen/opendeskphone/v1/status_pb";
+import { RegistrationState } from "../gen/opendeskphone/v1/accounts_pb";
 import { dateTime, duration } from "../lib/format";
 import { addressSourceNames, bankNames, codecNames, discoverySourceNames, label, modelName, netPhaseNames, provisionPhaseNames, subsystemNames, systemPhaseNames, vlanSourceNames } from "../lib/labels";
 import { useStatus } from "../lib/status";

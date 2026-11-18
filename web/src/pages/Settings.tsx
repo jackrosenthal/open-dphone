@@ -1,10 +1,10 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { Button, Card, Dpma, Input, PageHeader, Select, Toggle } from "../components/ui";
-import type { IdleSoftkey } from "../gen/dphone/settings/v1/settings_pb";
-import { ConfigService, SettingSource, type IdleSoftkeys as IdleSoftkeysMessage, type Setting } from "../gen/dphone/v1/config_pb";
-import type { Theme as ThemeMessage } from "../gen/dphone/v1/config_pb";
-import { Skin } from "../gen/dphone/v1/model_pb";
+import type { IdleSoftkey } from "../gen/opendeskphone/settings/v1/settings_pb";
+import { ConfigService, SettingSource, type IdleSoftkeys as IdleSoftkeysMessage, type Setting } from "../gen/opendeskphone/v1/config_pb";
+import type { Theme as ThemeMessage } from "../gen/opendeskphone/v1/config_pb";
+import { Skin } from "../gen/opendeskphone/v1/model_pb";
 import { useStatus } from "../lib/status";
 import { ErrorNote } from "./common";
 

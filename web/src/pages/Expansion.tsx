@@ -1,5 +1,5 @@
 import { Alert, Card, Empty, td, th } from "../components/ui";
-import { ExpansionService } from "../gen/dphone/v1/expansion_pb";
+import { ExpansionService } from "../gen/opendeskphone/v1/expansion_pb";
 import { useStreamState } from "../lib/stream";
 import { client } from "../lib/transport";
 

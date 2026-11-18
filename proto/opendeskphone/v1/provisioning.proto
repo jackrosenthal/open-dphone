@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+package opendeskphone.v1;
+
+service ProvisioningService {
+  rpc GetProvisioning(GetProvisioningRequest) returns (GetProvisioningResponse);
+  rpc WatchProvisioning(WatchProvisioningRequest) returns (stream WatchProvisioningResponse);
+  rpc StartProvisioning(StartProvisioningRequest) returns (StartProvisioningResponse);
+  rpc SelectUser(SelectUserRequest) returns (SelectUserResponse);
+  rpc Reprovision(ReprovisionRequest) returns (ReprovisionResponse);
+  rpc ForgetProvisioning(ForgetProvisioningRequest) returns (ForgetProvisioningResponse);
+  rpc SkipProvisioning(SkipProvisioningRequest) returns (SkipProvisioningResponse);
+}
+
+enum ProvisionPhase {
+  PROVISION_PHASE_UNSPECIFIED = 0;
+  PROVISION_PHASE_IDLE = 1;
+  PROVISION_PHASE_DISCOVERING = 2;
+  PROVISION_PHASE_AWAITING_SERVER = 3;
+  PROVISION_PHASE_HANDSHAKING = 4;
+  PROVISION_PHASE_AWAITING_USER = 5;
+  PROVISION_PHASE_FETCHING_CONFIG = 6;
+  PROVISION_PHASE_APPLYING = 7;
+  PROVISION_PHASE_PROVISIONED = 8;
+  PROVISION_PHASE_STANDALONE = 9;
+  PROVISION_PHASE_FAILED = 10;
+}
+
+// How the phone found a provisioning server.
+enum DiscoverySource {
+  DISCOVERY_SOURCE_UNSPECIFIED = 0;
+  // The server the phone was provisioned by before.
+  DISCOVERY_SOURCE_SAVED = 1;
+  // DHCP option 66.
+  DISCOVERY_SOURCE_DHCP = 2;
+  DISCOVERY_SOURCE_MDNS = 3;
+  // Entered by hand.
+  DISCOVERY_SOURCE_MANUAL = 4;
+}
+
+message ProvisioningServer {
+  DiscoverySource source = 1;
+  string name = 2;
+  string address = 3;
+}
+
+message ProvisionUser {
+  string id = 1;
+  string name = 2;
+  bool needs_pin = 3;
+}
+
+message ProvisioningStatus {
+  ProvisionPhase phase = 1;
+  string failure_reason = 2;
+  optional int32 failure_code = 3;
+  repeated ProvisioningServer discovered = 4;
+  ProvisioningServer server = 5;
+  string server_user_agent = 6;
+  repeated ProvisionUser users = 7;
+  string assigned_user = 8;
+  bool attached = 9;
+  string config_md5 = 10;
+  string offered_firmware = 11;
+  uint64 last_success_unix = 12;
+}
+
+message GetProvisioningRequest {}
+
+message GetProvisioningResponse {
+  ProvisioningStatus status = 1;
+}
+
+message WatchProvisioningRequest {}
+
+message WatchProvisioningResponse {
+  ProvisioningStatus status = 1;
+}
+
+message StartProvisioningRequest {
+  // Empty: discover.
+  string server = 1;
+}
+
+message StartProvisioningResponse {}
+
+message SelectUserRequest {
+  string id = 1;
+  string pin = 2;
+}
+
+message SelectUserResponse {}
+
+message ReprovisionRequest {}
+
+message ReprovisionResponse {}
+
+message ForgetProvisioningRequest {}
+
+message ForgetProvisioningResponse {}
+
+message SkipProvisioningRequest {}
+
+message SkipProvisioningResponse {}

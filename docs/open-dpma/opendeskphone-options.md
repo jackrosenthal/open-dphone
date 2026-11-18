@@ -1,16 +1,16 @@
 # Open Desk Phone options
 
-The `dphone_*` options of a phone section (`type=phone`) configure features that only Open Desk Phone has.  Stock firmware ignores the options, so one phone section serves a phone before and after a firmware change.  The original module reports each option as invalid.
+The `opendeskphone_*` options of a phone section (`type=phone`) configure features that only Open Desk Phone has.  Stock firmware ignores the options, so one phone section serves a phone before and after a firmware change.  The original module reports each option as invalid.
 
 Example template:
 
 ```ini title="res_digium_phone.conf"
 [opendeskphone](!)
 type=phone
-dphone_ssh_enabled=yes
-dphone_ssh_authorized_key=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa alice@laptop
-dphone_disabled_apps=boxpusher,desksparrow,lightup
-dphone_app_data_tenant=north-office
+opendeskphone_ssh_enabled=yes
+opendeskphone_ssh_authorized_key=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa alice@laptop
+opendeskphone_disabled_apps=boxpusher,desksparrow,lightup
+opendeskphone_app_data_tenant=north-office
 
 [phone101](opendeskphone)
 mac=000fd3000001
@@ -23,20 +23,20 @@ line=101
 
 - **A server value overrides the phone setting.**  The on/off options, the softkeys, the disabled apps, the theme, the palette file, and the static address are frozen settings: the phone uses the server's value, and the phone's web interface shows the setting as a disabled control labeled "Configured via DPMA".  Removing the option restores the value set on the phone.
 - **An omitted option sends nothing.**  The phone uses the value set on the phone, or else the default listed below.
-- **An invalid value is skipped.**  The module logs `Invalid option '<name>' at line <n> is not supported by phone module.` at the `DPMA` level and sends nothing for the option.  Exception: an invalid value of `dphone_ssh_enabled`, `dphone_serial_console`, or `dphone_metrics_enabled` sends `no`, and the module also logs an error.
+- **An invalid value is skipped.**  The module logs `Invalid option '<name>' at line <n> is not supported by phone module.` at the `DPMA` level and sends nothing for the option.  Exception: an invalid value of `opendeskphone_ssh_enabled`, `opendeskphone_serial_console`, or `opendeskphone_metrics_enabled` sends `no`, and the module also logs an error.
 
 ## Remote access
 
-### `dphone_ssh_enabled` { #dphone_ssh_enabled }
+### `opendeskphone_ssh_enabled` { #opendeskphone_ssh_enabled }
 
 Turns the phone's SSH server on or off.
 
 - **Value:** on/off.
 - **Default:** off.
 
-The SSH server gives a root shell and accepts public keys only.  Nobody can log in until the phone has a key, from [`dphone_ssh_authorized_key`](#dphone_ssh_authorized_key) or added on the phone.
+The SSH server gives a root shell and accepts public keys only.  Nobody can log in until the phone has a key, from [`opendeskphone_ssh_authorized_key`](#opendeskphone_ssh_authorized_key) or added on the phone.
 
-### `dphone_ssh_authorized_key` { #dphone_ssh_authorized_key }
+### `opendeskphone_ssh_authorized_key` { #opendeskphone_ssh_authorized_key }
 
 An SSH public key that may log in to the phone.
 
@@ -46,7 +46,7 @@ An SSH public key that may log in to the phone.
 
 The phone accepts these keys in addition to keys added on the phone, and drops a removed key at the next configuration fetch.
 
-### `dphone_serial_console` { #dphone_serial_console }
+### `opendeskphone_serial_console` { #opendeskphone_serial_console }
 
 Makes the serial port on the EHS connector a console.
 
@@ -55,38 +55,38 @@ Makes the serial port on the EHS connector a console.
 
 The console and an electronic hook switch (EHS) headset adapter share the port.  With the console on, the phone cannot use an EHS adapter, and `ehs` has no effect.
 
-### `dphone_metrics_enabled` { #dphone_metrics_enabled }
+### `opendeskphone_metrics_enabled` { #opendeskphone_metrics_enabled }
 
 Turns the phone's Prometheus endpoint, `GET /metrics`, on or off.
 
 - **Value:** on/off.
 - **Default:** on.
 
-The endpoint requires no login and does not depend on `web_ui_enabled`.  Set `dphone_metrics_enabled=no` to keep the metrics unreadable from the phones' network.
+The endpoint requires no login and does not depend on `web_ui_enabled`.  Set `opendeskphone_metrics_enabled=no` to keep the metrics unreadable from the phones' network.
 
 ## Network address
 
-The module sends `dphone_static_gateway` and `dphone_static_dns` only with `dphone_static_address`.
+The module sends `opendeskphone_static_gateway` and `opendeskphone_static_dns` only with `opendeskphone_static_address`.
 
 !!! warning "Check the address before reconfiguring the phone"
 
     The server's address replaces a static address set on the phone.  A phone with a wrong address, prefix length, or gateway cannot reach the server to fetch a corrected configuration.
 
-### `dphone_static_address` { #dphone_static_address }
+### `opendeskphone_static_address` { #opendeskphone_static_address }
 
 The phone's IPv4 address and prefix length.
 
 - **Value:** `<address>/<prefix length>`, e.g., `192.0.2.20/24`.  The prefix length is 1 to 30.  The address must be a host address: not the network or broadcast address of the prefix, and not a loopback, multicast, or reserved address.
 - **Default:** DHCP.
 
-### `dphone_static_gateway` { #dphone_static_gateway }
+### `opendeskphone_static_gateway` { #opendeskphone_static_gateway }
 
 The default gateway for the static address.
 
 - **Value:** an IPv4 address, e.g., `192.0.2.1`.
 - **Default:** no gateway.
 
-### `dphone_static_dns` { #dphone_static_dns }
+### `opendeskphone_static_dns` { #opendeskphone_static_dns }
 
 The DNS servers for the static address.
 
@@ -96,7 +96,7 @@ The DNS servers for the static address.
 
 ## Display and apps
 
-### `dphone_idle_softkeys` { #dphone_idle_softkeys }
+### `opendeskphone_idle_softkeys` { #opendeskphone_idle_softkeys }
 
 The idle screen softkeys, from the left.
 
@@ -119,12 +119,12 @@ The idle screen softkeys, from the left.
 Example:
 
 ```ini
-dphone_idle_softkeys=call_log,contacts,app:parking,menu
+opendeskphone_idle_softkeys=call_log,contacts,app:parking,menu
 ```
 
 The stock firmware's idle screen options (`show_call_log`, `can_forward_calls`, `show_call_parking`, and a custom application's `idlescreen_softkey`) do not affect Open Desk Phone's idle softkeys.
 
-### `dphone_disabled_apps` { #dphone_disabled_apps }
+### `opendeskphone_disabled_apps` { #opendeskphone_disabled_apps }
 
 Built-in apps to hide.  A disabled app is missing from the list of apps and cannot be opened.
 
@@ -134,7 +134,7 @@ Built-in apps to hide.  A disabled app is missing from the list of apps and cann
 
 Built-in app names: `alarms`, `boxpusher`, `calendar`, `contacts`, `desksparrow`, `diagnostics`, `hotdesking`, `lightup`, `parking`, `queues`, `status`, and `voicemail`.  Disable apps for services that the server lacks, e.g., `queues` without `app_queue`.
 
-### `dphone_theme` { #dphone_theme }
+### `opendeskphone_theme` { #opendeskphone_theme }
 
 The built-in theme: a wallpaper and the color palette for every screen.
 
@@ -144,7 +144,7 @@ The built-in theme: a wallpaper and the color palette for every screen.
 
 A `wallpaper_file` in the phone section replaces the theme.
 
-### `dphone_palette_file` { #dphone_palette_file }
+### `opendeskphone_palette_file` { #opendeskphone_palette_file }
 
 The palette for the `wallpaper_file` picture: the colors of every screen while that picture is the wallpaper.
 
@@ -152,11 +152,11 @@ The palette for the `wallpaper_file` picture: the colors of every screen while t
 - **Default:** the phone's current palette.
 - **Models:** D60, D62, and D65.
 
-The phone fetches the palette only with `wallpaper_file`.  The file is a `dphone.palette.v1` message in protobuf text format, at most 16 KiB, defined in `proto/dphone/palette/v1/palette.proto` in the repository.
+The phone fetches the palette only with `wallpaper_file`.  The file is a `opendeskphone.palette.v1` message in protobuf text format, at most 16 KiB, defined in `proto/opendeskphone/palette/v1/palette.proto` in the repository.
 
 ## Firmware
 
-### `dphone_ignore_provisioned_firmware` { #dphone_ignore_provisioned_firmware }
+### `opendeskphone_ignore_provisioned_firmware` { #opendeskphone_ignore_provisioned_firmware }
 
 Makes the phone ignore the configuration's firmware entries, e.g., to keep a development phone on a test build.
 
@@ -167,7 +167,7 @@ See [Firmware](administration.md#firmware).
 
 ## App data
 
-### `dphone_app_data_tenant` { #dphone_app_data_tenant }
+### `opendeskphone_app_data_tenant` { #opendeskphone_app_data_tenant }
 
 The tenant whose app data the phone reads and writes.
 

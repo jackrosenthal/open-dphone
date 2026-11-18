@@ -8,7 +8,7 @@
 //! the user and the tenant of the asking phone from the phone
 //! configuration, and the event to the phones that watch an app.
 //!
-//! The tenant is the phone section's `dphone_app_data_tenant`.  Phones
+//! The tenant is the phone section's `opendeskphone_app_data_tenant`.  Phones
 //! with the same key share a store, phones without one share another,
 //! and no request can name a tenant.  A phone whose option is set to
 //! something that cannot be a key has no store.
@@ -20,7 +20,7 @@ use dpma_proto::appdata::{ErrorCode, Op, Outcome, Response, User, EVENT_CHANGE};
 use std::sync::Mutex;
 
 /// AstDB family of the store (`store` documents the keys below it).
-pub const DB_FAMILY: &str = "DPhoneAppData";
+pub const DB_FAMILY: &str = "OpenDeskPhoneAppData";
 
 /// One operation runs at a time: a write reads the entry it replaces.
 static STORE: Mutex<()> = Mutex::new(());
@@ -73,7 +73,7 @@ fn identity(phone: &[u8]) -> Option<(Vec<u8>, User)> {
         &p.full_name
     };
     Some((
-        p.dphone_app_data_tenant.clone(),
+        p.opendeskphone_app_data_tenant.clone(),
         User {
             id: text(&p.name),
             name: text(name),
@@ -88,7 +88,7 @@ fn tenant_of(phone: &[u8]) -> Option<Vec<u8>> {
         .as_ref()?
         .phones
         .get(phone)
-        .map(|p| p.dphone_app_data_tenant.clone())
+        .map(|p| p.opendeskphone_app_data_tenant.clone())
 }
 
 /// The body of the AppDataResponse to the request `body` of phone
@@ -105,7 +105,7 @@ pub fn answer(phone: &[u8], body: &[u8]) -> Vec<u8> {
     if !tenant.is_empty() && !store::valid_tenant(&tenant) {
         return Response::error(
             ErrorCode::Failed,
-            "the phone's dphone_app_data_tenant is not a tenant key",
+            "the phone's opendeskphone_app_data_tenant is not a tenant key",
         )
         .encode();
     }

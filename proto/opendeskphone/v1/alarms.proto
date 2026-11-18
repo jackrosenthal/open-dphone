@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package opendeskphone.v1;
+
+// The phone's alarm clock.  The phone keeps the alarms and rings them; the
+// Alarms app on the phone changes the same alarms.
+service AlarmsService {
+  rpc GetAlarms(GetAlarmsRequest) returns (GetAlarmsResponse);
+  rpc WatchAlarms(WatchAlarmsRequest) returns (stream WatchAlarmsResponse);
+  // Adds an alarm (Alarm.id 0) or changes the alarm with that ID.  An alarm
+  // that is changed counts from now: its time earlier today is not due
+  // until tomorrow.
+  rpc SetAlarm(SetAlarmRequest) returns (SetAlarmResponse);
+  rpc RemoveAlarm(RemoveAlarmRequest) returns (RemoveAlarmResponse);
+  // Silences the ringing alarm; it rings again after
+  // AlarmsSnapshot.snooze_secs.
+  rpc SnoozeAlarm(SnoozeAlarmRequest) returns (SnoozeAlarmResponse);
+  // Ends the ringing alarm, or the snoozed one.
+  rpc DismissAlarm(DismissAlarmRequest) returns (DismissAlarmResponse);
+}
+
+message Alarm {
+  uint32 id = 1;
+  // The time of day in the phone's time zone: 0 to 23, and 0 to 59.
+  uint32 hour = 2;
+  uint32 minute = 3;
+  // The days of the week it rings on: bit 0 is Sunday, bit 6 Saturday.  0
+  // is a one-time alarm: it rings the next time the phone's clock shows
+  // its time, and is then switched off.
+  uint32 days = 4;
+  // One of AlarmsSnapshot.tones.  Empty in SetAlarm: the phone's first.
+  string tone = 5;
+  bool enabled = 6;
+}
+
+// An alarm and a time it rings at.
+message AlarmTime {
+  // Alarm.id
+  uint32 id = 1;
+  uint64 unix_secs = 2;
+}
+
+message AlarmsSnapshot {
+  repeated Alarm alarms = 1;
+  // The tones an alarm can ring with: the alarm clock's own, not the
+  // ringtones.
+  repeated string tones = 2;
+  // The next time an alarm rings, a snoozed alarm included.
+  optional AlarmTime next = 3;
+  // Alarm.id of the alarm that is ringing.
+  optional uint32 ringing = 4;
+  // The snoozed alarm, and when it rings again.
+  optional AlarmTime snoozed = 5;
+  uint32 snooze_secs = 6;
+  // The most alarms the phone keeps.
+  uint32 max_alarms = 7;
+}
+
+message GetAlarmsRequest {}
+
+message GetAlarmsResponse {
+  AlarmsSnapshot snapshot = 1;
+}
+
+message WatchAlarmsRequest {}
+
+message WatchAlarmsResponse {
+  AlarmsSnapshot snapshot = 1;
+}
+
+message SetAlarmRequest {
+  Alarm alarm = 1;
+}
+
+message SetAlarmResponse {
+  // Alarm.id of the alarm added or changed.
+  uint32 id = 1;
+}
+
+message RemoveAlarmRequest {
+  uint32 id = 1;
+}
+
+message RemoveAlarmResponse {}
+
+message SnoozeAlarmRequest {}
+
+message SnoozeAlarmResponse {}
+
+message DismissAlarmRequest {}
+
+message DismissAlarmResponse {}

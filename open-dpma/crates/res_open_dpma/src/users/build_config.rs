@@ -501,7 +501,7 @@ fn file_exists(dir: &[u8], name: &[u8]) -> bool {
 }
 
 /// A user image setting (`logo_file`, `wallpaper_file`, and Open Desk Phone's
-/// `dphone_palette_file`): served from the
+/// `opendeskphone_palette_file`): served from the
 /// file directory when the file is there, otherwise from every network's
 /// file URL prefix.
 fn user_image(
@@ -978,77 +978,81 @@ fn build_config(
     // ignores them.  Each is frozen: Open Desk Phone puts a value set on the
     // phone ahead of a provisioned one that is not, and what the server's
     // configuration says is not for the phone's user to change, e.g.,
-    // `dphone_ssh_enabled=no`.
-    if !p.dphone_ssh_enabled.is_empty() {
+    // `opendeskphone_ssh_enabled=no`.
+    if !p.opendeskphone_ssh_enabled.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_ssh_enabled\" value=\"{}\" conflict=\"freeze\" />\n",
-            p.dphone_ssh_enabled
+            "<setting id=\"opendeskphone_ssh_enabled\" value=\"{}\" conflict=\"freeze\" />\n",
+            p.opendeskphone_ssh_enabled
         );
     }
-    if !p.dphone_ignore_provisioned_firmware.is_empty() {
+    if !p.opendeskphone_ignore_provisioned_firmware.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_ignore_provisioned_firmware\" value=\"{}\" conflict=\"freeze\" />\n",
-            p.dphone_ignore_provisioned_firmware
+            "<setting id=\"opendeskphone_ignore_provisioned_firmware\" value=\"{}\" conflict=\"freeze\" />\n",
+            p.opendeskphone_ignore_provisioned_firmware
         );
     }
-    if !p.dphone_metrics_enabled.is_empty() {
+    if !p.opendeskphone_metrics_enabled.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_metrics_enabled\" value=\"{}\" conflict=\"freeze\" />\n",
-            p.dphone_metrics_enabled
+            "<setting id=\"opendeskphone_metrics_enabled\" value=\"{}\" conflict=\"freeze\" />\n",
+            p.opendeskphone_metrics_enabled
         );
     }
-    if !p.dphone_serial_console.is_empty() {
+    if !p.opendeskphone_serial_console.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_serial_console\" value=\"{}\" conflict=\"freeze\" />\n",
-            p.dphone_serial_console
+            "<setting id=\"opendeskphone_serial_console\" value=\"{}\" conflict=\"freeze\" />\n",
+            p.opendeskphone_serial_console
         );
     }
     // The gateway and the DNS servers belong to the static address.
-    if !p.dphone_static_address.is_empty() {
+    if !p.opendeskphone_static_address.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_static_address\" value=\"{}\" conflict=\"freeze\" />\n",
-            p.dphone_static_address
+            "<setting id=\"opendeskphone_static_address\" value=\"{}\" conflict=\"freeze\" />\n",
+            p.opendeskphone_static_address
         );
-        if let Some(gateway) = p.dphone_static_gateway {
+        if let Some(gateway) = p.opendeskphone_static_gateway {
             ap!(
                 o,
-                "<setting id=\"dphone_static_gateway\" value=\"{}\" conflict=\"freeze\" />\n",
+                "<setting id=\"opendeskphone_static_gateway\" value=\"{}\" conflict=\"freeze\" />\n",
                 gateway.to_string()
             );
         }
-        if !p.dphone_static_dns.is_empty() {
-            let servers: Vec<String> = p.dphone_static_dns.iter().map(|a| a.to_string()).collect();
+        if !p.opendeskphone_static_dns.is_empty() {
+            let servers: Vec<String> = p
+                .opendeskphone_static_dns
+                .iter()
+                .map(|a| a.to_string())
+                .collect();
             ap!(
                 o,
-                "<setting id=\"dphone_static_dns\" value=\"{}\" conflict=\"freeze\" />\n",
+                "<setting id=\"opendeskphone_static_dns\" value=\"{}\" conflict=\"freeze\" />\n",
                 servers.join(",")
             );
         }
     }
-    if !p.dphone_disabled_apps.is_empty() {
+    if !p.opendeskphone_disabled_apps.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_disabled_apps\" value=\"{}\" conflict=\"freeze\" />\n",
-            p.dphone_disabled_apps.join(&b","[..])
+            "<setting id=\"opendeskphone_disabled_apps\" value=\"{}\" conflict=\"freeze\" />\n",
+            p.opendeskphone_disabled_apps.join(&b","[..])
         );
     }
-    if !p.dphone_idle_softkeys.is_empty() {
+    if !p.opendeskphone_idle_softkeys.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_idle_softkeys\" value=\"{}\" conflict=\"freeze\" />\n",
-            p.dphone_idle_softkeys.join(&b","[..])
+            "<setting id=\"opendeskphone_idle_softkeys\" value=\"{}\" conflict=\"freeze\" />\n",
+            p.opendeskphone_idle_softkeys.join(&b","[..])
         );
     }
-    if !p.dphone_theme.is_empty() {
+    if !p.opendeskphone_theme.is_empty() {
         ap!(
             o,
-            "<setting id=\"dphone_theme\" value=\"{}\" conflict=\"freeze\" />\n",
-            p.dphone_theme
+            "<setting id=\"opendeskphone_theme\" value=\"{}\" conflict=\"freeze\" />\n",
+            p.opendeskphone_theme
         );
     }
     if !p.accept_local_calls.is_empty() {
@@ -1619,14 +1623,14 @@ fn build_config(
         );
     }
     // Open Desk Phone: the palette file that goes with the wallpaper.
-    if !p.dphone_palette_file.is_empty() {
+    if !p.opendeskphone_palette_file.is_empty() {
         user_image(
             &mut o,
             reg,
             p,
             dir,
-            "dphone_palette_file",
-            &p.dphone_palette_file,
+            "opendeskphone_palette_file",
+            &p.opendeskphone_palette_file,
             "/wallpaper_palette.txtpb",
         );
     }
@@ -1718,9 +1722,9 @@ fn build_config(
     ap!(o, "</smart_blf>\n");
 
     // Open Desk Phone: SSH public keys, only when there are any.
-    if !p.dphone_ssh_authorized_keys.is_empty() {
-        ap!(o, "<dphone_ssh_authorized_keys>\n");
-        for (i, key) in p.dphone_ssh_authorized_keys.iter().enumerate() {
+    if !p.opendeskphone_ssh_authorized_keys.is_empty() {
+        ap!(o, "<opendeskphone_ssh_authorized_keys>\n");
+        for (i, key) in p.opendeskphone_ssh_authorized_keys.iter().enumerate() {
             ap!(
                 o,
                 "<key id=\"{}\" value=\"{}\" />\n",
@@ -1728,7 +1732,7 @@ fn build_config(
                 xmlutil::escape(key, SSH_KEY_ESC_BUF)
             );
         }
-        ap!(o, "</dphone_ssh_authorized_keys>\n");
+        ap!(o, "</opendeskphone_ssh_authorized_keys>\n");
     }
     ap!(o, "</config>\n");
 

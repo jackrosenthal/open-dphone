@@ -15,7 +15,8 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 #[derive(Debug, Parser)]
 #[command(name = "xtask", bin_name = "cargo xtask")]
 enum Xtask {
-    /// Build dphone, push it to /tmp/dphone on a phone, and restart the main role
+    /// Build dphone, push it to /tmp/opendeskphone on a phone, and restart the
+    /// main role
     Deploy(deploy::Deploy),
     /// Regenerate the phone's time zone rule table from a zone database
     TzTable(tz::TzTable),

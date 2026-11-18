@@ -1,7 +1,7 @@
 import { useMutation } from "@connectrpc/connect-query";
 import { useState, type FormEvent } from "react";
 import { Alert, Badge, Button, Card, ConfirmButton, Empty, Input, PageHeader, Spinner } from "../components/ui";
-import { BluetoothService, type BluetoothDevice, type BluetoothPairing } from "../gen/dphone/v1/bluetooth_pb";
+import { BluetoothService, type BluetoothDevice, type BluetoothPairing } from "../gen/opendeskphone/v1/bluetooth_pb";
 import { useStatus } from "../lib/status";
 import { useStreamState } from "../lib/stream";
 import { client } from "../lib/transport";

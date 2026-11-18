@@ -7,19 +7,19 @@
 #
 # The build takes each from a stock image that Nix downloads from the vendor
 # (vendor-firmware.nix): the image is taken apart with our own
-# `dphone-image`, and the one file is kept.  Nothing is done by hand.
+# `opendeskphone-image`, and the one file is kept.  Nothing is done by hand.
 #
 # The extraction is a fixed-output derivation, so the file is pinned by the
 # hash here, and a store that already holds it needs neither the stock image
 # nor the network.  The hashes are those of the files in stock release
 # 2_9_26 (old family) and 2_9_28 (new family).
 #
-# `dphone-image` is the host tool, built from the workspace by itself; the
-# `dphone` package and the images that carry this firmware are not among its
-# inputs, so nothing here depends on what it feeds.
+# `opendeskphone-image` is the host tool, built from the workspace by itself;
+# the `opendeskphone` package and the images that carry this firmware are not
+# among its inputs, so nothing here depends on what it feeds.
 {
   runCommand,
-  dphone-image,
+  opendeskphone-image,
   stock, # vendor-firmware.nix
 }:
 let
@@ -31,13 +31,13 @@ let
     }:
     runCommand "dspapp1107_lcc-${family}-family.bin"
       {
-        nativeBuildInputs = [ dphone-image ];
+        nativeBuildInputs = [ opendeskphone-image ];
         outputHashMode = "flat";
         outputHashAlgo = "sha256";
         outputHash = sha256;
       }
       ''
-        dphone-image jffs2 extract ${stock.parts.${model}}/rootfs.jffs2 rootfs > extract.log
+        opendeskphone-image jffs2 extract ${stock.parts.${model}}/rootfs.jffs2 rootfs > extract.log
         # Stock has it executable; a flat fixed output is a plain file.
         install -m 0644 rootfs/lib/firmware/dspapp1107_lcc.bin $out
       '';

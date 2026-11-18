@@ -1,0 +1,12 @@
+[package]
+name = "opendeskphone-bt"
+description = "Open Desk Phone: Bluetooth headsets on the D65 (HFP and HSP audio gateway)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+log = "0.4"
+libc = "0.2"

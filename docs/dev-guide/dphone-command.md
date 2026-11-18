@@ -58,7 +58,7 @@ Remote.  For usage, see [Logs and diagnostics](diagnostics.md).
 | `dphone version` | Shows the running version and the model. |
 | `dphone health` | Shows the conditions behind the health report that confirms a trial boot.  Exits with 0 when the main role reports healthy, 1 otherwise. |
 | `dphone log` | Shows the latest log entries.  `-n <count>` sets the number of entries; `-f` follows the log. |
-| `dphone crashlog` | Prints the records of the last kernel panic, saved by the main role in `/nvdata/open/crash/`. |
+| `dphone crashlog` | Prints the records of the last kernel panic, saved by the main role in `/nvdata/opendeskphone/crash/`. |
 | `dphone state [topic]` | Dumps the state store, which every subsystem publishes to: calls, accounts, network, audio, firmware, and more.  A topic limits the dump to the fields whose names contain the word, e.g., `dphone state audio`. |
 | `dphone restart` | Restarts the main role only.  The kernel and the init role keep running. |
 
@@ -109,4 +109,4 @@ Remote.  Safe mode starts only the network, so in safe mode `dphone net` works a
 
 ## New commands
 
-A remote command is a `clap` type that a subsystem defines and registers a handler for at startup.  To add the command to the command tree and to `dphone --help`, list the type in the `Remote` enumeration in `crates/dphone/src/cli.rs`, whose top comments describe the design.
+A remote command is a `clap` type that a subsystem defines and registers a handler for at startup.  To add the command to the command tree and to `dphone --help`, list the type in the `Remote` enumeration in `crates/opendeskphone/src/cli.rs`, whose top comments describe the design.

@@ -6,10 +6,10 @@
 //! list of fields; Select on a field opens a dialog over the list in which
 //! the field is changed.
 
-use dphone_app_sdk::alarms::{self, Alarm};
-use dphone_app_sdk::canvas::{self, Op, Role};
-use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{Align, Error, Font};
+use opendeskphone_app_sdk::alarms::{self, Alarm};
+use opendeskphone_app_sdk::canvas::{self, Op, Role};
+use opendeskphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::{Align, Error, Font};
 
 mod text;
 
@@ -538,7 +538,7 @@ impl App for Alarms {
     }
 }
 
-dphone_app_sdk::export_app! {
+opendeskphone_app_sdk::export_app! {
     app: Alarms,
     name: "alarms",
     id: "org.opendeskphone.alarms",

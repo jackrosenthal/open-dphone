@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package opendeskphone.v1;
+
+import "opendeskphone/v1/config.proto";
+
+service SystemService {
+  rpc Reboot(RebootRequest) returns (RebootResponse);
+  rpc FactoryReset(FactoryResetRequest) returns (FactoryResetResponse);
+  // Recovery only (the nvdata partition could not be mounted): erase the
+  // partition and reboot.  Refused while nvdata is mounted.
+  rpc EraseNvdata(EraseNvdataRequest) returns (EraseNvdataResponse);
+  rpc SetTime(SetTimeRequest) returns (SetTimeResponse);
+  // A backup of the local configuration, as a gzip-compressed tar archive.
+  rpc CreateBackup(CreateBackupRequest) returns (CreateBackupResponse);
+  rpc RestoreBackup(RestoreBackupRequest) returns (RestoreBackupResponse);
+  // Who has UART A: the electronic hook switch (EHS) headset adapter (the
+  // default), or the serial console.  The two cannot share the port.
+  rpc GetSerialConsole(GetSerialConsoleRequest) returns (GetSerialConsoleResponse);
+  rpc SetSerialConsole(SetSerialConsoleRequest) returns (SetSerialConsoleResponse);
+  // Whether GET /metrics (the Prometheus scrape endpoint, no login) is
+  // served.
+  rpc GetMetricsEnabled(GetMetricsEnabledRequest) returns (GetMetricsEnabledResponse);
+  rpc SetMetricsEnabled(SetMetricsEnabledRequest) returns (SetMetricsEnabledResponse);
+}
+
+message RebootRequest {}
+
+message RebootResponse {}
+
+message FactoryResetRequest {
+  // Must be the phone's model name (e.g., "D60"), as a guard.
+  string confirm = 1;
+}
+
+message FactoryResetResponse {}
+
+message EraseNvdataRequest {
+  // Must be the phone's model name (e.g., "D60"), as a guard.
+  string confirm = 1;
+}
+
+message EraseNvdataResponse {}
+
+message SetTimeRequest {
+  uint64 unix_secs = 1;
+}
+
+message SetTimeResponse {}
+
+message CreateBackupRequest {}
+
+message CreateBackupResponse {
+  string filename = 1;
+  bytes archive = 2;
+}
+
+message RestoreBackupRequest {
+  bytes archive = 1;
+}
+
+message RestoreBackupResponse {
+  uint32 files = 1;
+  bool restart_needed = 2;
+}
+
+message GetSerialConsoleRequest {}
+
+message GetSerialConsoleResponse {
+  // True: the serial console has the port.  False: the EHS adapter has it.
+  BoolSetting serial_console = 1;
+}
+
+message SetSerialConsoleRequest {
+  bool serial_console = 1;
+}
+
+message SetSerialConsoleResponse {
+  BoolSetting serial_console = 1;
+}
+
+message GetMetricsEnabledRequest {}
+
+message GetMetricsEnabledResponse {
+  BoolSetting metrics_enabled = 1;
+}
+
+message SetMetricsEnabledRequest {
+  bool metrics_enabled = 1;
+}
+
+message SetMetricsEnabledResponse {
+  BoolSetting metrics_enabled = 1;
+}

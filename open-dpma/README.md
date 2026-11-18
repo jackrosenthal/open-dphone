@@ -151,22 +151,22 @@ while the option is there.  Stock firmware ignores the settings.
 
 | Option | Meaning |
 |---|---|
-| `dphone_ssh_enabled=yes\|no` | Whether the phone's SSH server runs.  Default is no. |
-| `dphone_ssh_authorized_key=<public key>` | An SSH public key that may log in to the phone, e.g., `ssh-ed25519 AAAA... name`.  Repeat it for more keys. |
-| `dphone_metrics_enabled=yes\|no` | Whether the phone serves `/metrics`.  Default is yes. |
-| `dphone_serial_console=yes\|no` | Whether the phone's serial port is a console.  Default is no. |
-| `dphone_static_address=<address>/<prefix length>` | The phone's static IPv4 address, e.g., `192.0.2.20/24`.  Default is DHCP. |
-| `dphone_static_gateway=<address>` | The gateway with the static address. |
-| `dphone_static_dns=<address>[,<address>...]` | The DNS servers with the static address. |
-| `dphone_disabled_apps=<app>[,<app>...]` | The built-in apps the phone does not offer, e.g., `calendar,parking`.  Default is none. |
-| `dphone_idle_softkeys=<softkey>[,<softkey>...]` | The softkeys of the idle screen, in order: `call_log`, `contacts`, `status`, `menu`, `apps`, `dnd`, `forward`, `redial`, `theme` (the theme selector of the color models D60, D62, and D65; the other models leave it out), or `app:<app>` for an app, e.g., `call_log,contacts,app:parking,menu`.  Default is `call_log,contacts,status,menu,apps,dnd,forward`, and `theme` after them on the color models. |
-| `dphone_theme=<name>` | The built-in theme of a color model (D60, D62, or D65): the wallpaper and the colors of the phone's screens, e.g., `dusk`.  The phone's theme selector lists the names.  A `wallpaper_file` goes before the theme.  Default is the phone's theme. |
-| `dphone_palette_file=<file>` | The palette file for the wallpaper of `wallpaper_file`: the colors of the phone's screens, as Open Desk Phone's `palette.proto` describes, e.g., `lobby.txtpb`.  Default is the phone's own palette. |
-| `dphone_ignore_provisioned_firmware=yes\|no` | Whether the phone ignores the firmware this configuration offers it.  Default is no. |
-| `dphone_app_data_tenant=<key>` | The tenant whose app data the phone reads and writes (see "App data"): 1 to 32 lower-case letters, digits, `.`, or `-`.  Default is none: the phone shares the app data of the phones without a key. |
+| `opendeskphone_ssh_enabled=yes\|no` | Whether the phone's SSH server runs.  Default is no. |
+| `opendeskphone_ssh_authorized_key=<public key>` | An SSH public key that may log in to the phone, e.g., `ssh-ed25519 AAAA... name`.  Repeat it for more keys. |
+| `opendeskphone_metrics_enabled=yes\|no` | Whether the phone serves `/metrics`.  Default is yes. |
+| `opendeskphone_serial_console=yes\|no` | Whether the phone's serial port is a console.  Default is no. |
+| `opendeskphone_static_address=<address>/<prefix length>` | The phone's static IPv4 address, e.g., `192.0.2.20/24`.  Default is DHCP. |
+| `opendeskphone_static_gateway=<address>` | The gateway with the static address. |
+| `opendeskphone_static_dns=<address>[,<address>...]` | The DNS servers with the static address. |
+| `opendeskphone_disabled_apps=<app>[,<app>...]` | The built-in apps the phone does not offer, e.g., `calendar,parking`.  Default is none. |
+| `opendeskphone_idle_softkeys=<softkey>[,<softkey>...]` | The softkeys of the idle screen, in order: `call_log`, `contacts`, `status`, `menu`, `apps`, `dnd`, `forward`, `redial`, `theme` (the theme selector of the color models D60, D62, and D65; the other models leave it out), or `app:<app>` for an app, e.g., `call_log,contacts,app:parking,menu`.  Default is `call_log,contacts,status,menu,apps,dnd,forward`, and `theme` after them on the color models. |
+| `opendeskphone_theme=<name>` | The built-in theme of a color model (D60, D62, or D65): the wallpaper and the colors of the phone's screens, e.g., `dusk`.  The phone's theme selector lists the names.  A `wallpaper_file` goes before the theme.  Default is the phone's theme. |
+| `opendeskphone_palette_file=<file>` | The palette file for the wallpaper of `wallpaper_file`: the colors of the phone's screens, as Open Desk Phone's `palette.proto` describes, e.g., `lobby.txtpb`.  Default is the phone's own palette. |
+| `opendeskphone_ignore_provisioned_firmware=yes\|no` | Whether the phone ignores the firmware this configuration offers it.  Default is no. |
+| `opendeskphone_app_data_tenant=<key>` | The tenant whose app data the phone reads and writes (see "App data"): 1 to 32 lower-case letters, digits, `.`, or `-`.  Default is none: the phone shares the app data of the phones without a key. |
 
-An invalid value of `dphone_ssh_enabled`, `dphone_metrics_enabled`, or
-`dphone_serial_console` sends `no`, and is logged as an error; without a
+An invalid value of `opendeskphone_ssh_enabled`, `opendeskphone_metrics_enabled`, or
+`opendeskphone_serial_console` sends `no`, and is logged as an error; without a
 value, the phone's user would decide.
 
 The official DPMA's `web_ui_enabled=yes|no` controls the phone's web
@@ -177,8 +177,8 @@ For example:
 ```
 [phone101]
 type=phone
-dphone_ssh_enabled=yes
-dphone_ssh_authorized_key=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa alice@laptop
+opendeskphone_ssh_enabled=yes
+opendeskphone_ssh_authorized_key=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa alice@laptop
 ```
 
 ### App data
@@ -188,19 +188,19 @@ game's best times, which every phone then shows, or a user's progress,
 which comes back after the phone is reset.  There is nothing to turn on:
 the module answers the phones' requests (`AppDataRequest`, which the
 official DPMA does not have) and keeps the data in AstDB, in the family
-`DPhoneAppData`, so it is there after Asterisk restarts.
+`OpenDeskPhoneAppData`, so it is there after Asterisk restarts.
 
 Each app has keys that all phones share, and keys for each user.  The
 user is the phone section (`type=phone`) the phone is provisioned as,
 shown to others by its `full_name`.
 
-The phones keep one thing of their own there, under the name `dphone`,
+The phones keep one thing of their own there, under the name `opendeskphone`,
 which no app can have: the theme a user chose on a color model (the
 user's key `theme`).  A phone that was reset, and another phone of the
 same user, take the theme from it.
 
 On a server with more than one tenant, give each tenant's phones a
-tenant key with `dphone_app_data_tenant`.  Phones with the same key
+tenant key with `opendeskphone_app_data_tenant`.  Phones with the same key
 share one store, and no phone reads, writes, or hears of the data of
 another key; the phones without a key share a store of their own.  The
 key is the server's alone: it is never sent to a phone, and no request
@@ -209,7 +209,7 @@ can name one.  A template sets it for all phones of a tenant:
 ```
 [north-office](!)
 type=phone
-dphone_app_data_tenant=north-office
+opendeskphone_app_data_tenant=north-office
 
 [phone101](north-office)
 line=101
@@ -218,7 +218,7 @@ line=101
 line=102
 ```
 
-A phone whose `dphone_app_data_tenant` is not a valid key has no app
+A phone whose `opendeskphone_app_data_tenant` is not a valid key has no app
 data until that is corrected.  The data stays with the key it was
 written under: a phone that gets another key sees the other store, and
 its user's keys there.
@@ -226,8 +226,8 @@ its user's keys there.
 An app has at most 1024 shared keys and 64 keys for each user, a key is
 at most 64 characters, and a value at most 4096 bytes.
 
-`database show DPhoneAppData` lists the data, and `database deltree`
-removes it, e.g., `database deltree DPhoneAppData @north-office/lightup`
+`database show OpenDeskPhoneAppData` lists the data, and `database deltree`
+removes it, e.g., `database deltree OpenDeskPhoneAppData @north-office/lightup`
 for one app of one tenant (`@` alone is the phones without a key).  A
 tenant key has no upper-case letter and no `_`, because `deltree`
 matches without regard to case and reads `_` as any one character: no

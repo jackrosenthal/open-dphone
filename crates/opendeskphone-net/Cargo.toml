@@ -1,0 +1,21 @@
+[package]
+name = "opendeskphone-net"
+description = "Open Desk Phone networking: rtnetlink, switch topology, DHCP, DNS, SNTP, LLDP-MED, and mDNS"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+libc = "0.2"
+log = "0.4"
+tokio = { version = "1.54", default-features = false, features = ["rt", "net", "time", "sync", "macros", "io-util"] }
+
+[dev-dependencies]
+test-inputs = { path = "../test-inputs" }
+tokio = { version = "1", default-features = false, features = ["rt", "net", "time", "sync", "macros", "io-util", "test-util"] }
+
+[[test]]
+name = "netns"
+harness = false

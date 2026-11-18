@@ -1,8 +1,8 @@
 //! Queues: the user's call queues with their login state; log in and out,
 //! pause and resume, and view a queue's numbers for today.
 
-use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{InputMode, QueueMembership, QueueStatus};
+use opendeskphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::{InputMode, QueueMembership, QueueStatus};
 
 const SK_LOGIN: u32 = 1;
 const SK_LOGOUT: u32 = 2;
@@ -297,7 +297,7 @@ impl App for Queues {
     }
 }
 
-dphone_app_sdk::export_app! {
+opendeskphone_app_sdk::export_app! {
     app: Queues,
     name: "queues",
     id: "org.opendeskphone.queues",

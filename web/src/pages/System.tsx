@@ -1,9 +1,9 @@
 import { useMutation } from "@connectrpc/connect-query";
 import { useRef, useState, type FormEvent } from "react";
 import { Alert, Button, Card, ConfirmButton, Field, Input, KeyValue, PageHeader } from "../components/ui";
-import { AuthService } from "../gen/dphone/v1/auth_pb";
-import { NetworkService } from "../gen/dphone/v1/network_pb";
-import { SystemService } from "../gen/dphone/v1/system_pb";
+import { AuthService } from "../gen/opendeskphone/v1/auth_pb";
+import { NetworkService } from "../gen/opendeskphone/v1/network_pb";
+import { SystemService } from "../gen/opendeskphone/v1/system_pb";
 import { dateTime } from "../lib/format";
 import { modelName } from "../lib/labels";
 import { getSession, setSession } from "../lib/session";

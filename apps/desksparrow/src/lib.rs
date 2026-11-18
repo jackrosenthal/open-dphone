@@ -28,10 +28,10 @@ mod board;
 mod game;
 
 use board::Row;
-use dphone_app_sdk::canvas::{self, Bitmap, Color, Op, Role};
-use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::StorageLocation::{Local, PbxShared};
-use dphone_app_sdk::{Align, Font};
+use opendeskphone_app_sdk::canvas::{self, Bitmap, Color, Op, Role};
+use opendeskphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::StorageLocation::{Local, PbxShared};
+use opendeskphone_app_sdk::{Align, Font};
 use game::{Game, Pipe, Rules};
 
 /// The keys that start a game and flap: Select and the keypad.  Claimed,
@@ -652,7 +652,7 @@ impl Screen {
             }
         }
         if let Err(e) = canvas::draw(self.canvas, &ops) {
-            dphone_app_sdk::log_warn(&format!("drawing refused: {e}"));
+            opendeskphone_app_sdk::log_warn(&format!("drawing refused: {e}"));
         }
     }
 }
@@ -703,7 +703,7 @@ impl Default for Sparrow {
 fn keep(key: &str, value: &[u8], what: &str) {
     let reply = storage::set(Local, key, value, None);
     if !matches!(reply, StorageReply::Done(StorageOutcome::Stored(_))) {
-        dphone_app_sdk::log_warn(&format!("{what} was not saved: {reply:?}"));
+        opendeskphone_app_sdk::log_warn(&format!("{what} was not saved: {reply:?}"));
     }
 }
 
@@ -854,12 +854,12 @@ impl Sparrow {
             // when the PBX is in reach: `Event::StorageOnline`, or the
             // next time the game starts.
             StorageOutcome::Unreachable(_) => {}
-            other => dphone_app_sdk::log_warn(&format!("the leaderboard: {other:?}")),
+            other => opendeskphone_app_sdk::log_warn(&format!("the leaderboard: {other:?}")),
         }
     }
 
     fn seed(&self) -> u32 {
-        dphone_app_sdk::read_string(SEED_FILE)
+        opendeskphone_app_sdk::read_string(SEED_FILE)
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or_else(|| (timers::now_ms() as u32) ^ self.games.wrapping_mul(0x9E37_79B9))
     }
@@ -931,7 +931,7 @@ impl App for Sparrow {
     fn start(&mut self) {
         // The whole display, from the first frame.
         ui::set_full_screen(true);
-        self.best = dphone_app_sdk::read_string(BEST_FILE)
+        self.best = opendeskphone_app_sdk::read_string(BEST_FILE)
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or(0);
         let rows = |file: &str| match storage::get(Local, file) {
@@ -969,7 +969,7 @@ impl App for Sparrow {
     }
 }
 
-dphone_app_sdk::export_app! {
+opendeskphone_app_sdk::export_app! {
     app: Sparrow,
     name: "desksparrow",
     id: "org.opendeskphone.desksparrow",

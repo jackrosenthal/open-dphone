@@ -9,7 +9,7 @@ license = "GPL-2.0-or-later"
 authors = ["Jack Rosenthal <jack@rosenth.al>"]
 
 [workspace.dependencies]
-dphone-app-sdk = { path = "../crates/dphone-app-sdk" }
+opendeskphone-app-sdk = { path = "../crates/opendeskphone-app-sdk" }
 
 [profile.release]
 opt-level = "s"

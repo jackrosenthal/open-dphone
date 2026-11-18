@@ -24,7 +24,7 @@ To install Open Desk Phone on a phone running stock firmware, follow [Installati
 A phone provisioned by a DPMA server installs the firmware that the PBX offers, as stock firmware does, so the PBX's image replaces a test image at the next provisioning.  To make the phone ignore the PBX's firmware entries, either:
 
 - on the **System** page of the web interface, turn on **Ignore DPMA firmware updates** in the **Firmware** card, or
-- with [Open DPMA](../open-dpma/index.md), set [`dphone_ignore_provisioned_firmware=yes`](../open-dpma/opendeskphone-options.md#dphone_ignore_provisioned_firmware) in the phone section.
+- with [Open DPMA](../open-dpma/index.md), set [`opendeskphone_ignore_provisioned_firmware=yes`](../open-dpma/opendeskphone-options.md#opendeskphone_ignore_provisioned_firmware) in the phone section.
 
 ## Installation from Open Desk Phone
 
@@ -82,7 +82,7 @@ The command rejects an image built for another model.  One update runs at a time
 
 ## Trial boot
 
-An Open Desk Phone image installed by `dphone update install` or the web interface starts on trial.  Before selecting the new bank, the updater writes a trial record, `/nvdata/open/trial`, which is removed only after the new image proves healthy.
+An Open Desk Phone image installed by `dphone update install` or the web interface starts on trial.  Before selecting the new bank, the updater writes a trial record, `/nvdata/opendeskphone/trial`, which is removed only after the new image proves healthy.
 
 - **Each boot of the new bank counts.**  The early-boot stage in the new kernel image counts the boot before the root file system is needed.  A kernel panic, a watchdog reset, or a crash of the init role uses up one boot.  After three boots without confirmation, the stage selects the previous bank and restarts the phone.
 - **An unusable root file system ends the trial at once.**  If the root file system cannot be mounted or has no init program, the stage returns to the previous bank without using up the remaining boots.

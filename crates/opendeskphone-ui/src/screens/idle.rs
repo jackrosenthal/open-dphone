@@ -1,0 +1,469 @@
+//! The idle (home) screen: clock, status, and line-key tabs.
+
+use super::*;
+use crate::gfx::Rgb;
+use crate::IdleSoftkey;
+use opendeskphone_state::{AccountId, Accounts, BlfState, LineKeyBinding, Network, Registration};
+
+pub(crate) struct Idle;
+
+/// One line-key tab as drawn.
+pub(crate) struct Tab {
+    pub label: String,
+    pub icon: &'static str,
+}
+
+/// The line-key tabs, from the key state, or from the accounts while the
+/// call core has not published keys yet.
+pub(crate) fn line_tabs(cx: &Cx) -> Vec<Tab> {
+    let st = cx.st;
+    let account_tab = |id: AccountId, label: &str, active: bool| {
+        let acct = st.accounts.get(id);
+        let reg = acct.map(|a| &a.registration);
+        let label = if !label.is_empty() {
+            label.to_string()
+        } else {
+            acct.map(|a| if a.label.is_empty() { a.user.clone() } else { a.label.clone() }).unwrap_or_default()
+        };
+        Tab {
+            label,
+            icon: match reg {
+                _ if active => "phone",
+                // Stock: a person while idle, a handset while in a call.
+                Some(Registration::Registered { .. }) => "contacts",
+                Some(Registration::Failed { .. }) => "warning",
+                _ => "unregistered",
+            },
+        }
+    };
+    if st.keys.line_keys.is_empty() {
+        return st.accounts.accounts.iter().map(|a| account_tab(a.id, "", false)).collect();
+    }
+    st.keys
+        .line_keys
+        .iter()
+        .take(cx.model.line_keys() as usize)
+        .map(|k| match &k.binding {
+            LineKeyBinding::Account(id) => account_tab(*id, &k.label, !k.calls.is_empty()),
+            LineKeyBinding::Blf(entry) => {
+                let e = st.presence.get(entry);
+                let state = e.map(|e| e.state).unwrap_or_default();
+                Tab {
+                    label: if k.label.is_empty() { e.map(|e| e.label.clone()).unwrap_or_default() } else { k.label.clone() },
+                    icon: match state {
+                        BlfState::Ringing | BlfState::OnHoldRinging => "ring",
+                        BlfState::InUse => "phone",
+                        BlfState::OnHold => "hold",
+                        BlfState::Idle => "registered",
+                        _ => "unregistered",
+                    },
+                }
+            }
+            LineKeyBinding::Unused => Tab { label: String::new(), icon: "" },
+        })
+        .collect()
+}
+
+/// Status icons, left to right: (icon, count).  Stock shows the missed
+/// call count at the top left of the idle screen; the others follow it.
+pub(crate) fn status_icons(cx: &Cx) -> Vec<(&'static str, u32)> {
+    let st = cx.st;
+    let mut v = Vec::new();
+    if st.call_log.missed_unseen > 0 {
+        v.push(("phone-missed", st.call_log.missed_unseen));
+    }
+    if st.mwi.any_waiting() {
+        v.push(("voicemail", st.mwi.total_new()));
+    }
+    if let Some(icon) = service_icon(&st.network, &st.accounts) {
+        v.push((icon, 0));
+    }
+    if st.features.dnd {
+        v.push(("dnd", 0));
+    }
+    if st.features.forward.any() {
+        v.push(("forward", 0));
+    }
+    if st.alarms.icon {
+        v.push(("alarm", 0));
+    }
+    if st.audio.headset_mode {
+        v.push(("headset", 0));
+    }
+    if st.audio.muted {
+        v.push(("mute", 0));
+    }
+    v
+}
+
+/// The status icon for why the phone cannot take calls, if it cannot.
+///
+/// `net-down` means the Ethernet link itself is down: no carrier on the
+/// LAN jack.  `phone-unregistered` (a handset with a cross through it)
+/// means the link is up, the phone has accounts, and none of them is
+/// registered, whatever the reason (no address yet, the server does not
+/// answer, the registration was refused).  With the link down only
+/// `net-down` shows, since nothing can register without it.
+///
+/// A phone with no accounts (one used without a server), or with every
+/// account switched off, shows neither with the link up: it has nothing
+/// to register, so "not registered" would report a fault that is not one.
+/// The line-key tabs show each account's own registration.
+pub(crate) fn service_icon(network: &Network, accounts: &Accounts) -> Option<&'static str> {
+    if !network.lan.up {
+        return Some("net-down");
+    }
+    let mut enabled = accounts.accounts.iter().filter(|a| a.registration != Registration::Disabled).peekable();
+    if enabled.peek().is_some() && !enabled.any(|a| a.registration.is_registered()) {
+        return Some("phone-unregistered");
+    }
+    None
+}
+
+/// Draws the status icons in the header band `r`, from its left edge.
+pub(crate) fn draw_status_icons(cx: &Cx, c: &mut Canvas, r: IRect, fg: Rgb) {
+    let th = cx.th;
+    let f = th.font(Font::Normal);
+    // Stock: the first icon starts at x 8 (color); the count follows 8
+    // pixels after it.
+    let (start, gap, after) = if th.gray { (3, 2, 5) } else { (8, 8, 12) };
+    let mut x = r.x + start;
+    let old = c.push_clip(r);
+    for (name, count) in status_icons(cx) {
+        let Some(icon) = th.icon(name) else { continue };
+        c.icon(icon, x, r.y + (r.h - icon.height()) / 2, fg);
+        x += icon.width();
+        if count > 0 {
+            let s = count.to_string();
+            x += gap;
+            x += c.text(f, x, r.y + (r.h - f.height()) / 2 + f.ascent as i32, &s, fg);
+        }
+        x += after;
+    }
+    c.restore_clip(old);
+}
+
+/// Draws the line-key tabs down the right edge, from `x`.  Tab `i` is at
+/// [`Theme::tab_rect_from`]`(x, i)`: a fixed pitch from the top of the
+/// screen, so that each label sits beside its physical key.
+pub(crate) fn draw_tabs(cx: &Cx, c: &mut Canvas, x: i32) {
+    let th = cx.th;
+    let f = th.font(Font::Normal);
+    let edge = if th.gray { th.fg } else { 0x000001 };
+    for (i, tab) in line_tabs(cx).iter().enumerate() {
+        let r = th.tab_rect_from(x, i);
+        if r.bottom() > th.soft_y {
+            break;
+        }
+        if tab.label.is_empty() && tab.icon.is_empty() {
+            continue;
+        }
+        // The tab is open to the right edge of the screen and to the tab
+        // above; its left and bottom edges are drawn, with the lower-left
+        // corner cut (color) or rounded (gray) as on stock.
+        let bottom = r.h - 1;
+        for j in 0..r.h {
+            // Border offset from the tab's left edge on this row, and how
+            // many border pixels it has there.
+            let (off, run) = if th.gray {
+                match bottom - j {
+                    0 => (7, r.w),
+                    1 => (5, 2),
+                    2 => (3, 2),
+                    3 => (2, 1),
+                    4 | 5 => (1, 1),
+                    _ => (0, 1),
+                }
+            } else {
+                match bottom - j {
+                    0 => (4, r.w),
+                    k @ 1..=3 => (3 - k, 2),
+                    _ => (0, 1),
+                }
+            };
+            let y = r.y + j;
+            c.span(y, r.x + off, (r.x + off + run).min(r.right()), edge);
+            if j != bottom {
+                c.span(y, r.x + off + run, r.right(), th.tab_bg);
+            }
+        }
+        let (left, right) = if th.gray { (6, 5) } else { (14, 9) };
+        let mut text = IRect::new(r.x + left, r.y, r.w - left - right, r.h - 1);
+        if let Some(icon) = th.icon(tab.icon) {
+            let ir = IRect::new(r.right() - right - icon.width(), r.y, icon.width(), r.h - 1);
+            c.icon_in(icon, ir, th.tab_fg);
+            text.w -= icon.width() + 4;
+        }
+        c.text_in(f, text, &tab.label, th.tab_fg, HAlign::Left);
+    }
+}
+
+/// The header band `r` on gray skins: black, left of the tab column, with
+/// `text` (a call state) or the status icons.
+pub(crate) fn gray_header(cx: &Cx, c: &mut Canvas, r: IRect, text: Option<&str>) {
+    let th = cx.th;
+    c.fill(r, th.title_bg);
+    match text {
+        Some(t) => c.text_in(
+            th.font(Font::Normal),
+            IRect { x: r.x + th.title_pad, w: r.w - 2 * th.title_pad, ..r },
+            t,
+            th.title_fg,
+            HAlign::Left,
+        ),
+        None => draw_status_icons(cx, c, r, th.title_fg),
+    }
+}
+
+/// Where the idle clock goes: the time's right edge and baseline, the
+/// meridiem's left edge, and the date's center and baseline.  Color values
+/// are the stock positions (digits at x 68..222, y 89..152; meridiem from
+/// x 242; date centered on x 148 with its baseline at y 196).
+pub(crate) struct ClockLayout {
+    pub time_right: i32,
+    pub time_base: i32,
+    pub mer_x: i32,
+    pub date_cx: i32,
+    pub date_base: i32,
+}
+
+pub(crate) fn clock_layout(th: &Theme, area: IRect) -> ClockLayout {
+    if !th.gray {
+        return ClockLayout { time_right: 228, time_base: 152, mer_x: 240, date_cx: 148, date_base: 196 };
+    }
+    // Gray: no stock clock to match (stock shows a logo with a small time
+    // line under it), so the block is centered in the area left of the
+    // tabs.
+    let big = th.clock_font();
+    let digits = big.glyph('0').map(|g| g.top as i32).unwrap_or(big.ascent as i32);
+    let block = digits + 4 + th.line_h;
+    let top = area.y + ((area.h - block) / 2).max(0);
+    let cx = area.x + area.w / 2;
+    ClockLayout {
+        time_right: cx, // centered: see `Idle::draw`
+        time_base: top + digits,
+        mer_x: 0,
+        date_cx: cx,
+        date_base: top + digits + 4 + (th.line_h + th.font(Font::Normal).ascent as i32) / 2,
+    }
+}
+
+/// Height of the idle-screen area offered to an app's idle view.
+pub(crate) fn idle_app_h(th: &Theme) -> i32 {
+    if th.gray { 2 * th.line_h } else { 36 }
+}
+
+impl Screen for Idle {
+    fn name(&self) -> String {
+        "idle".into()
+    }
+    fn wallpaper(&self) -> bool {
+        true
+    }
+    fn motion(&self) -> bool {
+        true
+    }
+    /// The configured softkeys ([`UiConfig::idle_softkeys`]); an action's
+    /// id is its place in that list, from 1.
+    fn softkeys(&self, cx: &Cx) -> Vec<Soft> {
+        let keys = cx.cfg.idle_softkeys.iter().enumerate().filter_map(|(i, key)| {
+            let label = match key {
+                // Stock: "Missed Calls" while there are unseen missed calls.
+                IdleSoftkey::CallLog if cx.st.call_log.missed_unseen > 0 => tr::MISSED_CALLS_KEY,
+                IdleSoftkey::CallLog => tr::CALL_LOG,
+                IdleSoftkey::Contacts => tr::CONTACTS,
+                IdleSoftkey::Status => tr::STATUS,
+                IdleSoftkey::Menu => tr::MENU,
+                IdleSoftkey::Apps => tr::APPS,
+                IdleSoftkey::Dnd if cx.st.features.dnd => tr::DND_OFF,
+                IdleSoftkey::Dnd => tr::DND,
+                IdleSoftkey::Forward => tr::FORWARD,
+                IdleSoftkey::Redial => tr::REDIAL,
+                // Only the color models have themes.
+                IdleSoftkey::Theme if cx.th.gray => return None,
+                IdleSoftkey::Theme => tr::THEME,
+                IdleSoftkey::App(name) => {
+                    // An app the phone does not have, or one that is
+                    // switched off, has no softkey.
+                    let app = cx.st.apps.installed.iter().find(|a| a.name == *name)?;
+                    if app.display_name.is_empty() { name } else { &app.display_name }
+                }
+            };
+            Some(soft(i as u32 + 1, label))
+        });
+        keys.collect()
+    }
+    fn softkey(&mut self, cx: &Cx, id: u32) -> Nav {
+        let Some(key) = (id as usize).checked_sub(1).and_then(|i| cx.cfg.idle_softkeys.get(i)) else {
+            return Nav::Stay;
+        };
+        match key {
+            IdleSoftkey::CallLog => Nav::Push(menus::call_log()),
+            IdleSoftkey::Contacts => {
+                cx.post(Command::LaunchApp { name: "contacts".into() });
+                Nav::Stay
+            }
+            IdleSoftkey::Status => Nav::Push(menus::about()),
+            IdleSoftkey::Menu => Nav::Push(menus::main_menu()),
+            IdleSoftkey::Apps => Nav::Push(menus::launcher()),
+            IdleSoftkey::Dnd => {
+                cx.post(Command::SetDnd { on: !cx.st.features.dnd });
+                Nav::Stay
+            }
+            IdleSoftkey::Forward => Nav::Push(menus::forward_menu()),
+            IdleSoftkey::Redial => {
+                cx.post(Command::Redial);
+                Nav::Stay
+            }
+            IdleSoftkey::Theme if cx.th.gray => Nav::Stay,
+            IdleSoftkey::Theme => Nav::Push(menus::themes(cx.cfg)),
+            IdleSoftkey::App(name) => {
+                cx.post(Command::LaunchApp { name: name.clone() });
+                Nav::Stay
+            }
+        }
+    }
+    fn key(&mut self, cx: &Cx, key: Key) -> Nav {
+        match key {
+            Key::Digit(_) | Key::Star | Key::Pound => {
+                let mut d = calls::Dialer::new(calls::Purpose::Call, None);
+                d.type_char(cx, key.dial_char().unwrap_or('0'));
+                Nav::Push(Box::new(d))
+            }
+            Key::Select => Nav::Push(menus::main_menu()),
+            Key::Up | Key::Down => Nav::Push(menus::call_log()),
+            _ => Nav::Ignored,
+        }
+    }
+    fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
+        let th = cx.th;
+        // The background (wallpaper) is already painted.
+        let header = th.header_rect_to(th.idle_tab_x);
+        if th.gray {
+            gray_header(cx, c, header, None);
+        } else {
+            draw_status_icons(cx, c, header, th.wallpaper_fg);
+        }
+        draw_tabs(cx, c, th.idle_tab_x);
+
+        // The clock area: left of the tabs, below the header band.
+        let mut main = IRect::new(area.x, th.header_h, th.idle_tab_x - area.x, area.bottom() - th.header_h);
+        if let Some(view) = cx.idle_view {
+            let (rest, app) = main.split_bottom(idle_app_h(th));
+            let mut tree = view.batch_quiet();
+            if th.gray {
+                crate::appview_impl::render(&mut tree, c, th, app, cx.now_ms);
+            } else {
+                // Over the wallpaper: the app's widgets without a fill,
+                // text in the wallpaper's text color where the app sets
+                // none.
+                crate::appview_impl::render_over(&mut tree, c, th, app, cx.now_ms, th.wallpaper_fg);
+            }
+            main = rest;
+        }
+        let civil = cx.civil();
+        let big = th.clock_font();
+        let sub = th.date_font();
+        let clock_set = cx.st.system.time_synced || cx.unix > 1_600_000_000;
+        let time = if clock_set { civil.time(cx.cfg.time_24h) } else { "--:--".to_string() };
+        let mer = if clock_set { civil.meridiem(cx.cfg.time_24h) } else { "" };
+        let lay = clock_layout(th, main);
+        let tw = big.width(&time);
+        if th.gray {
+            let mw = if mer.is_empty() { 0 } else { sub.width(mer) + 3 };
+            let x = lay.date_cx - (tw + mw) / 2;
+            c.text(big, x, lay.time_base, &time, th.wallpaper_fg);
+            if !mer.is_empty() {
+                c.text(sub, x + tw + 3, lay.time_base, mer, th.wallpaper_fg);
+            }
+        } else {
+            // With a meridiem the time ends where stock's does; without
+            // one it is centered over the date.
+            let x = if mer.is_empty() { lay.date_cx - tw / 2 } else { lay.time_right - tw };
+            c.text(big, x, lay.time_base, &time, th.wallpaper_fg);
+            if !mer.is_empty() {
+                c.text(th.meridiem_font(), lay.mer_x, lay.time_base, mer, th.wallpaper_fg);
+            }
+        }
+        if clock_set {
+            let date = civil.date();
+            c.text(sub, lay.date_cx - sub.width(&date) / 2, lay.date_base, &date, th.wallpaper_fg);
+        }
+    }
+    fn deadline(&self, cx: &Cx) -> Option<u64> {
+        // Repaint at the next minute boundary.
+        let into = cx.unix % 60;
+        Some(cx.now_ms + (60 - into) * 1000 + 50)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use opendeskphone_state::{Account, ActiveHost, NetPhase, PortLink};
+
+    fn network(link: bool, phase: NetPhase) -> Network {
+        Network { phase, lan: PortLink { up: link, speed: if link { 100 } else { 0 }, full_duplex: link }, ..Default::default() }
+    }
+
+    fn accounts(regs: &[Registration]) -> Accounts {
+        let mut a = Accounts::default();
+        for (i, reg) in regs.iter().enumerate() {
+            let mut acct = Account::new(AccountId(i as u8));
+            acct.registration = reg.clone();
+            a.accounts.push(acct);
+        }
+        a
+    }
+
+    fn registered() -> Registration {
+        Registration::Registered { host: ActiveHost::Primary, expires_mono_ms: u64::MAX }
+    }
+
+    fn failed() -> Registration {
+        Registration::Failed { code: 403, reason: "Forbidden".into(), retry_mono_ms: 0 }
+    }
+
+    #[test]
+    fn link_down_shows_only_network_down() {
+        for regs in [vec![], vec![Registration::Unregistered], vec![failed()], vec![registered()], vec![Registration::Disabled]] {
+            for phase in [NetPhase::Down, NetPhase::Configuring, NetPhase::Up, NetPhase::Failed] {
+                assert_eq!(service_icon(&network(false, phase), &accounts(&regs)), Some("net-down"), "{regs:?} {phase:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn link_up_and_no_account_registered_shows_the_crossed_handset() {
+        // No address yet (the link is up; DHCP or discovery is running), an
+        // address that failed, and an address with the registration not
+        // (yet) made or refused.
+        for phase in [NetPhase::Down, NetPhase::Configuring, NetPhase::Failed, NetPhase::Up] {
+            for regs in [
+                vec![Registration::Unregistered],
+                vec![Registration::Registering],
+                vec![failed()],
+                vec![failed(), Registration::Unregistered],
+                vec![Registration::Disabled, Registration::Registering],
+            ] {
+                assert_eq!(service_icon(&network(true, phase), &accounts(&regs)), Some("phone-unregistered"), "{regs:?} {phase:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn one_registered_account_shows_neither() {
+        let up = network(true, NetPhase::Up);
+        assert_eq!(service_icon(&up, &accounts(&[registered()])), None);
+        assert_eq!(service_icon(&up, &accounts(&[failed(), registered()])), None);
+        assert_eq!(service_icon(&up, &accounts(&[Registration::Disabled, registered()])), None);
+    }
+
+    #[test]
+    fn nothing_to_register_shows_neither_with_the_link_up() {
+        for phase in [NetPhase::Configuring, NetPhase::Up] {
+            assert_eq!(service_icon(&network(true, phase), &accounts(&[])), None);
+            assert_eq!(service_icon(&network(true, phase), &accounts(&[Registration::Disabled])), None);
+        }
+    }
+}

@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useRef, useState } from "react";
 import { Badge, Button, Card, ConfirmButton, Dpma, Empty, PageHeader, Spinner, Toggle } from "../components/ui";
-import { AppsService } from "../gen/dphone/v1/apps_pb";
+import { AppsService } from "../gen/opendeskphone/v1/apps_pb";
 import { useStreamState } from "../lib/stream";
 import { client } from "../lib/transport";
 import { upload } from "../lib/upload";

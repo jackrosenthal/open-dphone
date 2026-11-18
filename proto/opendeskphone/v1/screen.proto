@@ -1,0 +1,168 @@
+syntax = "proto3";
+
+package opendeskphone.v1;
+
+import "opendeskphone/v1/model.proto";
+
+// Screen mirror and key injection.
+service ScreenService {
+  rpc GetScreenLayout(GetScreenLayoutRequest) returns (GetScreenLayoutResponse);
+  // Sends the current picture, then a new one whenever the screen changes.
+  rpc WatchScreen(WatchScreenRequest) returns (stream WatchScreenResponse);
+  rpc PressKey(PressKeyRequest) returns (PressKeyResponse);
+  rpc SetHook(SetHookRequest) returns (SetHookResponse);
+}
+
+enum ScreenId {
+  SCREEN_ID_UNSPECIFIED = 0;
+  SCREEN_ID_MAIN = 1;
+  // The D70's rapid-dial display.
+  SCREEN_ID_SIDE = 2;
+}
+
+enum KeyAction {
+  KEY_ACTION_UNSPECIFIED = 0;
+  // Press and release.
+  KEY_ACTION_TAP = 1;
+  KEY_ACTION_DOWN = 2;
+  KEY_ACTION_UP = 3;
+}
+
+message ScreenInfo {
+  ScreenId id = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  bool color = 4;
+}
+
+enum LampColor {
+  LAMP_COLOR_UNSPECIFIED = 0;
+  LAMP_COLOR_OFF = 1;
+  LAMP_COLOR_RED = 2;
+  LAMP_COLOR_GREEN = 3;
+  // Red and green together.
+  LAMP_COLOR_AMBER = 4;
+}
+
+enum LampBlink {
+  LAMP_BLINK_UNSPECIFIED = 0;
+  // Steady.
+  LAMP_BLINK_SOLID = 1;
+  // About once a second: a held call.
+  LAMP_BLINK_SLOW = 2;
+  // About twice a second: ringing.
+  LAMP_BLINK_FAST = 3;
+  // A short flash every few seconds, e.g., message waiting.
+  LAMP_BLINK_WINK = 4;
+}
+
+message Lamp {
+  // The key the lamp belongs to (a line key, a rapid-dial key, Messages,
+  // Mute, Headset, or Speaker).
+  Key key = 1;
+  LampColor color = 2;
+  LampBlink blink = 3;
+}
+
+// A key of the phone.
+message Key {
+  // What a key is.  Keys of a kind that has more than one are told apart
+  // by `index` (and, on an expansion module, `module`).
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    // A dial-pad digit; `index` is the digit, 0 to 9.
+    KIND_DIGIT = 1;
+    KIND_STAR = 2;
+    KIND_POUND = 3;
+    KIND_UP = 4;
+    KIND_DOWN = 5;
+    KIND_LEFT = 6;
+    KIND_RIGHT = 7;
+    // The check-mark key.
+    KIND_SELECT = 8;
+    // The X key.
+    KIND_CANCEL = 9;
+    KIND_VOLUME_UP = 10;
+    KIND_VOLUME_DOWN = 11;
+    // A softkey under the screen; `index` is 1 to 4 from the left.
+    KIND_SOFT = 12;
+    // A line key beside the screen; `index` is 1 to 6 from the top.
+    KIND_LINE = 13;
+    // A rapid-dial (BLF) key of the D50 or D70; `index` is 1 to 10 from
+    // the top.
+    KIND_BLF = 14;
+    KIND_MUTE = 15;
+    KIND_SPEAKER = 16;
+    KIND_HEADSET = 17;
+    KIND_HOLD = 18;
+    KIND_TRANSFER = 19;
+    KIND_REDIAL = 20;
+    // Voicemail ("Msgs").
+    KIND_MESSAGES = 21;
+    // D50, D70.
+    KIND_CONFERENCE = 22;
+    // D50, D70.
+    KIND_INFO = 23;
+    // The previous page of rapid-dial keys (D70).
+    KIND_BLF_PAGE_LEFT = 24;
+    // The next page of rapid-dial keys (D70), and the D65's page key.
+    KIND_BLF_PAGE_RIGHT = 25;
+    // The D70's feature keys.
+    KIND_STATUS = 26;
+    KIND_CONTACTS = 27;
+    KIND_APPS = 28;
+    KIND_MENU = 29;
+    // A key of an expansion module: `module` from 0, and `index`, the key
+    // on that module, from 0.
+    KIND_EXPANSION = 30;
+    // A key whose function is not established; `index` is its input event
+    // code.
+    KIND_RAW = 31;
+  }
+  Kind kind = 1;
+  uint32 index = 2;
+  // KIND_EXPANSION only.
+  uint32 module = 3;
+}
+
+message GetScreenLayoutRequest {}
+
+message GetScreenLayoutResponse {
+  Model model = 1;
+  Skin skin = 2;
+  repeated ScreenInfo screens = 3;
+  // The keys this model has.
+  repeated Key keys = 4;
+  uint32 softkey_bar_height = 5;
+  // False when no screen source is attached (no picture, keys still work).
+  bool mirror_available = 6;
+}
+
+message WatchScreenRequest {
+  ScreenId screen = 1;
+  // Fastest update rate wanted, in frames per second; 0 for the default.
+  uint32 max_fps = 2;
+}
+
+message WatchScreenResponse {
+  // A PNG image of the whole screen; empty when only lamps changed.
+  bytes png = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  repeated Lamp lamps = 4;
+  bool backlight_on = 5;
+  bool off_hook = 6;
+}
+
+message PressKeyRequest {
+  Key key = 1;
+  KeyAction action = 2;
+}
+
+message PressKeyResponse {}
+
+message SetHookRequest {
+  bool off_hook = 1;
+}
+
+message SetHookResponse {}

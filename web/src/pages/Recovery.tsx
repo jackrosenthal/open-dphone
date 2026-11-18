@@ -1,7 +1,7 @@
 import { useMutation } from "@connectrpc/connect-query";
 import { useState } from "react";
 import { Alert, ConfirmButton, PageHeader } from "../components/ui";
-import { SystemService } from "../gen/dphone/v1/system_pb";
+import { SystemService } from "../gen/opendeskphone/v1/system_pb";
 import { ErrorNote } from "./common";
 
 /// Shown in place of the dashboard when the phone could not mount nvdata.

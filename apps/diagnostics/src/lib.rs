@@ -1,10 +1,10 @@
 //! Diagnostics: the display, key, lamp, and tone tests, the state of the
 //! phone's subsystems, and its log.
 
-use dphone_app_sdk::canvas::{self, Bitmap, Color, Op, Role, Text};
-use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::diagnostics::{HealthState, Subsystem};
-use dphone_app_sdk::{Align, Font, diagnostics, input, lamps};
+use opendeskphone_app_sdk::canvas::{self, Bitmap, Color, Op, Role, Text};
+use opendeskphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::diagnostics::{HealthState, Subsystem};
+use opendeskphone_app_sdk::{Align, Font, diagnostics, input, lamps};
 
 const SK_SELECT: u32 = 1;
 const SK_BACK: u32 = 4;
@@ -200,7 +200,7 @@ fn blank() -> Softkey {
 }
 
 /// The space left and right of text.
-fn inset(m: &dphone_app_sdk::Metrics) -> u16 {
+fn inset(m: &opendeskphone_app_sdk::Metrics) -> u16 {
     if m.color { 15 } else { 4 }
 }
 
@@ -449,7 +449,7 @@ impl Diagnostics {
         let m = ui::get_metrics();
         let picture = canvas::create(ROOT, Rect::new(0, 0, m.width, m.height));
         if let Err(e) = canvas::draw(picture, &pattern(pattern_index, m.width, m.height, m.color)) {
-            dphone_app_sdk::log_warn(&format!("the display test could not draw: {e}"));
+            opendeskphone_app_sdk::log_warn(&format!("the display test could not draw: {e}"));
         }
         self.page = Page::Display {
             pattern: pattern_index,
@@ -562,7 +562,7 @@ impl Diagnostics {
             2 => self.show_lamps(0),
             3 => {
                 if let Err(e) = audio::play(&tone(), 0) {
-                    dphone_app_sdk::log_warn(&format!("the test tone could not play: {e:?}"));
+                    opendeskphone_app_sdk::log_warn(&format!("the test tone could not play: {e:?}"));
                 }
             }
             4 => self.show_info(Info::Health),
@@ -649,7 +649,7 @@ impl App for Diagnostics {
     }
 }
 
-dphone_app_sdk::export_app! {
+opendeskphone_app_sdk::export_app! {
     app: Diagnostics,
     name: "diagnostics",
     id: "org.opendeskphone.diagnostics",

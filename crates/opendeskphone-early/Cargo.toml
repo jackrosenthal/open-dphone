@@ -1,0 +1,11 @@
+[package]
+name = "opendeskphone-early"
+description = "Open Desk Phone: the early-boot stage in the kernel's initramfs (trial-boot counting and the way back, before the root file system is needed)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+opendeskphone-ctrl = { path = "../opendeskphone-ctrl" }

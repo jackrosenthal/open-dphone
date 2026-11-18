@@ -1090,274 +1090,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dphone"
-version = "3.0.0"
-dependencies = [
- "async-trait",
- "clap",
- "clap_complete",
- "dphone-apps",
- "dphone-bt",
- "dphone-config",
- "dphone-ctrl",
- "dphone-dpma",
- "dphone-hal",
- "dphone-media",
- "dphone-net",
- "dphone-sip",
- "dphone-state",
- "dphone-ui",
- "dphone-update",
- "dphone-vpm",
- "dphone-web",
- "dpma-proto",
- "eff",
- "libc",
- "log",
- "md-5 0.10.6",
- "rand_core 0.6.4",
- "russh",
- "russh-sftp",
- "rustls-pemfile",
- "rustls-rustcrypto",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "tokio",
- "tokio-rustls",
-]
-
-[[package]]
-name = "dphone-app-sdk"
-version = "3.0.0"
-dependencies = [
- "wit-bindgen 0.63.0",
-]
-
-[[package]]
-name = "dphone-apps"
-version = "3.0.0"
-dependencies = [
- "clap",
- "dphone-app-sdk",
- "dphone-apps",
- "dphone-hal",
- "dphone-state",
- "dphone-ui",
- "dpma-proto",
- "getrandom 0.3.4",
- "lightup-game",
- "log",
- "png",
- "rustix",
- "serde",
- "serde_json",
- "wasmtime",
- "wit-component 0.263.0",
-]
-
-[[package]]
-name = "dphone-bt"
-version = "3.0.0"
-dependencies = [
- "libc",
- "log",
-]
-
-[[package]]
-name = "dphone-config"
-version = "3.0.0"
-dependencies = [
- "buffa",
- "buffa-codegen",
- "log",
- "md-5 0.10.6",
- "prost",
- "protox",
- "roxmltree 0.20.0",
- "serde_json",
-]
-
-[[package]]
-name = "dphone-ctrl"
-version = "3.0.0"
-
-[[package]]
-name = "dphone-dpma"
-version = "3.0.0"
-dependencies = [
- "async-trait",
- "dphone-hal",
- "dphone-sip",
- "dphone-state",
- "dphone-update",
- "dpma-proto",
- "eff",
- "log",
- "md-5 0.10.6",
- "rsa",
- "rustls",
- "rustls-rustcrypto",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "dphone-early"
-version = "3.0.0"
-dependencies = [
- "dphone-ctrl",
-]
-
-[[package]]
-name = "dphone-hal"
-version = "3.0.0"
-dependencies = [
- "clap",
- "dphone-state",
- "libc",
- "log",
-]
-
-[[package]]
-name = "dphone-image"
-version = "3.0.0"
-dependencies = [
- "clap",
- "eff",
- "jffs2-image",
- "md-5 0.10.6",
-]
-
-[[package]]
-name = "dphone-media"
-version = "3.0.0"
-dependencies = [
- "aes",
- "dphone-vpm",
- "getrandom 0.2.17",
- "hmac",
- "libc",
- "sha1",
-]
-
-[[package]]
-name = "dphone-net"
-version = "3.0.0"
-dependencies = [
- "libc",
- "log",
- "tokio",
-]
-
-[[package]]
-name = "dphone-sip"
-version = "3.0.0"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "bytes",
- "dphone-state",
- "getrandom 0.3.4",
- "log",
- "rsipstack",
- "rustls",
- "rustls-pemfile",
- "rustls-pki-types",
- "rustls-rustcrypto",
- "rustls-webpki 0.103.17",
- "serde_json",
- "socket2 0.6.5",
- "tokio",
- "tokio-rustls",
- "tokio-util",
-]
-
-[[package]]
-name = "dphone-state"
-version = "3.0.0"
-dependencies = [
- "log",
- "serde",
-]
-
-[[package]]
-name = "dphone-ui"
-version = "3.0.0"
-dependencies = [
- "bytemuck",
- "dphone-hal",
- "dphone-state",
- "fontdue",
- "log",
- "png",
- "resvg",
-]
-
-[[package]]
-name = "dphone-update"
-version = "3.0.0"
-dependencies = [
- "dphone-ctrl",
- "dphone-hal",
- "dphone-state",
- "eff",
- "libc",
- "log",
- "tempfile",
-]
-
-[[package]]
-name = "dphone-vpm"
-version = "3.0.0"
-dependencies = [
- "libc",
- "serde_json",
-]
-
-[[package]]
-name = "dphone-web"
-version = "3.0.0"
-dependencies = [
- "base64 0.22.1",
- "brotli",
- "buffa",
- "buffa-codegen",
- "bytes",
- "clap",
- "connectrpc",
- "connectrpc-build",
- "crc32fast",
- "dphone-config",
- "dphone-hal",
- "dphone-state",
- "futures-util",
- "getrandom 0.3.4",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-util",
- "libc",
- "log",
- "miniz_oxide 0.8.9",
- "p256",
- "prometheus-client",
- "prost",
- "protox",
- "rustls",
- "rustls-rustcrypto",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tokio",
- "tokio-rustls",
- "tower-service",
- "x509-cert",
-]
-
-[[package]]
 name = "dpma-ast"
 version = "3.0.0"
 dependencies = [
@@ -1488,6 +1220,7 @@ version = "3.0.0"
 dependencies = [
  "aes",
  "md-5 0.10.6",
+ "test-inputs",
 ]
 
 [[package]]
@@ -2411,6 +2144,7 @@ dependencies = [
  "clap",
  "miniz_oxide 0.8.9",
  "ruzstd",
+ "test-inputs",
 ]
 
 [[package]]
@@ -2846,6 +2580,282 @@ name = "opaque-debug"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
+
+[[package]]
+name = "opendeskphone"
+version = "3.0.0"
+dependencies = [
+ "async-trait",
+ "clap",
+ "clap_complete",
+ "dpma-proto",
+ "eff",
+ "libc",
+ "log",
+ "md-5 0.10.6",
+ "opendeskphone-apps",
+ "opendeskphone-bt",
+ "opendeskphone-config",
+ "opendeskphone-ctrl",
+ "opendeskphone-dpma",
+ "opendeskphone-hal",
+ "opendeskphone-media",
+ "opendeskphone-net",
+ "opendeskphone-sip",
+ "opendeskphone-state",
+ "opendeskphone-ui",
+ "opendeskphone-update",
+ "opendeskphone-vpm",
+ "opendeskphone-web",
+ "rand_core 0.6.4",
+ "russh",
+ "russh-sftp",
+ "rustls-pemfile",
+ "rustls-rustcrypto",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "test-inputs",
+ "tokio",
+ "tokio-rustls",
+]
+
+[[package]]
+name = "opendeskphone-app-sdk"
+version = "3.0.0"
+dependencies = [
+ "wit-bindgen 0.63.0",
+]
+
+[[package]]
+name = "opendeskphone-apps"
+version = "3.0.0"
+dependencies = [
+ "clap",
+ "dpma-proto",
+ "getrandom 0.3.4",
+ "lightup-game",
+ "log",
+ "opendeskphone-app-sdk",
+ "opendeskphone-apps",
+ "opendeskphone-hal",
+ "opendeskphone-state",
+ "opendeskphone-ui",
+ "png",
+ "rustix",
+ "serde",
+ "serde_json",
+ "test-inputs",
+ "wasmtime",
+ "wit-component 0.263.0",
+]
+
+[[package]]
+name = "opendeskphone-bt"
+version = "3.0.0"
+dependencies = [
+ "libc",
+ "log",
+]
+
+[[package]]
+name = "opendeskphone-config"
+version = "3.0.0"
+dependencies = [
+ "buffa",
+ "buffa-codegen",
+ "log",
+ "md-5 0.10.6",
+ "prost",
+ "protox",
+ "roxmltree 0.20.0",
+ "serde_json",
+ "test-inputs",
+]
+
+[[package]]
+name = "opendeskphone-ctrl"
+version = "3.0.0"
+
+[[package]]
+name = "opendeskphone-dpma"
+version = "3.0.0"
+dependencies = [
+ "async-trait",
+ "dpma-proto",
+ "eff",
+ "log",
+ "md-5 0.10.6",
+ "opendeskphone-config",
+ "opendeskphone-hal",
+ "opendeskphone-sip",
+ "opendeskphone-state",
+ "opendeskphone-update",
+ "rsa",
+ "rustls",
+ "rustls-rustcrypto",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "opendeskphone-early"
+version = "3.0.0"
+dependencies = [
+ "opendeskphone-ctrl",
+]
+
+[[package]]
+name = "opendeskphone-hal"
+version = "3.0.0"
+dependencies = [
+ "clap",
+ "libc",
+ "log",
+ "opendeskphone-state",
+]
+
+[[package]]
+name = "opendeskphone-image"
+version = "3.0.0"
+dependencies = [
+ "clap",
+ "eff",
+ "jffs2-image",
+ "md-5 0.10.6",
+ "test-inputs",
+]
+
+[[package]]
+name = "opendeskphone-media"
+version = "3.0.0"
+dependencies = [
+ "aes",
+ "getrandom 0.2.17",
+ "hmac",
+ "libc",
+ "opendeskphone-vpm",
+ "sha1",
+]
+
+[[package]]
+name = "opendeskphone-net"
+version = "3.0.0"
+dependencies = [
+ "libc",
+ "log",
+ "test-inputs",
+ "tokio",
+]
+
+[[package]]
+name = "opendeskphone-sip"
+version = "3.0.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "getrandom 0.3.4",
+ "log",
+ "opendeskphone-state",
+ "rsipstack",
+ "rustls",
+ "rustls-pemfile",
+ "rustls-pki-types",
+ "rustls-rustcrypto",
+ "rustls-webpki 0.103.17",
+ "serde_json",
+ "socket2 0.6.5",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+]
+
+[[package]]
+name = "opendeskphone-state"
+version = "3.0.0"
+dependencies = [
+ "log",
+ "serde",
+]
+
+[[package]]
+name = "opendeskphone-ui"
+version = "3.0.0"
+dependencies = [
+ "bytemuck",
+ "fontdue",
+ "log",
+ "opendeskphone-hal",
+ "opendeskphone-state",
+ "png",
+ "resvg",
+]
+
+[[package]]
+name = "opendeskphone-update"
+version = "3.0.0"
+dependencies = [
+ "eff",
+ "libc",
+ "log",
+ "opendeskphone-ctrl",
+ "opendeskphone-hal",
+ "opendeskphone-state",
+ "tempfile",
+]
+
+[[package]]
+name = "opendeskphone-vpm"
+version = "3.0.0"
+dependencies = [
+ "libc",
+ "serde_json",
+]
+
+[[package]]
+name = "opendeskphone-web"
+version = "3.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "brotli",
+ "buffa",
+ "buffa-codegen",
+ "bytes",
+ "clap",
+ "connectrpc",
+ "connectrpc-build",
+ "crc32fast",
+ "futures-util",
+ "getrandom 0.3.4",
+ "http",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "libc",
+ "log",
+ "miniz_oxide 0.8.9",
+ "opendeskphone-config",
+ "opendeskphone-hal",
+ "opendeskphone-state",
+ "p256",
+ "prometheus-client",
+ "prost",
+ "protox",
+ "rustls",
+ "rustls-rustcrypto",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tokio-rustls",
+ "tower-service",
+ "x509-cert",
+]
 
 [[package]]
 name = "p256"
@@ -4290,6 +4300,10 @@ dependencies = [
  "rustix",
  "windows-sys 0.59.0",
 ]
+
+[[package]]
+name = "test-inputs"
+version = "3.0.0"
 
 [[package]]
 name = "thiserror"

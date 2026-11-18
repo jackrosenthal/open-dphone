@@ -4,7 +4,7 @@ Helpers call the interfaces on the other pages, and give the app the capabilitie
 
 ## Prelude
 
-`use dphone_app_sdk::prelude::*;` imports:
+`use opendeskphone_app_sdk::prelude::*;` imports:
 
 - The trait `App`, the constant `ROOT`, and the types `Event`, `Key`, `Widget`, `Rect`, `ListItem`, `Image`, `Icon`, `Softkey`, `WidgetKind`, `WidgetEvent`, `Skin`, `PbxResult`, `PbxError`, `StorageLocation`, `StorageEntry`, `StorageOutcome`, `StorageReply`, `TimeStyle`, `AppKind`, `Form`, and `Message`.
 - The functions `screen`, `content_rect`, and `row_height`.

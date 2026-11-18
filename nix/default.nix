@@ -1,18 +1,18 @@
 # Everything the flake exports.  Each artifact is its own small derivation:
 #
-#   kernel             zImage, DTBs, modules (one build for all models)
-#   kernel-source      v7.3 with the port applied, unbuilt (for editing)
-#   kernel-<model>     boot image for the k0/k1 slot
-#   dphone             the firmware binary (ARMv6, static)
-#   dphone-image       host tool: EFF, OTA, kernel image, rootfs
-#   brush, coreutils, sed   shell and utilities (ARMv6, static)
-#   apps               built-in phone apps (.wasm)
-#   asterisk-modules   Asterisk with res_open_dpma, for the tests (x86-64)
-#   web                frontend bundle
-#   rootfs-tree        the root file system as a directory
-#   rootfs             the JFFS2 image
-#   eff-<model>        flashable image, one per model
-#   all                the seven EFFs in one directory
+#   kernel                 zImage, DTBs, modules (one build for all models)
+#   kernel-source          v7.3 with the port applied, unbuilt (for editing)
+#   kernel-<model>         boot image for the k0/k1 slot
+#   opendeskphone          the firmware binary (ARMv6, static)
+#   opendeskphone-image    host tool: EFF, OTA, kernel image, rootfs
+#   brush, coreutils, sed  shell and utilities (ARMv6, static)
+#   apps                   built-in phone apps (.wasm)
+#   asterisk-modules       Asterisk with res_open_dpma, for the tests (x86-64)
+#   web                    frontend bundle
+#   rootfs-tree            the root file system as a directory
+#   rootfs                 the JFFS2 image
+#   eff-<model>            flashable image, one per model
+#   all                    the seven EFFs in one directory
 {
   pkgs,
   lib,
@@ -44,45 +44,68 @@ let
   userland = pkgs.callPackage ./userland.nix { inherit rustPlatform rust; };
   kernel = pkgs.callPackage ./kernel.nix {
     kernelSrc = root + "/kernel";
-    earlyInit = workspace.dphone-early;
-    initramfsList = root + "/crates/dphone-early/initramfs.list";
+    earlyInit = workspace.opendeskphone-early;
+    initramfsList = root + "/crates/opendeskphone-early/initramfs.list";
   };
   # The vendor's stock images, downloaded when something needs one, and the
   # DSP firmware taken out of two of them.
-  stock = pkgs.callPackage ./vendor-firmware.nix { inherit (workspace) dphone-image; };
+  stock = pkgs.callPackage ./vendor-firmware.nix { inherit (workspace) opendeskphone-image; };
   dspFirmware = pkgs.callPackage ./dsp-firmware.nix {
     inherit stock;
-    inherit (workspace) dphone-image;
+    inherit (workspace) opendeskphone-image;
   };
 
-  web =
-    if has "web/pnpm-lock.yaml" then
-      # The hash of the fetched pnpm store; when web/pnpm-lock.yaml changes,
-      # set it to lib.fakeHash, build, and copy the hash Nix reports.
-      pkgs.callPackage ./web.nix { pnpmDepsHash = "sha256-eKjJ675HiFF5dqpBcEQtN8emaPRtxpHTf2mMOXHcwFg="; }
-    else
-      null;
+  # The hash of the fetched pnpm store; when web/pnpm-lock.yaml changes, set
+  # it to lib.fakeHash, build, and copy the hash Nix reports.
+  web = pkgs.callPackage ./web.nix { pnpmDepsHash = "sha256-eKjJ675HiFF5dqpBcEQtN8emaPRtxpHTf2mMOXHcwFg="; };
 
   asterisk = pkgs.callPackage ./asterisk.nix { module = workspace.res_open_dpma; };
   workspace = pkgs.callPackage ./workspace.nix {
     inherit craneLib rust rustPlatform;
-    inherit stock asterisk;
+    inherit asterisk testInputs;
     webDist = web;
-    appsStaged = if apps != null then apps.testFixture else null;
     appsUnitTests = if apps != null then apps.unitTests else null;
     appsClippy = if apps != null then apps.clippy else null;
   };
+  # What the tests need that is not in the repository, as they find it in
+  # `test-inputs/` (crates/test-inputs): the `tests` check links it there,
+  # and `nix build .#test-inputs -o test-inputs` does in a checkout.
+  testInputs = pkgs.linkFarm "test-inputs" (
+    [
+      {
+        name = "vendor";
+        path = stock.dir;
+      }
+      {
+        name = "stock-rootfs";
+        path = stock.rootfs;
+      }
+      {
+        name = "asterisk";
+        path = asterisk.server;
+      }
+      {
+        name = "asterisk-modules";
+        path = asterisk.modules;
+      }
+    ]
+    ++ lib.optional (apps != null) {
+      name = "apps-staged";
+      path = apps.testFixture;
+    }
+  );
+
   apps =
     if has "apps/Cargo.lock" then
       pkgs.callPackage ./apps.nix {
         inherit rustPlatform rust;
-        inherit (workspace) dphone-apps-build;
+        inherit (workspace) opendeskphone-apps-build;
       }
     else
       null;
 
   image = pkgs.callPackage ./image.nix {
-    inherit (workspace) dphone dphone-image version;
+    inherit (workspace) opendeskphone opendeskphone-image version;
     inherit (userland)
       brush
       coreutils
@@ -100,7 +123,7 @@ in
     inherit kernel;
     kernel-source = kernel.source;
     inherit (userland) brush coreutils sed;
-    inherit (workspace) dphone dphone-early dphone-image;
+    inherit (workspace) opendeskphone opendeskphone-early opendeskphone-image;
     asterisk-modules = asterisk.modules;
     rootfs-tree = image.rootfsTree;
     inherit (image) rootfs;
@@ -111,10 +134,11 @@ in
       }) image.effs
     );
     default = image.effs.d60;
+    inherit web;
+    test-inputs = testInputs;
   }
   // kernels
   // effs
-  // lib.optionalAttrs (web != null) { inherit web; }
   // lib.optionalAttrs (apps != null) { inherit apps; };
 
   # `tests` compares against the D40 and D60 stock firmware images
@@ -124,7 +148,7 @@ in
     inherit (workspace) tests clippy;
     inherit kernel;
     inherit (userland) brush coreutils sed;
-    inherit (workspace) dphone;
+    inherit (workspace) opendeskphone;
     # The rootfs image under the kernel's JFFS2 driver, on simulated NAND.
     jffs2-mount = pkgs.callPackage ./jffs2-mount-test.nix {
       image = image.rootfs;

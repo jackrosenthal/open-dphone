@@ -1,8 +1,8 @@
 //! Status: choose the user's presence from the options the PBX offers and
 //! set an optional message.
 
-use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{InputMode, PbxPresenceState, PresenceStatus};
+use opendeskphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::{InputMode, PbxPresenceState, PresenceStatus};
 
 const SK_SELECT: u32 = 1;
 const SK_MESSAGE: u32 = 2;
@@ -249,7 +249,7 @@ impl App for Status {
     }
 }
 
-dphone_app_sdk::export_app! {
+opendeskphone_app_sdk::export_app! {
     app: Status,
     name: "status",
     id: "org.opendeskphone.status",

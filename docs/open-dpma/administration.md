@@ -55,7 +55,7 @@ A record expires 600 seconds after the last failure.  To review the records:
 ### Web interface and SSH
 
 - `web_ui_enabled` is off by default.  When you turn the web interface on, set `login_password` in the same phone section, or the phone keeps a default password.
-- On Open Desk Phone, the phone's web interface cannot change a `dphone_*` option set on the server; without the option, the user decides.  To keep users from turning SSH on, set `dphone_ssh_enabled=no` or leave `web_ui_enabled` off.
+- On Open Desk Phone, the phone's web interface cannot change a `opendeskphone_*` option set on the server; without the option, the user decides.  To keep users from turning SSH on, set `opendeskphone_ssh_enabled=no` or leave `web_ui_enabled` off.
 
 ## Configuration changes
 
@@ -109,24 +109,24 @@ To move the phones back, set `version` and `file` to the stock image.  Then [rec
 
 - **Use separate templates for a mixed fleet.**  Every phone in a section follows the section's entries, whatever firmware the phone runs.  Phones that stay on stock firmware need a template whose `firmware` names the stock image, or no entry for the model.
 - **Watch the firmware package.**  The package applies to every phone section without `firmware`, so a new image in the package directory reaches all of those phones.
-- **Exempt individual phones** with [`dphone_ignore_provisioned_firmware`](opendeskphone-options.md#dphone_ignore_provisioned_firmware).
+- **Exempt individual phones** with [`opendeskphone_ignore_provisioned_firmware`](opendeskphone-options.md#opendeskphone_ignore_provisioned_firmware).
 
 An Open Desk Phone phone does not retry an image that failed to install or was rolled back until the entry names a different image.  Such an image may explain a phone that still runs the previous firmware after a firmware change.  To inspect the phone's firmware banks, see [`dphone update status`](../dev-guide/firmware-updates.md#dphone-update-status).
 
 ## App data
 
-Apps on Open Desk Phone can store data on the server, e.g., a game's best times, shown on every phone, or a user's progress, which survives a factory reset.  App data needs no configuration: the module answers the phones' app data requests and stores the data in the `DPhoneAppData` family of the Asterisk database.
+Apps on Open Desk Phone can store data on the server, e.g., a game's best times, shown on every phone, or a user's progress, which survives a factory reset.  App data needs no configuration: the module answers the phones' app data requests and stores the data in the `OpenDeskPhoneAppData` family of the Asterisk database.
 
-Each app has shared keys, which every phone in a store can access, and per-user keys.  The user is the phone section that the phone is provisioned as.  The firmware stores the user's theme as the per-user key `theme` of the reserved app name `dphone`.
+Each app has shared keys, which every phone in a store can access, and per-user keys.  The user is the phone section that the phone is provisioned as.  The firmware stores the user's theme as the per-user key `theme` of the reserved app name `opendeskphone`.
 
 ### Multi-tenant servers
 
-Without [`dphone_app_data_tenant`](opendeskphone-options.md#dphone_app_data_tenant), all phones on the server share one store, so one tenant's phones see the names and scores that another tenant's users wrote.  On a multi-tenant server, set a key in each tenant's template:
+Without [`opendeskphone_app_data_tenant`](opendeskphone-options.md#opendeskphone_app_data_tenant), all phones on the server share one store, so one tenant's phones see the names and scores that another tenant's users wrote.  On a multi-tenant server, set a key in each tenant's template:
 
 ```ini title="res_digium_phone.conf"
 [north-office](!)
 type=phone
-dphone_app_data_tenant=north-office
+opendeskphone_app_data_tenant=north-office
 
 [phone101](north-office)
 line=101
@@ -143,7 +143,7 @@ Two other lists cross tenant boundaries regardless of tenant keys:
 
 ### Database layout
 
-| Key in `DPhoneAppData` | Contents |
+| Key in `OpenDeskPhoneAppData` | Contents |
 | --- | --- |
 | `@<tenant>/<app>/s/<key>` | An app's shared entry.  A bare `@`, without a tenant, is the store for phones without a key. |
 | `@<tenant>/<app>/u/<phone section>/<key>` | One user's entry. |
@@ -154,10 +154,10 @@ In a phone section's name, each character other than a letter, a digit, `.`, or 
 
 | Task | Command |
 | --- | --- |
-| List all app data. | `database show DPhoneAppData` |
-| Delete one app's data for one tenant. | `database deltree DPhoneAppData @north-office/lightup` |
-| Delete one user's data for one app, in the store for phones without a key. | `database deltree DPhoneAppData @/lightup/u/phone101` |
-| Delete one tenant's data. | `database deltree DPhoneAppData @north-office` |
+| List all app data. | `database show OpenDeskPhoneAppData` |
+| Delete one app's data for one tenant. | `database deltree OpenDeskPhoneAppData @north-office/lightup` |
+| Delete one user's data for one app, in the store for phones without a key. | `database deltree OpenDeskPhoneAppData @/lightup/u/phone101` |
+| Delete one tenant's data. | `database deltree OpenDeskPhoneAppData @north-office` |
 
 - Removing a phone section from the configuration file keeps the section's app data.  Run `database deltree` when a user leaves.
 - Within a tenant, `database deltree` on an app name with `_` also matches app names of the same length that differ only at that position, e.g., `@north-office/word_game` also matches `@north-office/word.game`.
@@ -181,7 +181,7 @@ The module stores state in four families of the Asterisk database:
 
 | Family | Contents | If lost |
 | --- | --- | --- |
-| `DPhoneAppData` | The app data. | The data is gone.  No other copy exists. |
+| `OpenDeskPhoneAppData` | The app data. | The data is gone.  No other copy exists. |
 | `DigiumPhoneSessions` | The phones' sessions, each with a session password. | Each phone starts a new session with a handshake. |
 | `DigiumPhoneUsers` | For each phone section: the MAC address, the URI, and the session of the phone that claimed the section. | The server cannot reconfigure a phone until the phone contacts the server again. |
 | `OpenDPMATokens` | The key for [configuration tokens](#configuration-tokens), and the phone sections issued a token made with the key. | The phones keep working.  For each phone section, the server accepts a token without the key's values until a phone requests a token for the section. |

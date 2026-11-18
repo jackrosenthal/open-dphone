@@ -1,7 +1,7 @@
 //! Parking: lists the calls parked in the user's parking lots and
 //! retrieves one by dialing its space.
 
-use dphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::prelude::*;
 
 const SK_RETRIEVE: u32 = 1;
 const SK_REFRESH: u32 = 2;
@@ -127,7 +127,7 @@ impl Parking {
 impl App for Parking {
     fn start(&mut self) {
         if let Err(e) = events::observe(PARKED_EVENT) {
-            dphone_app_sdk::log_warn(&format!("cannot observe {PARKED_EVENT}: {e:?}"));
+            opendeskphone_app_sdk::log_warn(&format!("cannot observe {PARKED_EVENT}: {e:?}"));
         }
     }
 
@@ -172,7 +172,7 @@ impl App for Parking {
     }
 }
 
-dphone_app_sdk::export_app! {
+opendeskphone_app_sdk::export_app! {
     app: Parking,
     name: "parking",
     id: "org.opendeskphone.parking",

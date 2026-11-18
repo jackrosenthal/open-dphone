@@ -1,6 +1,6 @@
 # Alarm tones
 
-The sounds an alarm of the alarm clock can ring with.  The image carries the `.wav` files, `NOTICE`, and `LICENSE-Apache-2.0.txt` in `/usr/share/dphone/alarm-tones/`; `crates/dphone/src/mainrole/subsystems/alarmtones.rs` names the tones and the pause between two passes of each.
+The sounds an alarm of the alarm clock can ring with.  The image carries the `.wav` files, `NOTICE`, and `LICENSE-Apache-2.0.txt` in `/usr/share/opendeskphone/alarm-tones/`; `crates/opendeskphone/src/mainrole/subsystems/alarmtones.rs` names the tones and the pause between two passes of each.
 
 All 39 are derived from the alarm sounds of the Android Open Source Project, repository <https://android.googlesource.com/platform/frameworks/base>, directory `data/sounds`, at commit `1cdfff555f4a21f71ccc978290e2e212e2f8b168`: every file in `data/sounds/alarms` and every `Alarm_*` file in `data/sounds`, 84 files that hold 39 distinct sounds.  Copyright The Android Open Source Project; Apache License, Version 2.0 (`LICENSE-Apache-2.0.txt`).  `NOTICE` carries the copyright notice, the statement of the changes, and the part of the upstream `NOTICE` file that applies; the license requires that it and the license text go wherever the tones go.
 

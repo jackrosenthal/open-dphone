@@ -3,7 +3,7 @@
 ## `export_app!`
 
 ```rust
-dphone_app_sdk::export_app! {
+opendeskphone_app_sdk::export_app! {
     app: Weather,
     name: "weather",
     display_name: "Weather",
@@ -53,10 +53,10 @@ The phone runs these checks in order and reports the first failure:
 | --- | --- |
 | The file is at most 8 MiB. | The file is larger than any app may be. |
 | The file is a WebAssembly component or module. | `not an app: an app is a WebAssembly component (a .wasm file made by wasm-tools component new)`.  A ZIP package of a JavaScript app for stock firmware is identified as such. |
-| The file has a `dphone-app` section. | `the WebAssembly file has no app manifest`. |
+| The file has a `opendeskphone-app` section. | `the WebAssembly file has no app manifest`. |
 | The phone knows the manifest's kind. | `bad app kind N`. |
 | The manifest's format number is 1. | `the app's manifest has format N, and this firmware knows format 1`. |
-| `name` follows the rules under [Fields](#fields) and is not `dphone`. | `bad app name: ...`. |
+| `name` follows the rules under [Fields](#fields) and is not `opendeskphone`. | `bad app name: ...`. |
 | Each icon is a PNG of at most 256 KiB, and each model in `icon_for` is a model of the interface's, once. | `bad app icon: ...`. |
 | The code sections total at most 1 MiB.  Data doesn't count. | The component holds more code than the phone compiles. |
 | No built-in app has the same `name`. | `"name" is a built-in app`. |

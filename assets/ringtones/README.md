@@ -1,6 +1,6 @@
 # Ringtones
 
-The phone's built-in ringtones.  The image carries the `.wav` files, `NOTICE`, and `LICENSE-Apache-2.0.txt` in `/usr/share/dphone/ringtones/`; `crates/dphone/src/mainrole/subsystems/ringtones.rs` names the ringtones and the pause between two passes of each, and carries a copy of the default ringtone, which rings when a ringtone's file cannot be played.
+The phone's built-in ringtones.  The image carries the `.wav` files, `NOTICE`, and `LICENSE-Apache-2.0.txt` in `/usr/share/opendeskphone/ringtones/`; `crates/opendeskphone/src/mainrole/subsystems/ringtones.rs` names the ringtones and the pause between two passes of each, and carries a copy of the default ringtone, which rings when a ringtone's file cannot be played.
 
 All 149 are derived from the ringtones of the Android Open Source Project, repository <https://android.googlesource.com/platform/frameworks/base>, directory `data/sounds`, at commit `1cdfff555f4a21f71ccc978290e2e212e2f8b168`: every file in `data/sounds/ringtones`, every `Ring_*` file in `data/sounds`, and the 61 files of `data/sounds/newwavelabs` that Android installs as ringtones, 211 files that hold 149 distinct sounds.  Copyright The Android Open Source Project; Apache License, Version 2.0 (`LICENSE-Apache-2.0.txt`).  `NOTICE` carries the copyright notice, the statement of the changes, and the part of the upstream `NOTICE` file that applies; the license requires that it and the license text go wherever the ringtones go.
 

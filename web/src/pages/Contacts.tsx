@@ -3,8 +3,8 @@ import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useRef, useState } from "react";
 import { Icons } from "../components/icons";
 import { Badge, Button, Card, ConfirmButton, Dpma, Empty, Field, Input, Modal, PageHeader, Select, Spinner, td, th } from "../components/ui";
-import { ContactGroupSchema, ContactNumberSchema, ContactSchema, ContactsService, type Contact, type ContactGroup } from "../gen/dphone/v1/contacts_pb";
-import { CallsService } from "../gen/dphone/v1/calls_pb";
+import { ContactGroupSchema, ContactNumberSchema, ContactSchema, ContactsService, type Contact, type ContactGroup } from "../gen/opendeskphone/v1/contacts_pb";
+import { CallsService } from "../gen/opendeskphone/v1/calls_pb";
 import { client, errorMessage } from "../lib/transport";
 import { ErrorNote } from "./common";
 

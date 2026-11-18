@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package opendeskphone.settings.v1;
+
+// The alarm clock's alarms.  Stored on the phone in protobuf text format as
+// /nvdata/opendeskphone/alarms.txtpb, which the alarm clock rewrites when an
+// alarm is set, changed, or removed, and when one rings or snoozes.
+message Alarms {
+  repeated Alarm alarms = 1;
+  // The last identifier given out.
+  uint32 last_id = 2;
+  // An alarm that is to ring (again): a snoozed one, or the one that was
+  // ringing.  Absent when there is none.
+  PendingAlarm pending = 3;
+}
+
+message Alarm {
+  // Identifies the alarm; never 0.
+  uint32 id = 1;
+  // The time of day, in the phone's time zone: 0 to 23, and 0 to 59.
+  uint32 hour = 2;
+  uint32 minute = 3;
+  // The days of the week it rings on: bit 0 is Sunday, bit 6 Saturday.  0
+  // is a one-time alarm: it rings the next time the clock shows its time,
+  // and is then switched off.
+  uint32 days = 4;
+  // The name of the alarm tone it rings with.
+  string tone = 5;
+  bool enabled = 6;
+  // Occurrences count from here (Unix time): the time the alarm was last
+  // set, or its last occurrence that rang.
+  uint64 since = 7;
+}
+
+message PendingAlarm {
+  // The alarm's `id`.
+  uint32 id = 1;
+  // When it rings (Unix time).  For the alarm that was ringing, when it
+  // began, so that a phone that restarts meanwhile rings it again.
+  uint64 until = 2;
+  // How many times in a row it snoozed itself.
+  uint32 unattended = 3;
+}

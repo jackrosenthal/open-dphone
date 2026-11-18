@@ -33,8 +33,8 @@ Each component of an image is a separate flake output.
 
 | Output | Result |
 | --- | --- |
-| `dphone` | The firmware binary for the phone: static, for ARMv6. |
-| `dphone-early` | The early-boot stage. |
+| `opendeskphone` | The firmware binary for the phone: static, for ARMv6. |
+| `opendeskphone-early` | The early-boot stage. |
 | `kernel` | The kernel (`zImage`), a device tree for each model, and the loadable modules. |
 | `kernel-<model>` | `kernel.bin`: the kernel and the model's device tree, as written to a kernel partition. |
 | `kernel-source` | The Linux tree with the port applied and nothing built, for editing. |
@@ -42,14 +42,14 @@ Each component of an image is a separate flake output.
 | `web` | The web frontend bundle that `dphone` embeds. |
 | `brush`, `coreutils`, `sed` | The shell and utilities of the root file system. |
 | `rootfs-tree`, `rootfs` | The root file system as a directory, and as the JFFS2 image in the EFF image. |
-| `dphone-image` | The host tool that packs and unpacks EFF images, JFFS2 images, and kernel images. |
+| `opendeskphone-image` | The host tool that packs and unpacks EFF images, JFFS2 images, and kernel images. |
 
 Any change under `kernel/` rebuilds the whole kernel: a Nix build cannot reuse object files from an earlier build.
 
 To show the model and version of an EFF image:
 
 ```sh
-nix run .#dphone-image -- eff info result
+nix run .#opendeskphone-image -- eff info result
 ```
 
 ## Cargo workspace
@@ -62,10 +62,10 @@ Three Open DPMA crates (`dpma-sys`, `dpma-ast`, and `res_open_dpma`) read the he
 cargo build --workspace --exclude dpma-sys --exclude dpma-ast --exclude res_open_dpma
 ```
 
-`cargo build -p dphone` builds the firmware binary for the workstation, which the [simulator](simulator.md) runs.  For the phone, `.cargo/config.toml` sets the linker and the processor flags of the `arm-unknown-linux-musleabi` target:
+`cargo build -p opendeskphone` builds the firmware binary for the workstation, which the [simulator](simulator.md) runs.  For the phone, `.cargo/config.toml` sets the linker and the processor flags of the `arm-unknown-linux-musleabi` target:
 
 ```sh
-cargo build --release -p dphone --target arm-unknown-linux-musleabi
+cargo build --release -p opendeskphone --target arm-unknown-linux-musleabi
 ```
 
 ### Web frontend

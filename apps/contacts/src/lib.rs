@@ -2,9 +2,9 @@
 //! `/nvdata/contact_lists/`), by group, with search, presence, details,
 //! and dialing.
 
-use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::xml;
-use dphone_app_sdk::{InputMode, LineState, Presence, PresenceStatus};
+use opendeskphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::xml;
+use opendeskphone_app_sdk::{InputMode, LineState, Presence, PresenceStatus};
 
 const SK_DIAL: u32 = 1;
 const SK_DETAILS: u32 = 2;
@@ -486,7 +486,7 @@ impl App for Contacts {
     }
 }
 
-dphone_app_sdk::export_app! {
+opendeskphone_app_sdk::export_app! {
     app: Contacts,
     name: "contacts",
     id: "org.opendeskphone.contacts",

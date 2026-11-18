@@ -167,9 +167,9 @@ With one phone, the second line shows that phone's user after **Brewed**.  Witho
 ??? example "Complete `src/lib.rs` for this chapter"
 
     ```rust
-    use dphone_app_sdk::canvas::{self, Bitmap, Op, Role};
-    use dphone_app_sdk::prelude::*;
-    use dphone_app_sdk::{Align, Font, log_info, log_warn, read_string};
+    use opendeskphone_app_sdk::canvas::{self, Bitmap, Op, Role};
+    use opendeskphone_app_sdk::prelude::*;
+    use opendeskphone_app_sdk::{Align, Font, log_info, log_warn, read_string};
 
     const SK_BREWED: u32 = 1;
     const SK_EMPTY: u32 = 2;
@@ -429,7 +429,7 @@ With one phone, the second line shows that phone's user after **Brewed**.  Witho
         }
     }
 
-    dphone_app_sdk::export_app! {
+    opendeskphone_app_sdk::export_app! {
         app: FreshPot,
         name: "freshpot",
         display_name: "Fresh Pot",

@@ -333,64 +333,68 @@ fn show_phone(a: &CliArgs) -> CliResult {
     bwriteln!(
         o,
         "Open Desk Phone SSH enabled: {}",
-        tristate(&p.dphone_ssh_enabled)
+        tristate(&p.opendeskphone_ssh_enabled)
     );
     bwriteln!(
         o,
         "Open Desk Phone ignore provisioned firmware: {}",
-        tristate(&p.dphone_ignore_provisioned_firmware)
+        tristate(&p.opendeskphone_ignore_provisioned_firmware)
     );
     bwriteln!(
         o,
         "Open Desk Phone metrics enabled: {}",
-        tristate(&p.dphone_metrics_enabled)
+        tristate(&p.opendeskphone_metrics_enabled)
     );
     bwriteln!(
         o,
         "Open Desk Phone serial console: {}",
-        tristate(&p.dphone_serial_console)
+        tristate(&p.opendeskphone_serial_console)
     );
     bwriteln!(
         o,
         "Open Desk Phone static address: {}",
-        or(&p.dphone_static_address, "<Not Set>")
+        or(&p.opendeskphone_static_address, "<Not Set>")
     );
     bwriteln!(
         o,
         "Open Desk Phone static gateway: {}",
-        p.dphone_static_gateway
+        p.opendeskphone_static_gateway
             .map_or("<Not Set>".to_string(), |a| a.to_string())
     );
     bwriteln!(
         o,
         "Open Desk Phone static DNS servers: {}",
-        p.dphone_static_dns.len()
+        p.opendeskphone_static_dns.len()
     );
     bwriteln!(
         o,
         "Open Desk Phone disabled apps: {}",
-        p.dphone_disabled_apps.len()
+        p.opendeskphone_disabled_apps.len()
     );
     bwriteln!(
         o,
         "Open Desk Phone idle softkeys: {}",
-        p.dphone_idle_softkeys.len()
+        p.opendeskphone_idle_softkeys.len()
     );
-    bwriteln!(o, "Open Desk Phone theme: {}", or(&p.dphone_theme, "None"));
+    bwriteln!(
+        o,
+        "Open Desk Phone theme: {}",
+        or(&p.opendeskphone_theme, "None")
+    );
     bwriteln!(
         o,
         "Open Desk Phone palette file: {}",
-        or(&p.dphone_palette_file, "None")
+        or(&p.opendeskphone_palette_file, "None")
     );
     bwriteln!(
         o,
         "Open Desk Phone app data tenant: {}",
-        or(&p.dphone_app_data_tenant, "<Not Set>")
+        or(&p.opendeskphone_app_data_tenant, "<Not Set>")
     );
     bwriteln!(
         o,
         "Open Desk Phone SSH authorized keys: {}",
-        p.dphone_ssh_authorized_keys.len()
+        p.opendeskphone_ssh_authorized_keys.len()
     );
     bwriteln!(o, "Logout enabled: {}", yes_no(p.logout_enabled));
     bwriteln!(o, "MAC: {}", or(&p.mac, "<none>"));

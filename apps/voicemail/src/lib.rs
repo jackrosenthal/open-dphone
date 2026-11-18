@@ -6,8 +6,8 @@
 //! is on screen (and rejects it otherwise), and sends `*`, `#`, and `0` as
 //! DTMF for rewind, skip, and pause.
 
-use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{VoicemailMessage, VoicemailSort};
+use opendeskphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::{VoicemailMessage, VoicemailSort};
 
 const SK_PLAY: u32 = 1;
 const SK_DELETE: u32 = 2;
@@ -355,7 +355,7 @@ impl Voicemail {
 impl App for Voicemail {
     fn start(&mut self) {
         if let Err(e) = events::observe(PLAYBACK_EVENT) {
-            dphone_app_sdk::log_warn(&format!("cannot observe {PLAYBACK_EVENT}: {e:?}"));
+            opendeskphone_app_sdk::log_warn(&format!("cannot observe {PLAYBACK_EVENT}: {e:?}"));
         }
         calls::observe(true);
         // Stay loaded so a playback call that arrives late is still handled.
@@ -393,7 +393,7 @@ impl App for Voicemail {
                 }
             }
             Event::Call(c) => {
-                if self.call == Some(c.id) && c.state == dphone_app_sdk::CallState::Ended {
+                if self.call == Some(c.id) && c.state == opendeskphone_app_sdk::CallState::Ended {
                     self.after_playing();
                 }
             }
@@ -497,7 +497,7 @@ impl App for Voicemail {
     }
 }
 
-dphone_app_sdk::export_app! {
+opendeskphone_app_sdk::export_app! {
     app: Voicemail,
     name: "voicemail",
     id: "org.opendeskphone.voicemail",

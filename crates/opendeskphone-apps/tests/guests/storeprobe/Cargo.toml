@@ -1,0 +1,13 @@
+[package]
+name = "storeprobe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+opendeskphone-app-sdk = { path = "../../../../opendeskphone-app-sdk" }

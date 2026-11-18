@@ -1,14 +1,14 @@
 //! `cargo xtask deploy <phone>`: push a fresh `dphone` to a running phone
 //! without flashing.
 //!
-//! The init role runs `/tmp/dphone` as the main role whenever that file
+//! The init role runs `/tmp/opendeskphone` as the main role whenever that file
 //! exists, so a deploy is: build for the phone, copy the binary to
-//! `/tmp/dphone`, and ask the main role to restart.  `/tmp` is a tmpfs, so a
-//! reboot returns the phone to the binary in its flash image.
+//! `/tmp/opendeskphone`, and ask the main role to restart.  `/tmp` is a tmpfs,
+//! so a reboot returns the phone to the binary in its flash image.
 //!
 //! This uses the workstation's `scp` and `ssh` against the phone's built-in
 //! SSH server; the phone must have your key in
-//! `/nvdata/open/authorized_keys`.
+//! `/nvdata/opendeskphone/authorized_keys`.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -16,7 +16,7 @@ use std::process::Command;
 use crate::{Result, repo_root};
 
 const TARGET: &str = "arm-unknown-linux-musleabi";
-const REMOTE: &str = "/tmp/dphone";
+const REMOTE: &str = "/tmp/opendeskphone";
 
 #[derive(Debug, clap::Args)]
 pub struct Deploy {
@@ -42,7 +42,7 @@ pub fn deploy(args: Deploy) -> Result<()> {
     let root = repo_root();
     if !args.no_build {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-        run(Command::new(cargo).current_dir(&root).args(["build", "--release", "-p", "dphone", "--target", TARGET]))?;
+        run(Command::new(cargo).current_dir(&root).args(["build", "--release", "-p", "opendeskphone", "--target", TARGET]))?;
     }
     let target_dir = std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| root.join("target"));
     let binary = target_dir.join(TARGET).join("release/dphone");

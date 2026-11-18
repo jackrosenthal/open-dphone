@@ -1,25 +1,15 @@
-//! Structure checks against the stock root images.  Set `DPHONE_VENDOR_DIR`
-//! (see the `eff` crate's vendor tests); without it these pass with a notice,
-//! unless `DPHONE_TEST_REQUIRE_VENDOR` is set (the Nix check sets it), in
-//! which case they fail.
+//! Structure checks against the stock root images in `test-inputs/vendor`
+//! (see the `test-inputs` crate).
 
 use jffs2_image::{Kind, Options, read_image, write_image};
 use std::path::PathBuf;
 
 fn stock_images() -> Vec<PathBuf> {
-    let required = std::env::var_os("DPHONE_TEST_REQUIRE_VENDOR").is_some();
-    let Some(dir) = std::env::var_os("DPHONE_VENDOR_DIR").map(PathBuf::from) else {
-        assert!(
-            !required,
-            "DPHONE_TEST_REQUIRE_VENDOR is set, but DPHONE_VENDOR_DIR is not"
-        );
-        eprintln!(
-            "SKIPPED: set DPHONE_VENDOR_DIR to the directory with the vendor firmware to run this test"
-        );
+    let Some(dir) = test_inputs::input("vendor") else {
         return Vec::new();
     };
-    let mut out = vec![dir.join("ota-extracted-d60/rootfs.jffs2")];
-    for m in std::fs::read_dir(dir.join("firmware-series"))
+    let mut out = Vec::new();
+    for m in std::fs::read_dir(&dir)
         .into_iter()
         .flatten()
         .flatten()
@@ -30,11 +20,12 @@ fn stock_images() -> Vec<PathBuf> {
         }
     }
     out.sort();
-    if required {
-        // The D60's is first in the list; the D40's is the other one that
-        // must be there.
-        let d40 = dir.join("firmware-series/D40/rootfs.jffs2");
-        assert!(out.contains(&d40), "no D40 root image: {out:?}");
+    if test_inputs::REQUIRED {
+        // The images of both families must be there.
+        for model in ["D40", "D60"] {
+            let path = dir.join(model).join("rootfs.jffs2");
+            assert!(out.contains(&path), "no {model} root image: {out:?}");
+        }
     }
     out
 }

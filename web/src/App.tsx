@@ -1,8 +1,8 @@
 import { RouterProvider } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { Alert, Button, Field, Input, Spinner } from "./components/ui";
-import { AuthService } from "./gen/dphone/v1/auth_pb";
-import type { Model } from "./gen/dphone/v1/model_pb";
+import { AuthService } from "./gen/opendeskphone/v1/auth_pb";
+import type { Model } from "./gen/opendeskphone/v1/model_pb";
 import { modelName } from "./lib/labels";
 import { setSession, useSession } from "./lib/session";
 import { client, errorMessage } from "./lib/transport";

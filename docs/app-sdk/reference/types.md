@@ -1,6 +1,6 @@
 # Shared types
 
-The crate exports these types at the root, e.g., `dphone_app_sdk::Rect`.
+The crate exports these types at the root, e.g., `opendeskphone_app_sdk::Rect`.
 
 ## Handles and identifiers
 

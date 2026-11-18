@@ -3,7 +3,7 @@
 # One build serves every model; only the appended DTB differs.
 #
 # The kernel image carries an initramfs with one program, the early-boot
-# stage (crates/dphone-early): it counts trial boots and can select the
+# stage (crates/opendeskphone-early): it counts trial boots and can select the
 # previous bank before the root file system is needed, then mounts the
 # root and runs its init.  The initramfs is not compressed by itself; it
 # is compressed with the rest of the zImage.
@@ -27,8 +27,8 @@
   xz,
   openssl,
   kernelSrc, # path: the repository's kernel/ directory
-  earlyInit, # the built dphone-early ($out/bin/dphone-early, static ARM)
-  initramfsList, # path: crates/dphone-early/initramfs.list
+  earlyInit, # the built opendeskphone-early ($out/bin/opendeskphone-early, static ARM)
+  initramfsList, # path: crates/opendeskphone-early/initramfs.list
   defconfig ? "bcmring_tiny_defconfig",
 }:
 let
@@ -47,7 +47,7 @@ let
     "CROSS_COMPILE=arm-none-eabi-"
     "O=build"
     "HOSTCC=cc"
-    "KBUILD_BUILD_USER=dphone"
+    "KBUILD_BUILD_USER=opendeskphone"
     "KBUILD_BUILD_HOST=opendeskphone"
     # Fixed release string (7.3.0), so the module directory has one name.
     "LOCALVERSION="
@@ -104,7 +104,7 @@ stdenv.mkDerivation {
   configurePhase = ''
     runHook preConfigure
     make $makeFlags ${defconfig}
-    sed 's|@INIT@|${earlyInit}/bin/dphone-early|' ${initramfsList} > initramfs.list
+    sed 's|@INIT@|${earlyInit}/bin/opendeskphone-early|' ${initramfsList} > initramfs.list
     scripts/config --file build/.config --set-str INITRAMFS_SOURCE "$PWD/initramfs.list"
     make $makeFlags olddefconfig
     grep -q '^CONFIG_INITRAMFS_COMPRESSION_NONE=y' build/.config

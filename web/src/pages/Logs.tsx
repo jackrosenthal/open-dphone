@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Input, PageHeader, Select, Toggle, cx } from "../components/ui";
-import { LogLevel, LogsService, type LogEntry } from "../gen/dphone/v1/logs_pb";
+import { LogLevel, LogsService, type LogEntry } from "../gen/opendeskphone/v1/logs_pb";
 import { useStream } from "../lib/stream";
 import { client } from "../lib/transport";
 

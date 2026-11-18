@@ -40,8 +40,8 @@ fn save(&self) {
 Add the helpers to the imports:
 
 ```rust
-use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{Align, Font, log_info, log_warn, read_string};
+use opendeskphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::{Align, Font, log_info, log_warn, read_string};
 ```
 
 ## Loading and saving
@@ -77,8 +77,8 @@ Save on each change, not on exit: the phone sends `Event::Exit` before an orderl
 ??? example "Complete `src/lib.rs` for this chapter"
 
     ```rust
-    use dphone_app_sdk::prelude::*;
-    use dphone_app_sdk::{Align, Font, log_info, log_warn, read_string};
+    use opendeskphone_app_sdk::prelude::*;
+    use opendeskphone_app_sdk::{Align, Font, log_info, log_warn, read_string};
 
     const SK_BREWED: u32 = 1;
     const SK_EMPTY: u32 = 2;
@@ -199,7 +199,7 @@ Save on each change, not on exit: the phone sends `Event::Exit` before an orderl
         }
     }
 
-    dphone_app_sdk::export_app! {
+    opendeskphone_app_sdk::export_app! {
         app: FreshPot,
         name: "freshpot",
         display_name: "Fresh Pot",

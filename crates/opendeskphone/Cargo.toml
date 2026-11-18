@@ -1,0 +1,97 @@
+[package]
+name = "opendeskphone"
+description = "Open Desk Phone: the one userspace binary (init role, main role, diagnostics)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+name = "opendeskphone"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dphone"
+path = "src/main.rs"
+
+[features]
+default = ["web"]
+# The web UI.  A feature only so that the rest can be built and tested while
+# that crate is being reworked; every image carries it.
+web = ["dep:opendeskphone-web"]
+
+[dependencies]
+opendeskphone-state = { path = "../opendeskphone-state" }
+opendeskphone-config = { path = "../opendeskphone-config" }
+opendeskphone-hal = { path = "../opendeskphone-hal" }
+opendeskphone-bt = { path = "../opendeskphone-bt" }
+opendeskphone-net = { path = "../opendeskphone-net" }
+opendeskphone-update = { path = "../opendeskphone-update" }
+opendeskphone-ctrl = { path = "../opendeskphone-ctrl" }
+eff = { path = "../eff" }
+opendeskphone-sip = { path = "../opendeskphone-sip" }
+opendeskphone-dpma = { path = "../opendeskphone-dpma" }
+async-trait = "0.1"
+opendeskphone-apps = { path = "../opendeskphone-apps", features = ["ui", "compile"] }
+opendeskphone-web = { path = "../opendeskphone-web", optional = true }
+opendeskphone-ui = { path = "../opendeskphone-ui" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+opendeskphone-vpm = { path = "../opendeskphone-vpm" }
+opendeskphone-media = { path = "../opendeskphone-media" }
+libc = "0.2"
+log = { version = "0.4", features = ["std"] }
+# Every command line of this binary.  Measured on the ARM binary: clap with
+# `std`, `derive`, `help`, `usage`, and `error-context` adds 483 KB (3.7%),
+# `wrap_help` 5 KB more, and `color` with `suggestions` 14 KB more.
+# `suggestions` and `wrap_help` earn their place at a prompt on an
+# 80-column console.  Not `color`: everything is printed through `out` as
+# plain text, and the main role's answers must not carry escape codes.
+clap = { version = "4", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context", "suggestions", "wrap_help"] }
+# `dphone completion`: the shell's tab completion of the tree above, Bash
+# generator only.  Measured on the ARM binary: 43 KB (0.2%).
+clap_complete = { version = "4", default-features = false }
+tokio = { version = "1", default-features = false, features = ["rt", "net", "io-util", "time", "sync", "process", "signal", "macros", "fs"] }
+# Pinned: the last russh release whose cryptography is RustCrypto only.  Later
+# releases require `ring` or `aws-lc-rs` (C and assembly) for their AEAD ciphers.
+# The intent is to offer upstream a patch giving current russh a
+# pure-RustCrypto cipher backend, and to unpin when that lands.
+russh = { version = "=0.52.1", default-features = false }
+russh-sftp = "3"
+rand_core = { version = "0.6", features = ["getrandom"] }
+# App HTTP: TLS through the SIP crate's rustls policy (RustCrypto provider),
+# and the two hashes of HTTP Digest authentication.
+tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"] }
+md-5 = "0.10"
+sha2 = { version = "0.10", default-features = false }
+
+[dev-dependencies]
+test-inputs = { path = "../test-inputs" }
+# The in-process DPMA server of opendeskphone-dpma's tests
+# (tests/provisioned_firmware.rs).
+dpma-proto.workspace = true
+# The fake of the PBX's store of app data (the theme kept there).
+opendeskphone-apps = { path = "../opendeskphone-apps", features = ["test-util"] }
+tempfile = "3"
+libc = "0.2"
+rustls-pemfile = "2"
+rustls-rustcrypto = "0.0.2-alpha"
+
+# Runs in a private network namespace, which needs a single-threaded
+# process: no test harness.
+[[test]]
+name = "paging"
+harness = false
+
+[[test]]
+name = "expansion"
+harness = false
+
+[[test]]
+name = "pcport"
+harness = false
+
+[[test]]
+name = "staticaddr"
+harness = false

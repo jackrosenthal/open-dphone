@@ -1,6 +1,6 @@
-# The cargo workspace: `dphone` for the phone, the two host tools
-# (`dphone-image`, `dphone-apps-build`), the DPMA module for the tests'
-# Asterisk (`res_open_dpma`), and the test and lint checks.
+# The cargo workspace: `opendeskphone` for the phone, the two host tools
+# (`opendeskphone-image`, `opendeskphone-apps-build`), the DPMA module for the
+# tests' Asterisk (`res_open_dpma`), and the test and lint checks.
 #
 # Each product is built in two derivations (crane).  The first compiles only
 # the third-party dependencies, from Cargo.lock and the manifests alone, so
@@ -16,10 +16,9 @@
   openssh,
   iproute2,
   qemu-user,
-  stock, # the stock images (vendor-firmware.nix)
   asterisk, # Asterisk, its headers, and its modules with ours (asterisk.nix)
-  webDist ? null, # built frontend, embedded by dphone-web (DPHONE_WEB_DIST)
-  appsStaged ? null, # apps compiled for the build machine (DPHONE_APPS_STAGED)
+  testInputs, # what the tests need that is not in the repository (test-inputs)
+  webDist, # built frontend, embedded by opendeskphone-web from web/dist
   appsUnitTests ? null, # the apps' own tests, passed (apps.nix)
   appsClippy ? null, # the apps' own lints, passed (apps.nix)
 }:
@@ -37,14 +36,14 @@ let
       # firmware uses too (dpma-proto and dpma-bytes).
       (root + "/open-dpma")
       # The Light Up app's game library, which the host's test of that app
-      # (crates/dphone-apps/tests/lightup.rs) links, and the manifest of
+      # (crates/opendeskphone-apps/tests/lightup.rs) links, and the manifest of
       # the apps' workspace, from which it inherits its package fields.
       (root + "/apps/Cargo.toml")
       (root + "/apps/lightup/game")
-      # Service definitions, read by the build scripts of dphone-config and
-      # dphone-web.
+      # Service definitions, read by the build scripts of opendeskphone-config
+      # and opendeskphone-web.
       (root + "/proto")
-      # Fonts and SVG artwork, rasterized by dphone-ui's build script.
+      # Fonts and SVG artwork, rasterized by opendeskphone-ui's build script.
       (root + "/assets")
     ];
   };
@@ -84,13 +83,17 @@ let
 
   phone = twoStage (
     {
-      pname = "dphone";
-      cargoExtraArgs = "--locked -p dphone";
+      pname = "opendeskphone";
+      cargoExtraArgs = "--locked -p opendeskphone";
       dontStrip = true;
       dontPatchELF = true;
     }
     // rust.armEnv
-    // lib.optionalAttrs (webDist != null) { DPHONE_WEB_DIST = "${webDist}"; }
+    // {
+      # The frontend where opendeskphone-web's build script looks for it, as
+      # `pnpm build` leaves it in a checkout.
+      preBuild = "mkdir -p web && ln -s ${webDist} web/dist";
+    }
   );
 
   # The early-boot stage for the kernel's initramfs: no standard library,
@@ -98,8 +101,8 @@ let
   # for size above all.
   early = twoStage (
     {
-      pname = "dphone-early";
-      cargoExtraArgs = "--locked -p dphone-early";
+      pname = "opendeskphone-early";
+      cargoExtraArgs = "--locked -p opendeskphone-early";
       dontStrip = true;
       dontPatchELF = true;
       CARGO_PROFILE_RELEASE_PANIC = "abort";
@@ -110,16 +113,16 @@ let
 
   imageTool = twoStage (
     {
-      pname = "dphone-image";
-      cargoExtraArgs = "--locked -p dphone-image";
+      pname = "opendeskphone-image";
+      cargoExtraArgs = "--locked -p opendeskphone-image";
     }
     // hostEnv
   );
 
   appsTool = twoStage (
     {
-      pname = "dphone-apps-build";
-      cargoExtraArgs = "--locked -p dphone-apps --features build-tool --bin dphone-apps-build";
+      pname = "opendeskphone-apps-build";
+      cargoExtraArgs = "--locked -p opendeskphone-apps --features build-tool --bin opendeskphone-apps-build";
     }
     // hostEnv
   );
@@ -140,7 +143,7 @@ let
   # builds, lints, and tests all three against every Asterisk release that
   # the module supports (.github/workflows/ci.yml).
   checksStage = twoStage ({
-    pname = "dphone-checks";
+    pname = "opendeskphone-checks";
     cargoExtraArgs = "--locked --workspace --exclude dpma-sys --exclude dpma-ast --exclude res_open_dpma";
     # Debug profile: the checks do not ship.
     CARGO_PROFILE = "dev";
@@ -150,16 +153,17 @@ in
   inherit src version;
 
   # The firmware binary: static, ARMv6 soft-float.
-  dphone = phone.package;
+  opendeskphone = phone.package;
 
   # `/init` of the kernel's initramfs: static, ARMv6 soft-float, a few
   # kilobytes.
-  dphone-early = early.package;
+  opendeskphone-early = early.package;
 
-  # Host tools.  `dphone-image`: EFF, OTA, kernel image, and JFFS2.
-  # `dphone-apps-build`: componentizes and precompiles the WebAssembly apps.
-  dphone-image = imageTool.package;
-  dphone-apps-build = appsTool.package;
+  # Host tools.  `opendeskphone-image`: EFF, OTA, kernel image, and JFFS2.
+  # `opendeskphone-apps-build`: componentizes and precompiles the WebAssembly
+  # apps.
+  opendeskphone-image = imageTool.package;
+  opendeskphone-apps-build = appsTool.package;
 
   # The DPMA module, `lib/libres_open_dpma.so`, for the Asterisk of
   # asterisk.nix.
@@ -174,8 +178,13 @@ in
       # directory, so it is not archived into the output.
       doInstallCargoArtifacts = false;
       doCheck = true;
-      # Every failure in one run, not only the first crate's.
-      cargoTestExtraArgs = "--no-fail-fast";
+      # Every failure in one run, not only the first crate's; and no test
+      # passes by skipping itself for want of an input or a facility of
+      # the host (the `test-inputs` crate).
+      cargoTestExtraArgs = "--no-fail-fast --features test-inputs/required";
+      # The stock firmware, Asterisk with res_open_dpma, and the staged
+      # apps, where the tests look for them.
+      preCheck = "ln -s ${testInputs} test-inputs";
       # The OpenSSH client, for the test that logs in to the embedded SSH
       # server and pushes a file with `scp`; that test skips itself on a
       # machine without one.
@@ -186,36 +195,12 @@ in
         iproute2
         qemu-user
       ];
-      DPHONE_TEST_REQUIRE_SSH = "1";
-      # The comparisons with the stock firmware: the D40 and D60 images,
-      # and the D60's root file system for its `configmerge`.
-      # Without the variable these tests skip themselves; here they must
-      # run.
-      DPHONE_TEST_REQUIRE_VENDOR = "1";
-      DPHONE_VENDOR_DIR = "${stock.dir}";
-      DPHONE_STOCK_ROOTFS = "${stock.rootfs}";
-      # Provisioning and registration against Asterisk with res_open_dpma
-      # of this repository
-      # (crates/dphone/tests/asterisk.rs), likewise required here.
-      DPHONE_TEST_REQUIRE_ASTERISK = "1";
-      DPHONE_TEST_ASTERISK = "${asterisk.server}";
-      DPHONE_TEST_ASTERISK_MODULES = "${asterisk.modules}";
     }
     // lib.optionalAttrs (appsUnitTests != null) {
       # `apps/` is a cargo workspace of its own, which `cargo test` here
       # does not reach: its tests run in a derivation of their own, and
       # this check does not pass unless that one did.
       inherit appsUnitTests;
-    }
-    // lib.optionalAttrs (appsStaged != null) {
-      # A writable copy, as the tests' own build of the apps would leave:
-      # they copy files out of it and then edit the copies, and a copy of a
-      # store file is read-only.
-      preCheck = ''
-        cp -r ${appsStaged} "$NIX_BUILD_TOP/apps-staged"
-        chmod -R u+w "$NIX_BUILD_TOP/apps-staged"
-        export DPHONE_APPS_STAGED="$NIX_BUILD_TOP/apps-staged"
-      '';
     }
   );
 

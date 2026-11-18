@@ -1,9 +1,0 @@
-# The kernel's built-in initramfs (CONFIG_INITRAMFS_SOURCE; nix/kernel.nix
-# replaces @INIT@ with the built dphone-early).  Nothing but the program,
-# its mount points, and the console node the kernel opens for it.
-dir /dev 0755 0 0
-nod /dev/console 0600 0 0 c 5 1
-dir /proc 0755 0 0
-dir /root 0755 0 0
-dir /nvdata 0755 0 0
-file /init @INIT@ 0755 0 0

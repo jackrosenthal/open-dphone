@@ -1,9 +1,9 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useRef, useState, type FormEvent } from "react";
 import { Badge, Button, Card, ConfirmButton, Dpma, Empty, Modal, Select, Toggle, td, th } from "../components/ui";
-import { ConfigService } from "../gen/dphone/v1/config_pb";
-import { SshService, type SshStatus } from "../gen/dphone/v1/ssh_pb";
-import { SystemService } from "../gen/dphone/v1/system_pb";
+import { ConfigService } from "../gen/opendeskphone/v1/config_pb";
+import { SshService, type SshStatus } from "../gen/opendeskphone/v1/ssh_pb";
+import { SystemService } from "../gen/opendeskphone/v1/system_pb";
 import { ErrorNote } from "./common";
 import { viaDpma } from "./Settings";
 

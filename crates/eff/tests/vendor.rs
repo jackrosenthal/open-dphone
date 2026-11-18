@@ -1,10 +1,6 @@
-//! Checks against the vendor images.  These are not in the repository: set
-//! `DPHONE_VENDOR_DIR` to the directory that holds them (the layout of the
-//! reverse-engineering tree: `2_9_28_D60_firmware.eff`,
-//! `firmware-series/<model>/*.eff`).  Without it the tests print a notice
-//! and pass, unless `DPHONE_TEST_REQUIRE_VENDOR` is set (the Nix check sets
-//! it, with the D40 and D60 images: nix/vendor-firmware.nix), in which case
-//! they fail.  Those two images are required then; any others in the
+//! Checks against the vendor images, `test-inputs/vendor` (see the
+//! `test-inputs` crate).  With the feature `test-inputs/required` (the Nix
+//! check), the D40 and D60 images must be there; any others in the
 //! directory are exercised too.
 
 use eff::envelope::{self, EffReader, EffWriter};
@@ -13,34 +9,22 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 fn vendor_dir() -> Option<PathBuf> {
-    match std::env::var_os("DPHONE_VENDOR_DIR") {
-        Some(d) => Some(PathBuf::from(d)),
-        None => {
-            assert!(
-                !vendor_required(),
-                "DPHONE_TEST_REQUIRE_VENDOR is set, but DPHONE_VENDOR_DIR is not"
-            );
-            eprintln!(
-                "SKIPPED: set DPHONE_VENDOR_DIR to the directory with the vendor firmware to run this test"
-            );
-            None
-        }
-    }
+    test_inputs::input("vendor")
 }
 
 fn vendor_required() -> bool {
-    std::env::var_os("DPHONE_TEST_REQUIRE_VENDOR").is_some()
+    test_inputs::REQUIRED
 }
 
 fn d60_ota(dir: &Path) -> Vec<u8> {
-    let eff = std::fs::read(dir.join("2_9_28_D60_firmware.eff")).expect("2_9_28_D60_firmware.eff");
+    let eff = std::fs::read(dir.join("D60/2_9_28_D60_firmware.eff")).expect("D60/2_9_28_D60_firmware.eff");
     envelope::unpack(&eff).unwrap().1
 }
 
-/// Every vendor EFF found, as (path, model directory name if known).
+/// Every vendor EFF found, in the model directories.
 fn vendor_effs(dir: &Path) -> Vec<PathBuf> {
-    let mut out = vec![dir.join("2_9_28_D60_firmware.eff")];
-    if let Ok(models) = std::fs::read_dir(dir.join("firmware-series")) {
+    let mut out = Vec::new();
+    if let Ok(models) = std::fs::read_dir(dir) {
         for m in models.flatten() {
             if let Ok(files) = std::fs::read_dir(m.path()) {
                 for f in files.flatten() {

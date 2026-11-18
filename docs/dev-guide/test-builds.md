@@ -19,10 +19,10 @@ cargo xtask deploy 192.0.2.20
 
 The argument is the phone's address or host name, with the login `root` unless written as `LOGIN@HOST`.  `--no-build` pushes the binary of the previous build.
 
-The command copies the binary to `/tmp/dphone`.  While that file exists, the init role runs `/tmp/dphone` as the main role instead of the installed binary.  `/tmp` is in RAM, so a reboot restores the installed binary.  To restore the installed binary without a reboot:
+The command copies the binary to `/tmp/opendeskphone`.  While that file exists, the init role runs `/tmp/opendeskphone` as the main role instead of the installed binary.  `/tmp` is in RAM, so a reboot restores the installed binary.  To restore the installed binary without a reboot:
 
 ```sh
-ssh root@192.0.2.20 'rm /tmp/dphone && dphone restart'
+ssh root@192.0.2.20 'rm /tmp/opendeskphone && dphone restart'
 ```
 
 If a pushed binary fails three times in a row, each time within 30 seconds of starting, the init role runs the installed binary until the next boot.
@@ -62,10 +62,10 @@ The phone returns to the installed firmware when:
 - the kernel hangs: the hardware watchdog keeps running across the handover and resets the phone, or
 - the time limit expires: 900 seconds, or the value of `--max-uptime`.
 
-The time limit returns an unreachable system, e.g., one without a working network, without intervention.  To stay past the limit, create `/run/dphone/stay` in the RAM-booted system:
+The time limit returns an unreachable system, e.g., one without a working network, without intervention.  To stay past the limit, create `/run/opendeskphone/stay` in the RAM-booted system:
 
 ```sh
-ssh root@192.0.2.20 touch /run/dphone/stay
+ssh root@192.0.2.20 touch /run/opendeskphone/stay
 ```
 
 ### Options
@@ -91,4 +91,4 @@ A kernel configuration change can break later runs of `dphone ramboot`, which re
 - A new kernel that keeps the watchdog from expiring until the init role opens `/dev/watchdog`.  `CONFIG_WATCHDOG_OPEN_TIMEOUT` allows 120 seconds; a system that takes longer to start is reset.
 - The parameter `bcmring.coldsim`, passed to the new kernel, which makes the kernel reset the peripherals early so that drivers find the hardware in the power-on state.
 
-For details, see `kernel/README.md`, and for the image's memory layout, `crates/dphone-update/src/ramboot.rs`.
+For details, see `kernel/README.md`, and for the image's memory layout, `crates/opendeskphone-update/src/ramboot.rs`.

@@ -20,9 +20,9 @@
 use boxpusher_game::draw::{Layout, Op, Painter, Palette, Rgb};
 use boxpusher_game::progress::{Known, Progress};
 use boxpusher_game::{Dir, Game, LEVELS, Level, Step};
-use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::StorageLocation::{Local, PbxPrivate};
-use dphone_app_sdk::{Align, Font, canvas, log_warn, read_string};
+use opendeskphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::StorageLocation::{Local, PbxPrivate};
+use opendeskphone_app_sdk::{Align, Font, canvas, log_warn, read_string};
 
 const SK_UNDO: u32 = 1;
 const SK_RESTART: u32 = 2;
@@ -128,7 +128,7 @@ fn draw(w: Widget, ops: Vec<Op>) {
         })
         .collect();
     if let Err(e) = canvas::draw(w, &ops) {
-        dphone_app_sdk::log_error(&format!("draw: {e}"));
+        opendeskphone_app_sdk::log_error(&format!("draw: {e}"));
     }
 }
 
@@ -611,7 +611,7 @@ impl App for BoxPusher {
     }
 }
 
-dphone_app_sdk::export_app! {
+opendeskphone_app_sdk::export_app! {
     app: BoxPusher,
     name: "boxpusher",
     id: "org.opendeskphone.boxpusher",

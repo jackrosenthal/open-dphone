@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useRef, useState, type ReactNode } from "react";
 import { Alert, Badge, Button, Card, ConfirmButton, Dpma, KeyValue, Spinner, Toggle } from "../components/ui";
-import { Bank, FirmwareService, TrialBoot, UpdatePhase } from "../gen/dphone/v1/firmware_pb";
+import { Bank, FirmwareService, TrialBoot, UpdatePhase } from "../gen/opendeskphone/v1/firmware_pb";
 import { bytes } from "../lib/format";
 import { bankNames, label, modelName, updatePhaseNames } from "../lib/labels";
 import { useStatus } from "../lib/status";

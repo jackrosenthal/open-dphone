@@ -28,7 +28,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-dphone-app-sdk = "=3.0.0"
+opendeskphone-app-sdk = "=3.0.0"
 
 [profile.release]
 opt-level = "s"
@@ -39,15 +39,15 @@ strip = true
 ```
 
 - `crate-type = ["cdylib"]` makes `cargo` build a WebAssembly module.
-- `dphone-app-sdk = "=3.0.0"` is the SDK for firmware 3.0.0; the `=` makes Cargo use exactly that version.  The SDK version always matches the firmware version exactly.
+- `opendeskphone-app-sdk = "=3.0.0"` is the SDK for firmware 3.0.0; the `=` makes Cargo use exactly that version.  The SDK version always matches the firmware version exactly.
 
 ## App code
 
 Replace `src/lib.rs` with:
 
 ```rust
-use dphone_app_sdk::log_info;
-use dphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::log_info;
+use opendeskphone_app_sdk::prelude::*;
 
 #[derive(Default)]
 struct FreshPot;
@@ -68,7 +68,7 @@ impl App for FreshPot {
     }
 }
 
-dphone_app_sdk::export_app! {
+opendeskphone_app_sdk::export_app! {
     app: FreshPot,
     name: "freshpot",
     display_name: "Fresh Pot",
@@ -117,10 +117,10 @@ Press the cancel key to exit.
 On the **Logs** page, type `freshpot` in **Filter**.  The page shows the app's `log_info` line and the phone's lines about the app:
 
 ```text
-INFO  dphone_apps::manager app freshpot: installed
+INFO  opendeskphone_apps::manager app freshpot: installed
 INFO  app freshpot: the first screen is built
-INFO  dphone_apps::manager app freshpot: started
-INFO  dphone_apps::manager app freshpot: stopped
+INFO  opendeskphone_apps::manager app freshpot: started
+INFO  opendeskphone_apps::manager app freshpot: stopped
 ```
 
 After a panic, the phone stops the app, and the log shows the panic message with file and line:

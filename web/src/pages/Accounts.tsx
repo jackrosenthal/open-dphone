@@ -2,7 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useState } from "react";
 import { Alert, Badge, Button, Card, ConfirmButton, Dpma, Empty, Field, Input, Modal, PageHeader, Select, Spinner, Toggle } from "../components/ui";
-import { AccountConfigSchema, AccountsService, SipTransport, type AccountConfig } from "../gen/dphone/v1/accounts_pb";
+import { AccountConfigSchema, AccountsService, SipTransport, type AccountConfig } from "../gen/opendeskphone/v1/accounts_pb";
 import { useStatus } from "../lib/status";
 import { ErrorNote, RegistrationBadge } from "./common";
 import { SettingsCard, type Item } from "./Settings";

@@ -1,0 +1,160 @@
+syntax = "proto3";
+
+package opendeskphone.v1;
+
+service NetworkService {
+  rpc GetNetwork(GetNetworkRequest) returns (GetNetworkResponse);
+  rpc WatchNetwork(WatchNetworkRequest) returns (stream WatchNetworkResponse);
+  rpc SetNetworkSettings(SetNetworkSettingsRequest) returns (SetNetworkSettingsResponse);
+  rpc RenewDhcp(RenewDhcpRequest) returns (RenewDhcpResponse);
+  rpc SyncTime(SyncTimeRequest) returns (SyncTimeResponse);
+}
+
+enum NetPhase {
+  NET_PHASE_UNSPECIFIED = 0;
+  NET_PHASE_DOWN = 1;
+  NET_PHASE_CONFIGURING = 2;
+  NET_PHASE_UP = 3;
+  NET_PHASE_FAILED = 4;
+}
+
+// Where the IPv4 address came from.
+enum Ipv4Source {
+  // No address.
+  IPV4_SOURCE_UNSPECIFIED = 0;
+  IPV4_SOURCE_DHCP = 1;
+  IPV4_SOURCE_STATIC = 2;
+}
+
+// Where the voice VLAN came from.
+enum VlanSource {
+  // No voice VLAN.
+  VLAN_SOURCE_UNSPECIFIED = 0;
+  // The phone's settings.
+  VLAN_SOURCE_CONFIG = 1;
+  // The switch, by LLDP-MED.
+  VLAN_SOURCE_LLDP = 2;
+  VLAN_SOURCE_DHCP = 3;
+}
+
+// How the phone finds its voice VLAN (the stock setting
+// network_vlan_discovery_mode).
+enum VlanDiscoveryMode {
+  VLAN_DISCOVERY_MODE_UNSPECIFIED = 0;
+  // No voice VLAN.
+  VLAN_DISCOVERY_MODE_NONE = 1;
+  // The VLAN `vlan_id` names.
+  VLAN_DISCOVERY_MODE_MANUAL = 2;
+  // The VLAN of the switch's LLDP-MED network policy.
+  VLAN_DISCOVERY_MODE_LLDP = 3;
+}
+
+message PortLink {
+  bool up = 1;
+  uint32 speed = 2;
+  bool full_duplex = 3;
+}
+
+message Ipv6Address {
+  string address = 1;
+  uint32 prefix_len = 2;
+}
+
+message DnsServer {
+  string address = 1;
+}
+
+message NtpServer {
+  // An address or a host name.
+  string host = 1;
+}
+
+message NetworkStatus {
+  NetPhase phase = 1;
+  string detail = 2;
+  PortLink lan = 3;
+  PortLink pc = 4;
+  bool pc_port_enabled = 5;
+  string mac = 6;
+  Ipv4Source ipv4_source = 7;
+  string ipv4_address = 8;
+  uint32 ipv4_prefix_len = 9;
+  string ipv4_gateway = 10;
+  uint32 lease_secs = 11;
+  string dhcp_server = 12;
+  repeated Ipv6Address ipv6_addresses = 13;
+  repeated DnsServer dns_servers = 14;
+  string domain = 15;
+  string dhcp_tftp_server = 16;
+  repeated NtpServer ntp_servers = 17;
+  bool ntp_synced = 18;
+  VlanSource vlan_source = 19;
+  optional uint32 voice_vlan = 20;
+  optional uint32 pc_vlan = 21;
+  uint32 vlan_priority = 22;
+  uint32 dscp = 23;
+  bool lldp_present = 24;
+  string lldp_system_name = 25;
+  string lldp_port_id = 26;
+  string lldp_chassis_id = 27;
+  string lldp_port_description = 28;
+  string profile = 29;
+}
+
+// The stored settings (stock setting IDs underneath).
+message NetworkSettings {
+  // The provisioning server's static address is in effect: `dhcp` and the
+  // address fields below describe it, and SetNetworkSettings leaves the
+  // phone's own address settings alone.
+  bool addressing_provisioned = 22;
+  bool dhcp = 1;
+  string static_ip = 2;
+  string subnet_mask = 3;
+  string gateway = 4;
+  string primary_dns = 5;
+  string secondary_dns = 6;
+  string domain = 7;
+  VlanDiscoveryMode vlan_discovery_mode = 8;
+  optional uint32 vlan_id = 9;
+  optional uint32 pc_vlan_id = 10;
+  uint32 pc_qos = 11;
+  string pc_port_mode = 12;
+  string lan_port_mode = 13;
+  uint32 sip_dscp = 14;
+  uint32 rtp_dscp = 15;
+  uint32 sip_qos = 16;
+  uint32 rtp_qos = 17;
+  bool dot1x_passthrough = 18;
+  string ntp_server = 19;
+  string time_zone = 20;
+  bool ipv6_enabled = 21;
+}
+
+message GetNetworkRequest {}
+
+message GetNetworkResponse {
+  NetworkStatus status = 1;
+  NetworkSettings settings = 2;
+}
+
+message WatchNetworkRequest {}
+
+message WatchNetworkResponse {
+  NetworkStatus status = 1;
+}
+
+message SetNetworkSettingsRequest {
+  NetworkSettings settings = 1;
+  // Apply at once (the web session may drop if the address changes).
+  bool apply = 2;
+}
+
+message SetNetworkSettingsResponse {}
+
+message RenewDhcpRequest {}
+
+message RenewDhcpResponse {}
+
+message SyncTimeRequest {}
+
+message SyncTimeResponse {}

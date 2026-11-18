@@ -19,11 +19,11 @@ The init role supervises the main role:
 
 Log in over SSH or on the serial console.  [Local commands](dphone-command.md#local-and-remote-commands), including `dmesg` and `dphone update`, work without a main role.
 
-1. Read the init role's record of each start and failure in `dmesg`.  A kernel panic's records are in `/nvdata/open/crash/`, or still in `/sys/fs/pstore/` if no main role has started since the panic; see [Crash records](diagnostics.md#crash-records).  A main role in safe mode answers `dphone log` with the entries since safe mode started.
+1. Read the init role's record of each start and failure in `dmesg`.  A kernel panic's records are in `/nvdata/opendeskphone/crash/`, or still in `/sys/fs/pstore/` if no main role has started since the panic; see [Crash records](diagnostics.md#crash-records).  A main role in safe mode answers `dphone log` with the entries since safe mode started.
 2. To suspend the restart after 600 seconds without a heartbeat while you investigate:
 
     ```sh
-    touch /run/dphone/no-reboot
+    touch /run/opendeskphone/no-reboot
     ```
 
 3. Recover with `dphone update abandon` for an image on trial, `dphone update switch-bank` to boot the other bank's image, or `dphone update install` to install a corrected image; see [Firmware updates](firmware-updates.md).

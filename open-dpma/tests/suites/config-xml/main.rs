@@ -136,7 +136,7 @@ fn config(ctx: &mut Ctx) -> Result<()> {
             && doc.contains_str("<setting id=\"rtp_qos\" value=\"5\" network_id=\"network1\"/>\n"),
         find_all(&doc, "<setting id=\"rtp_qos\"").join(" | "),
     );
-    dphone_options(ctx)?;
+    opendeskphone_options(ctx)?;
     let doc = document(ctx, "dpmadev config cfgphone D65")?;
     ctx.c.check(
         "cfgphone: the config_file",
@@ -157,23 +157,23 @@ fn config(ctx: &mut Ctx) -> Result<()> {
 /// key header, a line with options, and a short blob are left out).  Each
 /// setting is frozen, so that a value set on the phone does not go before
 /// the configuration's.
-const DPHONE_SETTINGS: &str = concat!(
-    "<setting id=\"dphone_ssh_enabled\" value=\"0\" conflict=\"freeze\" />\n",
-    "<setting id=\"dphone_ignore_provisioned_firmware\" value=\"1\" conflict=\"freeze\" />\n",
-    "<setting id=\"dphone_metrics_enabled\" value=\"0\" conflict=\"freeze\" />\n",
-    "<setting id=\"dphone_serial_console\" value=\"1\" conflict=\"freeze\" />\n",
-    "<setting id=\"dphone_static_address\" value=\"192.0.2.20/23\" conflict=\"freeze\" />\n",
-    "<setting id=\"dphone_static_gateway\" value=\"192.0.2.1\" conflict=\"freeze\" />\n",
-    "<setting id=\"dphone_static_dns\" value=\"192.0.2.1,192.0.2.2,192.0.2.4\" conflict=\"freeze\" />\n",
-    "<setting id=\"dphone_disabled_apps\" value=\"calendar,parking,queues\" conflict=\"freeze\" />\n",
-    "<setting id=\"dphone_idle_softkeys\" value=\"call_log,app:parking,menu,dnd\" conflict=\"freeze\" />\n",
-    "<setting id=\"dphone_theme\" value=\"deep-sea\" conflict=\"freeze\" />\n",
+const OPENDESKPHONE_SETTINGS: &str = concat!(
+    "<setting id=\"opendeskphone_ssh_enabled\" value=\"0\" conflict=\"freeze\" />\n",
+    "<setting id=\"opendeskphone_ignore_provisioned_firmware\" value=\"1\" conflict=\"freeze\" />\n",
+    "<setting id=\"opendeskphone_metrics_enabled\" value=\"0\" conflict=\"freeze\" />\n",
+    "<setting id=\"opendeskphone_serial_console\" value=\"1\" conflict=\"freeze\" />\n",
+    "<setting id=\"opendeskphone_static_address\" value=\"192.0.2.20/23\" conflict=\"freeze\" />\n",
+    "<setting id=\"opendeskphone_static_gateway\" value=\"192.0.2.1\" conflict=\"freeze\" />\n",
+    "<setting id=\"opendeskphone_static_dns\" value=\"192.0.2.1,192.0.2.2,192.0.2.4\" conflict=\"freeze\" />\n",
+    "<setting id=\"opendeskphone_disabled_apps\" value=\"calendar,parking,queues\" conflict=\"freeze\" />\n",
+    "<setting id=\"opendeskphone_idle_softkeys\" value=\"call_log,app:parking,menu,dnd\" conflict=\"freeze\" />\n",
+    "<setting id=\"opendeskphone_theme\" value=\"deep-sea\" conflict=\"freeze\" />\n",
 );
-const DPHONE_KEYS: &str = concat!(
-    "<dphone_ssh_authorized_keys>\n",
+const OPENDESKPHONE_KEYS: &str = concat!(
+    "<opendeskphone_ssh_authorized_keys>\n",
     "<key id=\"1\" value=\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa alice@laptop\" />\n",
     "<key id=\"2\" value=\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb bob &lt;desk&gt; &amp; co\" />\n",
-    "</dphone_ssh_authorized_keys>\n",
+    "</opendeskphone_ssh_authorized_keys>\n",
     "</config>\n",
 );
 
@@ -188,21 +188,21 @@ fn find_all(doc: &[u8], prefix: &str) -> Vec<String> {
 
 /// The Open Desk Phone options: present as configured for `fullphone`, and
 /// absent from the document of a phone that does not set them.
-fn dphone_options(ctx: &mut Ctx) -> Result<()> {
+fn opendeskphone_options(ctx: &mut Ctx) -> Result<()> {
     let doc = plain(document(ctx, "dpmadev config fullphone D65")?);
     ctx.c.check(
         "fullphone: Open Desk Phone settings",
-        doc.contains_str(plain(DPHONE_SETTINGS)),
+        doc.contains_str(plain(OPENDESKPHONE_SETTINGS)),
         "",
     );
     ctx.c.check(
         "fullphone: Open Desk Phone SSH keys",
-        doc.contains_str(plain(DPHONE_KEYS)) && !doc.contains_str("PRIVATE KEY"),
+        doc.contains_str(plain(OPENDESKPHONE_KEYS)) && !doc.contains_str("PRIVATE KEY"),
         "",
     );
     // The palette file is offered as the wallpaper is: here, not in the
     // file directory, so from each network's file URL prefix.
-    let palette = find_all(&doc, "<setting id=\"dphone_palette_file\"");
+    let palette = find_all(&doc, "<setting id=\"opendeskphone_palette_file\"");
     ctx.c.check(
         "fullphone: Open Desk Phone palette file",
         !palette.is_empty()
@@ -252,7 +252,7 @@ fn dphone_options(ctx: &mut Ctx) -> Result<()> {
         let doc = document(ctx, &format!("dpmadev config {phone} D65"))?;
         ctx.c.check(
             format!("{phone}: no Open Desk Phone options"),
-            !doc.contains_str("dphone_"),
+            !doc.contains_str("opendeskphone_"),
             "",
         );
     }
@@ -455,12 +455,12 @@ fn reload_checks(ctx: &mut Ctx) -> Result<()> {
 
     // An invalid value of an on/off option that opens a way into the
     // phone turns the feature off, and is an error.  (fullphone sets
-    // dphone_serial_console=yes.)
+    // opendeskphone_serial_console=yes.)
     let mark = ctx.log().mark();
     let access = [
-        ("dphone_ssh_enabled", "nope"),
-        ("dphone_serial_console", "yse"),
-        ("dphone_metrics_enabled", "ture"),
+        ("opendeskphone_ssh_enabled", "nope"),
+        ("opendeskphone_serial_console", "yse"),
+        ("opendeskphone_metrics_enabled", "ture"),
     ];
     let opts: Vec<(&str, Option<&str>)> = access.iter().map(|(k, v)| (*k, Some(*v))).collect();
     set_options(ctx, "fullphone", &opts)?;

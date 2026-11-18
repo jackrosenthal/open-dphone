@@ -1,5 +1,5 @@
 import { fromJson, type JsonValue } from "@bufbuild/protobuf";
-import { UploadedFirmwareSchema, type UploadedFirmware } from "../gen/dphone/v1/firmware_pb";
+import { UploadedFirmwareSchema, type UploadedFirmware } from "../gen/opendeskphone/v1/firmware_pb";
 import { csrfToken } from "./session";
 
 /// Streams a file to one of the upload endpoints, reporting progress.  The

@@ -1,8 +1,8 @@
 import { useQuery } from "@connectrpc/connect-query";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Card, PageHeader, Spinner } from "../components/ui";
-import { Model } from "../gen/dphone/v1/model_pb";
-import { KeyAction, Key_Kind as K, LampBlink, LampColor, ScreenId, ScreenService, type Lamp } from "../gen/dphone/v1/screen_pb";
+import { Model } from "../gen/opendeskphone/v1/model_pb";
+import { KeyAction, Key_Kind as K, LampBlink, LampColor, ScreenId, ScreenService, type Lamp } from "../gen/opendeskphone/v1/screen_pb";
 import { modelName } from "../lib/labels";
 import { PhoneIcon } from "../lib/phoneIcons";
 import { archedRect, key, panels, sameKey, type KeyId, type Panel, type PanelKey } from "../lib/phones";

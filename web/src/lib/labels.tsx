@@ -4,12 +4,12 @@
 // the raw identifier in the monospace font, so a missing entry is visible.
 
 import type { ReactNode } from "react";
-import { Codec, EndCause, type Call } from "../gen/dphone/v1/calls_pb";
-import { Bank, UpdatePhase } from "../gen/dphone/v1/firmware_pb";
-import { Model } from "../gen/dphone/v1/model_pb";
-import { Ipv4Source, NetPhase, VlanSource } from "../gen/dphone/v1/network_pb";
-import { DiscoverySource, ProvisionPhase } from "../gen/dphone/v1/provisioning_pb";
-import { Subsystem, SystemPhase } from "../gen/dphone/v1/status_pb";
+import { Codec, EndCause, type Call } from "../gen/opendeskphone/v1/calls_pb";
+import { Bank, UpdatePhase } from "../gen/opendeskphone/v1/firmware_pb";
+import { Model } from "../gen/opendeskphone/v1/model_pb";
+import { Ipv4Source, NetPhase, VlanSource } from "../gen/opendeskphone/v1/network_pb";
+import { DiscoverySource, ProvisionPhase } from "../gen/opendeskphone/v1/provisioning_pb";
+import { Subsystem, SystemPhase } from "../gen/opendeskphone/v1/status_pb";
 
 type Names = Record<string | number, string>;
 

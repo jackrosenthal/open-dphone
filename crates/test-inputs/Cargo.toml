@@ -1,0 +1,13 @@
+[package]
+name = "test-inputs"
+description = "Where the tests find what is not in the repository, and whether they may run without it"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[features]
+# A test whose input or host facility is missing fails instead of skipping.
+# The Nix check builds the tests with it (`--features test-inputs/required`).
+required = []

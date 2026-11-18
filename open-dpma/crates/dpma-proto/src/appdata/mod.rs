@@ -79,7 +79,7 @@ pub const REQUEST: &str = "AppDataRequest";
 /// The response type.
 pub const RESPONSE: &str = "AppDataResponse";
 /// The event sent to watching phones when a shared key changes.
-pub const EVENT_CHANGE: &str = "dphone.appdata.change";
+pub const EVENT_CHANGE: &str = "opendeskphone.appdata.change";
 
 /// The longest key, in bytes.
 pub const KEY_MAX: usize = 64;

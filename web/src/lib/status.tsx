@@ -2,7 +2,7 @@
 // dashboard, and several pages read the same live snapshot.
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { StatusService, type StatusSnapshot } from "../gen/dphone/v1/status_pb";
+import { StatusService, type StatusSnapshot } from "../gen/opendeskphone/v1/status_pb";
 import { useStream, type StreamStatus } from "./stream";
 import { client } from "./transport";
 

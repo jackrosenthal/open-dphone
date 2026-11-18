@@ -1,8 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Alert, Badge } from "../components/ui";
-import { RegistrationState, type AccountStatus } from "../gen/dphone/v1/accounts_pb";
-import { CallState } from "../gen/dphone/v1/calls_pb";
+import { RegistrationState, type AccountStatus } from "../gen/opendeskphone/v1/accounts_pb";
+import { CallState } from "../gen/opendeskphone/v1/calls_pb";
 import { errorMessage } from "../lib/transport";
 
 export function RegistrationBadge({ a }: { a: AccountStatus }) {

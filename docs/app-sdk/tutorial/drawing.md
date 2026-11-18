@@ -13,7 +13,7 @@ A [`canvas`](../reference/canvas.md) is a widget that shows a list of drawing op
 Import the module and types:
 
 ```rust
-use dphone_app_sdk::canvas::{self, Bitmap, Op, Role};
+use opendeskphone_app_sdk::canvas::{self, Bitmap, Op, Role};
 ```
 
 ## Bitmap data
@@ -152,9 +152,9 @@ Event::Timer(_) | Event::Foreground => {}
 ??? example "Complete `src/lib.rs` for this chapter"
 
     ```rust
-    use dphone_app_sdk::canvas::{self, Bitmap, Op, Role};
-    use dphone_app_sdk::prelude::*;
-    use dphone_app_sdk::{Align, Font, log_info, log_warn, read_string};
+    use opendeskphone_app_sdk::canvas::{self, Bitmap, Op, Role};
+    use opendeskphone_app_sdk::prelude::*;
+    use opendeskphone_app_sdk::{Align, Font, log_info, log_warn, read_string};
 
     const SK_BREWED: u32 = 1;
     const SK_EMPTY: u32 = 2;
@@ -360,7 +360,7 @@ Event::Timer(_) | Event::Foreground => {}
         }
     }
 
-    dphone_app_sdk::export_app! {
+    opendeskphone_app_sdk::export_app! {
         app: FreshPot,
         name: "freshpot",
         display_name: "Fresh Pot",

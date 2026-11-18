@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package opendeskphone.v1;
+
+service LogsService {
+  rpc GetLogs(GetLogsRequest) returns (GetLogsResponse);
+  // Sends the backlog, then new lines as they are logged.
+  rpc TailLogs(TailLogsRequest) returns (stream TailLogsResponse);
+}
+
+enum LogLevel {
+  LOG_LEVEL_UNSPECIFIED = 0;
+  LOG_LEVEL_ERROR = 1;
+  LOG_LEVEL_WARN = 2;
+  LOG_LEVEL_INFO = 3;
+  LOG_LEVEL_DEBUG = 4;
+  LOG_LEVEL_TRACE = 5;
+}
+
+message LogEntry {
+  uint64 seq = 1;
+  uint64 unix_ms = 2;
+  uint64 mono_ms = 3;
+  LogLevel level = 4;
+  string target = 5;
+  string message = 6;
+}
+
+message GetLogsRequest {
+  // Only entries after this sequence number.
+  uint64 after_seq = 1;
+  // Newest entries kept when more are held; 0 for all.
+  uint32 limit = 2;
+  // Least severe level included; UNSPECIFIED for all.
+  LogLevel min_level = 3;
+}
+
+message GetLogsResponse {
+  repeated LogEntry entries = 1;
+}
+
+message TailLogsRequest {
+  // Lines of history to send first.
+  uint32 backlog = 1;
+  LogLevel min_level = 2;
+}
+
+message TailLogsResponse {
+  repeated LogEntry entries = 1;
+}

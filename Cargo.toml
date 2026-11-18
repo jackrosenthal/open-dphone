@@ -4,30 +4,31 @@ resolver = "3"
 # being created (no manifest, or one that does not parse yet) must not break
 # cargo for every other crate.  Add a crate here when it builds.
 members = [
-    "crates/dphone-app-sdk",
-    "crates/dphone",
-    "crates/dphone-apps",
-    "crates/dphone-bt",
-    "crates/dphone-config",
-    "crates/dphone-ctrl",
-    "crates/dphone-early",
-    "crates/dphone-hal",
-    "crates/dphone-image",
-    "crates/dphone-media",
-    "crates/dphone-net",
-    "crates/dphone-ui",
-    "crates/dphone-web",
-    "crates/dphone-sip",
-    "crates/dphone-dpma",
-    "crates/dphone-state",
-    "crates/dphone-ui",
-    "crates/dphone-web",
-    "crates/dphone-update",
-    "crates/dphone-vpm",
-    "crates/dphone-update",
-    "crates/dphone-web",
+    "crates/opendeskphone-app-sdk",
+    "crates/opendeskphone",
+    "crates/opendeskphone-apps",
+    "crates/opendeskphone-bt",
+    "crates/opendeskphone-config",
+    "crates/opendeskphone-ctrl",
+    "crates/opendeskphone-early",
+    "crates/opendeskphone-hal",
+    "crates/opendeskphone-image",
+    "crates/opendeskphone-media",
+    "crates/opendeskphone-net",
+    "crates/opendeskphone-ui",
+    "crates/opendeskphone-web",
+    "crates/opendeskphone-sip",
+    "crates/opendeskphone-dpma",
+    "crates/opendeskphone-state",
+    "crates/opendeskphone-ui",
+    "crates/opendeskphone-web",
+    "crates/opendeskphone-update",
+    "crates/opendeskphone-vpm",
+    "crates/opendeskphone-update",
+    "crates/opendeskphone-web",
     "crates/eff",
     "crates/jffs2-image",
+    "crates/test-inputs",
     "xtask",
     # The DPMA module for Asterisk, its libraries, its test suites, and its
     # own `cargo xtask` (open-dpma/README.md).  dpma-sys reads the headers of an
@@ -99,7 +100,7 @@ panic = "unwind"
 strip = true
 
 # The app interpreter's inner loop: measured markedly slower when built for
-# size (see crates/dphone-apps/README.md).
+# size (see crates/opendeskphone-apps/README.md).
 [profile.release.package.pulley-interpreter]
 opt-level = 3
 

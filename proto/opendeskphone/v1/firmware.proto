@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package opendeskphone.v1;
+
+import "opendeskphone/v1/config.proto";
+import "opendeskphone/v1/model.proto";
+
+// Firmware update.  The image itself is uploaded with a plain authenticated
+// HTTP POST to /upload/firmware (streamed to the phone, not buffered); that
+// answers with JSON carrying the upload_id used here.
+service FirmwareService {
+  rpc GetFirmware(GetFirmwareRequest) returns (GetFirmwareResponse);
+  rpc WatchFirmware(WatchFirmwareRequest) returns (stream WatchFirmwareResponse);
+  rpc InstallFirmware(InstallFirmwareRequest) returns (InstallFirmwareResponse);
+  rpc DiscardUpload(DiscardUploadRequest) returns (DiscardUploadResponse);
+  rpc ConfirmTrial(ConfirmTrialRequest) returns (ConfirmTrialResponse);
+  rpc Rollback(RollbackRequest) returns (RollbackResponse);
+  rpc GetProvisionedFirmwarePolicy(GetProvisionedFirmwarePolicyRequest) returns (GetProvisionedFirmwarePolicyResponse);
+  rpc SetProvisionedFirmwarePolicy(SetProvisionedFirmwarePolicyRequest) returns (SetProvisionedFirmwarePolicyResponse);
+}
+
+enum UpdatePhase {
+  UPDATE_PHASE_UNSPECIFIED = 0;
+  UPDATE_PHASE_IDLE = 1;
+  UPDATE_PHASE_RECEIVING = 2;
+  UPDATE_PHASE_CHECKING = 3;
+  UPDATE_PHASE_ERASING = 4;
+  UPDATE_PHASE_WRITING_KERNEL = 5;
+  UPDATE_PHASE_WRITING_ROOTFS = 6;
+  UPDATE_PHASE_VERIFYING = 7;
+  UPDATE_PHASE_COMMITTING = 8;
+  UPDATE_PHASE_COMPLETE = 9;
+  UPDATE_PHASE_FAILED = 10;
+}
+
+// A flash bank: a kernel and a root filesystem.
+enum Bank {
+  BANK_UNSPECIFIED = 0;
+  // k0 and root0.
+  BANK_A = 1;
+  // k1 and root1.
+  BANK_B = 2;
+}
+
+// Where the phone is in a trial boot of new firmware.
+enum TrialBoot {
+  // Not in a trial.
+  TRIAL_BOOT_UNSPECIFIED = 0;
+  // Running new firmware that has not yet been declared healthy; see
+  // `trial_boots_left`.
+  TRIAL_BOOT_PENDING = 1;
+  // The last trial failed, and the phone went back to the other bank.
+  TRIAL_BOOT_ROLLED_BACK = 2;
+}
+
+message UploadedFirmware {
+  string upload_id = 1;
+  uint64 size = 2;
+  string version = 3;
+  // The model the image's label names; UNSPECIFIED when it names none, or
+  // a model this firmware does not know (`model_matches` tells the two
+  // apart).
+  Model model = 4;
+  // A stock Digium image: installing it leaves Open Desk Phone.
+  bool is_stock = 5;
+  // The image is for this phone's model.
+  bool model_matches = 6;
+}
+
+message FirmwareStatus {
+  UpdatePhase phase = 1;
+  uint32 percent = 2;
+  string error = 3;
+  string running_version = 4;
+  // UNSPECIFIED when not known.
+  Bank running_bank = 5;
+  TrialBoot trial = 6;
+  uint32 trial_boots_left = 7;
+  string rollback_reason = 8;
+  string incoming_version = 9;
+  bool incoming_is_stock = 10;
+  // An uploaded image waiting for InstallFirmware.
+  UploadedFirmware uploaded = 11;
+}
+
+message GetFirmwareRequest {}
+
+message GetFirmwareResponse {
+  FirmwareStatus status = 1;
+}
+
+message WatchFirmwareRequest {}
+
+message WatchFirmwareResponse {
+  FirmwareStatus status = 1;
+}
+
+message InstallFirmwareRequest {
+  string upload_id = 1;
+  // Must be set to install a stock image.
+  bool allow_stock = 2;
+}
+
+message InstallFirmwareResponse {}
+
+message DiscardUploadRequest {
+  string upload_id = 1;
+}
+
+message DiscardUploadResponse {}
+
+message ConfirmTrialRequest {}
+
+message ConfirmTrialResponse {}
+
+message RollbackRequest {}
+
+message RollbackResponse {}
+
+message GetProvisionedFirmwarePolicyRequest {}
+
+message GetProvisionedFirmwarePolicyResponse {
+  // Ignore the firmware the provisioning server asks for.
+  BoolSetting ignore = 1;
+}
+
+message SetProvisionedFirmwarePolicyRequest {
+  bool ignore = 1;
+}
+
+message SetProvisionedFirmwarePolicyResponse {
+  BoolSetting ignore = 1;
+}

@@ -7,7 +7,7 @@ Open DPMA reads `res_digium_phone.conf` from the Asterisk configuration director
 The file has a `[general]` section and any number of sections with a `type` option.  A section's name identifies the phone, line, network, or other object.
 
 - **On/off options** accept any value that Asterisk reads as true (`yes`, `true`, `on`, `1`) or false.
-- **Errors.**  An unknown option or an unreadable value is logged at the `DPMA` level and skipped; the rest of the section applies.  A section with a missing or unknown `type` is logged and skipped.  Exceptions: an invalid [`config_auth`](#config_auth) or `userlist_auth` value refuses requests, and an invalid `dphone_ssh_enabled`, `dphone_serial_console`, or `dphone_metrics_enabled` value sends `no`; each is also logged as an error.
+- **Errors.**  An unknown option or an unreadable value is logged at the `DPMA` level and skipped; the rest of the section applies.  A section with a missing or unknown `type` is logged and skipped.  Exceptions: an invalid [`config_auth`](#config_auth) or `userlist_auth` value refuses requests, and an invalid `opendeskphone_ssh_enabled`, `opendeskphone_serial_console`, or `opendeskphone_metrics_enabled` value sends `no`; each is also logged as an error.
 - **Special characters.**  The module escapes `"`, `<`, and `&` in the phone's XML configuration, so write these characters as the phone should display them.  An `&` that begins a reference, e.g., `&amp;` or `&#38;`, is left alone, so values written for the original module, which escapes nothing, display the same.
 - **Comments.**  `;` begins a comment; `\;` is a literal semicolon.
 
@@ -83,7 +83,7 @@ The built-in certificates are the original module's, which D-series phones trust
 
 A phone section describes one phone, or, when `config_auth` does not include `mac`, one user: any phone can take the section's configuration when the user picks the section from the user list.
 
-A "Repeatable" option may appear more than once; each occurrence adds to a list.  The `dphone_*` options are in [Open Desk Phone options](opendeskphone-options.md).
+A "Repeatable" option may appear more than once; each occurrence adds to a list.  The `opendeskphone_*` options are in [Open Desk Phone options](opendeskphone-options.md).
 
 ### Identity and access
 

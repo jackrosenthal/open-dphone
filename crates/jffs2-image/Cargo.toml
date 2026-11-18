@@ -11,6 +11,7 @@ publish = false
 miniz_oxide = "0.8"
 
 [dev-dependencies]
+test-inputs = { path = "../test-inputs" }
 # The command lines of the examples.
 clap = { version = "4", features = ["derive"] }
 # Only for the VM mount test: unpacks the host kernel's `.ko.zst` modules.

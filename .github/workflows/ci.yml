@@ -23,7 +23,7 @@
 #
 # A pushed tag vX.Y.Z (the workspace version in Cargo.toml) also publishes
 # the seven images and the modules as a GitHub Release, with SHA256SUMS,
-# and then publishes dpma-bytes, dpma-proto, and dphone-app-sdk to
+# and then publishes dpma-bytes, dpma-proto, and opendeskphone-app-sdk to
 # crates.io (trusted publishing).
 name: CI
 
@@ -69,7 +69,7 @@ jobs:
           # the binary itself embeds the web frontend, so it is built in
           # `rootfs`.
           - name: workspace
-            installables: .#dphone-image .#dphone.cargoArtifacts
+            installables: .#opendeskphone-image .#opendeskphone.cargoArtifacts
           # The dependencies of the tests and of clippy.
           - name: checks-deps
             installables: .#checks.x86_64-linux.tests.cargoArtifacts
@@ -100,7 +100,7 @@ jobs:
       - uses: ./.github/actions/nix-build
         with:
           name: rootfs
-          installables: .#rootfs .#rootfs-tree .#dphone .#dphone-image .#kernel
+          installables: .#rootfs .#rootfs-tree .#opendeskphone .#opendeskphone-image .#kernel
           cache: true
           stores: nix-new-{kernel,web,apps,brush,coreutils,sed,workspace}
           results: true
@@ -411,7 +411,7 @@ jobs:
       id-token: write
     env:
       # In dependency order: dpma-proto uses dpma-bytes.
-      CRATES: dpma-bytes dpma-proto dphone-app-sdk
+      CRATES: dpma-bytes dpma-proto opendeskphone-app-sdk
     steps:
       - uses: actions/checkout@v7
 

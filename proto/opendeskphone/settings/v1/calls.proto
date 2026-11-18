@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package opendeskphone.settings.v1;
+
+// Recent calls, newest first.  Stored on the phone in protobuf text format
+// as /nvdata/opendeskphone/kv/calllog.txtpb.
+message CallLog {
+  repeated CallLogEntry entries = 1;
+  // Missed calls not yet looked at.
+  uint32 missed_unseen = 2;
+}
+
+message CallLogEntry {
+  // Increases with each entry.
+  uint64 id = 1;
+  CallLogKind kind = 2;
+  // The other party.
+  Party party = 3;
+  // The SIP account the call was on: 0 for the first.
+  uint32 account = 4;
+  // When the call began (Unix time).
+  uint64 start_unix = 5;
+  uint32 duration_secs = 6;
+}
+
+enum CallLogKind {
+  CALL_LOG_KIND_UNSPECIFIED = 0;
+  CALL_LOG_KIND_MISSED = 1;
+  CALL_LOG_KIND_RECEIVED = 2;
+  CALL_LOG_KIND_PLACED = 3;
+}
+
+message Party {
+  string name = 1;
+  // The user part of the URI, or the dialed digits.
+  string number = 2;
+  // The full SIP URI, when known.
+  string uri = 3;
+}
+
+// Do-not-disturb, call forwarding, auto answer, and call waiting.  Stored
+// on the phone in protobuf text format as
+// /nvdata/opendeskphone/kv/features.txtpb.
+message Features {
+  bool dnd = 1;
+  Forward forward = 2;
+  bool auto_answer = 3;
+  bool call_waiting = 4;
+}
+
+// Where calls are forwarded.  An empty number is off.
+message Forward {
+  // Every call.
+  string always = 1;
+  // Calls that come while the phone is busy.
+  string busy = 2;
+  // Calls not answered within `no_answer_secs`.
+  string no_answer = 3;
+  uint32 no_answer_secs = 4;
+}

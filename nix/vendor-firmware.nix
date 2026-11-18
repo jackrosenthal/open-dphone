@@ -20,7 +20,7 @@
   lib,
   fetchurl,
   runCommand,
-  dphone-image, # the host tool (not the `dphone` package: see dsp-firmware.nix)
+  opendeskphone-image, # the host tool (not the `opendeskphone` package: see dsp-firmware.nix)
 }:
 let
   # The releases the tests' expectations were taken from.
@@ -51,39 +51,31 @@ let
   # DIR/rootfs.jffs2.
   parts = lib.mapAttrs (
     model: file:
-    runCommand "stock-${lib.toLower model}-parts" { nativeBuildInputs = [ dphone-image ]; } ''
-      dphone-image eff unpack ${file} firmware.ota
-      dphone-image ota unpack firmware.ota $out
+    runCommand "stock-${lib.toLower model}-parts" { nativeBuildInputs = [ opendeskphone-image ]; } ''
+      opendeskphone-image eff unpack ${file} firmware.ota
+      opendeskphone-image ota unpack firmware.ota $out
     ''
   ) effs;
 in
 {
   inherit effs parts;
 
-  # The files in the layout the tests read (`DPHONE_VENDOR_DIR`), which is
-  # the layout of the reverse-engineering tree they were written against.
+  # The files the tests read (test-inputs/vendor): one directory per
+  # model, with the image and its root file system image.
   dir = runCommand "stock-firmware" { } (
-    ''
-      mkdir -p $out/ota-extracted-d60 $out/firmware-series
-      ln -s ${effs.D60} $out/${effs.D60.name}
-      ln -s ${parts.D60}/rootfs.jffs2 $out/ota-extracted-d60/rootfs.jffs2
-    ''
-    + lib.concatStrings (
-      lib.mapAttrsToList (
-        model: file:
-        lib.optionalString (model != "D60") ''
-          mkdir $out/firmware-series/${model}
-          ln -s ${file} $out/firmware-series/${model}/${file.name}
-          ln -s ${parts.${model}}/rootfs.jffs2 $out/firmware-series/${model}/rootfs.jffs2
-        ''
-      ) effs
+    lib.concatStrings (
+      lib.mapAttrsToList (model: file: ''
+        mkdir -p $out/${model}
+        ln -s ${file} $out/${model}/${file.name}
+        ln -s ${parts.${model}}/rootfs.jffs2 $out/${model}/rootfs.jffs2
+      '') effs
     )
   );
 
-  # The stock D60 root file system as a directory (`DPHONE_STOCK_ROOTFS`),
+  # The stock D60 root file system as a directory (test-inputs/stock-rootfs),
   # for running its programs under qemu-arm.  Device nodes are left out.
-  rootfs = runCommand "stock-d60-rootfs" { nativeBuildInputs = [ dphone-image ]; } ''
-    dphone-image jffs2 extract ${parts.D60}/rootfs.jffs2 $out > extract.log
+  rootfs = runCommand "stock-d60-rootfs" { nativeBuildInputs = [ opendeskphone-image ]; } ''
+    opendeskphone-image jffs2 extract ${parts.D60}/rootfs.jffs2 $out > extract.log
     test -x $out/app/bin/configmerge
   '';
 }

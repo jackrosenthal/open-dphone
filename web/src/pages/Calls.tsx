@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button, Card, ConfirmButton, Empty, Field, Input, PageHeader, Select, Toggle, td, th } from "../components/ui";
-import { CallDirection, CallLogKind, CallState, CallsService, Codec, EndCause, ForwardKind, type Call } from "../gen/dphone/v1/calls_pb";
+import { CallDirection, CallLogKind, CallState, CallsService, Codec, EndCause, ForwardKind, type Call } from "../gen/opendeskphone/v1/calls_pb";
 import { dateTime, duration } from "../lib/format";
 import { codecNames, endCause, label } from "../lib/labels";
 import { useStatus } from "../lib/status";

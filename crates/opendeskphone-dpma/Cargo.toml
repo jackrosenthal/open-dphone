@@ -1,0 +1,40 @@
+[package]
+name = "opendeskphone-dpma"
+description = "Open Desk Phone: DPMA provisioning client and app-request transport on dpma-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[features]
+default = ["sip", "update", "https"]
+# The provisioned-firmware installer over opendeskphone-update.
+update = ["dep:opendeskphone-update", "dep:opendeskphone-hal"]
+# Downloads over https (rustls with the RustCrypto provider).
+https = ["dep:rustls", "dep:rustls-rustcrypto"]
+# Adapter that carries DPMA over opendeskphone-sip's out-of-dialog MESSAGE.
+sip = ["dep:opendeskphone-sip"]
+
+[dependencies]
+opendeskphone-state = { path = "../opendeskphone-state" }
+opendeskphone-config = { path = "../opendeskphone-config" }
+opendeskphone-sip = { path = "../opendeskphone-sip", optional = true }
+dpma-proto.workspace = true
+eff = { path = "../eff" }
+opendeskphone-update = { path = "../opendeskphone-update", optional = true }
+opendeskphone-hal = { path = "../opendeskphone-hal", optional = true }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12"], optional = true }
+rustls-rustcrypto = { version = "0.0.2-alpha", default-features = false, features = ["std", "tls12"], optional = true }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
+async-trait = "0.1"
+log = "0.4"
+md-5 = "0.10"
+rsa = "0.9"
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+opendeskphone-hal = { path = "../opendeskphone-hal" }
+opendeskphone-update = { path = "../opendeskphone-update" }
+tokio = { version = "1", features = ["rt", "net", "time", "sync", "macros", "test-util"] }

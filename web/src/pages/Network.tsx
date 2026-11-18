@@ -1,8 +1,8 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useState } from "react";
 import { Alert, Badge, Button, Card, Dpma, Field, Input, KeyValue, PageHeader, Select, Spinner, Toggle } from "../components/ui";
-import { ConfigService } from "../gen/dphone/v1/config_pb";
-import { Ipv4Source, NetPhase, NetworkService, VlanDiscoveryMode, VlanSource, type NetworkSettings } from "../gen/dphone/v1/network_pb";
+import { ConfigService } from "../gen/opendeskphone/v1/config_pb";
+import { Ipv4Source, NetPhase, NetworkService, VlanDiscoveryMode, VlanSource, type NetworkSettings } from "../gen/opendeskphone/v1/network_pb";
 import { duration } from "../lib/format";
 import { addressSourceNames, label, netPhaseNames, vlanSourceNames } from "../lib/labels";
 import { useStatus } from "../lib/status";

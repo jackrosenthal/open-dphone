@@ -1,0 +1,585 @@
+//! Native screens and the generic building blocks they share (menu, text
+//! entry, information list, confirmation, level adjuster).
+
+use crate::appview::{Font, InputMode};
+use crate::gfx::{Canvas, HAlign, IRect};
+use crate::multitap::MultiTap;
+use crate::skin::Theme;
+use crate::strings as tr;
+use crate::widgets::{self, Edit, ListState};
+use crate::UiConfig;
+use opendeskphone_hal::Lamp;
+use opendeskphone_state::{Command, Key, LampColor, Model, State, Store};
+
+pub(crate) mod alarm;
+pub(crate) mod app;
+pub(crate) mod bluetooth;
+pub(crate) mod boot;
+pub(crate) mod calls;
+pub(crate) mod diag;
+pub(crate) mod idle;
+pub(crate) mod menus;
+pub(crate) mod side;
+
+/// What every screen sees.
+pub(crate) struct Cx<'a> {
+    pub store: &'a Store,
+    pub st: &'a State,
+    pub th: &'static Theme,
+    pub model: Model,
+    pub cfg: &'a UiConfig,
+    pub now_ms: u64,
+    pub unix: u64,
+    pub off_hook: bool,
+    /// The app view shown on the idle screen, if any.
+    pub idle_view: Option<&'a crate::appview::AppView>,
+}
+
+impl Cx<'_> {
+    /// Sends a command without waiting; failures are logged.
+    pub fn post(&self, cmd: Command) {
+        let what = format!("{cmd:?}");
+        if !self.store.post(cmd) {
+            log::warn!("no handler for {what}");
+        }
+    }
+
+    pub fn civil(&self) -> crate::time::Civil {
+        crate::time::Civil::from_unix(self.unix, self.cfg.utc_offset_secs)
+    }
+}
+
+/// Navigation result of a key or softkey.
+pub(crate) enum Nav {
+    /// Not handled: the global key handler gets it.
+    Ignored,
+    /// Handled; stay.
+    Stay,
+    Push(Box<dyn Screen>),
+    Pop,
+    /// Back to the base screen.
+    Home,
+}
+
+/// Kinds of screen the navigator treats specially.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Tag {
+    Plain,
+    Call,
+    /// A dialer; `off_hook` ones close when the handset goes down.
+    Dialer,
+    App,
+    /// The ringing alarm.
+    Alarm,
+}
+
+pub(crate) type Soft = (u32, String);
+
+pub(crate) fn soft(id: u32, label: &str) -> Soft {
+    (id, label.to_string())
+}
+
+/// A native screen.
+pub(crate) trait Screen: Send {
+    /// Name reported in the `Ui` state (`idle`, `dialer`, ...).
+    fn name(&self) -> String;
+    fn tag(&self) -> Tag {
+        Tag::Plain
+    }
+    /// The softkey actions (any number; the navigator pages beyond four).
+    fn softkeys(&self, _cx: &Cx) -> Vec<Soft> {
+        Vec::new()
+    }
+    fn softkey(&mut self, _cx: &Cx, _id: u32) -> Nav {
+        Nav::Ignored
+    }
+    /// Screens that lay out their own four softkeys (apps) return them
+    /// here and receive `Key::Soft` through [`Screen::key`].
+    fn raw_softkeys(&self, _cx: &Cx) -> Option<[String; 4]> {
+        None
+    }
+    fn key(&mut self, cx: &Cx, key: Key) -> Nav;
+    /// The handset was lifted or replaced.
+    fn hook(&mut self, _cx: &Cx, _off_hook: bool) -> Nav {
+        Nav::Ignored
+    }
+    /// Paints the area above the softkey bar.
+    fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect);
+    /// Monotonic time at which the screen needs a repaint or a
+    /// [`Screen::tick`] without any input (clocks, timers).
+    fn deadline(&self, _cx: &Cx) -> Option<u64> {
+        None
+    }
+    /// Called when the deadline passed.
+    fn tick(&mut self, _cx: &Cx) -> Nav {
+        Nav::Stay
+    }
+    /// The screen is being removed or covered.
+    fn leave(&mut self, _cx: &Cx) {}
+    /// For `Tag::App` screens: the app's name.
+    fn app_name(&self) -> Option<&str> {
+        None
+    }
+    /// True when the app view changed since the last draw.
+    fn dirty(&self) -> bool {
+        false
+    }
+    /// The screen became the top screen.
+    fn enter(&mut self, _cx: &Cx) {}
+    /// Digits typed so far, for the `Ui` state (dialers).
+    fn dial_buffer(&self) -> Option<&str> {
+        None
+    }
+    /// Paint the wallpaper behind this screen (idle and call screens)
+    /// instead of the plain background.
+    fn wallpaper(&self) -> bool {
+        false
+    }
+    /// The wallpaper behind this screen moves, if it is one that does
+    /// (the idle screen, and the theme selector, which shows it).
+    fn motion(&self) -> bool {
+        false
+    }
+    /// A built-in wallpaper whose picture and palette this screen is
+    /// shown with, instead of the configured ones (color skin only).
+    fn look(&self, _cx: &Cx) -> Option<&'static crate::wallpaper::Wallpaper> {
+        None
+    }
+    /// The palette changed (color skin): `th` is the theme from now on.
+    fn theme_changed(&mut self, _th: &'static Theme) {}
+    /// Whether the softkey shapes are drawn below this screen.  A screen
+    /// on which no key does anything returns false and gets the whole
+    /// frame to draw in.
+    fn softkey_bar(&self, _cx: &Cx) -> bool {
+        true
+    }
+    /// Paints over the softkey bar too.
+    fn full_screen(&self) -> bool {
+        false
+    }
+    /// Receives every key, including the ones the phone normally keeps.
+    fn captures_all_keys(&self) -> bool {
+        false
+    }
+    /// Lamps that show these colors, in place of the phone's, while the
+    /// screen is the top screen.
+    fn lamps(&self) -> Vec<(Lamp, LampColor)> {
+        Vec::new()
+    }
+}
+
+// ------------------------------------------------------------------ menu
+
+pub(crate) type Action = Box<dyn Fn(&Cx) -> Nav + Send>;
+
+pub(crate) struct Item {
+    pub icon: Option<&'static str>,
+    pub label: String,
+    pub value: String,
+    pub act: Action,
+}
+
+impl Item {
+    pub fn new(label: impl Into<String>, act: impl Fn(&Cx) -> Nav + Send + 'static) -> Item {
+        Item { icon: None, label: label.into(), value: String::new(), act: Box::new(act) }
+    }
+    pub fn value(mut self, v: impl Into<String>) -> Item {
+        self.value = v.into();
+        self
+    }
+    pub fn icon(mut self, name: &'static str) -> Item {
+        self.icon = Some(name);
+        self
+    }
+}
+
+/// A titled list of items with numeric shortcuts (stock menu helper).  The
+/// items are rebuilt from live state on every draw.
+pub(crate) struct Menu {
+    name: &'static str,
+    title: String,
+    build: Box<dyn Fn(&Cx) -> Vec<Item> + Send>,
+    st: ListState,
+    numbered: bool,
+}
+
+impl Menu {
+    pub fn new(name: &'static str, title: impl Into<String>, build: impl Fn(&Cx) -> Vec<Item> + Send + 'static) -> Menu {
+        Menu { name, title: title.into(), build: Box::new(build), st: ListState::default(), numbered: true }
+    }
+    pub fn boxed(name: &'static str, title: impl Into<String>, build: impl Fn(&Cx) -> Vec<Item> + Send + 'static) -> Box<dyn Screen> {
+        Box::new(Self::new(name, title, build))
+    }
+    fn activate(&mut self, cx: &Cx, idx: usize) -> Nav {
+        let items = (self.build)(cx);
+        match items.get(idx) {
+            Some(it) => {
+                self.st.selected = idx;
+                (it.act)(cx)
+            }
+            None => Nav::Stay,
+        }
+    }
+}
+
+impl Screen for Menu {
+    fn name(&self) -> String {
+        self.name.into()
+    }
+    fn softkeys(&self, _cx: &Cx) -> Vec<Soft> {
+        vec![soft(1, tr::SELECT), soft(0, ""), soft(0, ""), soft(4, tr::BACK)]
+    }
+    fn softkey(&mut self, cx: &Cx, id: u32) -> Nav {
+        match id {
+            1 => self.activate(cx, self.st.selected),
+            4 => Nav::Pop,
+            _ => Nav::Stay,
+        }
+    }
+    fn key(&mut self, cx: &Cx, key: Key) -> Nav {
+        let len = (self.build)(cx).len();
+        match key {
+            Key::Up => {
+                self.st.step(-1, len, true);
+                Nav::Stay
+            }
+            Key::Down => {
+                self.st.step(1, len, true);
+                Nav::Stay
+            }
+            Key::Select | Key::Right => self.activate(cx, self.st.selected),
+            Key::Cancel | Key::Left => Nav::Pop,
+            Key::Digit(d) if self.numbered => {
+                let idx = if d == 0 { 9 } else { d as usize - 1 };
+                if idx < len { self.activate(cx, idx) } else { Nav::Stay }
+            }
+            _ => Nav::Ignored,
+        }
+    }
+    fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
+        let th = cx.th;
+        c.fill(area, th.bg);
+        let (title, body) = area.split_top(th.title_h);
+        widgets::title_bar(c, th, title, &self.title);
+        let items = (self.build)(cx);
+        let num_w = if self.numbered { if th.gray { 15 } else { area.w / 10 } } else { th.pad };
+        let f = th.font(Font::Normal);
+        widgets::list(c, th, widgets::body_rows(th, body), items.len(), &mut self.st, th.row_h, true, |c, r, i, sel, fg| {
+            let it = &items[i];
+            let (num, rest) = r.split_left(num_w);
+            if let Some(icon) = it.icon.and_then(|n| th.icon(n)) {
+                c.icon_in(icon, num, fg);
+            } else if self.numbered && i < 10 {
+                let n = if i == 9 { 0 } else { i + 1 };
+                c.text_in(f, num, &n.to_string(), if sel { fg } else { th.secondary }, HAlign::Center);
+            }
+            let rest = IRect { w: rest.w - th.pad, ..rest };
+            if it.value.is_empty() {
+                c.text_in(f, rest, &it.label, fg, HAlign::Left);
+            } else {
+                widgets::key_value(c, th, rest, &it.label, &it.value, fg, if sel { fg } else { th.secondary });
+            }
+        });
+    }
+}
+
+// ------------------------------------------------------------ text entry
+
+/// A one-field form.
+pub(crate) struct EditScreen {
+    name: &'static str,
+    title: String,
+    text: String,
+    cursor: u16,
+    mode: InputMode,
+    max_len: usize,
+    tap: MultiTap,
+    done: Box<dyn Fn(&Cx, &str) -> Nav + Send>,
+}
+
+impl EditScreen {
+    pub fn boxed(
+        name: &'static str,
+        title: impl Into<String>,
+        initial: &str,
+        mode: InputMode,
+        done: impl Fn(&Cx, &str) -> Nav + Send + 'static,
+    ) -> Box<dyn Screen> {
+        Box::new(EditScreen {
+            name,
+            title: title.into(),
+            text: initial.to_string(),
+            cursor: initial.chars().count() as u16,
+            mode,
+            max_len: 127,
+            tap: MultiTap::default(),
+            done: Box::new(done),
+        })
+    }
+}
+
+impl Screen for EditScreen {
+    fn name(&self) -> String {
+        self.name.into()
+    }
+    fn softkeys(&self, _cx: &Cx) -> Vec<Soft> {
+        vec![soft(1, tr::OK), soft(0, ""), soft(3, tr::DELETE), soft(4, tr::CANCEL)]
+    }
+    fn softkey(&mut self, cx: &Cx, id: u32) -> Nav {
+        match id {
+            1 => (self.done)(cx, &self.text),
+            3 => {
+                widgets::edit_backspace(&mut self.text, &mut self.cursor, &mut self.tap);
+                Nav::Stay
+            }
+            4 => Nav::Pop,
+            _ => Nav::Stay,
+        }
+    }
+    fn key(&mut self, cx: &Cx, key: Key) -> Nav {
+        match key {
+            Key::Select => (self.done)(cx, &self.text),
+            Key::Cancel => Nav::Pop,
+            _ => match widgets::edit_key(&mut self.text, &mut self.cursor, self.mode, self.max_len, &mut self.tap, key, cx.now_ms) {
+                Edit::Ignored => Nav::Ignored,
+                _ => Nav::Stay,
+            },
+        }
+    }
+    fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
+        let th = cx.th;
+        c.fill(area, th.bg);
+        let (title, body) = area.split_top(th.title_h);
+        widgets::title_bar(c, th, title, &self.title);
+        let h = if th.gray { th.line_h + 4 } else { 40 };
+        let r = IRect::new(body.x + th.pad * 2, body.y + (body.h - h) / 2, body.w - th.pad * 4, h);
+        widgets::text_field(c, th, r, &self.text, self.cursor as usize, self.mode, true, self.tap.pending(cx.now_ms), "", Font::Normal);
+    }
+    fn deadline(&self, cx: &Cx) -> Option<u64> {
+        self.tap.deadline_ms().filter(|d| *d > cx.now_ms)
+    }
+}
+
+// ------------------------------------------------------------------ info
+
+/// A scrolling list of `label: value` rows (status pages).
+pub(crate) struct Info {
+    name: &'static str,
+    title: String,
+    build: Box<dyn Fn(&Cx) -> Vec<(String, String)> + Send>,
+    top: usize,
+}
+
+impl Info {
+    pub fn boxed(name: &'static str, title: impl Into<String>, build: impl Fn(&Cx) -> Vec<(String, String)> + Send + 'static) -> Box<dyn Screen> {
+        Box::new(Info { name, title: title.into(), build: Box::new(build), top: 0 })
+    }
+}
+
+impl Screen for Info {
+    fn name(&self) -> String {
+        self.name.into()
+    }
+    fn softkeys(&self, _cx: &Cx) -> Vec<Soft> {
+        vec![soft(0, ""), soft(0, ""), soft(0, ""), soft(4, tr::BACK)]
+    }
+    fn softkey(&mut self, _cx: &Cx, _id: u32) -> Nav {
+        Nav::Pop
+    }
+    fn key(&mut self, _cx: &Cx, key: Key) -> Nav {
+        match key {
+            Key::Up => {
+                self.top = self.top.saturating_sub(1);
+                Nav::Stay
+            }
+            Key::Down => {
+                self.top += 1;
+                Nav::Stay
+            }
+            Key::Cancel | Key::Left | Key::Select => Nav::Pop,
+            _ => Nav::Ignored,
+        }
+    }
+    fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
+        let th = cx.th;
+        c.fill(area, th.bg);
+        let (title, body) = area.split_top(th.title_h);
+        widgets::title_bar(c, th, title, &self.title);
+        let rows = (self.build)(cx);
+        // Stock (color): 32-pixel rows from y 42 with a hairline under
+        // each, text inset 15 pixels.
+        let (row_h, top, inset) = if th.gray { (th.line_h, 0, th.pad + 2) } else { (th.row_h, 2, th.title_pad) };
+        let visible = ((body.h - top) / row_h).max(1) as usize;
+        self.top = self.top.min(rows.len().saturating_sub(visible));
+        let bar = rows.len() > visible;
+        let w = body.w - if bar { th.scroll_w } else { 0 } - 2 * inset;
+        let f = th.font(Font::Normal);
+        for (i, (k, v)) in rows.iter().skip(self.top).take(visible).enumerate() {
+            let r = IRect::new(body.x + inset, body.y + top + i as i32 * row_h, w, row_h - if th.gray { 0 } else { 1 });
+            if v.is_empty() {
+                c.text_in(th.font(Font::Bold), r, k, th.fg, HAlign::Left);
+            } else if k.is_empty() {
+                c.text_in(f, r, v, th.fg, HAlign::Left);
+            } else {
+                widgets::key_value(c, th, r, k, v, th.fg, th.fg);
+            }
+            if !th.gray {
+                c.hline(r.x, r.bottom(), r.w + 4, th.border);
+            }
+        }
+        widgets::scroll_bar(c, th, body, rows.len() as i32, visible as i32, self.top as i32);
+    }
+    fn deadline(&self, cx: &Cx) -> Option<u64> {
+        Some(cx.now_ms + 1000)
+    }
+}
+
+// --------------------------------------------------------------- confirm
+
+/// A yes/no question.
+pub(crate) struct Confirm {
+    text: String,
+    yes: Box<dyn Fn(&Cx) -> Nav + Send>,
+}
+
+impl Confirm {
+    pub fn boxed(text: impl Into<String>, yes: impl Fn(&Cx) -> Nav + Send + 'static) -> Box<dyn Screen> {
+        Box::new(Confirm { text: text.into(), yes: Box::new(yes) })
+    }
+}
+
+impl Screen for Confirm {
+    fn name(&self) -> String {
+        "confirm".into()
+    }
+    fn softkeys(&self, _cx: &Cx) -> Vec<Soft> {
+        vec![soft(1, tr::YES), soft(0, ""), soft(0, ""), soft(4, tr::NO)]
+    }
+    fn softkey(&mut self, cx: &Cx, id: u32) -> Nav {
+        if id == 1 { (self.yes)(cx) } else { Nav::Pop }
+    }
+    fn key(&mut self, cx: &Cx, key: Key) -> Nav {
+        match key {
+            Key::Select => (self.yes)(cx),
+            Key::Cancel => Nav::Pop,
+            _ => Nav::Ignored,
+        }
+    }
+    fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
+        let th = cx.th;
+        c.fill(area, th.bg);
+        let f = th.font(Font::Normal);
+        let inner = area.inset(th.pad * 2);
+        let lines = f.wrap(&self.text, inner.w).len() as i32;
+        let y = inner.y + ((inner.h - lines * th.line_h) / 2).max(0);
+        c.text_wrapped(f, IRect::new(inner.x, y, inner.w, inner.bottom() - y), &self.text, th.fg, HAlign::Center, th.line_h);
+    }
+}
+
+// ----------------------------------------------------------------- level
+
+/// A level adjuster (brightness, contrast, volume) with Left/Right.
+pub(crate) struct Level {
+    title: String,
+    max: u8,
+    get: Box<dyn Fn(&Cx) -> u8 + Send>,
+    set: Box<dyn Fn(&Cx, u8) + Send>,
+    commit: Option<Box<dyn Fn(&Cx, u8) + Send>>,
+    /// The level being shown, ahead of the state catching up.
+    shown: Option<u8>,
+}
+
+impl Level {
+    pub fn boxed(
+        title: impl Into<String>,
+        max: u8,
+        get: impl Fn(&Cx) -> u8 + Send + 'static,
+        set: impl Fn(&Cx, u8) + Send + 'static,
+    ) -> Box<Level> {
+        Box::new(Level { title: title.into(), max, get: Box::new(get), set: Box::new(set), commit: None, shown: None })
+    }
+    /// Runs once when the screen closes, with the final level (persist it).
+    pub fn with_commit(mut self: Box<Self>, f: impl Fn(&Cx, u8) + Send + 'static) -> Box<Level> {
+        self.commit = Some(Box::new(f));
+        self
+    }
+    fn adjust(&mut self, cx: &Cx, d: i32) {
+        let cur = self.shown.unwrap_or_else(|| (self.get)(cx)) as i32;
+        let new = (cur + d).clamp(0, self.max as i32) as u8;
+        self.shown = Some(new);
+        (self.set)(cx, new);
+    }
+}
+
+impl Screen for Level {
+    fn name(&self) -> String {
+        "level".into()
+    }
+    fn softkeys(&self, _cx: &Cx) -> Vec<Soft> {
+        vec![soft(1, "\u{2013}"), soft(2, "+"), soft(0, ""), soft(4, tr::BACK)]
+    }
+    fn softkey(&mut self, cx: &Cx, id: u32) -> Nav {
+        match id {
+            1 => self.adjust(cx, -1),
+            2 => self.adjust(cx, 1),
+            _ => return Nav::Pop,
+        }
+        Nav::Stay
+    }
+    fn key(&mut self, cx: &Cx, key: Key) -> Nav {
+        match key {
+            Key::Left | Key::Down => self.adjust(cx, -1),
+            Key::Right | Key::Up => self.adjust(cx, 1),
+            Key::Cancel | Key::Select => return Nav::Pop,
+            _ => return Nav::Ignored,
+        }
+        Nav::Stay
+    }
+    fn draw(&mut self, cx: &Cx, c: &mut Canvas, area: IRect) {
+        let th = cx.th;
+        c.fill(area, th.bg);
+        let (title, body) = area.split_top(th.title_h);
+        widgets::title_bar(c, th, title, &self.title);
+        let level = self.shown.unwrap_or_else(|| (self.get)(cx));
+        let h = if th.gray { 10 } else { 22 };
+        let r = IRect::new(body.x + th.pad * 3, body.y + (body.h - h) / 2, body.w - th.pad * 6, h);
+        widgets::progress(c, th, r, level as u32 * 100 / self.max.max(1) as u32);
+        c.text_in(
+            th.font(Font::Normal),
+            IRect::new(body.x, r.bottom() + 2, body.w, th.line_h),
+            &format!("{level} / {}", self.max),
+            th.secondary,
+            HAlign::Center,
+        );
+    }
+    fn leave(&mut self, cx: &Cx) {
+        if let (Some(f), Some(v)) = (&self.commit, self.shown.take()) {
+            f(cx, v);
+        }
+    }
+}
+
+/// A full-area centered message with an optional progress bar
+/// (provisioning progress, update).
+pub(crate) fn splash(c: &mut Canvas, th: &Theme, area: IRect, title: &str, text: &str, percent: Option<u32>) {
+    let mut y = area.y + (area.h - 3 * th.line_h) / 2;
+    if !title.is_empty() {
+        c.text_in(th.font(Font::Title), IRect::new(area.x + th.pad, y, area.w - 2 * th.pad, th.line_h), title, th.fg, HAlign::Center);
+        y += th.line_h;
+    }
+    let used = c.text_wrapped(
+        th.font(Font::Normal),
+        IRect::new(area.x + th.pad, y, area.w - 2 * th.pad, (area.bottom() - y).max(th.line_h)),
+        text,
+        if th.gray { th.fg } else { th.secondary },
+        HAlign::Center,
+        th.line_h,
+    );
+    y += used + 2;
+    if let Some(p) = percent {
+        let h = if th.gray { 8 } else { 14 };
+        if y + h <= area.bottom() {
+            widgets::progress(c, th, IRect::new(area.x + area.w / 6, y, area.w * 2 / 3, h), p);
+        }
+    }
+}

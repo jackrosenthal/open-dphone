@@ -39,7 +39,7 @@ The init role writes to the kernel log, so `dmesg` shows the kernel's messages a
 
 The kernel keeps two records in memory that survives a reset:
 
-- **The panic log.**  At the next start after a kernel panic, the main role moves the last 8 KiB of the kernel log to `/nvdata/open/crash/`, replacing the records of any earlier panic, and logs a message.  `dphone crashlog` prints the saved records.
+- **The panic log.**  At the next start after a kernel panic, the main role moves the last 8 KiB of the kernel log to `/nvdata/opendeskphone/crash/`, replacing the records of any earlier panic, and logs a message.  `dphone crashlog` prints the saved records.
 - **The console output.**  `/sys/fs/pstore/console-ramoops-0` holds the last 8 KiB of the kernel's console output before a restart without a power loss, e.g., a watchdog reset, until the next restart.  After an unexplained restart, the file shows what the kernel printed last.
 
 ```sh
@@ -81,4 +81,4 @@ Every subsystem publishes state to one typed store, which the user interface, th
 curl http://192.0.2.20/metrics
 ```
 
-The endpoint is on by default.  To turn the endpoint off, use the **Prometheus metrics** switch in the **Logging** card of the **System** page, or set [`dphone_metrics_enabled=no`](../open-dpma/opendeskphone-options.md#dphone_metrics_enabled) on the PBX.
+The endpoint is on by default.  To turn the endpoint off, use the **Prometheus metrics** switch in the **Logging** card of the **System** page, or set [`opendeskphone_metrics_enabled=no`](../open-dpma/opendeskphone-options.md#opendeskphone_metrics_enabled) on the PBX.

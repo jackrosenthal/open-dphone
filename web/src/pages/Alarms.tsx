@@ -1,7 +1,7 @@
 import { useMutation } from "@connectrpc/connect-query";
 import { useState, type FormEvent } from "react";
 import { Badge, Button, Card, ConfirmButton, cx, Empty, Field, Input, Modal, PageHeader, Select, Spinner, Toggle } from "../components/ui";
-import { AlarmsService, type Alarm } from "../gen/dphone/v1/alarms_pb";
+import { AlarmsService, type Alarm } from "../gen/opendeskphone/v1/alarms_pb";
 import { useStreamState } from "../lib/stream";
 import { client } from "../lib/transport";
 import { ErrorNote } from "./common";

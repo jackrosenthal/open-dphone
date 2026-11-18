@@ -10,3 +10,6 @@ publish = false
 [dependencies]
 aes = "0.8"
 md-5 = "0.10"
+
+[dev-dependencies]
+test-inputs = { path = "../test-inputs" }

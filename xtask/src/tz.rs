@@ -1,6 +1,6 @@
-//! `cargo xtask tz-table`: regenerate `crates/dphone/src/tzdata.tsv` from the
-//! build machine's zone database.  Each TZif file ends with the zone's
-//! current rule as a POSIX TZ string; that line is all the phone needs.
+//! `cargo xtask tz-table`: regenerate `crates/opendeskphone/src/tzdata.tsv`
+//! from the build machine's zone database.  Each TZif file ends with the
+//! zone's current rule as a POSIX TZ string; that line is all the phone needs.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -50,7 +50,7 @@ pub fn table(args: TzTable) -> Result<()> {
     zones.sort();
     zones.dedup();
     let text: String = zones.iter().map(|(z, r)| format!("{z}\t{r}\n")).collect();
-    let out = repo_root().join("crates/dphone/src/tzdata.tsv");
+    let out = repo_root().join("crates/opendeskphone/src/tzdata.tsv");
     fs::write(&out, text)?;
     println!("{} zones written to {}", zones.len(), out.display());
     Ok(())

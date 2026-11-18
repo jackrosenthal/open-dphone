@@ -2,8 +2,8 @@
 //! log the current user out.  The phone reprovisions for the new user, and
 //! the app stays on screen until the phone says how that ended.
 
-use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::{InputMode, hotdesk};
+use opendeskphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::{InputMode, hotdesk};
 
 const SK_LOGIN: u32 = 1;
 const SK_LOGOUT: u32 = 2;
@@ -136,7 +136,7 @@ impl App for HotDesk {
     }
 }
 
-dphone_app_sdk::export_app! {
+opendeskphone_app_sdk::export_app! {
     app: HotDesk,
     name: "hotdesking",
     id: "org.opendeskphone.hotdesking",

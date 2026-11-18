@@ -6,7 +6,7 @@ version = 4
 name = "alarms"
 version = "3.0.0"
 dependencies = [
- "dphone-app-sdk",
+ "opendeskphone-app-sdk",
 ]
 
 [[package]]
@@ -76,7 +76,7 @@ name = "boxpusher"
 version = "3.0.0"
 dependencies = [
  "boxpusher-game",
- "dphone-app-sdk",
+ "opendeskphone-app-sdk",
 ]
 
 [[package]]
@@ -87,7 +87,7 @@ version = "3.0.0"
 name = "calendar"
 version = "3.0.0"
 dependencies = [
- "dphone-app-sdk",
+ "opendeskphone-app-sdk",
 ]
 
 [[package]]
@@ -140,28 +140,21 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 name = "contacts"
 version = "3.0.0"
 dependencies = [
- "dphone-app-sdk",
+ "opendeskphone-app-sdk",
 ]
 
 [[package]]
 name = "desksparrow"
 version = "3.0.0"
 dependencies = [
- "dphone-app-sdk",
+ "opendeskphone-app-sdk",
 ]
 
 [[package]]
 name = "diagnostics"
 version = "3.0.0"
 dependencies = [
- "dphone-app-sdk",
-]
-
-[[package]]
-name = "dphone-app-sdk"
-version = "3.0.0"
-dependencies = [
- "wit-bindgen",
+ "opendeskphone-app-sdk",
 ]
 
 [[package]]
@@ -195,7 +188,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 name = "hotdesking"
 version = "3.0.0"
 dependencies = [
- "dphone-app-sdk",
+ "opendeskphone-app-sdk",
 ]
 
 [[package]]
@@ -238,8 +231,8 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 name = "lightup"
 version = "3.0.0"
 dependencies = [
- "dphone-app-sdk",
  "lightup-game",
+ "opendeskphone-app-sdk",
 ]
 
 [[package]]
@@ -268,10 +261,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "opendeskphone-app-sdk"
+version = "3.0.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
 name = "parking"
 version = "3.0.0"
 dependencies = [
- "dphone-app-sdk",
+ "opendeskphone-app-sdk",
 ]
 
 [[package]]
@@ -297,7 +297,7 @@ dependencies = [
 name = "queues"
 version = "3.0.0"
 dependencies = [
- "dphone-app-sdk",
+ "opendeskphone-app-sdk",
 ]
 
 [[package]]
@@ -361,7 +361,7 @@ dependencies = [
 name = "status"
 version = "3.0.0"
 dependencies = [
- "dphone-app-sdk",
+ "opendeskphone-app-sdk",
 ]
 
 [[package]]
@@ -397,7 +397,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 name = "voicemail"
 version = "3.0.0"
 dependencies = [
- "dphone-app-sdk",
+ "opendeskphone-app-sdk",
 ]
 
 [[package]]

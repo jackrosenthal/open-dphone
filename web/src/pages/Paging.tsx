@@ -1,6 +1,6 @@
 import { useMutation } from "@connectrpc/connect-query";
 import { Alert, Badge, Button, Card } from "../components/ui";
-import { PageActivity, PagingService, type PageGroup } from "../gen/dphone/v1/paging_pb";
+import { PageActivity, PagingService, type PageGroup } from "../gen/opendeskphone/v1/paging_pb";
 import { useStreamState } from "../lib/stream";
 import { client } from "../lib/transport";
 

@@ -37,9 +37,9 @@
 //! a key draws again only the rows it changed.  The app makes no sound,
 //! and like any app it leaves the screen to a call.
 
-use dphone_app_sdk::prelude::*;
-use dphone_app_sdk::StorageLocation::{Local, PbxShared};
-use dphone_app_sdk::{Align, Font, canvas, read_string};
+use opendeskphone_app_sdk::prelude::*;
+use opendeskphone_app_sdk::StorageLocation::{Local, PbxShared};
+use opendeskphone_app_sdk::{Align, Font, canvas, read_string};
 use lightup_game::draw::{
     self, FontSize, Fonts, Layout, Look, Op, Painter, Palette, Rgb, TextFont,
 };
@@ -197,7 +197,7 @@ impl Lines {
                     let rule = canvas::create(scroll, Rect::new(16, y + line_h as i16, length, 1));
                     let fill = canvas::Op::Fill((Rect::new(0, 0, length, 1), color));
                     if let Err(e) = canvas::draw(rule, &[fill]) {
-                        dphone_app_sdk::log_error(&format!("draw: {e}"));
+                        opendeskphone_app_sdk::log_error(&format!("draw: {e}"));
                     }
                 }
                 let whole = ui::create(WidgetKind::Group, scroll, Rect::new(0, y, width, row_h));
@@ -416,7 +416,7 @@ fn paint(w: Widget, ops: Vec<Op>) {
         })
         .collect();
     if let Err(e) = canvas::draw(w, &ops) {
-        dphone_app_sdk::log_error(&format!("draw: {e}"));
+        opendeskphone_app_sdk::log_error(&format!("draw: {e}"));
     }
 }
 
@@ -707,7 +707,7 @@ impl LightUp {
         match progress {
             Progress::Working => making.timer = timers::set(PAUSE_MS, false).ok(),
             Progress::Done | Progress::Failed => {
-                dphone_app_sdk::log_info(&format!(
+                opendeskphone_app_sdk::log_info(&format!(
                     "{} {}: {} after {} ms, {} grids, {} steps",
                     size_name(making.side),
                     making.difficulty.name(),
@@ -1025,7 +1025,7 @@ impl LightUp {
             storage::set(Local, TIMES, self.pending.to_text().as_bytes(), None)
         };
         if !matches!(kept, StorageReply::Done(StorageOutcome::Stored(_) | StorageOutcome::Removed)) {
-            dphone_app_sdk::log_error(&format!("the times were not kept: {kept:?}"));
+            opendeskphone_app_sdk::log_error(&format!("the times were not kept: {kept:?}"));
         }
     }
 
@@ -1075,7 +1075,7 @@ impl LightUp {
                 }
                 other => {
                     if !matches!(other, StorageOutcome::Unreachable(_)) {
-                        dphone_app_sdk::log_warn(&format!("the table was not read: {other:?}"));
+                        opendeskphone_app_sdk::log_warn(&format!("the table was not read: {other:?}"));
                     }
                     self.reached = Some(false);
                     if self.screen == Screen::Scores {
@@ -1103,7 +1103,7 @@ impl LightUp {
                 self.learn(kind, table.clone());
                 let Some((player, name)) = player() else {
                     // The time waits until the store is in reach again.
-                    dphone_app_sdk::log_warn("the PBX has not said who the user is");
+                    opendeskphone_app_sdk::log_warn("the PBX has not said who the user is");
                     return;
                 };
                 if table.add(win, &player, &name) {
@@ -1129,7 +1129,7 @@ impl LightUp {
             // The time waits until the store is in reach.
             StorageOutcome::Unreachable(_) => return,
             other => {
-                dphone_app_sdk::log_warn(&format!(
+                opendeskphone_app_sdk::log_warn(&format!(
                     "the table {} was not written: {other:?}",
                     kind.key()
                 ));
@@ -1295,7 +1295,7 @@ impl App for LightUp {
     }
 }
 
-dphone_app_sdk::export_app! {
+opendeskphone_app_sdk::export_app! {
     app: LightUp,
     name: "lightup",
     id: "org.opendeskphone.lightup",

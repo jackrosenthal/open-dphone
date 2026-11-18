@@ -10,4 +10,4 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-dphone-app-sdk.workspace = true
+opendeskphone-app-sdk.workspace = true

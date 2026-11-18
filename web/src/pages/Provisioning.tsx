@@ -1,7 +1,7 @@
 import { useMutation } from "@connectrpc/connect-query";
 import { useState } from "react";
 import { Alert, Badge, Button, Card, ConfirmButton, Empty, Field, Input, KeyValue, PageHeader, Spinner } from "../components/ui";
-import { DiscoverySource, ProvisionPhase, ProvisioningService } from "../gen/dphone/v1/provisioning_pb";
+import { DiscoverySource, ProvisionPhase, ProvisioningService } from "../gen/opendeskphone/v1/provisioning_pb";
 import { dateTime } from "../lib/format";
 import { discoverySourceNames, label, provisionPhaseNames } from "../lib/labels";
 import { useStatus } from "../lib/status";

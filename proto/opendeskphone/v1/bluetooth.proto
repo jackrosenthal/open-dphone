@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package opendeskphone.v1;
+
+// Bluetooth headsets (models with a Bluetooth controller: the D65).
+// Bluetooth is on whenever the phone has a controller.
+service BluetoothService {
+  rpc GetBluetooth(GetBluetoothRequest) returns (GetBluetoothResponse);
+  rpc WatchBluetooth(WatchBluetoothRequest) returns (stream WatchBluetoothResponse);
+  // Starts or stops looking for devices.
+  rpc SetBluetoothDiscovery(SetBluetoothDiscoveryRequest) returns (SetBluetoothDiscoveryResponse);
+  // Pairs with a found device and connects to it.
+  rpc PairBluetoothDevice(PairBluetoothDeviceRequest) returns (PairBluetoothDeviceResponse);
+  // Answers the question in BluetoothSnapshot.pairing.
+  rpc AnswerBluetoothPairing(AnswerBluetoothPairingRequest) returns (AnswerBluetoothPairingResponse);
+  // Forgets a paired device.
+  rpc RemoveBluetoothDevice(RemoveBluetoothDeviceRequest) returns (RemoveBluetoothDeviceResponse);
+  // Connects to a paired headset.
+  rpc ConnectBluetoothDevice(ConnectBluetoothDeviceRequest) returns (ConnectBluetoothDeviceResponse);
+  // Drops the headset connection.
+  rpc DisconnectBluetoothDevice(DisconnectBluetoothDeviceRequest) returns (DisconnectBluetoothDeviceResponse);
+}
+
+message BluetoothDevice {
+  // "00:1B:DC:0F:A1:02"
+  string address = 1;
+  // Empty when the device has not said.
+  string name = 2;
+  // Signal strength in dBm when the device was found; 0 when unknown.
+  sint32 rssi = 3;
+}
+
+// A pairing that waits for the user's answer.
+message BluetoothPairing {
+  string address = 1;
+  string name = 2;
+  // Six digits to compare with the other device's display, when it has one.
+  optional uint32 passkey = 3;
+  // The device pairs the old way and needs a PIN typed in.
+  bool pin_needed = 4;
+}
+
+message BluetoothSnapshot {
+  // This model has Bluetooth and its controller answered.
+  bool present = 1;
+  reserved 2;
+  // The controller is on; the phone switches it on once it answers.
+  bool powered = 3;
+  // The controller's own address.
+  string address = 4;
+  bool discovering = 5;
+  // Devices seen by the current or last discovery, strongest first.
+  repeated BluetoothDevice found = 6;
+  repeated BluetoothDevice paired = 7;
+  // Address of a pairing in progress, before the user is asked.
+  string pairing_with = 8;
+  BluetoothPairing pairing = 9;
+  // Address of the connected headset; empty when none.
+  string connected = 10;
+  // Call audio is on the headset.
+  bool audio_open = 11;
+  // Why the last operation failed; empty when fine.
+  string error = 12;
+}
+
+message GetBluetoothRequest {}
+
+message GetBluetoothResponse {
+  BluetoothSnapshot snapshot = 1;
+}
+
+message WatchBluetoothRequest {}
+
+message WatchBluetoothResponse {
+  BluetoothSnapshot snapshot = 1;
+}
+
+message SetBluetoothDiscoveryRequest {
+  bool discovering = 1;
+}
+
+message SetBluetoothDiscoveryResponse {}
+
+message PairBluetoothDeviceRequest {
+  string address = 1;
+}
+
+message PairBluetoothDeviceResponse {}
+
+message AnswerBluetoothPairingRequest {
+  string address = 1;
+  bool accept = 2;
+  // For a device that needs a PIN (BluetoothPairing.pin_needed).
+  optional string pin = 3;
+}
+
+message AnswerBluetoothPairingResponse {}
+
+message RemoveBluetoothDeviceRequest {
+  string address = 1;
+}
+
+message RemoveBluetoothDeviceResponse {}
+
+message ConnectBluetoothDeviceRequest {
+  string address = 1;
+}
+
+message ConnectBluetoothDeviceResponse {}
+
+message DisconnectBluetoothDeviceRequest {}
+
+message DisconnectBluetoothDeviceResponse {}

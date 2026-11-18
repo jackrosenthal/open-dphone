@@ -1,12 +1,12 @@
-# Boot images, the root file system, and the per-model EFFs.  Every step is
-# one call of the `dphone-image` tool; the root file system's contents are
+# Boot images, the root file system, and the per-model EFFs.  Every step is one
+# call of the `opendeskphone-image` tool; the root file system's contents are
 # listed here and laid out with plain installs.
 {
   lib,
   runCommand,
-  dphone-image,
+  opendeskphone-image,
   kernel,
-  dphone,
+  opendeskphone,
   brush,
   coreutils,
   applets,
@@ -56,9 +56,9 @@ let
   # k0/k1 slot.
   kernelImage =
     model: info:
-    runCommand "kernel-${model}-${version}" { nativeBuildInputs = [ dphone-image ]; } ''
+    runCommand "kernel-${model}-${version}" { nativeBuildInputs = [ opendeskphone-image ]; } ''
       mkdir -p $out
-      dphone-image kernel-image \
+      opendeskphone-image kernel-image \
         --model ${model} \
         --zimage ${kernel}/zImage \
         --dtb ${kernel}/dtbs/${kernel.boards.${model}}.dtb \
@@ -69,11 +69,11 @@ let
   # The root file system tree.  It is the same for every model: both DSP
   # firmware variants are present, each in its family's directory, and the
   # init role points the kernel's firmware loader at the right one.
-  rootfsTree = runCommand "dphone-rootfs-tree-${version}" { } ''
-    mkdir -p $out/{bin,sbin,etc/dphone,lib/firmware/old-family,lib/firmware/new-family,usr/share/dphone/apps}
+  rootfsTree = runCommand "opendeskphone-rootfs-tree-${version}" { } ''
+    mkdir -p $out/{bin,sbin,etc/opendeskphone,lib/firmware/old-family,lib/firmware/new-family,usr/share/opendeskphone/apps}
     mkdir -p $out/{dev,proc,sys,tmp,run,var,nvdata,root}
 
-    install -m 0755 ${dphone}/bin/dphone $out/sbin/init
+    install -m 0755 ${opendeskphone}/bin/dphone $out/sbin/init
     ln -s ../sbin/init $out/bin/dphone
     # System commands `dphone` provides under its own name.
     for c in mount umount insmod rmmod lsmod modprobe reboot poweroff halt dmesg ps; do
@@ -96,18 +96,18 @@ let
 
     ${lib.optionalString (
       apps != null
-    ) "cp -r ${apps}/. $out/usr/share/dphone/apps/ && chmod -R u+w $out/usr/share/dphone/apps"}
+    ) "cp -r ${apps}/. $out/usr/share/opendeskphone/apps/ && chmod -R u+w $out/usr/share/opendeskphone/apps"}
 
     # The alarm clock's tones, with their notice and license, which must go
     # wherever the tones go (assets/alarm-tones/README.md).
-    install -d $out/usr/share/dphone/alarm-tones
+    install -d $out/usr/share/opendeskphone/alarm-tones
     install -m 0644 ${../assets/alarm-tones}/*.wav ${../assets/alarm-tones}/NOTICE \
-      ${../assets/alarm-tones}/LICENSE-Apache-2.0.txt $out/usr/share/dphone/alarm-tones/
+      ${../assets/alarm-tones}/LICENSE-Apache-2.0.txt $out/usr/share/opendeskphone/alarm-tones/
 
     # The built-in ringtones, likewise (assets/ringtones/README.md).
-    install -d $out/usr/share/dphone/ringtones
+    install -d $out/usr/share/opendeskphone/ringtones
     install -m 0644 ${../assets/ringtones}/*.wav ${../assets/ringtones}/NOTICE \
-      ${../assets/ringtones}/LICENSE-Apache-2.0.txt $out/usr/share/dphone/ringtones/
+      ${../assets/ringtones}/LICENSE-Apache-2.0.txt $out/usr/share/opendeskphone/ringtones/
 
     # The base trust bundle (Mozilla's certificate authorities for TLS
     # servers), at the path stock keeps its own.  `dphone` builds
@@ -153,8 +153,8 @@ let
 
   # JFFS2 image of the tree: little-endian, 128 KiB erase blocks, all files
   # owned by root.
-  rootfs = runCommand "dphone-rootfs-${version}.jffs2" { nativeBuildInputs = [ dphone-image ]; } ''
-    dphone-image jffs2 build ${rootfsTree} $out \
+  rootfs = runCommand "opendeskphone-rootfs-${version}.jffs2" { nativeBuildInputs = [ opendeskphone-image ]; } ''
+    opendeskphone-image jffs2 build ${rootfsTree} $out \
       --mtime 0 \
       --node dev/console:c:5:1:600 \
       --node dev/null:c:1:3:666
@@ -162,8 +162,8 @@ let
 
   eff =
     model: info:
-    runCommand "${wireVersion}_${info.name}_firmware.eff" { nativeBuildInputs = [ dphone-image ]; } ''
-      dphone-image image build \
+    runCommand "${wireVersion}_${info.name}_firmware.eff" { nativeBuildInputs = [ opendeskphone-image ]; } ''
+      opendeskphone-image image build \
         --model ${info.name} \
         --version ${wireVersion} \
         --kernel ${kernelImage model info}/kernel.bin \

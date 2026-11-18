@@ -65,7 +65,7 @@ fn part(ctx: &mut Ctx, f: Part) -> Result<()> {
             ],
         )?;
         ctx.ami()?.command("module reload res_open_dpma.so")?;
-        ctx.cli("database deltree DPhoneAppData");
+        ctx.cli("database deltree OpenDeskPhoneAppData");
     }
     f(ctx)
 }
@@ -435,19 +435,19 @@ fn tenants(ctx: &mut Ctx) -> Result<()> {
     );
 
     // Where the entries are in AstDB.
-    let db = ctx.cli_text("database show DPhoneAppData");
+    let db = ctx.cli_text("database show OpenDeskPhoneAppData");
     ctx.c.contains(
         "each tenant has its part of the AstDB family",
         &db,
         &[
-            "/DPhoneAppData/@north/game/s/tenants/k",
-            "/DPhoneAppData/@/game/s/tenants/k",
+            "/OpenDeskPhoneAppData/@north/game/s/tenants/k",
+            "/OpenDeskPhoneAppData/@/game/s/tenants/k",
         ],
     );
     ctx.c.lacks(
         "a removed entry is not in AstDB",
         &db,
-        &["/DPhoneAppData/@south/game/s/tenants/k"],
+        &["/OpenDeskPhoneAppData/@south/game/s/tenants/k"],
     );
     Ok(())
 }
@@ -675,14 +675,20 @@ fn watch(ctx: &mut Ctx) -> Result<()> {
         change_by_now(&north2)?,
         None,
     );
-    let db = ctx.cli_text("database show DPhoneAppData/watch");
+    let db = ctx.cli_text("database show OpenDeskPhoneAppData/watch");
     ctx.c.contains(
         "the watch lists are in AstDB",
         &db,
-        &["/DPhoneAppData/watch/north1", "/DPhoneAppData/watch/plain2"],
+        &[
+            "/OpenDeskPhoneAppData/watch/north1",
+            "/OpenDeskPhoneAppData/watch/plain2",
+        ],
     );
-    ctx.c
-        .lacks("an empty one is not", &db, &["/DPhoneAppData/watch/north2"]);
+    ctx.c.lacks(
+        "an empty one is not",
+        &db,
+        &["/OpenDeskPhoneAppData/watch/north2"],
+    );
     Ok(())
 }
 

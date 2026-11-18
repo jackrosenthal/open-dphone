@@ -44,11 +44,11 @@ fn tristate_opt(field: &mut Vec<u8>, value: &[u8]) -> Res {
     Ok(())
 }
 
-/// The `dphone_*` on/off options that open a way into the phone.
+/// The `opendeskphone_*` on/off options that open a way into the phone.
 const ACCESS_OPTIONS: [&[u8]; 3] = [
-    b"dphone_ssh_enabled",
-    b"dphone_serial_console",
-    b"dphone_metrics_enabled",
+    b"opendeskphone_ssh_enabled",
+    b"opendeskphone_serial_console",
+    b"opendeskphone_metrics_enabled",
 ];
 
 /// Is `name` one of [`ACCESS_OPTIONS`] (case insensitive)?
@@ -277,29 +277,39 @@ pub fn set_user_option(ctx: &mut UserCtx, phone: &mut Phone, name: &[u8], value:
         b"active_locale" => phone.active_locale = s,
         b"active_ringtone" => phone.active_ringtone = s,
         b"login_password" => phone.login_password = s,
-        b"dphone_ssh_enabled" => return access_opt(&mut phone.dphone_ssh_enabled, value),
-        b"dphone_ignore_provisioned_firmware" => {
-            return tristate_opt(&mut phone.dphone_ignore_provisioned_firmware, value)
+        b"opendeskphone_ssh_enabled" => {
+            return access_opt(&mut phone.opendeskphone_ssh_enabled, value)
         }
-        b"dphone_metrics_enabled" => return access_opt(&mut phone.dphone_metrics_enabled, value),
-        b"dphone_serial_console" => return access_opt(&mut phone.dphone_serial_console, value),
-        b"dphone_static_address" => match static_address(value) {
-            Some(address) => phone.dphone_static_address = address,
+        b"opendeskphone_ignore_provisioned_firmware" => {
+            return tristate_opt(&mut phone.opendeskphone_ignore_provisioned_firmware, value)
+        }
+        b"opendeskphone_metrics_enabled" => {
+            return access_opt(&mut phone.opendeskphone_metrics_enabled, value)
+        }
+        b"opendeskphone_serial_console" => {
+            return access_opt(&mut phone.opendeskphone_serial_console, value)
+        }
+        b"opendeskphone_static_address" => match static_address(value) {
+            Some(address) => phone.opendeskphone_static_address = address,
             None => return Err(()),
         },
-        b"dphone_static_gateway" => match host_ipv4(value) {
-            Some(gateway) => phone.dphone_static_gateway = Some(gateway),
+        b"opendeskphone_static_gateway" => match host_ipv4(value) {
+            Some(gateway) => phone.opendeskphone_static_gateway = Some(gateway),
             None => return Err(()),
         },
-        b"dphone_static_dns" => return add_addresses(&mut phone.dphone_static_dns, value),
-        b"dphone_disabled_apps" => return add_app_names(&mut phone.dphone_disabled_apps, value),
-        b"dphone_idle_softkeys" => {
-            return add_idle_softkeys(&mut phone.dphone_idle_softkeys, value)
+        b"opendeskphone_static_dns" => {
+            return add_addresses(&mut phone.opendeskphone_static_dns, value)
         }
-        b"dphone_ssh_authorized_key" => match ssh_public_key_line(value) {
+        b"opendeskphone_disabled_apps" => {
+            return add_app_names(&mut phone.opendeskphone_disabled_apps, value)
+        }
+        b"opendeskphone_idle_softkeys" => {
+            return add_idle_softkeys(&mut phone.opendeskphone_idle_softkeys, value)
+        }
+        b"opendeskphone_ssh_authorized_key" => match ssh_public_key_line(value) {
             Some(line) => {
-                if !phone.dphone_ssh_authorized_keys.contains(&line) {
-                    phone.dphone_ssh_authorized_keys.push(line);
+                if !phone.opendeskphone_ssh_authorized_keys.contains(&line) {
+                    phone.opendeskphone_ssh_authorized_keys.push(line);
                 }
             }
             None => return Err(()),
@@ -341,16 +351,16 @@ pub fn set_user_option(ctx: &mut UserCtx, phone: &mut Phone, name: &[u8], value:
         b"ring_headset_only" => phone.ring_headset_only = ast_true(value),
         b"call_waiting_tone" => phone.call_waiting_tone = ast_true(value),
         b"wallpaper_file" => phone.wallpaper_file = s,
-        b"dphone_theme" => match theme_name(value) {
-            Some(name) => phone.dphone_theme = name,
+        b"opendeskphone_theme" => match theme_name(value) {
+            Some(name) => phone.opendeskphone_theme = name,
             None => return Err(()),
         },
-        b"dphone_palette_file" => phone.dphone_palette_file = s,
-        b"dphone_app_data_tenant" => {
+        b"opendeskphone_palette_file" => phone.opendeskphone_palette_file = s,
+        b"opendeskphone_app_data_tenant" => {
             // A value that cannot be a key is kept, and reported: the
             // phone then has no app data at all (`crate::appdata`), not
             // the data of the phones without a key.
-            phone.dphone_app_data_tenant = truncate(value, 0x80);
+            phone.opendeskphone_app_data_tenant = truncate(value, 0x80);
             if !value.is_empty() && !dpma_proto::appdata::store::valid_tenant(value) {
                 return Err(());
             }

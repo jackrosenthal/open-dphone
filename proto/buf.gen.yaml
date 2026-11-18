@@ -2,7 +2,7 @@
 # relative to that directory).  The output, web/src/gen, is committed, so
 # building the frontend needs neither buf nor this plugin run.
 #
-# The Rust side needs no generation step: crates/dphone-web/build.rs
+# The Rust side needs no generation step: crates/opendeskphone-web/build.rs
 # compiles these files with protox, prost-build, and pbjson-build.
 version: v2
 plugins:
