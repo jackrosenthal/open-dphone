@@ -1,0 +1,23 @@
+[package]
+name = "phone-models"
+version = "3.0.0"
+edition = "2024"
+license = "GPL-2.0-or-later"
+authors = ["Jack Rosenthal <jack@rosenth.al>"]
+publish = false
+description = "Host tool: builds the 3D models of the phones that the documentation's homepage shows"
+
+# A workspace of its own, like apps/: the tool is outside the firmware's
+# workspace, so the tool's dependencies do not enter the firmware's
+# Cargo.lock or the Nix build.
+[workspace]
+resolver = "3"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+opendeskphone-hal = { path = "../../crates/opendeskphone-hal" }
+opendeskphone-state = { path = "../../crates/opendeskphone-state" }
+opendeskphone-ui = { path = "../../crates/opendeskphone-ui" }
+png = "0.18"
+resvg = { version = "0.48", default-features = false, features = ["text"] }
+serde_json = "1"
