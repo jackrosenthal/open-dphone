@@ -1,0 +1,46 @@
+/* The site's additions to Starlight's styles (customCss in astro.config.mjs). */
+
+/* A name in the first column of a table (an option, a command, a file)
+   stays on one line: otherwise the table squeezes the first column until a
+   name such as userlist_auth is split. */
+.sl-markdown-content table th:first-child code,
+.sl-markdown-content table td:first-child code {
+  white-space: nowrap;
+  word-break: normal;
+}
+
+/* A screenshot in a figure: centered, at the phone's 480-pixel width. */
+.sl-markdown-content figure.screenshot {
+  text-align: center;
+}
+
+.sl-markdown-content figure.screenshot img {
+  width: 480px;
+  max-width: 100%;
+  height: auto;
+}
+
+/* The Examples page: a grid of cards, each a screenshot and a link. */
+.sl-markdown-content .grid.cards > ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.sl-markdown-content .grid.cards > ul > li {
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+}
+
+.sl-markdown-content .grid.cards > ul > li > :first-child {
+  margin-top: 0;
+}
+
+.sl-markdown-content .grid.cards img {
+  width: 100%;
+  height: auto;
+}
