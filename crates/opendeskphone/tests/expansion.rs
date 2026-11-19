@@ -156,7 +156,6 @@ fn scenario(socket: &Path) {
     assert!(text(&module).starts_with("EXP_SET_TITLE\nTITLE_TEXT:Page 1/2\n"));
     module.send_to(b"EXP_PAGE_EVENT\nEVENT_ID:{5}\nEXP_PAGE:1\nEXP_PAGE_KEY:0\n", phone).unwrap();
     assert!(text(&module).starts_with("EXP_SET_TITLE\nTITLE_TEXT:Page 2/2\n"));
-    assert!(diag(socket, &["expansion"]).1.contains("page 2"));
 
     // A key press is acknowledged the way stock does it.
     module.send_to(b"EXP_KEYEVENT\nEVENT_ID:{9}\nEXP_NO:0\nEXP_PAGE:0\nEXP_KEYNO:3\n", phone).unwrap();

@@ -94,7 +94,7 @@ Tests that need the stock firmware images, an Asterisk server with Open DPMA, or
 nix build .#test-inputs -o test-inputs
 ```
 
-A test whose input is missing, or that needs something the workstation lacks (the OpenSSH client, `qemu-arm`, unprivileged network namespaces), prints `SKIPPED` and passes, so a passing `cargo test` does not cover everything.  The Nix check builds the tests with the feature `test-inputs/required`, which makes such a test fail instead.  To run the tests as the check does:
+A test whose input is missing, or that needs something the workstation lacks (the OpenSSH client, `qemu-arm`), prints `SKIPPED` and passes, so a passing `cargo test` does not cover everything.  The Nix check builds the tests with the feature `test-inputs/required`, which makes such a test fail instead.  To run the tests as the check does:
 
 ```sh
 cargo test --workspace --exclude dpma-sys --exclude dpma-ast --exclude res_open_dpma --features test-inputs/required
@@ -109,7 +109,7 @@ cd apps
 cargo host-test
 ```
 
-The flake's checks skip nothing, and CI runs them on every push:
+The flake's checks skip nothing except the [network namespace tests](#network-namespace-tests), and CI runs them on every push:
 
 | Command | Description |
 | --- | --- |
@@ -121,6 +121,15 @@ The flake's checks skip nothing, and CI runs them on every push:
 CI (`.github/workflows/ci.yml`) also uploads the image of every model as a workflow artifact named `firmware-<model>`, so a pushed branch's images need no local build.
 
 The Open DPMA tests run in containers against each supported Asterisk version: `cargo xtask ci` in `open-dpma/`; see `open-dpma/README.md`.
+
+### Network namespace tests
+
+CI cannot run the tests that need unprivileged network namespaces.  Run them before a release, and after changing the network, provisioning, paging, or expansion code:
+
+```sh
+cargo test -p opendeskphone-net --features netns-tests,test-inputs/required --test netns
+cargo test -p opendeskphone --features netns-tests,test-inputs/required --test pcport --test staticaddr --test paging --test expansion
+```
 
 ## xtask commands
 

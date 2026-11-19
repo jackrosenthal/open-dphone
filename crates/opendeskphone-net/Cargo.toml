@@ -16,6 +16,17 @@ tokio = { version = "1.54", default-features = false, features = ["rt", "net", "
 test-inputs = { path = "../test-inputs" }
 tokio = { version = "1", default-features = false, features = ["rt", "net", "time", "sync", "macros", "io-util", "test-util"] }
 
+[features]
+# Builds the test that runs in a network namespace (below).
+netns-tests = []
+
+# Runs in a private network namespace, which needs a single-threaded
+# process: no test harness.  Unprivileged user namespaces are not available
+# in CI, so it is built only with the feature `netns-tests`, which neither
+# `cargo test` nor the Nix test check turns on; the Nix clippy check does.
+# See "Network namespace tests" in
+# docs/src/content/docs/dev-guide/building.md.
 [[test]]
 name = "netns"
 harness = false
+required-features = ["netns-tests"]

@@ -20,6 +20,8 @@ default = ["web"]
 # The web UI.  A feature only so that the rest can be built and tested while
 # that crate is being reworked; every image carries it.
 web = ["dep:opendeskphone-web"]
+# Builds the tests that run in a network namespace (below).
+netns-tests = []
 
 [dependencies]
 opendeskphone-state = { path = "../opendeskphone-state" }
@@ -78,20 +80,28 @@ libc = "0.2"
 rustls-pemfile = "2"
 rustls-rustcrypto = "0.0.2-alpha"
 
-# Runs in a private network namespace, which needs a single-threaded
-# process: no test harness.
+# Each runs in a private network namespace, which needs a single-threaded
+# process: no test harness.  Unprivileged user namespaces are not available
+# in CI, so these are built only with the feature `netns-tests`, which
+# neither `cargo test` nor the Nix test check turns on; the Nix clippy check
+# does.  See "Network namespace tests" in
+# docs/src/content/docs/dev-guide/building.md.
 [[test]]
 name = "paging"
 harness = false
+required-features = ["netns-tests"]
 
 [[test]]
 name = "expansion"
 harness = false
+required-features = ["netns-tests"]
 
 [[test]]
 name = "pcport"
 harness = false
+required-features = ["netns-tests"]
 
 [[test]]
 name = "staticaddr"
 harness = false
+required-features = ["netns-tests"]

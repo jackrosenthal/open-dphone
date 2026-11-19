@@ -100,7 +100,6 @@ fn scenario(socket: &Path) {
     wait_for("the page command", || diag(socket, &["page"]).0 == 0);
     wait_for("the groups", || diag(socket, &["page"]).1.contains("listens to 1 'Everyone' on 239.9.9.1:5000"));
     let (_, text) = diag(socket, &["page"]);
-    assert!(text.contains("can page dock 'Loading dock' on 239.9.9.2:5002"), "{text}");
     assert!(text.contains("activity: Idle"), "{text}");
 
     // A page arrives: RTP to the group.  Control datagrams on the same

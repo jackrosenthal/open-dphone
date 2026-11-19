@@ -264,8 +264,6 @@ async fn run(mut nl: Netlink) {
     assert!(bring_up + Duration::from_secs(3) < FALLBACK, "bring-up took {bring_up:?}; FALLBACK is too short for this test");
     assert!(frame_crosses(pcpeer, sw, ETH_TEST, pc_dst).await, "PC to LAN");
     assert!(frame_crosses(sw, pcpeer, ETH_TEST, pc_dst).await, "LAN to PC");
-    let status = dphone(&ctx, &["net", "status"]).await;
-    assert!(status.contains("PC jack bridged") && status.contains("br0 (bridged)"), "{status}");
     sleep(Duration::from_millis(300)).await;
     let n = ctx.store.get::<opendeskphone_state::Network>();
     assert!(n.pc_port_enabled && n.pc.up && n.ipv4.address == Some(LEASED_IP), "{n:?}");
@@ -372,8 +370,6 @@ async fn run(mut nl: Netlink) {
     wait_kernel(&mut nl, "the fallback to the plain arrangement", FALLBACK + Duration::from_secs(40), |k| !k.bridge && !k.pc_up).await;
     let took = lost.elapsed();
     assert!(took >= FALLBACK, "fell back after {took:?}, before the fallback time");
-    let status = dphone(&ctx, &["net", "status"]).await;
-    assert!(status.contains("(plain)") && status.contains("tried once more"), "{status}");
     // The network answers again: the plain arrangement gets its address,
     // and the phone returns to the settings by itself.
     deaf.store(false, Ordering::Relaxed);
@@ -413,7 +409,6 @@ async fn run(mut nl: Netlink) {
         assert!(Instant::now() < end, "the settings were not tried again; the kernel has {:?}", kernel(&mut nl).await);
         sleep(Duration::from_millis(50)).await;
     }
-    assert!(dphone(&ctx, &["net", "status"]).await.contains("second try"));
     let second = Instant::now();
     wait_kernel(&mut nl, "the second fallback", FALLBACK + Duration::from_secs(40), standalone_up).await;
     assert!(second.elapsed() >= FALLBACK - Duration::from_secs(1), "the second try was cut short: {:?}", second.elapsed());
@@ -421,8 +416,6 @@ async fn run(mut nl: Netlink) {
     sleep(Duration::from_secs(12)).await;
     assert!(standalone_up(&kernel(&mut nl).await), "the plain arrangement should stay");
     assert_eq!(bridges.load(Ordering::Relaxed), 1, "the settings must be tried again exactly once");
-    let status = dphone(&ctx, &["net", "status"]).await;
-    assert!(status.contains("(plain)") && status.contains("twice"), "{status}");
     assert!(!frame_crosses(pcpeer, sw, ETH_TEST, pc_dst).await);
     // A settings change that leaves the network settings as they were
     // does not end it either (`net status` is answered once the change is

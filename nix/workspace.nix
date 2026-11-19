@@ -14,7 +14,6 @@
   rustPlatform,
   protobuf,
   openssh,
-  iproute2,
   qemu-user,
   asterisk, # Asterisk, its headers, and its modules with ours (asterisk.nix)
   testInputs, # what the tests need that is not in the repository (test-inputs)
@@ -180,7 +179,9 @@ in
       doCheck = true;
       # Every failure in one run, not only the first crate's; and no test
       # passes by skipping itself for want of an input or a facility of
-      # the host (the `test-inputs` crate).
+      # the host (the `test-inputs` crate).  The tests that run in a network
+      # namespace are not built (the feature `netns-tests`): they need
+      # unprivileged user namespaces, which are not available in CI.
       cargoTestExtraArgs = "--no-fail-fast --features test-inputs/required";
       # The stock firmware, Asterisk with res_open_dpma, and the staged
       # apps, where the tests look for them.
@@ -188,11 +189,9 @@ in
       # The OpenSSH client, for the test that logs in to the embedded SSH
       # server and pushes a file with `scp`; that test skips itself on a
       # machine without one.
-      # qemu-arm, for the tests that run the stock `configmerge`; `ip`, for
-      # the tests that run in a network namespace of their own.
+      # qemu-arm, for the tests that run the stock `configmerge`.
       nativeBuildInputs = checksStage.full.nativeBuildInputs ++ [
         openssh
-        iproute2
         qemu-user
       ];
     }
@@ -209,7 +208,9 @@ in
     // {
       cargoArtifacts = checksStage.deps;
       doInstallCargoArtifacts = false;
-      cargoClippyExtraArgs = "--all-targets -- -D warnings";
+      # The tests that run in a network namespace are linted too, though
+      # the test check does not build them.
+      cargoClippyExtraArgs = "--all-targets --features opendeskphone/netns-tests,opendeskphone-net/netns-tests -- -D warnings";
     }
     // lib.optionalAttrs (appsClippy != null) {
       # Likewise the apps' workspace, linted in a derivation of its own.

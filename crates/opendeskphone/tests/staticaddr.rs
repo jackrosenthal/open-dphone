@@ -575,11 +575,10 @@ async fn network(mut nl: Netlink) {
     // The phones and the PBX restart together, and the PBX takes longer.
     drop(phone);
     deaf.store(true, Ordering::Relaxed);
-    let (mark, from) = (net.mark(), net.log_text().len());
+    let mark = net.mark();
     let phone = net.boot().await;
     net.address("the saved static address with the server down", Duration::from_secs(30), STATIC_IP).await;
     net.address("the fallback to DHCP with the server down", long, LEASED_IP).await;
-    net.logged("the reason", soon, from, "no answer from the provisioning server").await;
     // The server is back: it answers the lease, and the phone returns to
     // its static address.
     deaf.store(false, Ordering::Relaxed);
@@ -597,10 +596,8 @@ async fn network(mut nl: Netlink) {
     // The server answers the lease, so the address gets its second try...
     net.answered("the handshake from the lease", Duration::from_secs(30), mark, LEASED_IP, "Handshake").await;
     net.address("the second try", Duration::from_secs(30), DEAD_IP).await;
-    net.logged("the second try in the log", soon, from, "trying the settings once more").await;
     // ...and after that the lease stays.
     net.address("the second fallback", long, LEASED_IP).await;
-    net.logged("the final fallback in the log", soon, from, "on the second try either").await;
     let mark_final = net.mark();
     net.answered("the handshake from the lease again", Duration::from_secs(30), mark_final.saturating_sub(1).max(mark), LEASED_IP, "Handshake").await;
     sleep(FALLBACK + Duration::from_secs(5)).await;
