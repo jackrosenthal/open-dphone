@@ -1,0 +1,60 @@
+# Builds the documentation site (docs/) and publishes it to
+# https://opendeskphone.org/, a Cloudflare Worker that serves the built
+# pages as static assets (docs/wrangler.jsonc).  It runs on a push to
+# main that changes docs/, and by hand.
+#
+# The build fails on a type error or a broken link, and then nothing is
+# published.  Deploying needs two repository secrets:
+#
+#   CLOUDFLARE_API_TOKEN    a token made from the "Edit Cloudflare Workers"
+#                           template, for the account and the
+#                           opendeskphone.org zone
+#   CLOUDFLARE_ACCOUNT_ID   the account that has the opendeskphone.org zone
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time; a newer push waits for the deploy in progress.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish the documentation site
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12
+          cache: true
+          cache_dependency_path: docs/pnpm-lock.yaml
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Deploy
+        run: pnpm exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

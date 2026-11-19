@@ -1,0 +1,6 @@
+# Wrangler (wrangler.jsonc) depends on esbuild, to bundle a Worker's code, and
+# on workerd, the Workers runtime, for `wrangler dev`.  The site's Worker
+# has no code and is not run locally, so their install scripts are not run.
+allowBuilds:
+  esbuild: false
+  workerd: false

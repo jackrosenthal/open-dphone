@@ -1,0 +1,20 @@
+// The Worker that serves the documentation site at https://opendeskphone.org/.
+// It has no code of its own: it serves dist/, which `pnpm build` writes, as
+// static assets.  CI deploys it on a push to main (.github/workflows/docs.yml):
+//
+//   pnpm build
+//   pnpm exec wrangler deploy
+//
+// The account comes from CLOUDFLARE_ACCOUNT_ID, and the opendeskphone.org zone
+// must be in that account.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "opendeskphone-docs",
+  "compatibility_date": "2026-11-18",
+  "assets": {
+    "directory": "./dist",
+    // A page that does not exist gets Starlight's 404 page, with a 404.
+    "not_found_handling": "404-page",
+  },
+  "routes": [{ "pattern": "opendeskphone.org", "custom_domain": true }],
+}

@@ -15,6 +15,9 @@ import remarkHeadingId from "remark-heading-id";
 import starlightLinksValidator from "starlight-links-validator";
 
 export default defineConfig({
+  // Where the site is published (wrangler.jsonc), for the canonical
+  // links and the sitemap.
+  site: "https://opendeskphone.org",
   markdown: {
     // `## Heading {#id}` keeps an anchor that links rely on.
     remarkPlugins: [remarkHeadingId],
