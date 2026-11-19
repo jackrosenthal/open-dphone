@@ -116,17 +116,26 @@ pub fn answer_commands(
     });
 }
 
+/// The time the phone gives an app's code for an event (2 seconds), which
+/// the rigs give too.  The time is measured on the clock, so a shorter one
+/// would test how busy the machine that runs the tests is, not the app;
+/// only the tests of the time limit itself ask for less
+/// ([`Rig::with_budget`]).
+pub fn phone_budget() -> std::time::Duration {
+    ManagerConfig::phone().call_budget
+}
+
 impl Rig {
     pub fn new(config: FakeConfig) -> Rig {
         Rig::with_root(staged(), config, Model::D60)
     }
 
     pub fn with_root(root: &Path, config: FakeConfig, model: Model) -> Rig {
-        Rig::with_budget(root, config, model, std::time::Duration::from_millis(300))
+        Rig::with_budget(root, config, model, phone_budget())
     }
 
-    /// A rig whose apps get `budget` for each event (the phone gives
-    /// them 2 seconds).
+    /// A rig whose apps get `budget` for each event instead of
+    /// [`phone_budget`].
     pub fn with_budget(
         root: &Path,
         config: FakeConfig,
@@ -140,8 +149,7 @@ impl Rig {
     /// `FakeStore::phone` of another rig's, a second phone of the same
     /// PBX.
     pub fn on_pbx(app_data: FakeStore) -> Rig {
-        let budget = std::time::Duration::from_millis(300);
-        Rig::with_app_data(staged(), FakeConfig::default(), Model::D60, budget, app_data)
+        Rig::with_app_data(staged(), FakeConfig::default(), Model::D60, phone_budget(), app_data)
     }
 
     /// A rig with other services than the fakes: `change` gets the
@@ -149,17 +157,15 @@ impl Rig {
     pub fn with_services(
         change: impl FnOnce(opendeskphone_apps::Services) -> opendeskphone_apps::Services,
     ) -> Rig {
-        let budget = std::time::Duration::from_millis(300);
         let config = FakeConfig::default();
-        Rig::build(staged(), config, Model::D60, budget, FakeStore::default(), change, |_| {})
+        Rig::build(staged(), config, Model::D60, phone_budget(), FakeStore::default(), change, |_| {})
     }
 
     /// A rig whose manager has other settings than a test's usual ones:
     /// `edit` changes them.
     pub fn with_manager(edit: impl FnOnce(&mut ManagerConfig)) -> Rig {
-        let budget = std::time::Duration::from_millis(300);
         let config = FakeConfig::default();
-        Rig::build(staged(), config, Model::D60, budget, FakeStore::default(), |s| s, edit)
+        Rig::build(staged(), config, Model::D60, phone_budget(), FakeStore::default(), |s| s, edit)
     }
 
     pub fn with_app_data(

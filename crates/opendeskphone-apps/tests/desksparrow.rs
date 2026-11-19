@@ -988,8 +988,7 @@ fn on_clock(clock: &Clock) -> FakeConfig {
 /// A phone whose PBX store of app data is `app_data`, as `Rig::on_pbx`
 /// makes one, with `clock` for its wall clock.
 fn on_pbx_with(app_data: FakeStore, clock: &Clock) -> Rig {
-    let budget = Duration::from_millis(300);
-    Rig::with_app_data(staged(), on_clock(clock), Model::D60, budget, app_data)
+    Rig::with_app_data(staged(), on_clock(clock), Model::D60, common::phone_budget(), app_data)
 }
 
 /// The leaderboard's value on the PBX, as text.

@@ -7,11 +7,17 @@ use common::{Rig, staged, temp_dir};
 use opendeskphone_apps::testutil::FakeConfig;
 use opendeskphone_apps::manifest::{self, Manifest};
 use opendeskphone_apps::{InstallError, ManifestError};
-use opendeskphone_state::{Command, Event, Reply};
+use opendeskphone_state::{Command, Event, Model, Reply};
 use std::path::{Path, PathBuf};
 
 fn rig() -> Rig {
     Rig::new(FakeConfig::dasp())
+}
+
+/// A rig whose apps get 300 ms for an event, for the tests of the time
+/// limit: with the phone's 2 seconds, each would take seconds longer.
+fn short_limit(config: FakeConfig) -> Rig {
+    Rig::with_budget(staged(), config, Model::D60, std::time::Duration::from_millis(300))
 }
 
 /// Makes an app file of a staged app under a new name, with its manifest
@@ -168,7 +174,7 @@ fn an_app_gets_only_the_interfaces_in_its_record() {
 
 #[test]
 fn a_spinning_app_is_stopped() {
-    let mut r = rig();
+    let mut r = short_limit(FakeConfig::dasp());
     r.launch("faulty");
     assert_eq!(r.ui.texts("faulty"), ["ready"]);
     let t = std::time::Instant::now();
@@ -214,7 +220,7 @@ fn waits_for_the_phone_do_not_count_toward_the_time_limit() {
     let ms = std::time::Duration::from_millis;
     // Each answer takes longer than the app's limit (300 ms), and less
     // than the shortest wait (0.5 seconds).
-    let mut r = Rig::new(FakeConfig::default());
+    let mut r = short_limit(FakeConfig::default());
     r.launch("checks");
     let answered = answer_slowly(&r, ms(350));
     let t = std::time::Instant::now();
@@ -234,7 +240,7 @@ fn waits_for_the_phone_do_not_count_toward_the_time_limit() {
 #[test]
 fn an_app_that_runs_past_the_time_limit_after_a_wait_is_stopped() {
     let ms = std::time::Duration::from_millis;
-    let mut r = Rig::new(FakeConfig::default());
+    let mut r = short_limit(FakeConfig::default());
     r.launch("checks");
     answer_slowly(&r, ms(1000));
     let t = std::time::Instant::now();
@@ -251,7 +257,7 @@ fn an_app_that_waits_without_end_is_stopped() {
     let mut r = Rig::with_manager(|c| c.whole_budget = ms(1000));
     r.launch("checks");
     // The app's code runs for a few microseconds between two answers: far
-    // from its limit of 300 ms.
+    // from its limit.
     answer_slowly(&r, ms(50));
     let t = std::time::Instant::now();
     ask_checks(&mut r, "wait-forever", "hangup");

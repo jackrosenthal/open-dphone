@@ -90,6 +90,12 @@ opt-level = 3
 [profile.dev.package.rsa]
 opt-level = 3
 
+# The app interpreter, for the tests that run the apps: unoptimized, an
+# app's event handler takes long enough that a busy machine runs it over
+# its time limit.
+[profile.dev.package.pulley-interpreter]
+opt-level = 3
+
 [profile.release]
 opt-level = "s"
 lto = "fat"
