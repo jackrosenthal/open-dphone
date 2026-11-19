@@ -27,32 +27,6 @@ Open Desk Phone is open-source firmware that replaces the stock firmware on the 
 
 On Asterisk, phones can be provisioned over DPMA.  Open Desk Phone includes an [open-source DPMA re-write](#open-dpma) in this repository.  Without DPMA provisioning, Open Desk Phone can work like a standard SIP phone, with accounts added in the web interface.
 
-- **Apps** are WebAssembly components, sandboxed, and installed from the web interface.  The stock firmware's JavaScript apps do not run.
-- **Themes** on the D60, D62, and D65 pair a wallpaper with a color palette for every screen.  With Open DPMA, a user's theme follows the user to other phones.
-
-## Web interface
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/readme/web-dashboard-dark.webp">
-    <img alt="The dashboard: accounts, calls, network, and provisioning" src=".github/readme/web-dashboard-light.webp" width="400">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/readme/web-screen-dark.webp">
-    <img alt="The Screen page: the phone's display and keys, mirrored" src=".github/readme/web-screen-light.webp" width="400">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/readme/web-calls-dark.webp">
-    <img alt="The Calls page: dialing, paging, and an active call" src=".github/readme/web-calls-light.webp" width="400">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/readme/web-apps-dark.webp">
-    <img alt="The Apps page: the installed apps" src=".github/readme/web-apps-light.webp" width="400">
-  </picture>
-</p>
-
-The web interface manages calls, Bluetooth headsets (D65), alarms, apps, and firmware, and mirrors the phone's screen, keys included.
-
 ## Install
 
 Put the `.eff` file for each phone model from [Releases](https://github.com/jackrosenthal/opendeskphone/releases) where phones download firmware (`file_url_prefix`), and add a firmware entry for each model to `res_digium_phone.conf`:
@@ -79,7 +53,7 @@ Phones install Open Desk Phone when they fetch the new configuration.
 
 ## Open DPMA
 
-`res_open_dpma.so` is a drop-in replacement, written in Rust, for Digium's closed-source DPMA module, with fixes for several bugs and security issues.  Open DPMA supports Asterisk 22, 23, and 24, reads the same `res_digium_phone.conf`, and registers the same CLI commands and AMI actions.  Phones on stock firmware and phones on Open Desk Phone both work with Open DPMA.
+Open DPMA is a drop-in replacement, written in Rust, for Digium's closed-source DPMA module, with fixes for several bugs and security issues.  Open DPMA supports Asterisk 22, 23, and 24, reads the same `res_digium_phone.conf`, and registers the same CLI commands and AMI actions.  Phones on stock firmware and phones on Open Desk Phone both work with Open DPMA.
 
 To switch from Digium's module, download Open DPMA for your Asterisk version and architecture:
 
@@ -97,6 +71,29 @@ cd /usr/lib/asterisk/modules
 rm res_digium_phone.so res_pjsip_endpoint_identifier_dpma.so res_pjsip_dialog_info_digium_body_supplement.so
 systemctl restart asterisk
 ```
+
+## Web interface
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/readme/web-dashboard-dark.webp">
+    <img alt="The dashboard: accounts, calls, network, and provisioning" src=".github/readme/web-dashboard-light.webp" width="400">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/readme/web-screen-dark.webp">
+    <img alt="The Screen page: the phone's display and keys, mirrored" src=".github/readme/web-screen-light.webp" width="400">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/readme/web-calls-dark.webp">
+    <img alt="The Calls page: dialing, paging, and an active call" src=".github/readme/web-calls-light.webp" width="400">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/readme/web-apps-dark.webp">
+    <img alt="The Apps page: the installed apps" src=".github/readme/web-apps-light.webp" width="400">
+  </picture>
+</p>
+
+Open Desk Phone includes a web interface in the firmware which manages calls, Bluetooth headsets (D65), alarms, apps, and firmware, and can mirror the phone screen, with keys you can click to operate the phone.
 
 ## Apps
 
