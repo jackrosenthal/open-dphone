@@ -31,13 +31,7 @@ allow=ulaw
 
 ## Download
 
-Each [release](https://github.com/jackrosenthal/opendeskphone/releases) has a `SHA256SUMS` file and a module named `res_open_dpma-asterisk<version>-<architecture>.so` for each supported Asterisk major version and architecture (`x86_64` or `aarch64`).  `asterisk -V` shows the Asterisk version, and `uname -m` the architecture.  To download and verify the module for Asterisk 22 on x86_64:
-
-```sh
-curl -fLO https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk22-x86_64.so
-curl -fLO https://github.com/jackrosenthal/opendeskphone/releases/latest/download/SHA256SUMS
-sha256sum --ignore-missing -c SHA256SUMS
-```
+Each [release](https://github.com/jackrosenthal/opendeskphone/releases) has a module named `res_open_dpma-asterisk<version>-<architecture>.so` for each supported Asterisk major version and architecture (`x86_64` or `aarch64`).  `asterisk -V` shows the Asterisk version, and `uname -m` the architecture.
 
 ## Setup
 

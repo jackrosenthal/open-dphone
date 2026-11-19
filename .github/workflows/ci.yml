@@ -22,9 +22,9 @@
 # `res_open_dpma-asterisk<major>-<arch>`.
 #
 # A pushed tag vX.Y.Z (the workspace version in Cargo.toml) also publishes
-# the seven images and the modules as a GitHub Release, with SHA256SUMS,
-# and then publishes dpma-bytes, dpma-proto, and opendeskphone-app-sdk to
-# crates.io (trusted publishing).
+# the seven images and the modules as a GitHub Release, and then publishes
+# dpma-bytes, dpma-proto, and opendeskphone-app-sdk to crates.io (trusted
+# publishing).
 name: CI
 
 on:
@@ -381,10 +381,6 @@ jobs:
       - name: The modules
         run: find modules -name 'res_open_dpma-*.so' -exec mv -t dist {} +
 
-      - name: SHA256SUMS
-        working-directory: dist
-        run: sha256sum -- *.eff *.so > SHA256SUMS && cat SHA256SUMS
-
       # Running the job again replaces the files of the release it made.
       - name: Create the release
         env:
@@ -392,9 +388,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/*.eff dist/*.so dist/SHA256SUMS LICENSE --clobber
+            gh release upload "$GITHUB_REF_NAME" dist/*.eff dist/*.so LICENSE --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/*.eff dist/*.so dist/SHA256SUMS LICENSE --verify-tag --generate-notes
+            gh release create "$GITHUB_REF_NAME" dist/*.eff dist/*.so LICENSE --verify-tag --generate-notes
           fi
 
   # Last, because a version on crates.io cannot be replaced: everything

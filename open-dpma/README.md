@@ -29,14 +29,6 @@ RHEL 9).  For anything else, see "Building".
 | Asterisk 23 | [res_open_dpma-asterisk23-x86_64.so](https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk23-x86_64.so) | [res_open_dpma-asterisk23-aarch64.so](https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk23-aarch64.so) |
 | Asterisk 24 | [res_open_dpma-asterisk24-x86_64.so](https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk24-x86_64.so) | [res_open_dpma-asterisk24-aarch64.so](https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk24-aarch64.so) |
 
-To download and verify, e.g., for Asterisk 24 on x86_64:
-
-```
-curl -fLO https://github.com/jackrosenthal/opendeskphone/releases/latest/download/res_open_dpma-asterisk24-x86_64.so
-curl -fLO https://github.com/jackrosenthal/opendeskphone/releases/latest/download/SHA256SUMS
-sha256sum --ignore-missing -c SHA256SUMS
-```
-
 ### Installing the module
 
 1. Copy the module into Asterisk's module directory (`astmoddir` in
