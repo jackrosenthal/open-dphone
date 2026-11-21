@@ -72,9 +72,9 @@ enum Cmd {
 
 #[derive(Subcommand)]
 enum EffCmd {
-    /// Decrypt an EFF and write the OTA inside it
+    /// Decrypt an EFF and write the OTA inside it (for the D80, an Android OTA package)
     Unpack { eff: PathBuf, ota: PathBuf },
-    /// Encrypt an OTA into an EFF
+    /// Encrypt an OTA (for the D80, an Android OTA package) into an EFF
     Pack {
         ota: PathBuf,
         eff: PathBuf,
@@ -88,7 +88,7 @@ enum EffCmd {
         #[arg(long)]
         salt: Option<String>,
     },
-    /// Print model, version, and the OTA header of an EFF
+    /// Print model, version, and the OTA header of an EFF (for the D80, the package size)
     Info { eff: PathBuf },
 }
 
@@ -296,17 +296,39 @@ fn deterministic_salt(ota: &[u8]) -> [u8; 8] {
     d[..8].try_into().unwrap()
 }
 
+/// The model name an EFF carries: one `kernel-image` knows, or the D80.
+fn eff_model(name: &str) -> Res<&'static str> {
+    if envelope::is_d80(name) {
+        return Ok("D80");
+    }
+    kernel::model(name).map(|m| m.name).map_err(|_| {
+        format!("unknown model {name:?} (expected one of D40, D45, D50, D60, D62, D65, D70, D80)")
+    })
+}
+
+/// What the payload of an EFF for `model` is.
+fn payload_kind(model: &str) -> &'static str {
+    if envelope::is_d80(model) {
+        "Android OTA package"
+    } else {
+        "OTA"
+    }
+}
+
 fn eff_cmd(cmd: EffCmd) -> Res<()> {
     match cmd {
         EffCmd::Unpack { eff, ota } => {
             let (h, payload) = envelope::unpack(&read(&eff)?).map_err(s)?;
-            Ota::parse(&payload).map_err(s)?;
+            if !envelope::is_d80(&h.model) {
+                Ota::parse(&payload).map_err(s)?;
+            }
             write(&ota, &payload)?;
             println!(
-                "Extracted {} {}: {} OTA bytes",
+                "Extracted {} {}: {} {} bytes",
                 h.model,
                 h.version,
-                payload.len()
+                payload.len(),
+                payload_kind(&h.model)
             );
         }
         EffCmd::Pack {
@@ -317,8 +339,11 @@ fn eff_cmd(cmd: EffCmd) -> Res<()> {
             salt,
         } => {
             let payload = read(&ota)?;
-            Ota::parse(&payload).map_err(s)?;
-            let header = EffHeader::new(kernel::model(&model)?.name, &version).map_err(s)?;
+            let model = eff_model(&model)?;
+            if !envelope::is_d80(model) {
+                Ota::parse(&payload).map_err(s)?;
+            }
+            let header = EffHeader::new(model, &version).map_err(s)?;
             let salt = match salt {
                 None => deterministic_salt(&payload),
                 Some(h) => {
@@ -346,7 +371,11 @@ fn eff_cmd(cmd: EffCmd) -> Res<()> {
         EffCmd::Info { eff } => {
             let (h, payload) = envelope::unpack(&read(&eff)?).map_err(s)?;
             println!("EFF: model {} version {}", h.model, h.version);
-            describe_ota(&Ota::parse(&payload).map_err(s)?);
+            if envelope::is_d80(&h.model) {
+                println!("{} (zip): {} bytes", payload_kind(&h.model), payload.len());
+            } else {
+                describe_ota(&Ota::parse(&payload).map_err(s)?);
+            }
         }
     }
     Ok(())

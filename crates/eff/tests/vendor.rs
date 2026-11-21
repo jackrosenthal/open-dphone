@@ -118,16 +118,23 @@ fn every_vendor_eff_round_trips_byte_for_byte() {
         );
         let mut payload = Vec::new();
         r.read_to_end(&mut payload).unwrap();
-        // OTA: full parse, streaming parse, exact rebuild.
-        let o = Ota::parse(&payload).unwrap();
-        assert_eq!(
-            ota::pack_with_header(o.header.app, o.kernel, o.rootfs).unwrap(),
-            payload
-        );
-        let mut s = OtaReader::new(&payload[..]).unwrap();
-        s.next_component().unwrap().finish().unwrap();
-        s.next_component().unwrap().finish().unwrap();
-        s.finish().unwrap();
+        // OTA: full parse, streaming parse, exact rebuild.  (The D80's
+        // payload is an Android OTA package instead.)
+        let parts = if envelope::is_d80(&header.model) {
+            assert_eq!(&payload[..4], b"PK\x03\x04", "{}", path.display());
+            format!("Android OTA package {}", payload.len())
+        } else {
+            let o = Ota::parse(&payload).unwrap();
+            assert_eq!(
+                ota::pack_with_header(o.header.app, o.kernel, o.rootfs).unwrap(),
+                payload
+            );
+            let mut s = OtaReader::new(&payload[..]).unwrap();
+            s.next_component().unwrap().finish().unwrap();
+            s.next_component().unwrap().finish().unwrap();
+            s.finish().unwrap();
+            format!("kernel {} rootfs {}", o.kernel.len(), o.rootfs.len())
+        };
         // EFF: exact rebuild with the saved salt, through the streaming writer.
         let mut w = EffWriter::new(Vec::with_capacity(original.len()), &header, salt).unwrap();
         w.write_all(&payload).unwrap();
@@ -138,12 +145,10 @@ fn every_vendor_eff_round_trips_byte_for_byte() {
             path.display()
         );
         eprintln!(
-            "{}: {} {} kernel {} rootfs {} ok",
+            "{}: {} {} {parts} ok",
             path.display(),
             header.model,
-            header.version,
-            o.kernel.len(),
-            o.rootfs.len()
+            header.version
         );
         models.push(header.model);
     }

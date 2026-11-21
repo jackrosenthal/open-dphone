@@ -1,7 +1,8 @@
 //! Digium D-series firmware container formats.
 //!
 //! * [`envelope`]: the `.eff` envelope (100-byte label, OpenSSL `Salted__`
-//!   AES-256-CBC, four 100-byte inner fields, then the OTA).
+//!   AES-256-CBC, four 100-byte inner fields, then the OTA, or for the D80
+//!   an Android OTA package).
 //! * [`ota`]: the type-0 (application) OTA container: kernel plus rootfs with
 //!   three CRCs.
 //! * [`ctrl`]: the 304-byte bank-selection record in the `ctrl` partition.
@@ -14,7 +15,7 @@ pub mod ctrl;
 pub mod envelope;
 pub mod ota;
 
-pub use envelope::{EffHeader, EffReader, EffWriter, OTA_PASSPHRASE};
+pub use envelope::{D80_OTA_PASSPHRASE, EffHeader, EffReader, EffWriter, OTA_PASSPHRASE};
 pub use ota::{AppHeader, OTA_MAGIC, OtaHeader};
 
 /// Errors from parsing or building any of the formats.

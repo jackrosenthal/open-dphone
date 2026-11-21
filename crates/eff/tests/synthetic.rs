@@ -123,6 +123,37 @@ fn eff_rejects_damage() {
 }
 
 #[test]
+fn d80_has_its_own_passphrase_and_a_zip_payload() {
+    let header = EffHeader::new("D80", "1_12_14").unwrap();
+    let mut zip = b"PK\x03\x04".to_vec();
+    zip.extend(sample(5000, 4));
+    let file = envelope::pack(&header, &zip, [3; 8]).unwrap();
+    assert_eq!(&file[..12], b"D80 1_12_14\0");
+    assert_eq!(
+        envelope::unpack(&file).unwrap(),
+        (header.clone(), zip.clone())
+    );
+    assert!(EffReader::with_passphrase(&file[..], eff::D80_OTA_PASSPHRASE).is_ok());
+    assert!(EffReader::with_passphrase(&file[..], eff::OTA_PASSPHRASE).is_err());
+    let other = envelope::pack(
+        &EffHeader::new("D60", "3_0_0").unwrap(),
+        &ota_payload(),
+        [3; 8],
+    )
+    .unwrap();
+    assert!(EffReader::with_passphrase(&other[..], eff::D80_OTA_PASSPHRASE).is_err());
+    // A D80 EFF carries a zip; the other models' an OTA container.
+    assert!(envelope::pack(&header, &ota_payload(), [3; 8]).is_err());
+    assert!(envelope::pack(&EffHeader::new("D60", "3_0_0").unwrap(), &zip, [3; 8]).is_err());
+}
+
+fn ota_payload() -> Vec<u8> {
+    let mut payload = eff::OTA_MAGIC.to_be_bytes().to_vec();
+    payload.extend(sample(1000, 5));
+    payload
+}
+
+#[test]
 fn eff_writer_streams() {
     let header = EffHeader::new("D40", "3_0_0").unwrap();
     let mut payload = eff::OTA_MAGIC.to_be_bytes().to_vec();

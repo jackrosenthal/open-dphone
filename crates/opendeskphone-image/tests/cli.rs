@@ -171,6 +171,47 @@ fn build_a_whole_image() {
 }
 
 #[test]
+fn d80_images_carry_a_zip() {
+    let s = Scratch::new("d80");
+    let mut zip = b"PK\x03\x04".to_vec();
+    zip.extend((0..10_000).map(|i| (i * 13) as u8));
+    std::fs::write(s.path("update.zip"), &zip).unwrap();
+    ok(&[
+        "eff",
+        "pack",
+        &s.path("update.zip"),
+        &s.path("d80.eff"),
+        "--model",
+        "d80",
+        "--version",
+        "1_12_14",
+    ]);
+    let info = ok(&["eff", "info", &s.path("d80.eff")]);
+    assert!(info.contains("model D80 version 1_12_14"), "{info}");
+    assert!(
+        info.contains("Android OTA package (zip): 10004 bytes"),
+        "{info}"
+    );
+    ok(&["eff", "unpack", &s.path("d80.eff"), &s.path("back.zip")]);
+    assert_eq!(std::fs::read(s.path("back.zip")).unwrap(), zip);
+    // An OTA container is not a D80 payload.
+    let mut ota = 0x7d9f_8001u32.to_be_bytes().to_vec();
+    ota.extend(&zip[4..]);
+    std::fs::write(s.path("x.ota"), &ota).unwrap();
+    let (success, text) = tool(&[
+        "eff",
+        "pack",
+        &s.path("x.ota"),
+        &s.path("x.eff"),
+        "--model",
+        "D80",
+        "--version",
+        "1_12_14",
+    ]);
+    assert!(!success && text.contains("Android OTA package"), "{text}");
+}
+
+#[test]
 fn refusals() {
     let s = Scratch::new("refuse");
     std::fs::write(s.path("big"), fake_zimage(0x200000)).unwrap();

@@ -8,11 +8,17 @@
 //!         100 bytes "1"
 //!         100 bytes model
 //!         100 bytes version
-//!         the OTA
+//!         the payload
 //! ```
 //!
 //! Key and IV come from OpenSSL's legacy `EVP_BytesToKey` with MD5 and one
-//! iteration over the passphrase in the stock `/etc/otapassphrase`.
+//! iteration over the passphrase in the stock `/etc/otapassphrase`, which
+//! the stock updater hands to `openssl enc -pass file:`; OpenSSL takes the
+//! file's first line, without its newline.
+//!
+//! The D80 differs from the other models in two ways: its passphrase is
+//! [`D80_OTA_PASSPHRASE`], and its payload is an Android OTA package (a zip
+//! file) instead of an OTA container.  See [`is_d80`].
 
 use crate::{Error, Result, bad};
 use aes::Aes256;
@@ -20,8 +26,51 @@ use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit, generic_array::GenericArr
 use md5::{Digest, Md5};
 use std::io::{Read, Write};
 
-/// Contents of the stock `/etc/otapassphrase` (the same on every model).
-pub const OTA_PASSPHRASE: &[u8; 255] = b"*\xac7\xf5\x9e1\xb0\xde\xef\xfb1\xf4N`V#\x82\xa1%\xb6$)\xd9\x12\xc3\xb3\xc4\x89\xbd1O\xb4\xac|\xcf\xb0\"k\x92\xf5\x14K'T\x8e \x8c\xe2\x89\xe9\x03#>\x84\x0e0\x11,~\xd8\xdc#3~}\xb9m&\xad\x18|~J#G)j\x17\x8e\xe0\x07\xa3\xb7k\xa7\xa6BF0@?MEv\xad\xa24\xc4 \x06-t\xf2\xb8q\xf8\xb9\x8d \x16\x1a\xa5}\x18\xdc\x03)\xc3\xb0\x03\x03]q\x0f\xbaI<\xf3\xf4Q\xb2\xfb\xe3\xf1\x8e(\xc5\xa2\xfdX\xf8\xb1\xb7\x17\x9cL \xca0\xf0:\x07\xd80\xb9\x97\x06\x17\x89\x01\x03v\xc5\x1c\xc0\xb2\xed-\xff\xd9\x15_+\xe1}\x9d\x95&~\xe4\xdc\xcd\x061Uf\x90 VR\xa0 \xd6\xcf\xec\x1eP\xcf\xdaU\xe0\xa1\x14\xe7t\\N\x06\x1b\xab\xf5\xe7\x1f\x85\x9f\xd05\xa3\xd1QY\xe1\x10\xe9\xcc\xdf_d\x87\xcf\xa4\x9c5$\xbdq_\xdb\xee\x1a\x07^\xeb\xc7G\x90\xdc{\xa1\x88\xef=\xb6Wq";
+/// The passphrase in the stock `/etc/otapassphrase` of the D40 through
+/// D70: the file's first line, without its newline (all but its last byte).
+pub const OTA_PASSPHRASE: &[u8; 255] =b"*\xac7\xf5\x9e1\xb0\xde\xef\xfb1\xf4N`V#\x82\xa1%\xb6$)\xd9\x12\xc3\xb3\xc4\x89\xbd1O\xb4\xac|\xcf\xb0\"k\x92\xf5\x14K'T\x8e \x8c\xe2\x89\xe9\x03#>\x84\x0e0\x11,~\xd8\xdc#3~}\xb9m&\xad\x18|~J#G)j\x17\x8e\xe0\x07\xa3\xb7k\xa7\xa6BF0@?MEv\xad\xa24\xc4 \x06-t\xf2\xb8q\xf8\xb9\x8d \x16\x1a\xa5}\x18\xdc\x03)\xc3\xb0\x03\x03]q\x0f\xbaI<\xf3\xf4Q\xb2\xfb\xe3\xf1\x8e(\xc5\xa2\xfdX\xf8\xb1\xb7\x17\x9cL \xca0\xf0:\x07\xd80\xb9\x97\x06\x17\x89\x01\x03v\xc5\x1c\xc0\xb2\xed-\xff\xd9\x15_+\xe1}\x9d\x95&~\xe4\xdc\xcd\x061Uf\x90 VR\xa0 \xd6\xcf\xec\x1eP\xcf\xdaU\xe0\xa1\x14\xe7t\\N\x06\x1b\xab\xf5\xe7\x1f\x85\x9f\xd05\xa3\xd1QY\xe1\x10\xe9\xcc\xdf_d\x87\xcf\xa4\x9c5$\xbdq_\xdb\xee\x1a\x07^\xeb\xc7G\x90\xdc{\xa1\x88\xef=\xb6Wq";
+
+/// The passphrase in the stock `/etc/otapassphrase` of the D80: the file's
+/// first line, without its newline (47 of its 256 bytes).
+pub const D80_OTA_PASSPHRASE: &[u8; 47] = b"q0\xcev\xf5\"\x16\xd15N7\xee\xbb\x0ez\xec\x8d\xf3\x82\xb5\xc0z\x9b\xb2>_8u\x9d\x12\xa6\xc3%R\xde\xddz/\x84j0\x8d)0\xf4\xde\xc8";
+
+/// Whether `model` is the D80, whose EFFs use [`D80_OTA_PASSPHRASE`] and
+/// carry an Android OTA package (a zip file) instead of an OTA container.
+pub fn is_d80(model: &str) -> bool {
+    model.eq_ignore_ascii_case("D80")
+}
+
+/// The passphrase of the EFFs for `model`.
+pub fn passphrase(model: &str) -> &'static [u8] {
+    if is_d80(model) {
+        D80_OTA_PASSPHRASE
+    } else {
+        OTA_PASSPHRASE
+    }
+}
+
+/// Check that `payload` starts the way the payload of an EFF for `model`
+/// must: with the zip magic for the D80, with the OTA magic otherwise.
+fn check_payload(model: &str, payload: &[u8]) -> Result<()> {
+    let (magic, what) = if is_d80(model) {
+        (*b"PK\x03\x04", "an Android OTA package (zip)")
+    } else {
+        (crate::OTA_MAGIC.to_be_bytes(), "an OTA container")
+    };
+    if payload.len() < 4 || payload[..4] != magic {
+        return bad(format!("the payload of a {model} EFF must be {what}"));
+    }
+    Ok(())
+}
+
+/// The model the plaintext label names (its text before the first space).
+fn label_model(label: &[u8; LABEL_LEN]) -> &str {
+    let end = label
+        .iter()
+        .position(|&b| b == b' ' || b == 0)
+        .unwrap_or(LABEL_LEN);
+    std::str::from_utf8(&label[..end]).unwrap_or("")
+}
 
 pub const LABEL_LEN: usize = 100;
 pub const INNER_LEN: usize = 400;
@@ -151,18 +200,24 @@ pub struct EffReader<R: Read> {
 }
 
 impl<R: Read> EffReader<R> {
-    /// Open with the stock passphrase.
+    /// Open with the stock passphrase of the model the plaintext label
+    /// names (see [`passphrase`]).
     pub fn new(inner: R) -> Result<Self> {
-        Self::with_passphrase(inner, OTA_PASSPHRASE)
+        Self::open(inner, None)
     }
 
-    pub fn with_passphrase(mut inner: R, passphrase: &[u8]) -> Result<Self> {
+    pub fn with_passphrase(inner: R, passphrase: &[u8]) -> Result<Self> {
+        Self::open(inner, Some(passphrase))
+    }
+
+    fn open(mut inner: R, passphrase: Option<&[u8]>) -> Result<Self> {
         let mut head = [0u8; LABEL_LEN + 16];
         if read_full(&mut inner, &mut head)? != head.len() || &head[100..108] != SALTED {
             return bad("invalid EFF framing (100-byte label and salted AES ciphertext expected)");
         }
         let label: [u8; LABEL_LEN] = head[..100].try_into().unwrap();
         let salt: [u8; 8] = head[108..116].try_into().unwrap();
+        let passphrase = passphrase.unwrap_or_else(|| self::passphrase(label_model(&label)));
         let (key, iv) = derive(passphrase, &salt);
         let mut r = EffReader {
             inner,
@@ -300,15 +355,16 @@ pub struct EffWriter<W: Write> {
 }
 
 impl<W: Write> EffWriter<W> {
-    /// Start an EFF with the stock passphrase.  `salt` should be random
-    /// (any value decrypts; a fixed one makes the output reproducible).
+    /// Start an EFF with the stock passphrase of the header's model (see
+    /// [`passphrase`]).  `salt` should be random (any value decrypts; a
+    /// fixed one makes the output reproducible).
     pub fn new(inner: W, header: &EffHeader, salt: [u8; 8]) -> Result<Self> {
         Self::with_raw_headers(
             inner,
             &header.label(),
             &header.inner(),
             salt,
-            OTA_PASSPHRASE,
+            passphrase(&header.model),
         )
     }
 
@@ -376,26 +432,23 @@ impl<W: Write> Write for EffWriter<W> {
     }
 }
 
-/// Decrypt a whole EFF in memory: header and OTA bytes.
+/// Decrypt a whole EFF in memory: header and payload bytes.
 pub fn unpack(eff: &[u8]) -> Result<(EffHeader, Vec<u8>)> {
     let mut r = EffReader::new(eff)?;
-    let mut ota = Vec::with_capacity(eff.len());
-    r.read_to_end(&mut ota).map_err(|e| match e.kind() {
+    let mut payload = Vec::with_capacity(eff.len());
+    r.read_to_end(&mut payload).map_err(|e| match e.kind() {
         std::io::ErrorKind::InvalidData => Error::Format(e.to_string()),
         _ => Error::Io(e),
     })?;
-    if ota.len() < 4 || ota[..4] != crate::OTA_MAGIC.to_be_bytes() {
-        return bad("missing OTA payload magic");
-    }
-    Ok((r.header().clone(), ota))
+    check_payload(&r.header().model, &payload)?;
+    Ok((r.header().clone(), payload))
 }
 
-/// Encrypt an OTA into an EFF in memory.
-pub fn pack(header: &EffHeader, ota: &[u8], salt: [u8; 8]) -> Result<Vec<u8>> {
-    if ota.len() < 4 || ota[..4] != crate::OTA_MAGIC.to_be_bytes() {
-        return bad("input must be an OTA payload");
-    }
-    let mut w = EffWriter::new(Vec::with_capacity(ota.len() + 600), header, salt)?;
-    w.write_all(ota)?;
+/// Encrypt a payload (an OTA container, or for the D80 an Android OTA
+/// package) into an EFF in memory.
+pub fn pack(header: &EffHeader, payload: &[u8], salt: [u8; 8]) -> Result<Vec<u8>> {
+    check_payload(&header.model, payload)?;
+    let mut w = EffWriter::new(Vec::with_capacity(payload.len() + 600), header, salt)?;
+    w.write_all(payload)?;
     w.finish()
 }
